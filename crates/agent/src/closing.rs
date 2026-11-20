@@ -424,6 +424,9 @@ const PRE_CLOSINGS: Lexicon = &[
         // Getting back to them later ends this call too.
         "i'll call you back", "call you back later", "i'll text you back", "text you back later",
         "i'll get back to you", "get back to you later",
+        // Not "gotta run" alone: "which program do I gotta run" asks something.
+        "alright i gotta run", "okay i gotta run", "ok i gotta run", "anyway i gotta run", "sorry i gotta run",
+        "well i gotta run", "i've gotta run", "sorry gotta run", "anyway gotta run",
     ]),
     ("zh-TW", &[
         "那就先這樣", "就先這樣", "先這樣", "先這樣子", "不耽誤你時間了", "不耽誤您時間了", "不耽誤你了",
@@ -431,11 +434,14 @@ const PRE_CLOSINGS: Lexicon = &[
         "再聯絡", "再聯繫", "再講", "再聊", "改天再聊", "晚點再說", "之後再說", "回頭再說",
         "再打給你", "再打給您", "再回電給你", "再回電給您", "再回你電話", "再回您電話", "再回你", "再回您",
         "簡訊回你", "簡訊回您",
+        // Said to end the call: 「好那就這樣」「回頭聯絡」.
+        "那就這樣", "好就這樣", "回頭聯絡", "回頭聯繫",
     ]),
     ("zh-CN", &[
         "那就先这样", "就先这样", "先这样", "回头微信说", "回头微信聊", "不说了", "不耽误你时间了",
         "不耽误您时间了", "有问题再联系", "不打扰了", "不打扰您了", "再联系", "再联络", "再聊", "回头再说",
         "再打给你", "再打给您", "再回电给你", "再回你电话", "再回你", "再回您", "短信回你", "短信回您",
+        "那就这样", "好就这样", "回头联系", "回头联络", "不打扰你了", "回聊",
     ]),
     ("yue", &[
         "係咁先", "系咁先", "就咁先", "唔阻你", "唔阻你啦", "唔阻你喇", "再打俾你", "再打畀你", "再覆你", "覆返你",
@@ -454,10 +460,13 @@ const PRE_CLOSINGS: Lexicon = &[
     ("ko", &[
         "나중에다시연락드릴게요", "다시연락드릴게요", "연락드릴게요", "연락드리겠습니다", "나끊는다", "그럼이만", "이만줄일게요",
         "이제끊을게요", "먼저끊을게요",
+        "나중에통화해요",
     ]),
     ("es", &[
         "bueno te dejo", "te dejo", "le dejo", "nada era solo eso", "era solo eso", "hablamos luego",
         "hablamos después", "hablamos despues",
+        // Not "nos hablamos" alone: "desde entonces no nos hablamos" is no closing.
+        "órale nos hablamos", "orale nos hablamos", "cualquier cosa te aviso", "cualquier cosa le aviso",
     ]),
     ("fr", &[
         "je ne vous retiens pas plus longtemps", "je ne vous retiens pas", "je ne te retiens pas",
@@ -468,7 +477,7 @@ const PRE_CLOSINGS: Lexicon = &[
         "gut dann verbleiben wir so", "dann verbleiben wir so", "verbleiben wir so",
         "alles klar dann weiß ich bescheid", "dann weiß ich bescheid", "dann weiss ich bescheid",
     ]),
-    ("pt", &["então tá bom", "entao ta bom", "combinado então", "combinado entao", "a gente se fala"]),
+    ("pt", &["então tá bom", "entao ta bom", "combinado então", "combinado entao", "a gente se fala", "falamos depois"]),
     ("th", &["งั้นแค่นี้", "งั้นแค่นี้นะ", "แค่นี้นะ", "แค่นี้ก่อน", "แค่นี้", "เอาไว้คุยกันใหม่", "คุยกันแค่นี้ก่อน"]),
     ("vi", &["dạ vậy nhé", "vậy nhé", "vay nhe", "thế nhé", "the nhe", "thôi nhé"]),
     ("id", &[
@@ -504,12 +513,14 @@ const FAREWELLS: Lexicon = &[
         "bye", "bye bye", "byebye", "goodbye", "good bye", "talk to you soon", "talk soon", "take care",
         "have a great rest of your day", "have a good rest of your day", "enjoy the rest of your day",
         "cheers mate", "lovely ta", "ta ta", "see you", "see ya", "catch you later",
+        "catch ya later", "ta ra", "slán", "slan", "slán go fóill", "slan go foill",
     ]),
     ("zh-TW", &[
         "掰掰", "掰", "拜拜", "再見", "再會", "掰囉", "掰掰囉", "掛囉", "掛啦", "先掛了", "我掛了", "我先掛了", "那我掛了",
         "那掛了",
+        "好掛了",
     ]),
-    ("zh-CN", &["再见", "再会", "挂了啊", "先挂了", "我挂了", "那挂了", "好嘞拜拜", "挂啰", "挂咯", "挂啦", "那我挂了"]),
+    ("zh-CN", &["再见", "再会", "挂了啊", "先挂了", "我挂了", "那挂了", "好嘞拜拜", "挂啰", "挂咯", "挂啦", "那我挂了", "好挂了"]),
     ("yue", &["得啦唔該晒", "得啦唔该晒", "得啦唔該曬", "先掛啦", "拜拜啦", "byebye", "收線啦", "收线啦", "得閒再傾", "得闲再倾", "遲啲再傾", "迟啲再倾"]),
     ("ja", &[
         // A bare 「ありがとうございました」 is thanks, like 謝謝 elsewhere; with 本日は／今日は it closes.
@@ -532,11 +543,14 @@ const FAREWELLS: Lexicon = &[
     ("fr", &[
         "au revoir", "bonne journée", "bonne journee", "bonne soirée", "bonne soiree", "à bientôt",
         "a bientot", "bisous", "bises", "à plus", "je raccroche", "bonne continuation", "à tout à l'heure", "a tout a l heure",
+        "à très vite", "a tres vite", "allez salut",
     ]),
     ("de", &[
         "auf wiederhören", "auf wiederhoren", "wiederhören", "schönen tag noch", "schönen tag", "tschüss",
         "tschüs", "tschuss", "baba", "pfiat di", "pfiat eich", "gute nacht", "schönen abend noch", "schonen abend noch",
         "machs gut", "machen sie es gut",
+        // Austrian and Swiss goodbyes.
+        "schönen feierabend", "schonen feierabend", "tschö", "pfiati", "uf wiederluege", "wiederluege",
     ]),
     ("pt", &[
         "tchau tchau", "tchau", "até logo", "ate logo", "até mais", "um abraço", "um abraco", "abraço", "abraco", "beijos",
@@ -544,6 +558,7 @@ const FAREWELLS: Lexicon = &[
         // Portugal: 「…e continuação de um bom dia」.
         "continuação de um bom dia", "continuação de bom dia", "continuacao de um bom dia", "tenha um bom dia",
         "boa continuação",
+        "até já", "ate ja", "passe bem",
     ]),
     ("th", &[
         "บ๊ายบาย", "บายบาย", "ไว้คุยกันใหม่", "แล้วคุยกันใหม่", "แล้วพบกันใหม่", "พบกันใหม่", "ไปก่อนนะ", "วางสายนะ",
@@ -610,10 +625,14 @@ const GREETING_BYES: Lexicon = &[
     ("id", &["selamat siang", "selamat pagi", "selamat sore", "selamat malam"]),
     // "Buon lavoro" and "alla prossima" are everyday words too ("cerco un buon lavoro").
     ("it", &["ciao", "buongiorno", "buonasera", "buon pomeriggio", "buon lavoro", "alla prossima"]),
-    ("de", &["servus"]),
+    // Swiss "tschau" and "adieu" are said on meeting too; "Ade" is also a name.
+    ("de", &["servus", "tschau", "adieu", "ade"]),
+    // "All the best" also sits inside sentences ("all the best doctors").
+    ("en", &["all the best"]),
     ("fr", &["salut", "bonsoir"]),
-    ("es", &["buenas noches", "buenas tardes", "buen día", "buen dia", "buenos días", "buenos dias"]),
-    ("pt", &["boa noite", "boa tarde"]),
+    // "¡Feliz día!" also opens a call on a birthday or a holiday.
+    ("es", &["buenas noches", "buenas tardes", "buen día", "buen dia", "buenos días", "buenos dias", "feliz día", "feliz dia"]),
+    ("pt", &["boa noite", "boa tarde", "cumprimentos"]),
     ("ru", &["пока"]),
     ("hi", &["नमस्ते", "नमस्कार"]),
     ("nl", &["goedendag", "dag"]),
@@ -949,6 +968,8 @@ const ZH_BYE_CUES: &[&str] = &[
     "早安", "午安", "快樂", "愉快", "保重", "加油", "慢走", "安全", "知道", "不好意思", "抱歉",
     "對不起", "客氣", "謝",
     "见", "没关系", "打来", "电话", "快乐", "对不起", "客气", "谢",
+    // Cantonese thanks: 「唔該晒，拜拜」.
+    "唔該晒", "唔该晒", "唔該", "唔该",
 ];
 
 /// "You" right before the goodbye is a cue as well (「好我再打給你掰」) — unless
@@ -2859,5 +2880,244 @@ mod chinese_bye_words {
             assert_eq!(step.event, ClosingEvent::CallerFarewell, "{t}");
             assert!(step.ends_call, "{t}");
         }
+    }
+}
+
+/// Closing words from the regional research (Chinese, English, Japanese, Korean,
+/// Spanish, French, German, Portuguese, Italian): what callers there say to end
+/// a call ends it; what they say to go on, or what only looks like a goodbye, does not.
+#[cfg(test)]
+mod regional_closing_words_tests {
+    use super::*;
+
+    fn after_talk() -> ClosingMachine {
+        let mut m = ClosingMachine::new("en");
+        m.on_caller("Parcel delivery info", "Parcel delivery info", false, false);
+        m
+    }
+
+    /// The caller's turn as the live session feeds it: with the older check.
+    fn hears(m: &mut ClosingMachine, t: &str) -> ClosingStep {
+        m.on_caller(t, t, crate::locale::caller_wraps_up(t), false)
+    }
+
+    #[test]
+    fn regional_goodbyes_end_the_call() {
+        for t in [
+            "好掛了", "好挂了", "唔該晒拜拜", "唔该晒拜拜",
+            "Catch ya later!", "Thanks, all the best.", "Ta-ra!", "Slán go fóill.", "Right so, slán.",
+            "じゃあね", "좋은 하루 보내세요",
+            "Muchas gracias, feliz día.",
+            "Allez, salut !", "Merci, à très vite !",
+            "Schönen Feierabend!", "Tschö!", "Pfiati!", "Uf Wiederluege!", "Danke, ade.", "Danke, tschau.", "Danke, adieu.",
+            "Obrigado, até já!", "Passe bem.", "Obrigado, cumprimentos.",
+            "Grazie, arrivederci", "Buona serata", "Ciao ciao",
+        ] {
+            let mut m = after_talk();
+            let step = hears(&mut m, t);
+            assert_eq!(step.event, ClosingEvent::CallerFarewell, "{t}");
+            assert!(step.ends_call, "{t}");
+        }
+    }
+
+    #[test]
+    fn regional_pre_closings_announce_the_end() {
+        for t in [
+            "好，那就這樣", "好就這樣", "回頭聯絡", "那就这样吧", "回头联系", "好的，不打扰你了", "回聊",
+            "Alright, I gotta run.",
+            "네, 나중에 통화해요.",
+            "Órale, nos hablamos.", "Cualquier cosa te aviso.", "Bueno, cualquier cosa le aviso.",
+            "Tá bom, falamos depois.",
+        ] {
+            let mut m = after_talk();
+            assert_eq!(hears(&mut m, t).event, ClosingEvent::CallerPreClosing, "{t}");
+        }
+    }
+
+    #[test]
+    fn going_on_or_lookalikes_do_not_close() {
+        for t in [
+            "啊對了", "喔還有", "順便問一下", "等一下喔", "噢对了", "哎还有个事", "话说回来", "仲有呢", "順便問多句",
+            "那就這樣處理，你明天把文件寄過來", "晚點聊的那件事你先準備資料", "他回頭聯絡過我們兩次了",
+            "這個方案只要三分鐘，不耽誤你時間", "我就简单说几句，不耽误您时间", "那件事我們晚點聊",
+            "All the best.", "Der Anrufer heißt Ade", "Dígame, cuánto sería todo",
+            "Oh, real quick", "Before I let you go", "Oh, by the way", "Anyway, so", "Oh hang on",
+            "We've gotta run a few more tests on your car", "You should take it easy", "All the best seats are gone already",
+            "あ、それと", "ちなみに", "もう一点だけ", "あとですね", "そういうことでしたら、来週にしましょう",
+            "お願いがあるのですが、じゃあそういうことで",
+            "아 맞다", "하나만 더 여쭤볼게요", "잠시만요",
+            "Oye, una pregunta", "Antes de colgar", "Ah, por cierto", "Espérame tantito", "Bueno, mirá", "Pará un cachito",
+            "Desde ese día no nos hablamos", "Qué bueno que estés muy bien", "Me alegra que andes bien", "Espero que vaya bien",
+            "Con su hijo ya estamos en contacto",
+            "Du coup", "Bon bah", "Au fait", "Ah juste une chose", "Bon courage pour demain",
+            "Übrigens", "Moment mal", "Eine Frage noch", "Aja noch was", "Warten Sie kurz", "Wir hatten ein schönes Wochenende",
+            "Die Limonade ist schon bezahlt",
+            "Só mais uma coisa", "Antes de desligar", "Ah, por sinal", "Muito bem, já agora", "Foi tudo de bom",
+            "Disso falamos depois, primeiro o endereço",
+            "Ah aspetta", "Un'ultima cosa", "Prima che chiudi", "Comunque senti", "A proposito", "Ti chiamo solo per fare un saluto",
+        ] {
+            let mut m = after_talk();
+            let step = hears(&mut m, t);
+            assert!(!step.ends_call, "must not end the call: {t}");
+            assert!(
+                !matches!(step.event, ClosingEvent::CallerFarewell | ClosingEvent::CallerPreClosing),
+                "no closing: {t} {:?}",
+                step.event
+            );
+        }
+    }
+
+    /// Greetings that also say goodbye open a call without ending it.
+    #[test]
+    fn greetings_that_say_goodbye_open_calls() {
+        for (lang, t) in [("es", "¡Hola! ¡Feliz día!"), ("de", "Tschau!"), ("de", "Adieu!"), ("pt", "Cumprimentos!")] {
+            let mut m = ClosingMachine::new(lang);
+            assert!(!hears(&mut m, t).ends_call, "{t}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod review_probe_tests {
+    use super::*;
+
+    fn run(lang: &'static str, t: &str) -> ClosingStep {
+        let mut m = ClosingMachine::new(lang);
+        m.on_caller("Parcel delivery info", "Parcel delivery info", false, false);
+        m.on_caller(t, t, crate::locale::caller_wraps_up(t), false)
+    }
+
+    fn opener(lang: &'static str, t: &str) -> ClosingStep {
+        let mut m = ClosingMachine::new(lang);
+        m.on_caller(t, t, crate::locale::caller_wraps_up(t), false)
+    }
+
+    /// Ordinary sentences that hold a newly added closing word but are not a goodbye.
+    #[test]
+    fn review_probe_lookalikes_do_not_close() {
+        let cases: &[(&str, &str)] = &[
+            ("en", "We've gotta run diagnostics on the line before I can quote you"),
+            ("en", "Which program do I gotta run"),
+            ("en", "Your plan gives you access to all the best doctors in the network"),
+            ("en", "The all the best of album is half price"),
+            ("en", "Please keep the all the best"),
+            ("en", "What is the data rate on your plan"),
+            ("en", "The metadata rarely changes on your account"),
+            ("en", "He is facing a slander lawsuit"),
+            ("en", "Is the roof slanted"),
+            ("en", "Your slang is hard to follow"),
+            ("en", "I would like to buy lemonade"),
+            ("en", "We trade in the morning"),
+            ("zh-TW", "窗簾好掛了，下午師傅會來"),
+            ("zh-TW", "這幅畫好掛了就可以拍照"),
+            ("zh-TW", "線上客服的晚點聊天時段是九點到十點"),
+            ("zh-TW", "我們晚點聊天室會開放"),
+            ("zh-TW", "你有回頭聯絡過房東嗎"),
+            ("zh-TW", "如果客戶沒回頭聯絡，我們會寄第二封信"),
+            ("zh-TW", "那就這樣做吧，把資料給我"),
+            ("zh-TW", "你說好就這樣辦理對嗎"),
+            ("zh-TW", "我們不耽誤你時間，只需要一分鐘確認資料"),
+            ("zh-TW", "這個方法不耽誤你時間，很快就可以辦好"),
+            ("zh-TW", "唔該拜拜土地公"),
+            ("zh-TW", "唔該你再講一次"),
+            ("zh-CN", "窗帘好挂了，师傅下午来"),
+            ("zh-CN", "我回聊天记录看看"),
+            ("zh-CN", "你能回聊天室吗"),
+            ("zh-CN", "客服晚点聊天时间是九点"),
+            ("zh-CN", "那就这样操作，先点设置"),
+            ("zh-CN", "银行说不打扰你了，但你的账户还有问题"),
+            ("zh-CN", "客户说不打扰你了，是什么意思"),
+            ("zh-CN", "他回头联系过我们两次"),
+            ("zh-CN", "我们不耽误你时间，只要一分钟确认资料"),
+            ("yue", "唔該晒你份文件"),
+            ("yue", "唔該你再講一次"),
+            ("ja", "じゃあそういうことで手続きを進めますので、ご住所を教えてください"),
+            ("ja", "それではそういうことで間違いないですか"),
+            ("ko", "아까 나중에 통화해요 라고 하셨는데 지금은 통화 가능하세요"),
+            ("ko", "상담원이 나중에 통화해요 라고 안내가 나왔나요"),
+            ("es", "¿Cuánto sería todo junto?"),
+            ("es", "Sería todo un honor ayudarle con su cuenta"),
+            ("es", "Si paga hoy, seria todo el saldo pendiente"),
+            ("es", "Si hay cualquier cosa, le aviso al supervisor para que lo revise"),
+            ("es", "Mire, cualquier cosa te aviso al banco para que no le cobren"),
+            ("es", "Órale, nos hablamos de su pedido hace una semana, ¿recuerda?"),
+            ("fr", "Je vous réponds à très vite allure"),
+            ("fr", "Vous devez aller à très vite fait"),
+            ("fr", "Allez salut le client de ma part et dites-lui que la commande part"),
+            ("de", "Das Paket enthält Schokolade"),
+            ("de", "Die Fassade ist neu gestrichen"),
+            ("de", "Ich möchte mit Herrn Ade sprechen"),
+            ("de", "Wir haben Marmelade und Limonade bestellt"),
+            ("de", "Das war im schönen Feierabendverkehr"),
+            ("de", "Wir sagen immer Tschö zu den Kunden, aber heute geht es um Ihre Rechnung"),
+            ("de", "Die Arkade ist offen"),
+            ("pt", "Espero que o pagamento passe bem pelo sistema"),
+            ("pt", "Quero que a entrega passe bem pela alfândega"),
+            ("pt", "Até já vi esse erro antes"),
+            ("pt", "Até já consegui pagar a conta"),
+            ("pt", "Nós falamos depois do almoço?"),
+            ("pt", "Ontem falamos depois da reunião sobre o contrato"),
+            ("pt", "Trouxe os cumprimentos do seu filho"),
+            ("pt", "Passe bem o cartão na máquina"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            for l in [*lang, "en"] {
+                let s = run(l, t);
+                if s.ends_call || matches!(s.event, ClosingEvent::CallerFarewell | ClosingEvent::CallerPreClosing) {
+                    bad.push(format!("[{l}] {t} -> {:?} ends={}", s.event, s.ends_call));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "lookalikes treated as closing:\n{}", bad.join("\n"));
+    }
+
+    /// A sales or bank caller's first words may hold a closing-sounding phrase.
+    #[test]
+    fn review_probe_openers_do_not_close() {
+        let cases: &[(&str, &str)] = &[
+            ("zh-TW", "您好，不耽誤你時間，我是保險公司的"),
+            ("zh-CN", "您好，不耽误你时间，我是银行的"),
+            ("en", "Hi, all the best from the team at your bank"),
+            ("es", "Hola, feliz día, le llamo de su banco"),
+            ("de", "Tschau, hier ist Ihre Bank"),
+            ("de", "Adieu, hier ist die Bank"),
+            ("pt", "Cumprimentos, falamos da sua conta"),
+            ("fr", "Salut, c'est la banque"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let s = opener(lang, t);
+            if s.ends_call || matches!(s.event, ClosingEvent::CallerFarewell | ClosingEvent::CallerPreClosing) {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        assert!(bad.is_empty(), "openers treated as closing:\n{}", bad.join("\n"));
+    }
+
+    /// A call's middle turn that happens to end on a newly added closing word.
+    #[test]
+    fn review_probe_end_position_lookalikes() {
+        let cases: &[(&'static str, &str)] = &[
+            ("zh-TW", "這個方案只要三分鐘，不耽誤你時間"),
+            ("zh-TW", "我們就在線上處理，不耽誤您時間"),
+            ("zh-CN", "这个方案只要三分钟，不耽误你时间"),
+            ("zh-CN", "我就简单说几句，不耽误您时间"),
+            ("zh-TW", "我剛剛說到的那件事，我們晚點聊"),
+            ("de", "Ich möchte mit Herrn Ade"),
+            ("de", "Der Anrufer heißt Ade"),
+            ("en", "He asked about the all the best"),
+            ("pt", "Eu vi o resto de boa tarde"),
+            ("es", "Dígame, ¿cuánto sería todo"),
+            ("ja", "お願いがあるのですが、じゃあそういうことで"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let s = run(lang, t);
+            if s.ends_call || matches!(s.event, ClosingEvent::CallerFarewell | ClosingEvent::CallerPreClosing) {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        assert!(bad.is_empty(), "end-position lookalikes treated as closing:\n{}", bad.join("\n"));
     }
 }

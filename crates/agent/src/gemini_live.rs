@@ -962,9 +962,10 @@ pub fn persona_system_prompt(
     })
 }
 
-/// Everything the caller "said" so far is the carrier's international-call
-/// warning (「這是國際電話，請注意小心詐騙」) — the real caller has not spoken.
-pub(crate) fn looks_like_carrier_intl_prompt(caller_text: &str) -> bool {
+/// The carrier's international-call warning as it was first recognized: Taiwan's
+/// 「這是國際電話，請注意小心詐騙」. Kept as it is; the regional ones are added in
+/// [paired_carrier_prompt].
+fn tw_carrier_prompt(caller_text: &str) -> bool {
     let t: String = crate::zh_tw::norm(caller_text)
         .chars()
         .filter(|c| c.is_alphanumeric())
@@ -985,7 +986,203 @@ pub(crate) fn looks_like_carrier_intl_prompt(caller_text: &str) -> bool {
     ] {
         rest = rest.replace(w, "");
     }
-    rest.chars().filter(|c| ('\u{4E00}'..='\u{9FFF}').contains(c)).count() <= 5
+    rest.chars().filter(is_han).count() <= 5
+}
+
+/// "This call comes from abroad" in the regional warnings, as the words read once
+/// normalized (Traditional characters, lower case, no spaces or punctuation):
+/// Taiwan (「這通是國際電話」), Hong Kong (「來電源自香港境外」 / "Call is from outside
+/// Hong Kong"), mainland China (「境外來電」「國際及港澳台來電」), Korea
+/// (「국제전화입니다」「해외에서 걸려온 전화입니다」) and Thailand (「โทรจากต่างประเทศ」).
+const PROMPT_ABROAD: &[&str] = &[
+    "國際電話", "國際來電", "香港境外", "境外來電", "國際及港澳", "callisfromoutsidehongkong", "국제전화입니다",
+    "해외에서걸려온전화", "โทรจากต่างประเทศ",
+];
+
+/// "Beware of fraud" in the same warnings: a caller who only mentions calling from
+/// abroad, or only warns of fraud, has said one of the two, the carrier says both.
+const PROMPT_BEWARE: &[&str] = &["詐騙", "騙去", "提高警惕", "提高警覺", "bewareofdeception", "보이스피싱에주의", "ระวังมิจฉาชีพ"];
+
+/// The warnings' own words, longest first, dropped before counting what is left.
+const PROMPT_WORDS: &[&str] = &[
+    "callisfromoutsidehongkong", "bewareofdeception", "hello",
+    "해외에서걸려온전화입니다", "국제전화입니다", "보이스피싱에주의하세요", "보이스피싱에주의", "여보세요",
+    "หมายเลขนี้", "โทรจากต่างประเทศ", "ระวังมิจฉาชีพ", "ฮัลโหล",
+    "這通是", "來電源自", "香港境外", "境外來電", "國際及港澳臺來電", "國際及港澳台來電", "電信網絡", "電信網路", "提高警惕",
+    "提高警覺", "毋通", "乎人", "騙去",
+    "這是", "此為", "這裡是", "國際電話", "國際來電", "國外來電", "請您", "請", "注意", "小心",
+    "詐騙", "接通", "掛斷", "防範", "謹防", "慎防", "提防", "以免", "受騙", "喂",
+];
+
+/// Letters outside Han script a few garbled sounds after the warning may leave;
+/// a sentence of the caller's own leaves more.
+const PROMPT_REST_LETTERS: usize = 4;
+
+/// Everything the caller "said" so far is the carrier's international-call
+/// warning (「這是國際電話，請注意小心詐騙」) — the real caller has not spoken.
+pub(crate) fn looks_like_carrier_intl_prompt(caller_text: &str) -> bool {
+    tw_carrier_prompt(caller_text) || paired_carrier_prompt(caller_text)
+}
+
+fn is_han(c: &char) -> bool {
+    ('\u{4E00}'..='\u{9FFF}').contains(c)
+}
+
+/// A regional warning: both halves are heard ([PROMPT_ABROAD] and
+/// [PROMPT_BEWARE]) and, once its words are dropped, next to nothing is left.
+fn paired_carrier_prompt(caller_text: &str) -> bool {
+    // Thai vowel and tone marks are no alphanumerics: the whole Thai block is kept.
+    let t: String = crate::zh_tw::norm(caller_text)
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || ('\u{0E00}'..='\u{0E7F}').contains(c))
+        .collect();
+    let both = PROMPT_ABROAD.iter().any(|m| t.contains(m)) && PROMPT_BEWARE.iter().any(|m| t.contains(m));
+    if !both || t.chars().filter(is_han).count() > 40 || t.chars().count() > 160 {
+        return false;
+    }
+    let mut rest = t;
+    for w in PROMPT_WORDS {
+        rest = rest.replace(w, "");
+    }
+    rest.chars().filter(is_han).count() <= 5
+        && rest.chars().filter(|c| c.is_alphabetic() && !is_han(c)).count() <= PROMPT_REST_LETTERS
+}
+
+#[cfg(test)]
+mod carrier_prompt_tests {
+    use super::looks_like_carrier_intl_prompt as prompt;
+
+    /// Each region's recorded warning (both halves of it) is the carrier, not the
+    /// caller; people saying "international", "abroad" or "beware of fraud" in a
+    /// sentence of their own are callers. India has no warning with both halves
+    /// on record: nothing of it is read as one.
+    #[test]
+    fn carrier_warnings_by_region_and_callers_who_mention_abroad() {
+        let regions: &[(&str, &[&str], &[&str])] = &[
+            (
+                "tw",
+                &["這通是國際電話，請注意，小心詐騙，毋通乎人騙去。", "這通是國際電話，請注意小心詐騙。喂？"],
+                &[
+                    "我人在國外，這通是國際電話，等一下再跟你說",
+                    "你毋通乎人騙去啦，阿嬤",
+                    "請注意，你的國際包裹明天會送到",
+                    "不好意思，這通是國際電話",
+                ],
+            ),
+            (
+                "hk-mo",
+                &[
+                    "來電源自香港境外，慎防詐騙。Call is from outside Hong Kong. Beware of deception.",
+                    "Call is from outside Hong Kong, beware of deception.",
+                    "來電源自香港境外，慎防詐騙",
+                ],
+                &[
+                    "I'm calling from outside Hong Kong about your parcel",
+                    "我喺香港境外打嚟，想問你份文件",
+                    "This call is from outside Hong Kong, it's the bank about your card",
+                    "This call is from outside Hong Kong.",
+                    "Beware of deception",
+                    "來電源自香港境外",
+                ],
+            ),
+            (
+                "cn",
+                &["境外来电，请提高警惕。", "国际及港澳台来电，谨防电信网络诈骗。"],
+                &[
+                    "我是反电信网络诈骗中心的，请提高警惕",
+                    "境外来电？对，我在美国给你打的，有件事跟你说",
+                    "你好，这里是国际快递，你的包裹到了",
+                    "这里是银行，谨防电信网络诈骗",
+                    "境外来电",
+                ],
+            ),
+            (
+                "kr",
+                &["국제전화입니다. 보이스피싱에 주의하세요.", "해외에서 걸려온 전화입니다. 보이스피싱에 주의하세요. 여보세요?"],
+                &[
+                    "해외에서 걸려온 전화라서 놀라셨죠? 택배 주소 확인차 연락드렸어요",
+                    "국제전화로 연락드렸습니다",
+                    "국제전화입니다, 고객님 카드 결제 건으로 연락드렸습니다",
+                    "네 안녕하세요 국제전화입니다",
+                    "보이스피싱에 주의하세요",
+                ],
+            ),
+            (
+                "th",
+                &["หมายเลขนี้โทรจากต่างประเทศ ระวังมิจฉาชีพ", "หมายเลขนี้โทรจากต่างประเทศ ระวังมิจฉาชีพ ฮัลโหล"],
+                &["ฉันโทรจากต่างประเทศนะ จะถามเรื่องพัสดุ", "ระวังมิจฉาชีพนะคะ", "พัสดุจากต่างประเทศมาถึงแล้วค่ะ", "ผมโทรจากต่างประเทศครับ"],
+            ),
+            (
+                "in",
+                &[],
+                &[
+                    "This is an international call.",
+                    "International call, sir",
+                    "Hi, I'm calling from overseas about your order",
+                    "This is an international call from your bank about your card",
+                ],
+            ),
+        ];
+        for (region, warnings, callers) in regions {
+            for t in *warnings {
+                assert!(prompt(t), "{region}: the carrier's warning: {t}");
+            }
+            for t in *callers {
+                assert!(!prompt(t), "{region}: the caller speaking: {t}");
+            }
+        }
+    }
+
+    /// The function as it was before the regional warnings, word for word.
+    fn before(caller_text: &str) -> bool {
+        let t: String = crate::zh_tw::norm(caller_text).chars().filter(|c| c.is_alphanumeric()).collect();
+        let marked = ["國際電話", "國際來電", "小心詐騙", "注意詐騙", "謹防詐騙", "慎防詐騙", "防範詐騙"].iter().any(|m| t.contains(m));
+        if !marked || t.chars().count() > 40 {
+            return false;
+        }
+        let mut rest = t;
+        for w in [
+            "這是", "此為", "這裡是", "國際電話", "國際來電", "國外來電", "請您", "請", "注意", "小心",
+            "詐騙", "接通", "掛斷", "防範", "謹防", "慎防", "提防", "以免", "受騙", "喂",
+        ] {
+            rest = rest.replace(w, "");
+        }
+        rest.chars().filter(|c| ('\u{4E00}'..='\u{9FFF}').contains(c)).count() <= 5
+    }
+
+    /// Whatever was read as the warning before still is, and Chinese sentences
+    /// that were not are not now, the regional warnings aside.
+    #[test]
+    fn chinese_sentences_read_as_before() {
+        for t in [
+            "小心詐騙, 接通國際電話愛注意。",
+            "這是國際電話，請注意小心詐騙。",
+            "这是国际电话，请注意小心诈骗",
+            "這是國際電話，請注意小心詐騙。喂？",
+            "是國際電話, 請注意小心詐騙, 接通請掛斷點為。경품기",
+            "此為國際來電，請小心詐騙",
+            "國際電話，請注意",
+            "我是小李，这是国际电话",
+            "請提防詐騙，謹防詐騙",
+        ] {
+            assert!(before(t), "{t}");
+            assert!(prompt(t), "{t}");
+        }
+        for t in [
+            "這是國際電話，請注意小心詐騙。喂？不好意思我打錯了",
+            "您好，我是大吉銀行信貸專員",
+            "",
+            "不好意思，這通是國際電話",
+            "我人在國外，這通是國際電話，等一下再跟你說",
+            "这里是银行，谨防电信网络诈骗",
+            "您好，我是银行的，谨防电信网络诈骗，请核对一下信息",
+            "最近國際電話詐騙很多，你要小心，我是你表哥啦",
+        ] {
+            assert!(!before(t), "{t}");
+            assert!(!prompt(t), "{t}");
+        }
+    }
 }
 
 /// Caller ID from abroad (`+…`, not the SIM's own country code): the carrier plays its
@@ -13195,5 +13392,74 @@ mod local_hello_opening {
         let cn = crate::prompts::kick_open_local(Lang::ZhCn, true, it, false);
         // The pack names languages in Traditional Chinese; Simplified is converted.
         assert!(cn.contains(&crate::zh_convert::to_cn(it.name_tw)) && !cn.contains("義") && !cn.contains('{'), "{cn}");
+    }
+}
+
+#[cfg(test)]
+mod review_probe_tests {
+    use super::looks_like_carrier_intl_prompt as prompt;
+
+    /// The caller's own sentences, whole call so far: none is the carrier's warning.
+    #[test]
+    fn review_probe_callers_are_not_prompts() {
+        let callers = [
+            "Hi, I'm making an international call from Dubai, is this Mr Sharma?",
+            "Sorry, this is an international call so the line is bad",
+            "Hello, is this Mr Sharma? This is an international call.",
+            "Namaste, international call",
+            "Hello sir, international call, can you hear me",
+            "I am calling you on an international call from Mumbai",
+            "我是银行客服，请提高警惕，谨防电信网络诈骗",
+            "请提高警惕",
+            "您好，这里是工商银行，谨防电信网络诈骗",
+            "您好，我是银行的，谨防电信网络诈骗，请核对一下信息",
+            "这里是银行，谨防电信网络诈骗，请不要把验证码告诉任何人",
+            "你好，我是警察，谨防電信網絡詐騙，請配合調查",
+            "Beware of deception, I am calling from the bank about your card",
+            "Beware of deception",
+            "I am calling from the bank. This call is from outside Hong Kong because I am travelling.",
+            "네 안녕하세요 국제전화입니다",
+            "저는 해외에서 걸려온 전화 받은 적 없어요",
+            "สวัสดีครับ ผมโทรจากต่างประเทศ ขอสายคุณสมชายครับ",
+            "ผมโทรจากต่างประเทศครับ",
+        ];
+        let bad: Vec<String> = callers.iter().filter(|t| prompt(t)).map(|t| format!("treated as carrier prompt: {t}")).collect();
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// Borderline, shortest real-caller utterances that still hold a mark.
+    #[test]
+    fn review_probe_short_callers_are_not_prompts() {
+        let callers = [
+            "International call, sir",
+            "Hello, international call",
+            "International call from the bank",
+            "这里是银行，谨防电信网络诈骗",
+            "谨防电信网络诈骗，我是银行的",
+            "This call is from outside Hong Kong.",
+            "不好意思，這通是國際電話",
+        ];
+        // Existing behavior, not asserted: 「我是小李，这是国际电话」 was read as the warning before this change.
+        let bad: Vec<String> = callers.iter().filter(|t| prompt(t)).map(|t| format!("treated as carrier prompt: {t}")).collect();
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// The real warnings (and what STT does to them) still count.
+    #[test]
+    fn review_probe_real_prompts_still_count() {
+        for t in [
+            "這是國際電話，請注意小心詐騙。",
+            "这是国际电话，请注意小心诈骗",
+            "小心詐騙, 接通國際電話愛注意。",
+            "國際及港澳台來電，謹防電信網絡詐騙",
+            "来电源自香港境外，慎防诈骗",
+            "Call is from outside Hong Kong. Beware of deception.",
+            "해외에서 걸려온 전화입니다. 보이스피싱에 주의하세요.",
+        ] {
+            // "This is an international call." alone names no fraud warning: a caller may say it.
+            assert!(prompt(t), "{t}");
+        }
+        // Unchanged behavior: the caller talking after the prompt flips it.
+        assert!(!prompt("這是國際電話，請注意小心詐騙。喂？不好意思我打錯了"));
     }
 }
