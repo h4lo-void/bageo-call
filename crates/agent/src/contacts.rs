@@ -4143,6 +4143,7 @@ mod tests {
             status: "",
             stall: crate::gemini_live::StallPrompt::Off,
             knowledge: "",
+            about: None,
             carrier_note: true,
             auto_language: false,
         });
@@ -4175,6 +4176,7 @@ mod tests {
             status: "",
             stall: crate::gemini_live::StallPrompt::Off,
             knowledge: "",
+            about: None,
             carrier_note: false,
             auto_language: false,
         });
@@ -4226,6 +4228,7 @@ mod tests {
                     status: "",
                     stall: crate::gemini_live::StallPrompt::Off,
                     knowledge: "",
+                    about: None,
                     carrier_note: false,
                     auto_language: false,
                 });

@@ -660,6 +660,98 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
   #view-sms .b .acts{opacity:1;gap:6px}
   #view-sms .b .acts .btn{min-height:34px;padding:2px 10px}
 }
+/* ---------- talk style: slider + myna (art from docs/call_style_research/mascot/base.html) ---------- */
+.ts{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:8px 24px;align-items:center;margin-top:12px}
+.ts-slider{margin:0}
+.ts-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-weight:550}
+.ts-head output{font-weight:600;color:var(--accent-ink)}
+.ts-range{width:100%;margin:10px 0 2px;min-height:28px;accent-color:var(--accent)}
+.ts-range:disabled{opacity:.5}
+.ts-ends{display:flex;justify-content:space-between;font-size:.8rem;color:var(--muted)}
+.ts.off #tsBox{opacity:.55}
+#tsBox{
+  --bts-ink:var(--text);--bts-sub:var(--muted);--bts-line:var(--line);
+  --bts-stage:light-dark(#f3f6fc,#272b34);--bts-desk:light-dark(#e6d9c6,#4a4034);--bts-desk-edge:light-dark(#cdbba1,#5f5344);
+  --bts-bird:light-dark(#2a2c33,#3f434e);--bts-bird-edge:light-dark(#2a2c33,#717786);--bts-bubble:light-dark(#ffffff,#343945);
+  background:var(--bts-stage);border-radius:14px;padding:12px 10px 0;overflow:hidden}
+#tsBox .bts-bubble b{display:block;font-weight:600;font-size:14px}
+#tsBox .bts-bubble span{display:block;font-size:12.5px;line-height:1.35;color:var(--bts-sub)}
+#tsBox .bts-scene-btn{cursor:pointer}
+#tsBox .bts-scene-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#tsBox .bts-bubble-wrap { display: flex; justify-content: center; margin-left: 28%; margin-right: 10%; min-height: 44px; align-items: flex-end; }
+#tsBox .bts-bubble {
+  position: relative; background: var(--bts-bubble); color: var(--bts-ink); border: 1px solid var(--bts-line);
+  border-radius: 14px; padding: 7px 12px; font-size: 15px; text-align: center; max-width: 100%;
+}
+#tsBox .bts-bubble::after {
+  content: ""; position: absolute; left: 50%; bottom: -7px; width: 12px; height: 12px; margin-left: -6px;
+  background: var(--bts-bubble); border-right: 1px solid var(--bts-line); border-bottom: 1px solid var(--bts-line);
+  transform: rotate(45deg);
+}
+#tsBox .bts-bubble.bts-pop { animation: bts-pop .28s ease-out; }
+#tsBox .bts-scene { position: relative; margin-top: 4px; }
+#tsBox .bts-svg { display: block; width: 100%; height: auto; }
+#tsBox .bts-scene-btn { position: absolute; left: 7.5%; top: 10%; width: 28.75%; height: 37%; background: transparent; border: 0; padding: 0; border-radius: 8px; }
+
+#tsBox .bts-fill-bird { fill: var(--bts-bird); stroke: var(--bts-bird-edge); stroke-width: 1.2; }
+#tsBox .bts-desk { fill: var(--bts-desk); }
+#tsBox .bts-desk-edge { stroke: var(--bts-desk-edge); stroke-width: 2; }
+#tsBox .bts-frame { fill: none; stroke: var(--bts-desk-edge); stroke-width: 4; }
+#tsBox .bts-sky, #tsBox .bts-tint { transition: fill .35s ease, opacity .35s ease; }
+#tsBox .bts-outfit { opacity: 0; transition: opacity .28s ease; }
+#tsBox .bts-outfit.bts-on { opacity: 1; }
+#tsBox .bts-head { transform-origin: 190px 102px; transition: transform .3s ease; }
+#tsBox .bts-wing-l { transform-origin: 153px 116px; transition: transform .3s ease; }
+#tsBox .bts-bird { transform-origin: 190px 172px; }
+#tsBox .bts-eyes { transform-origin: 190px 68px; animation: bts-blink 4.2s infinite; }
+#tsBox .bts-cheek { transition: opacity .3s ease; }
+#tsBox .bts-beak-open { display: none; }
+#tsBox svg[data-level="1"] .bts-head { transform: rotate(-9deg); }
+#tsBox svg[data-level="2"] .bts-head { transform: rotate(-4deg); }
+#tsBox svg[data-level="1"] .bts-wing-l { transform: rotate(120deg); }
+#tsBox svg[data-level="2"] .bts-wing-l { transform: rotate(38deg); }
+#tsBox svg[data-level="1"] .bts-beak-open,
+#tsBox svg[data-level="2"] .bts-beak-open { display: inline; }
+#tsBox svg[data-level="1"] .bts-beak-closed,
+#tsBox svg[data-level="2"] .bts-beak-closed { display: none; }
+#tsBox svg[data-level="4"] .bts-cheek,
+#tsBox svg[data-level="5"] .bts-cheek { opacity: 0; }
+#tsBox .bts-bird.bts-hop { animation: bts-hop .42s ease-out; }
+#tsBox .bts-bird.bts-bow { animation: bts-bow .7s ease-in-out; }
+#tsBox svg[data-level="1"] .bts-wing-l.bts-wave { animation: bts-wave .8s ease-in-out; }
+@keyframes bts-pop { 0% { transform: scale(.9); opacity: .4; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes bts-hop { 0% { transform: translateY(0) scale(1, 1); } 30% { transform: translateY(3px) scale(1.04, .95); } 62% { transform: translateY(-8px) scale(.97, 1.04); } 100% { transform: translateY(0) scale(1, 1); } }
+@keyframes bts-bow { 0% { transform: translateY(0) scale(1, 1); } 45% { transform: translateY(5px) scale(1.02, .92); } 100% { transform: translateY(0) scale(1, 1); } }
+@keyframes bts-wave { 0% { transform: rotate(120deg); } 25% { transform: rotate(100deg); } 50% { transform: rotate(138deg); } 75% { transform: rotate(104deg); } 100% { transform: rotate(120deg); } }
+@keyframes bts-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+@media (prefers-reduced-motion: reduce) {
+  #tsBox .bts-eyes,
+  #tsBox .bts-bird.bts-hop,
+  #tsBox .bts-bird.bts-bow,
+  #tsBox .bts-bubble.bts-pop,
+  #tsBox svg[data-level="1"] .bts-wing-l.bts-wave { animation: none; }
+  #tsBox .bts-outfit,
+  #tsBox .bts-head,
+  #tsBox .bts-wing-l,
+  #tsBox .bts-cheek,
+  #tsBox .bts-sky,
+  #tsBox .bts-tint { transition: none; }
+}
+/* ---------- searchable menu ---------- */
+.cb{position:relative;max-width:28rem}
+.cb-input{width:100%}
+.cb-list{position:absolute;z-index:30;left:0;right:0;top:calc(100% + 4px);max-height:280px;overflow:auto;margin:0;padding:4px;list-style:none;background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius-sm);box-shadow:0 10px 30px rgba(0,0,0,.16)}
+.cb-list li{display:flex;align-items:center;min-height:40px;padding:8px 10px;border-radius:6px;cursor:pointer}
+.cb-list li[aria-selected=true]{font-weight:600}
+.cb-list li.on{background:var(--accent-soft)}
+.cb-list li.cb-none{color:var(--muted);cursor:default}
+/* ---------- About you ---------- */
+.choice.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.ab-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+@media (max-width:720px){
+  .ts{grid-template-columns:minmax(0,1fr)}
+  .choice.three,.ab-list{grid-template-columns:minmax(0,1fr)}
+}
 </style>
 </head>
 <body>
@@ -721,7 +813,7 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
 
     <div class="banner info" id="noteBanner" hidden>
       <span class="grow"><b data-i18n="note_on"></b> <span id="noteText"></span></span>
-      <a class="btn sm" href="#settings/answer" data-i18n="note_edit"></a>
+      <a class="btn sm" href="#settings/prompt" data-i18n="note_edit"></a>
     </div>
 
     <div class="stats">
@@ -1046,12 +1138,13 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
           <label class="sw"><input type="checkbox" data-k="gemini_live_enabled" data-t="bool" /><span><b data-i18n="f_enabled"></b><small data-i18n="f_enabled_h"></small></span></label>
           <details class="fold more">
             <summary data-i18n="more_opts"></summary>
-            <div class="field"><label for="f-owner_aliases" data-i18n="f_owner_aliases"></label>
-              <textarea id="f-owner_aliases" data-k="owner_aliases" data-t="lines" rows="2" spellcheck="false" data-i18n-ph="f_owner_aliases_ph"></textarea>
-              <div class="help" data-i18n="f_owner_aliases_h"></div></div>
             <div class="field"><label for="f-notify_language" data-i18n="f_notify_lang"></label>
               <select id="f-notify_language" data-k="notify_language" data-t="text" style="max-width:20rem"></select>
               <div class="help" data-i18n="f_notify_lang_h"></div></div>
+            <div class="field" id="homeCountryField"><label for="hcBoxIn" data-i18n="f_home_country"></label>
+              <input type="hidden" id="f-home_country" data-k="home_country" data-t="text" />
+              <div class="cb" id="hcBox"></div>
+              <div class="help" data-i18n="f_home_country_h"></div></div>
             <div class="field" id="simLangField"><div class="lbl" id="lbl-simlang" data-i18n="f_simlang"></div>
               <div class="rows" id="simLangRows" data-k="sim_languages" data-t="simlangs" role="group" aria-labelledby="lbl-simlang"></div>
               <div class="pv" style="margin-top:0">
@@ -1072,6 +1165,346 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
         <!-- How it answers -->
         <div class="card group" id="g-answer"><div class="pad">
           <h2><span data-i18n="g_answer"></span></h2>
+          <div class="ts" id="tsField">
+            <div id="tsBox">
+              <div class="bts-bubble-wrap" aria-hidden="true">
+                <div class="bts-bubble" id="bts-bubble"><b id="tsBubbleName"></b><span id="tsBubbleDesc"></span></div>
+              </div>
+              <div class="bts-scene">
+          <svg class="bts-svg" id="bts-svg" viewBox="0 0 320 200" aria-hidden="true" focusable="false" data-level="3">
+            <defs>
+              <clipPath id="bts-clip-body"><ellipse cx="190" cy="136" rx="44" ry="48"/></clipPath>
+              <clipPath id="bts-clip-win"><rect x="24" y="20" width="92" height="74" rx="8"/></clipPath>
+            </defs>
+      
+            <g clip-path="url(#bts-clip-win)">
+              <rect class="bts-sky" id="bts-sky" x="24" y="20" width="92" height="74" fill="#cfe6fb"/>
+              <circle id="bts-sunlow" cx="92" cy="64" r="11" fill="#ff9d5c"/>
+              <g id="bts-moon">
+                <circle cx="96" cy="36" r="8" fill="#fffbe0"/>
+                <circle cx="38" cy="32" r="1.2" fill="#ffffff"/><circle cx="56" cy="44" r="1.2" fill="#ffffff"/><circle cx="70" cy="30" r="1.2" fill="#ffffff"/><circle cx="84" cy="52" r="1.2" fill="#ffffff"/><circle cx="46" cy="60" r="1.2" fill="#ffffff"/><circle cx="106" cy="58" r="1.2" fill="#ffffff"/>
+              </g>
+              <g class="bts-prop" data-p="sun"><circle cx="98" cy="36" r="9" fill="#ffd257"/></g>
+              <g class="bts-prop" data-p="cone">
+                <path d="M34 94 L70 40 L106 94 Z" fill="#6f86b3"/>
+                <path d="M70 40 L60 55 L66 52 L70 57 L74 52 L80 55 Z" fill="#ffffff"/>
+              </g>
+              <g class="bts-prop" data-p="hills"><ellipse cx="50" cy="100" rx="40" ry="30" fill="#7cc58a"/><ellipse cx="98" cy="104" rx="38" ry="32" fill="#5fb074"/></g>
+              <g class="bts-prop" data-p="rocks"><path d="M24 94 V84 Q40 74 56 82 Q72 70 90 80 Q104 74 116 82 V94 Z" fill="#e0b58a"/></g>
+              <g class="bts-prop" data-p="dunes"><path d="M24 94 V78 Q52 62 80 76 T116 72 V94 Z" fill="#e8c27a"/></g>
+              <g class="bts-prop" data-p="sea"><rect x="24" y="70" width="92" height="24" fill="#58a8d8"/></g>
+              <g class="bts-prop" data-p="hump"><path d="M52 94 Q64 38 90 58 Q108 72 116 94 Z" fill="#5fa07a"/></g>
+              <g class="bts-prop" data-p="river"><rect x="24" y="78" width="92" height="16" fill="#58a8d8"/></g>
+              <g class="bts-prop" data-p="lawn"><rect x="24" y="78" width="92" height="16" fill="#7cc58a"/></g>
+              <g class="bts-prop" data-p="snowground"><rect x="24" y="84" width="92" height="10" fill="#ffffff"/></g>
+              <g class="bts-prop" data-p="bridge">
+                <rect x="24" y="64" width="92" height="4" fill="#8a93a3"/>
+                <path d="M28 80 Q44 60 60 80 M60 80 Q76 60 92 80 M92 80 Q104 64 116 76" fill="none" stroke="#8a93a3" stroke-width="3"/>
+              </g>
+              <g class="bts-prop" data-p="suspension">
+                <rect x="44" y="40" width="4" height="40" fill="#b5524a"/><rect x="92" y="40" width="4" height="40" fill="#b5524a"/>
+                <path d="M24 58 Q40 50 46 42 Q70 76 94 42 Q102 50 116 58" fill="none" stroke="#b5524a" stroke-width="2"/>
+                <rect x="24" y="68" width="92" height="3" fill="#b5524a"/>
+                <path d="M58 56 V68 M70 60 V68 M82 56 V68" fill="none" stroke="#b5524a" stroke-width="1.2"/>
+              </g>
+              <g class="bts-prop" data-p="skyline">
+                <rect x="30" y="64" width="14" height="30" fill="#8ea0c4"/><rect x="47" y="50" width="11" height="44" fill="#7f92b8"/><rect x="61" y="58" width="16" height="36" fill="#8ea0c4"/><rect x="80" y="46" width="12" height="48" fill="#7f92b8"/><rect x="95" y="66" width="15" height="28" fill="#8ea0c4"/>
+              </g>
+              <g class="bts-prop" data-p="tower">
+                <rect x="63" y="40" width="12" height="54" fill="#5f79ad"/>
+                <path d="M61 52 h16 M61 62 h16 M61 72 h16 M61 82 h16" fill="none" stroke="#a9bbe0" stroke-width="2"/>
+                <path d="M69 40 V27" fill="none" stroke="#5f79ad" stroke-width="2.5" stroke-linecap="round"/>
+              </g>
+              <g class="bts-prop" data-p="needle"><path d="M64 94 L69 26 L74 94 Z" fill="#5f79ad"/></g>
+              <g class="bts-prop" data-p="rooftops">
+                <rect x="24" y="62" width="92" height="32" fill="#e9dcc6"/>
+                <path d="M24 62 L30 48 H58 L62 62 Z M62 62 L66 44 H92 L96 62 Z M96 62 L100 50 H116 V62 Z" fill="#7f8ea6"/>
+                <rect x="38" y="40" width="5" height="9" fill="#c9744a"/><rect x="74" y="36" width="5" height="9" fill="#c9744a"/><rect x="104" y="42" width="5" height="9" fill="#c9744a"/>
+                <rect x="34" y="70" width="7" height="10" fill="#f4eee2"/><rect x="48" y="70" width="7" height="10" fill="#f4eee2"/><rect x="72" y="70" width="7" height="10" fill="#f4eee2"/><rect x="86" y="70" width="7" height="10" fill="#f4eee2"/>
+              </g>
+              <g class="bts-prop" data-p="house">
+                <rect x="42" y="60" width="38" height="26" fill="#e9dcc6"/>
+                <path d="M37 61 L61 42 L85 61 Z" fill="#b55a4a"/>
+                <rect x="57" y="70" width="9" height="16" fill="#8a5a44"/>
+                <rect x="46" y="66" width="8" height="8" fill="#ffd95a"/><rect x="69" y="66" width="8" height="8" fill="#ffd95a"/>
+              </g>
+              <g class="bts-prop" data-p="firs">
+                <path d="M34 94 L48 58 L62 94 Z" fill="#2f7d55"/><path d="M39 74 L48 46 L57 74 Z" fill="#3a936a"/>
+                <path d="M66 94 L82 52 L98 94 Z" fill="#2f7d55"/><path d="M72 70 L82 38 L92 70 Z" fill="#3a936a"/>
+              </g>
+              <g class="bts-prop" data-p="treeyellow">
+                <rect x="78" y="62" width="6" height="32" fill="#8a5a44"/>
+                <circle cx="70" cy="56" r="13" fill="#f2b632"/><circle cx="90" cy="54" r="14" fill="#f6c84e"/><circle cx="80" cy="42" r="12" fill="#f2b632"/>
+              </g>
+              <g class="bts-prop" data-p="palmtree">
+                <path d="M48 84 Q51 68 46 54" fill="none" stroke="#9a6b3f" stroke-width="4" stroke-linecap="round"/>
+                <path d="M46 54 q-14 -6 -20 4 M46 54 q-6 -14 -18 -10 M46 54 q8 -14 20 -8 M46 54 q14 -4 20 8" fill="none" stroke="#3c9a5f" stroke-width="4" stroke-linecap="round"/>
+              </g>
+              <g class="bts-prop" data-p="palms">
+                <path d="M24 22 Q52 28 70 52" fill="none" stroke="#2fa36b" stroke-width="6" stroke-linecap="round"/>
+                <path d="M24 22 Q44 40 46 68" fill="none" stroke="#3cb57b" stroke-width="6" stroke-linecap="round"/>
+                <path d="M24 22 Q62 20 88 30" fill="none" stroke="#2fa36b" stroke-width="6" stroke-linecap="round"/>
+              </g>
+              <g class="bts-prop" data-p="mailbox">
+                <rect x="57" y="60" width="4" height="26" fill="#8a5a44"/>
+                <path d="M44 62 v-8 a8 8 0 0 1 8 -8 h14 a8 8 0 0 1 8 8 v8 z" fill="#4a78c2"/>
+                <rect x="72" y="40" width="2.5" height="13" fill="#d9453a"/><rect x="72" y="40" width="9" height="5.5" fill="#d9453a"/>
+              </g>
+              <g class="bts-prop" data-p="flowerbox">
+                <ellipse cx="42" cy="78" rx="8" ry="5" fill="#3a936a"/><ellipse cx="58" cy="77" rx="9" ry="5" fill="#3a936a"/><ellipse cx="76" cy="78" rx="9" ry="5" fill="#3a936a"/><ellipse cx="94" cy="77" rx="9" ry="5" fill="#3a936a"/>
+                <circle cx="42" cy="73" r="4" fill="#e2504a"/><circle cx="58" cy="71" r="4" fill="#ef6b60"/><circle cx="74" cy="74" r="4" fill="#e2504a"/><circle cx="90" cy="71" r="4" fill="#ef6b60"/><circle cx="103" cy="75" r="4" fill="#e2504a"/>
+                <rect x="30" y="81" width="80" height="13" fill="#b98155"/>
+              </g>
+              <g class="bts-prop" data-p="cherry">
+                <path d="M24 42 Q62 46 96 30" fill="none" stroke="#8a5a44" stroke-width="3" stroke-linecap="round"/>
+                <circle cx="46" cy="43" r="5.5" fill="#ffb7c9"/><circle cx="66" cy="40" r="5.5" fill="#ffb7c9"/><circle cx="86" cy="33" r="5.5" fill="#ffb7c9"/>
+                <circle cx="46" cy="43" r="1.7" fill="#ff7ea0"/><circle cx="66" cy="40" r="1.7" fill="#ff7ea0"/><circle cx="86" cy="33" r="1.7" fill="#ff7ea0"/>
+                <ellipse cx="58" cy="64" rx="3.2" ry="2" fill="#ffb7c9" transform="rotate(25 58 64)"/><ellipse cx="90" cy="58" rx="3.2" ry="2" fill="#ffb7c9" transform="rotate(-20 90 58)"/><ellipse cx="74" cy="80" rx="3.2" ry="2" fill="#ffb7c9" transform="rotate(40 74 80)"/>
+              </g>
+              <g class="bts-prop" data-p="lights">
+                <rect x="30" y="66" width="80" height="28" fill="#ffe2a8"/>
+                <path d="M28 66 h84 l-4 -10 h-76 z" fill="#e2504a"/>
+                <path d="M40 56 l-2 10 M56 56 l-1 10 M72 56 v10 M88 56 l1 10 M104 56 l2 10" fill="none" stroke="#ffffff" stroke-width="3"/>
+                <path d="M24 30 Q70 46 116 28" fill="none" stroke="#c9cfda" stroke-width="1.4"/>
+                <circle cx="38" cy="36" r="3.4" fill="#ffd257"/><circle cx="54" cy="40" r="3.4" fill="#ff9d5c"/><circle cx="70" cy="41" r="3.4" fill="#ffd257"/><circle cx="86" cy="39" r="3.4" fill="#ff9d5c"/><circle cx="102" cy="34" r="3.4" fill="#ffd257"/>
+              </g>
+              <g class="bts-prop" data-p="balloons">
+                <ellipse cx="44" cy="46" rx="8" ry="9.5" fill="#e2504a"/><rect x="41.5" y="58" width="5" height="4" fill="#8a5a44"/>
+                <ellipse cx="72" cy="34" rx="7" ry="8.5" fill="#ffb347"/><rect x="69.8" y="45" width="4.4" height="3.6" fill="#8a5a44"/>
+                <ellipse cx="98" cy="54" rx="7.5" ry="9" fill="#4a9bd8"/><rect x="95.6" y="65.5" width="4.8" height="3.8" fill="#8a5a44"/>
+              </g>
+              <g class="bts-prop" data-p="gulls">
+                <path d="M66 46 q5 -6 10 0 q5 -6 10 0" fill="none" stroke="#55606f" stroke-width="2" stroke-linecap="round"/>
+                <path d="M88 58 q3.5 -4 7 0 q3.5 -4 7 0" fill="none" stroke="#55606f" stroke-width="1.8" stroke-linecap="round"/>
+              </g>
+              <g class="bts-prop" data-p="cloud"><ellipse cx="58" cy="50" rx="13" ry="8" fill="#ffffff"/><ellipse cx="72" cy="46" rx="14" ry="10" fill="#ffffff"/><ellipse cx="86" cy="52" rx="12" ry="7" fill="#ffffff"/></g>
+              <g class="bts-prop" data-p="cloud2"><ellipse cx="50" cy="36" rx="11" ry="6" fill="#ffffff"/><ellipse cx="60" cy="39" rx="9" ry="5" fill="#ffffff"/></g>
+              <g class="bts-prop" data-p="snowfall">
+                <circle cx="36" cy="34" r="1.8" fill="#ffffff"/><circle cx="54" cy="50" r="1.8" fill="#ffffff"/><circle cx="68" cy="30" r="1.8" fill="#ffffff"/><circle cx="84" cy="46" r="1.8" fill="#ffffff"/><circle cx="100" cy="62" r="1.8" fill="#ffffff"/><circle cx="44" cy="70" r="1.8" fill="#ffffff"/><circle cx="108" cy="30" r="1.8" fill="#ffffff"/>
+              </g>
+              <rect class="bts-tint" id="bts-tint" x="24" y="20" width="92" height="74" fill="#0e1838" opacity="0"/>
+            </g>
+            <rect class="bts-frame" x="24" y="20" width="92" height="74" rx="8"/>
+      
+            <g class="bts-bird" id="bts-bird">
+              <g class="bts-wing-l" id="bts-wing-l"><ellipse class="bts-fill-bird" cx="147" cy="138" rx="12" ry="26" transform="rotate(10 147 138)"/></g>
+              <ellipse class="bts-fill-bird" cx="190" cy="136" rx="44" ry="48"/>
+              <g clip-path="url(#bts-clip-body)">
+                <g class="bts-outfit" data-l="1">
+                  <rect x="140" y="84" width="100" height="104" style="fill:var(--bts-o1)"/>
+                  <path d="M164 106 Q190 126 216 106 Q190 99 164 106 Z" style="fill:var(--bts-o1d)"/>
+                  <path d="M183 114 v15 M197 114 v15" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round"/>
+                  <path d="M170 150 h40 l-5 24 h-30 z" style="fill:var(--bts-o1d)"/>
+                </g>
+                <g class="bts-outfit" data-l="2">
+                  <rect x="140" y="84" width="100" height="104" style="fill:var(--bts-o2)"/>
+                  <g class="bts-print" data-p="stripes"><path d="M140 120 h100 M140 131 h100 M140 142 h100 M140 153 h100 M140 164 h100" fill="none" stroke="#27408b" stroke-width="4"/></g>
+                  <ellipse cx="190" cy="104" rx="16" ry="9" style="fill:var(--bts-bird)"/>
+                  <g class="bts-print" data-p="heart"><path d="M190 150 l-9 -9 a5.5 5.5 0 0 1 9 -6 a5.5 5.5 0 0 1 9 6 z" fill="#ffffff" opacity=".92"/></g>
+                  <g class="bts-print" data-p="bun">
+                    <path d="M175 154 Q175 134 190 131 Q205 134 205 154 Z" fill="#fff8ec" stroke="#c9a86a" stroke-width="1.4"/>
+                    <path d="M190 132 l-7 10 M190 132 v11 M190 132 l7 10" fill="none" stroke="#c9a86a" stroke-width="1.4" stroke-linecap="round"/>
+                    <path d="M172 156 h36" fill="none" stroke="#c98a3c" stroke-width="3" stroke-linecap="round"/>
+                  </g>
+                  <g class="bts-print" data-p="onigiri">
+                    <path d="M190 127 Q199 129 207 151 Q190 160 173 151 Q181 129 190 127 Z" fill="#ffffff" stroke="#c4cddd" stroke-width="1.4"/>
+                    <path d="M182 143 h16 v13.5 q-8 3 -16 0 z" fill="#2b3340"/>
+                  </g>
+                  <g class="bts-print" data-p="kk"><text x="190" y="152" text-anchor="middle" font-size="17" font-weight="500" fill="#1c1e24">ㅋㅋㅋ</text></g>
+                  <g class="bts-print" data-p="varsity"><text x="190" y="158" text-anchor="middle" font-size="34" font-weight="700" fill="#ffffff">B</text></g>
+                  <g class="bts-print" data-p="pretzel">
+                    <path d="M176 152 Q168 134 183 134 Q192 134 190 146 Q188 134 197 134 Q212 134 204 152 Q198 162 190 150 Q182 162 176 152 Z" fill="none" stroke="#b9793a" stroke-width="4.5" stroke-linejoin="round"/>
+                    <circle cx="180" cy="142" r="1.1" fill="#ffffff"/><circle cx="200" cy="142" r="1.1" fill="#ffffff"/><circle cx="190" cy="156" r="1.1" fill="#ffffff"/>
+                  </g>
+                  <g class="bts-print" data-p="tulip">
+                    <path d="M190 164 V146 M190 160 q-9 -2 -10 -10 M190 160 q9 -2 10 -10" fill="none" stroke="#3a936a" stroke-width="2.6" stroke-linecap="round"/>
+                    <path d="M181 146 Q179 130 186 130 Q190 137 190 130 Q190 137 194 130 Q201 130 199 146 Q190 152 181 146 Z" fill="#e2504a"/>
+                  </g>
+                  <g class="bts-print" data-p="leaves">
+                    <ellipse cx="170" cy="126" rx="9" ry="4" fill="#2fa36b" transform="rotate(-35 170 126)"/><ellipse cx="208" cy="130" rx="9" ry="4" fill="#3cb57b" transform="rotate(30 208 130)"/>
+                    <ellipse cx="184" cy="146" rx="9" ry="4" fill="#3cb57b" transform="rotate(20 184 146)"/><ellipse cx="204" cy="156" rx="9" ry="4" fill="#2fa36b" transform="rotate(-25 204 156)"/>
+                    <ellipse cx="166" cy="158" rx="9" ry="4" fill="#2fa36b" transform="rotate(40 166 158)"/><ellipse cx="192" cy="126" rx="7" ry="3.4" fill="#7ed6a5" transform="rotate(10 192 126)"/>
+                  </g>
+                  <g class="bts-print" data-p="palm">
+                    <path d="M190 162 Q192 150 189 140" fill="none" stroke="#1f7f74" stroke-width="3" stroke-linecap="round"/>
+                    <path d="M189 140 q-12 -4 -16 5 M189 140 q-5 -12 -15 -8 M189 140 q7 -12 17 -6 M189 140 q12 -3 16 8" fill="none" stroke="#1f7f74" stroke-width="3" stroke-linecap="round"/>
+                  </g>
+                </g>
+                <g class="bts-outfit" data-l="3">
+                  <rect x="140" y="84" width="100" height="104" style="fill:var(--bts-o3)"/>
+                  <g class="bts-acc" data-r="de"><path d="M160 96 V188 M174 96 V188 M206 96 V188 M220 96 V188 M140 122 H240 M140 138 H240 M140 154 H240 M140 170 H240" fill="none" stroke="#5a8fce" stroke-width="1.4" opacity=".6"/></g>
+                  <path d="M190 112 V188" fill="none" style="stroke:var(--bts-o3l)" stroke-width="2"/>
+                  <path d="M175 102 L190 113 L181 124 Z M205 102 L190 113 L199 124 Z" fill="#ffffff" style="stroke:var(--bts-o3l)" stroke-width="1"/>
+                  <circle cx="190" cy="128" r="2.3" fill="#ffffff" style="stroke:var(--bts-o3l)"/><circle cx="190" cy="143" r="2.3" fill="#ffffff" style="stroke:var(--bts-o3l)"/><circle cx="190" cy="158" r="2.3" fill="#ffffff" style="stroke:var(--bts-o3l)"/>
+                </g>
+                <g class="bts-outfit" data-l="4">
+                  <rect x="140" y="84" width="100" height="104" fill="#f7f8fb"/>
+                  <path d="M175 102 L190 113 L181 124 Z M205 102 L190 113 L199 124 Z" fill="#ffffff" stroke="#c4cddd" stroke-width="1"/>
+                  <path d="M140 84 L176 100 L186 142 L186 188 L140 188 Z" style="fill:var(--bts-o4)"/>
+                  <path d="M240 84 L204 100 L194 142 L194 188 L240 188 Z" style="fill:var(--bts-o4)"/>
+                  <circle cx="198" cy="148" r="2.3" fill="#dfe5f2"/><circle cx="198" cy="162" r="2.3" fill="#dfe5f2"/>
+                  <g class="bts-acc" data-r="tw,jp,kr">
+                    <path d="M179 104 L188 146 M201 104 L192 146" fill="none" stroke="#2f9e6b" stroke-width="2.4" stroke-linecap="round"/>
+                    <rect x="181" y="146" width="18" height="22" rx="2.5" fill="#ffffff" stroke="#c4cddd" stroke-width="1"/>
+                    <rect x="184" y="150" width="7" height="8" fill="#9fb4d6"/>
+                    <path d="M193 152 h4 M193 156 h4 M184 162 h12" fill="none" stroke="#c4cddd" stroke-width="1.4"/>
+                  </g>
+                </g>
+                <g class="bts-outfit" data-l="5">
+                  <rect x="140" y="84" width="100" height="104" fill="#f7f8fb"/>
+                  <path d="M175 102 L190 113 L181 124 Z M205 102 L190 113 L199 124 Z" fill="#ffffff" stroke="#c4cddd" stroke-width="1"/>
+                  <path d="M186 110 h8 l-2 7 h-4 z" style="fill:var(--bts-tie)"/><path d="M188 117 h4 l3 18 l-5 7 l-5 -7 z" style="fill:var(--bts-tie)"/>
+                  <g class="bts-acc" data-r="jp"><path d="M186.6 124 l6.8 -3 M186 131 l8 -3.6" fill="none" stroke="#b7c4ea" stroke-width="1.6"/></g>
+                  <path d="M140 84 L176 100 L190 140 L186 188 L140 188 Z" style="fill:var(--bts-o5)"/>
+                  <path d="M240 84 L204 100 L190 140 L194 188 L240 188 Z" style="fill:var(--bts-o5)"/>
+                  <path d="M176 100 L190 140 L166 122 Z" style="fill:var(--bts-o5l)"/><path d="M204 100 L190 140 L214 122 Z" style="fill:var(--bts-o5l)"/>
+                  <path d="M205 130 l9 -2 l-1.5 7 z" fill="#ffffff"/>
+                  <circle cx="190" cy="154" r="2.4" style="fill:var(--bts-o5l)"/>
+                </g>
+              </g>
+              <g class="bts-acc" data-r="de" data-l="1">
+                <path d="M162 105 Q190 124 218 105 L220 115 Q190 135 160 115 Z" fill="#2a9d8f"/>
+                <path d="M203 120 L213 117 L217 143 L206 146 Z" fill="#2a9d8f"/>
+                <path d="M204.5 127 l9.5 -2.6 M205.6 134 l9.6 -2.6 M206.6 141 l9.6 -2.6" fill="none" stroke="#ffffff" stroke-width="2.2"/>
+              </g>
+              <g class="bts-acc" data-r="fr" data-l="1,2">
+                <path d="M162 105 Q190 124 218 105 L220 115 Q190 135 160 115 Z" fill="#e0a526"/>
+                <path d="M203 120 L213 117 L217 143 L206 146 Z" fill="#e0a526"/>
+              </g>
+              <g class="bts-head" id="bts-head">
+                <g class="bts-phone"><rect x="221" y="52" width="12" height="30" rx="3" fill="#59606e" stroke="#8a93a3" stroke-width="1" transform="rotate(8 227 67)"/></g>
+                <path class="bts-fill-bird" d="M178 40 q3 -13 8 -3 q3 -13 8 -1 q5 -9 7 4 z"/>
+                <circle class="bts-fill-bird" cx="190" cy="70" r="34"/>
+                <g class="bts-acc" data-r="us" data-l="1">
+                  <path d="M160 57 Q158 32 190 31 Q222 32 220 57 Z" fill="#2f6fd0"/>
+                  <path d="M160 56 Q190 64 220 56 Q190 50 160 56 Z" fill="#2457a8"/>
+                  <circle cx="190" cy="32" r="2.4" fill="#2457a8"/>
+                </g>
+                <g class="bts-acc" data-r="kr" data-l="1">
+                  <path d="M163 54 Q162 31 190 30 Q218 31 217 54 Z" fill="#c9b8f0"/>
+                  <path d="M150 62 Q170 49 190 49 Q210 49 230 62 Q190 55 150 62 Z" fill="#b09ce6"/>
+                </g>
+                <g class="bts-acc" data-r="br,gulf" data-l="1,2">
+                  <rect x="171" y="40" width="16" height="10" rx="4.5" fill="#2b2f3a" stroke="#8a93a3" stroke-width="1"/>
+                  <rect x="193" y="40" width="16" height="10" rx="4.5" fill="#2b2f3a" stroke="#8a93a3" stroke-width="1"/>
+                  <path d="M187 45 h6" fill="none" stroke="#8a93a3" stroke-width="2"/>
+                  <path d="M174 43 l4 -1 M196 43 l4 -1" fill="none" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round" opacity=".6"/>
+                </g>
+                <g class="bts-eyes">
+                  <circle cx="176" cy="68" r="9" fill="#ffffff"/><circle cx="204" cy="68" r="9" fill="#ffffff"/>
+                  <circle cx="177" cy="69" r="4.8" fill="#1c1e24"/><circle cx="203" cy="69" r="4.8" fill="#1c1e24"/>
+                  <circle cx="178.6" cy="67.4" r="1.6" fill="#ffffff"/><circle cx="204.6" cy="67.4" r="1.6" fill="#ffffff"/>
+                </g>
+                <ellipse class="bts-cheek" cx="165" cy="84" rx="6" ry="3.6" fill="#ff8fa3" opacity=".6"/>
+                <ellipse class="bts-cheek" cx="215" cy="84" rx="6" ry="3.6" fill="#ff8fa3" opacity=".6"/>
+                <path class="bts-beak-closed" d="M181 82 Q190 77 199 82 Q190 95 181 82 Z" fill="#f6a21a"/>
+                <g class="bts-beak-open">
+                  <path d="M183 86 Q190 100 197 86 Q190 90 183 86 Z" fill="#d97a00"/>
+                  <path d="M180 82 Q190 75 200 82 Q190 89 180 82 Z" fill="#f6a21a"/>
+                </g>
+                <g class="bts-headset">
+                  <path d="M158 72 Q156 33 190 33 Q224 33 222 72" fill="none" stroke="#59606e" stroke-width="4" stroke-linecap="round"/>
+                  <rect x="150" y="62" width="11" height="20" rx="5" fill="#59606e" stroke="#8a93a3" stroke-width="1"/>
+                  <rect x="219" y="62" width="11" height="20" rx="5" fill="#59606e" stroke="#8a93a3" stroke-width="1"/>
+                  <path d="M156 80 Q158 96 175 96" fill="none" stroke="#59606e" stroke-width="2.4" stroke-linecap="round"/>
+                  <circle cx="177" cy="96" r="3.4" fill="#2b2f3a"/>
+                </g>
+              </g>
+              <ellipse class="bts-fill-bird" cx="233" cy="102" rx="11" ry="25" transform="rotate(-10 233 102)"/>
+            </g>
+      
+            <rect class="bts-desk" x="0" y="172" width="320" height="28"/>
+            <line class="bts-desk-edge" x1="0" y1="172" x2="320" y2="172"/>
+      
+            <g class="bts-item" data-r="default">
+              <path d="M66 140 h22 l-2 32 h-18 z" fill="#bfe3f7" stroke="#8fbfdc" stroke-width="1.2"/>
+              <path d="M67.2 152 h19.6 l-1.3 20 h-17 z" fill="#8fd0f2"/>
+            </g>
+            <g class="bts-item" data-r="tw">
+              <path d="M80 112 L75 160" fill="none" stroke="#ff6f91" stroke-width="5" stroke-linecap="round"/>
+              <path d="M60 132 L92 132 L88 172 L64 172 Z" fill="#d9b38c" stroke="#b98f66" stroke-width="1.2"/>
+              <path d="M58 132 Q76 119 94 132 Z" fill="#ffffff" opacity=".85" stroke="#c9cfda" stroke-width="1"/>
+              <circle cx="68" cy="166" r="3" fill="#3b2a22"/><circle cx="75" cy="168" r="3" fill="#3b2a22"/><circle cx="82" cy="166" r="3" fill="#3b2a22"/><circle cx="72" cy="161" r="3" fill="#3b2a22"/><circle cx="80" cy="160" r="3" fill="#3b2a22"/>
+              <ellipse cx="110" cy="170" rx="15" ry="3" fill="#ffffff" stroke="#c9cfda" stroke-width="1"/>
+              <rect x="101" y="157" width="18" height="12" rx="2.5" fill="#e7b24c" stroke="#c98f2b" stroke-width="1.2"/>
+              <path d="M105 161 h10 M105 165 h10" fill="none" stroke="#c98f2b" stroke-width="1"/>
+            </g>
+            <g class="bts-item" data-r="jp">
+              <path d="M70 142 q-4 -6 0 -12 M82 142 q-4 -6 0 -12" fill="none" stroke="#9aa3b2" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+              <path d="M62 150 h30 l-3 22 h-24 z" fill="#7d93b8"/>
+              <ellipse cx="77" cy="150" rx="15" ry="4" fill="#a8c46a" stroke="#6b80a6" stroke-width="1"/>
+              <ellipse cx="112" cy="170" rx="15" ry="3" fill="#ffffff" stroke="#c9cfda" stroke-width="1"/>
+              <path d="M99 168 L126 157" fill="none" stroke="#c9a36b" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="105" cy="165" r="5.5" fill="#f7a8c0"/><circle cx="113" cy="162" r="5.5" fill="#ffffff" stroke="#d0d6e0" stroke-width="1"/><circle cx="121" cy="159" r="5.5" fill="#9ccc65"/>
+            </g>
+            <g class="bts-item" data-r="kr">
+              <path d="M83 104 L79 160" fill="none" stroke="#2f9e6b" stroke-width="4" stroke-linecap="round"/>
+              <path d="M62 124 h30 l-4 48 h-22 z" fill="#5a3b2a" stroke="#c9cfda" stroke-width="1.4"/>
+              <rect x="67" y="134" width="8" height="8" rx="1.5" fill="#ffffff" opacity=".55" transform="rotate(12 71 138)"/><rect x="78" y="141" width="8" height="8" rx="1.5" fill="#ffffff" opacity=".55" transform="rotate(-10 82 145)"/><rect x="70" y="152" width="8" height="8" rx="1.5" fill="#ffffff" opacity=".55" transform="rotate(20 74 156)"/>
+              <rect x="60" y="120" width="34" height="5" rx="2" fill="#e9edf3" stroke="#c9cfda" stroke-width="1"/>
+              <circle cx="108" cy="164" r="7.5" fill="#ff9f1c"/><circle cx="121" cy="166" r="6.2" fill="#ffab3d"/>
+              <ellipse cx="108" cy="156" rx="3.4" ry="1.8" fill="#3a936a" transform="rotate(-20 108 156)"/>
+            </g>
+            <g class="bts-item" data-r="us">
+              <path d="M70 134 q-4 -6 0 -12 M82 134 q-4 -6 0 -12" fill="none" stroke="#9aa3b2" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+              <path d="M92 150 q13 2 0 15" fill="none" stroke="#e6e9ef" stroke-width="4.5" stroke-linecap="round"/>
+              <rect x="62" y="142" width="30" height="30" rx="5" fill="#f0f2f6" stroke="#c9cfda" stroke-width="1.2"/>
+              <ellipse cx="77" cy="145" rx="12.5" ry="3.2" fill="#6b4a35"/>
+              <ellipse cx="118" cy="170" rx="14" ry="3" fill="#ffffff" stroke="#c9cfda" stroke-width="1"/>
+              <ellipse cx="118" cy="164" rx="11" ry="6.5" fill="#f29fc5" stroke="#d97aa6" stroke-width="1"/>
+              <ellipse cx="118" cy="163.5" rx="3.6" ry="2" style="fill:var(--bts-stage)"/>
+              <path d="M110 162 l2 -1 M124 161 l2 1 M114 167 l2 1 M122 167 l2 -1" fill="none" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
+            </g>
+            <g class="bts-item" data-r="de">
+              <rect x="56" y="153" width="22" height="16" rx="3" fill="#ffffff" stroke="#c9cfda" stroke-width="1.2"/>
+              <ellipse cx="67" cy="155" rx="9" ry="2.4" fill="#6b4a35"/>
+              <ellipse cx="67" cy="170" rx="16" ry="3" fill="#ffffff" stroke="#c9cfda" stroke-width="1"/>
+              <ellipse cx="104" cy="170" rx="17" ry="3.2" fill="#ffffff" stroke="#c9cfda" stroke-width="1"/>
+              <path d="M92 168 L116 168 L116 150 Z" fill="#f2d38b"/>
+              <path d="M92 168 L116 150" fill="none" stroke="#fff7e6" stroke-width="4" stroke-linecap="round"/>
+              <circle cx="112" cy="149" r="3.2" fill="#d9453a"/>
+            </g>
+            <g class="bts-item" data-r="fr">
+              <rect x="58" y="155" width="18" height="14" rx="3" fill="#ffffff" stroke="#c9cfda" stroke-width="1.2"/>
+              <ellipse cx="67" cy="157" rx="7.5" ry="2.2" fill="#6b4a35"/>
+              <ellipse cx="67" cy="170" rx="14" ry="3" fill="#ffffff" stroke="#c9cfda" stroke-width="1"/>
+              <path d="M88 168 Q102 142 116 168 Q102 157 88 168 Z" fill="#e2a556" stroke="#c98a3c" stroke-width="1"/>
+              <path d="M96 156 l3 8 M102 152 v9 M108 156 l-3 8" fill="none" stroke="#c98a3c" stroke-width="1.4" stroke-linecap="round"/>
+            </g>
+            <g class="bts-item" data-r="tr">
+              <ellipse cx="77" cy="171" rx="17" ry="3.5" fill="#ffffff" stroke="#d9453a" stroke-width="1.4"/>
+              <path d="M68 140 Q64 150 70 156 Q76 162 70 170 L84 170 Q78 162 84 156 Q90 150 86 140 Z" fill="#c0392b" opacity=".88" stroke="#e7b9b3" stroke-width="1.4"/>
+              <ellipse cx="114" cy="165" rx="11" ry="6.5" fill="none" stroke="#b9793a" stroke-width="5"/>
+              <circle cx="106" cy="162" r="1" fill="#f2d9a0"/><circle cx="114" cy="159" r="1" fill="#f2d9a0"/><circle cx="122" cy="162" r="1" fill="#f2d9a0"/><circle cx="110" cy="170.5" r="1" fill="#f2d9a0"/><circle cx="119" cy="170.5" r="1" fill="#f2d9a0"/>
+            </g>
+            <g class="bts-item" data-r="br">
+              <rect x="58" y="157" width="16" height="12" rx="3" fill="#ffffff" stroke="#c9cfda" stroke-width="1.2"/>
+              <ellipse cx="66" cy="159" rx="6.5" ry="2" fill="#4a3022"/>
+              <ellipse cx="66" cy="170" rx="13" ry="3" fill="#ffffff" stroke="#c9cfda" stroke-width="1"/>
+              <ellipse cx="104" cy="170" rx="18" ry="3.5" fill="#ffffff" stroke="#c9cfda" stroke-width="1"/>
+              <circle cx="98" cy="163" r="7" fill="#f0cf8a" stroke="#d9b160" stroke-width="1"/><circle cx="110" cy="164" r="6.5" fill="#f0cf8a" stroke="#d9b160" stroke-width="1"/>
+            </g>
+            <g class="bts-item" data-r="gulf">
+              <path d="M84 146 Q99 151 88 166" fill="none" stroke="#b8892b" stroke-width="4" stroke-linecap="round"/>
+              <path d="M70 148 Q58 142 54 132 Q64 138 72 142 Z" fill="#d4a53c"/>
+              <path d="M66 172 Q58 156 70 146 L70 138 Q76 132 82 138 L82 146 Q94 156 86 172 Z" fill="#d4a53c" stroke="#b8892b" stroke-width="1"/>
+              <circle cx="76" cy="131" r="3" fill="#b8892b"/>
+              <rect x="99" y="162" width="10" height="10" rx="2.5" fill="#ffffff" stroke="#c9cfda" stroke-width="1.2"/>
+              <ellipse cx="122" cy="171" rx="11" ry="2.8" fill="#ffffff" stroke="#c9cfda" stroke-width="1"/>
+              <ellipse cx="117" cy="167.5" rx="4" ry="2.6" fill="#6b3f2a"/><ellipse cx="123" cy="166.5" rx="4" ry="2.6" fill="#7a4a30"/><ellipse cx="127" cy="168.5" rx="3.6" ry="2.4" fill="#6b3f2a"/>
+            </g>
+          </svg>
+                <button type="button" class="bts-scene-btn" id="bts-scene-btn" data-i18n-aria="ts_scene" data-i18n-title="ts_scene"></button>
+              </div>
+            </div>
+            <div class="field ts-slider">
+              <div class="ts-head"><label for="f-talk_style_level" data-i18n="f_talk_style"></label><output id="tsName" for="f-talk_style_level"></output></div>
+              <input type="range" class="ts-range" id="f-talk_style_level" data-k="talk_style_level" data-t="int" min="1" max="5" step="1" aria-describedby="tsBubbleDesc" />
+              <div class="ts-ends" aria-hidden="true"><span data-i18n="ts_casual"></span><span data-i18n="ts_formal"></span></div>
+              <div class="help" id="tsCustomNote" data-i18n="ts_custom" hidden></div>
+            </div>
+          </div>
+          <div class="hr"></div>
           <div class="two">
             <div class="field"><label for="f-answer_ring_ms" data-i18n="f_ring"></label>
               <div class="inline"><input type="number" id="f-answer_ring_ms" data-k="answer_ring_ms" data-t="sec2ms" min="0" max="8" step="0.5" inputmode="decimal" /><span class="muted" data-i18n="unit_seconds"></span></div>
@@ -1083,13 +1516,6 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
           <div class="hr"></div>
           <label class="sw"><input type="checkbox" data-k="answer_unknown_callers" data-t="bool" /><span><b data-i18n="f_unknown"></b><small data-i18n="f_unknown_h"></small></span></label>
           <label class="sw"><input type="checkbox" data-k="reply_in_caller_language" data-t="bool" /><span><b data-i18n="f_reply_lang"></b><small data-i18n="f_reply_lang_h"></small></span></label>
-
-          <div class="subbox" id="statusSub">
-            <label class="sw"><input type="checkbox" data-k="owner_status_enabled" data-t="bool" /><span><b data-i18n="f_status"></b><small data-i18n="f_status_h"></small></span></label>
-            <div class="field" style="margin-top:4px">
-              <textarea id="f-owner_status_text" data-k="owner_status_text" data-t="text" rows="2" maxlength="400" data-i18n-ph="f_status_ph" data-i18n-aria="f_status"></textarea>
-              <div class="help"><span id="statusCount">0</span> / 400</div></div>
-          </div>
 
           <div class="subbox">
             <div class="two">
@@ -1159,38 +1585,69 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
           </div>
         </div></div>
 
-        <!-- Prompt -->
+        <!-- About you (the card keeps its old id and #settings/prompt address) -->
         <div class="card group" id="g-prompt"><div class="pad">
           <h2><span data-i18n="g_prompt"></span></h2>
           <p class="desc" data-i18n="g_prompt_d"></p>
-          <div class="field"><label for="f-gemini_persona_prompt" data-i18n="f_prompt"></label>
-            <textarea id="f-gemini_persona_prompt" data-k="gemini_persona_prompt" data-t="text" rows="9" data-i18n-ph="f_prompt_ph" spellcheck="false"></textarea>
-            <div class="help" data-i18n="f_prompt_h"></div>
-            <details class="fold" style="margin-top:8px">
-              <summary data-i18n="p_builtin"></summary>
-              <div class="help" data-i18n="p_builtin_h"></div>
-              <pre class="block prose" id="defaultPrompt" tabindex="0"></pre>
-              <div class="row" style="margin-top:10px">
-                <button type="button" class="btn sm" id="btnPromptCopyIn" data-i18n="p_copy_in"></button>
-                <button type="button" class="btn sm" id="btnPromptClear" data-i18n="p_clear"></button>
-              </div>
-            </details>
+          <div class="field"><div class="lbl" id="lbl-ab-callers" data-i18n="ab_callers"></div>
+            <div class="choice three" role="radiogroup" aria-labelledby="lbl-ab-callers" data-k="about_callers" data-t="radio" id="abCallers">
+              <label><input type="radio" name="about_callers" value="family" /><span><b data-i18n="ab_c_family"></b></span></label>
+              <label><input type="radio" name="about_callers" value="work" /><span><b data-i18n="ab_c_work"></b></span></label>
+              <label><input type="radio" name="about_callers" value="both" /><span><b data-i18n="ab_c_both"></b></span></label>
+            </div>
+            <div class="help" id="abSuggest" aria-live="polite" hidden></div></div>
+          <div class="field"><label for="f-about_work" data-i18n="ab_work"></label>
+            <input type="text" id="f-about_work" data-k="about_work" data-t="text" maxlength="120" data-i18n-ph="ab_work_ph" /></div>
+          <div class="field" id="abSayField"><div class="lbl" id="lbl-ab-say" data-i18n="ab_say"></div>
+            <div class="ab-list" id="f-about_say" data-k="about_say" data-t="list3" role="group" aria-labelledby="lbl-ab-say">
+              <input type="text" maxlength="24" data-i18n-ph="ab_say_ph" data-i18n-aria="ab_say" /><input type="text" maxlength="24" data-i18n-aria="ab_say" /><input type="text" maxlength="24" data-i18n-aria="ab_say" />
+            </div></div>
+          <div class="field" id="abAvoidField"><div class="lbl" id="lbl-ab-avoid" data-i18n="ab_avoid"></div>
+            <div class="ab-list" id="f-about_avoid" data-k="about_avoid" data-t="list3" role="group" aria-labelledby="lbl-ab-avoid">
+              <input type="text" maxlength="24" data-i18n-ph="ab_avoid_ph" data-i18n-aria="ab_avoid" /><input type="text" maxlength="24" data-i18n-aria="ab_avoid" /><input type="text" maxlength="24" data-i18n-aria="ab_avoid" />
+            </div>
+            <div class="help" data-i18n="ab_say_h"></div></div>
+          <div class="field" id="abAsksField" hidden><div class="lbl" id="lbl-ab-asks" data-i18n="ab_asks"></div>
+            <div class="bk-items" role="group" aria-labelledby="lbl-ab-asks" id="f-about_message_asks" data-k="about_message_asks" data-t="multi">
+              <label class="sw"><input type="checkbox" value="name" /><span><b data-i18n="ab_ask_name"></b></span></label>
+              <label class="sw"><input type="checkbox" value="callback" /><span><b data-i18n="ab_ask_callback"></b></span></label>
+              <label class="sw"><input type="checkbox" value="reason" /><span><b data-i18n="ab_ask_reason"></b></span></label>
+              <label class="sw"><input type="checkbox" value="urgency" /><span><b data-i18n="ab_ask_urgency"></b></span></label>
+            </div></div>
+          <div class="field"><label for="f-about_parcel" data-i18n="ab_parcel"></label>
+            <input type="text" id="f-about_parcel" data-k="about_parcel" data-t="text" maxlength="80" /></div>
+          <div class="field"><label for="f-about_extra" data-i18n="ab_extra"></label>
+            <textarea id="f-about_extra" data-k="about_extra" data-t="text" rows="3" maxlength="300"></textarea>
+            <div class="help"><span id="abExtraCount">0</span> / 300</div></div>
+          <div class="hr"></div>
+          <div class="field"><label for="f-owner_aliases" data-i18n="f_owner_aliases"></label>
+            <textarea id="f-owner_aliases" data-k="owner_aliases" data-t="lines" rows="2" spellcheck="false" data-i18n-ph="f_owner_aliases_ph"></textarea>
+            <div class="help" data-i18n="f_owner_aliases_h"></div></div>
+          <div class="subbox" id="statusSub">
+            <label class="sw"><input type="checkbox" data-k="owner_status_enabled" data-t="bool" /><span><b data-i18n="f_status"></b><small data-i18n="f_status_h"></small></span></label>
+            <div class="field" style="margin-top:4px">
+              <textarea id="f-owner_status_text" data-k="owner_status_text" data-t="text" rows="2" maxlength="400" data-i18n-ph="f_status_ph" data-i18n-aria="f_status"></textarea>
+              <div class="help"><span id="statusCount">0</span> / 400</div></div>
           </div>
           <div class="field"><label for="f-knowledge_notes" data-i18n="f_knowledge"></label>
             <textarea id="f-knowledge_notes" data-k="knowledge_notes" data-t="text" rows="5" maxlength="6000" data-i18n-ph="f_knowledge_ph"></textarea>
             <div class="help" data-i18n="f_knowledge_h"></div></div>
-          <div class="subbox" style="padding-top:14px">
-            <b data-i18n="h_title"></b>
-            <p class="help" data-i18n="h_body"></p>
-            <div class="addrow" style="margin-top:12px">
-              <select id="helperLang" data-i18n-aria="h_lang"></select>
-              <button type="button" class="btn primary" id="btnHelperCopy" data-i18n="h_copy"></button>
+          <details class="fold more" id="promptFold">
+            <summary data-i18n="adv_opts"></summary>
+            <div class="field"><label for="f-gemini_persona_prompt" data-i18n="f_prompt"></label>
+              <textarea id="f-gemini_persona_prompt" data-k="gemini_persona_prompt" data-t="text" rows="9" data-i18n-ph="f_prompt_ph" spellcheck="false"></textarea>
+              <div class="help" data-i18n="f_prompt_h"></div>
+              <details class="fold" style="margin-top:8px">
+                <summary data-i18n="p_builtin"></summary>
+                <div class="help" data-i18n="p_builtin_h"></div>
+                <pre class="block prose" id="defaultPrompt" tabindex="0"></pre>
+                <div class="row" style="margin-top:10px">
+                  <button type="button" class="btn sm" id="btnPromptCopyIn" data-i18n="p_copy_in"></button>
+                  <button type="button" class="btn sm" id="btnPromptClear" data-i18n="p_clear"></button>
+                </div>
+              </details>
             </div>
-            <details class="fold" style="margin-top:8px">
-              <summary data-i18n="h_read"></summary>
-              <pre class="block prose" id="helperText" tabindex="0"></pre>
-            </details>
-          </div>
+          </details>
         </div></div>
 
         <!-- Announcement for turned-away calls (the Blacklist is in Contacts) -->
@@ -1923,7 +2380,7 @@ I18N["en"] = {
   g_basics: "Basics",
   g_answer: "How it answers",
   g_spam: "Sales & scam calls",
-  g_prompt: "Prompt",
+  g_prompt: "About you",
   g_blocked: "Blocked-call announcement",
   g_notify: "Notifications",
   g_summary: "Summary & calendar",
@@ -2044,10 +2501,10 @@ I18N["en"] = {
   f_stall_model: "Model for these calls",
   f_stall_model_h: "Empty = the same model as normal calls.",
   // ---- settings: prompt
-  g_prompt_d: "How the AI talks. The built-in prompt is general; add your own details and the AI sounds more like you.",
+  g_prompt_d: "A few short answers help the AI sound like you. All optional.",
   f_prompt: "Your own prompt",
   f_prompt_ph: "Empty: the built-in prompt is used",
-  f_prompt_h: "“AI assistant” and “As me” are saved separately; switching above shows that style's prompt. Write {owner} where your name goes.",
+  f_prompt_h: "Filled in, it replaces the talk style and local habits. “AI assistant” and “As me” each keep their own; write {owner} where your name goes.",
   p_builtin: "Show the built-in prompt",
   p_builtin_h: "For the saved language, answer style and name. Save first if you just changed them.",
   p_copy_in: "Copy into editor",
@@ -2058,11 +2515,6 @@ I18N["en"] = {
   f_knowledge: "Notes the AI may answer from",
   f_knowledge_ph: "e.g. Parcels: leave them at the front desk.\nOpening hours: Monday to Friday, 9 to 6.",
   f_knowledge_h: "Facts callers may ask about, one per line. The AI must not make up anything that is not written here.",
-  h_title: "Don't want to write it yourself?",
-  h_body: "Follows the answer style picked above (“AI assistant” or “As me”). Paste the interview prompt into ChatGPT, Claude or Gemini, answer about 8 questions, then paste the prompt it writes above.",
-  h_lang: "Language of the interview",
-  h_copy: "Copy interview prompt",
-  h_read: "Read the interview prompt",
   // ---- settings: blocked numbers
   g_blocked_d: "Played when a call from the Blacklist or a hidden number is turned away. Manage the Blacklist in “Contacts”.",
   b_reason: "Reason (optional)",
@@ -2213,8 +2665,8 @@ I18N["en"] = {
   chk_key_bad: "Add your key so the AI can talk.",
   chk_owner: "Your name",
   chk_owner_bad: "Tell the AI what callers call you.",
-  chk_prompt: "Your prompt",
-  chk_prompt_bad: "The AI is using the general built-in wording. Write a few lines about who you are and what calls you get.",
+  chk_prompt: "About you",
+  chk_prompt_bad: "Answer a few questions in “About you” so the AI sounds more like you.",
   chk_phone: "A phone is connected",
   chk_phone_bad: "No phone is connected right now. See “Phones” on this page.",
   chk_notify: "A notification channel",
@@ -2821,6 +3273,47 @@ I18N["en"] = {
   ippair_docker: "Enter the IP of the Docker host",
   ippair_need_password: "To get a pairing code from another device, set a console password first, or open the console on the computer that runs Bageo.",
   err_phone_wifi_off: "Turn on \"Phones can also connect over Wi-Fi\" first.",
+  f_home_country: "Country you live in",
+  f_home_country_h: "The AI follows this country's everyday habits, such as where parcels go. Automatic: from the phone number.",
+  hc_auto: "Decide from the phone number",
+  cb_none: "Nothing found",
+  f_talk_style: "Talk style",
+  ts_1: "Casual and lively",
+  ts_2: "Friendly and easygoing",
+  ts_3: "Natural, everyday",
+  ts_4: "Polite and proper",
+  ts_5: "Brisk and businesslike",
+  ts_1_d: "Like a close friend: warm, relaxed and chatty.",
+  ts_2_d: "Kind and warm, a bit more relaxed than usual.",
+  ts_3_d: "Like most people on the phone: not too casual, not stiff.",
+  ts_4_d: "Polite and careful, as with someone you don't know well.",
+  ts_5_d: "Short and clear, like a business call.",
+  ts_casual: "Casual",
+  ts_formal: "Formal",
+  ts_custom: "Your own prompt is in use, so the talk style is not applied.",
+  ts_scene: "Change the view outside the window",
+  ab_callers: "Who calls this phone most?",
+  ab_c_family: "Family and friends",
+  ab_c_work: "People from work",
+  ab_c_both: "Both",
+  ab_suggested: "Talk style set to “{level}” to match. You can change it.",
+  ab_work: "Your work or day, in one line",
+  ab_work_ph: "e.g. Sales at a trading company",
+  ab_say: "Things you often say",
+  ab_say_ph: "e.g. No worries",
+  ab_avoid: "Things you never say",
+  ab_avoid_ph: "e.g. Dear valued customer",
+  ab_say_h: "Up to 3 each. The AI uses your phrases now and then and avoids the others.",
+  ab_asks: "What to ask for in a message",
+  ab_ask_name: "Caller's name",
+  ab_ask_callback: "Callback number",
+  ab_ask_reason: "What it's about",
+  ab_ask_urgency: "How urgent",
+  ab_parcel: "Where should parcels and deliveries go?",
+  ab_parcel_ph: "e.g. {x}",
+  ab_parcel_ph0: "e.g. Leave it at the front desk",
+  ab_extra: "Anything else the AI should know",
+  adv_opts: "Advanced",
 };
 
 I18N["zh-TW"] = {
@@ -3171,7 +3664,7 @@ I18N["zh-TW"] = {
   g_basics: "基本設定",
   g_answer: "接聽方式",
   g_spam: "推銷與詐騙電話",
-  g_prompt: "提示詞",
+  g_prompt: "關於你",
   g_blocked: "拒接語音",
   g_notify: "通知",
   g_summary: "摘要與行事曆",
@@ -3292,10 +3785,10 @@ I18N["zh-TW"] = {
   f_stall_model: "這類電話用的模型",
   f_stall_model_h: "留空 = 跟一般電話用同一個模型。",
   // ---- settings: prompt
-  g_prompt_d: "決定 AI 怎麼講話。內建的是通用的基本說法，寫上你自己的情況，AI 會更像你。",
+  g_prompt_d: "回答幾個小問題，AI 接電話會更像你。都可以不填。",
   f_prompt: "自訂提示詞",
   f_prompt_ph: "留空：使用內建提示詞",
-  f_prompt_h: "「AI 助理」與「本人」分開儲存，切換上方的接聽身分就會顯示對應的那一份。要放你名字的地方寫 {owner}。",
+  f_prompt_h: "有填就會取代講話風格和當地習慣。「AI 助理」和「本人」各存一份，名字的地方寫 {owner}。",
   p_builtin: "查看內建提示詞",
   p_builtin_h: "依照已儲存的語言、接聽方式和名字產生。剛改過的話請先儲存。",
   p_copy_in: "複製到編輯區",
@@ -3306,11 +3799,6 @@ I18N["zh-TW"] = {
   f_knowledge: "AI 可以回答的資料",
   f_knowledge_ph: "例如：包裹請放管理室。\n營業時間：週一到週五，9 點到 18 點。",
   f_knowledge_h: "來電的人可能會問的事，一行寫一條。沒寫在這裡的，AI 不可以自己編。",
-  h_title: "不想自己寫？",
-  h_body: "會依上方選的「AI 助理」或「本人」切換對應的訪談問題。貼到 ChatGPT、Claude 或 Gemini 回答約 8 題，再把寫好的提示詞貼回上面。",
-  h_lang: "訪談使用的語言",
-  h_copy: "複製訪談提示詞",
-  h_read: "查看訪談提示詞",
   // ---- settings: blocked numbers
   g_blocked_d: "拒接黑名單或未顯示號碼時播的語音。黑名單在「聯絡人」管理。",
   b_reason: "原因（可不填）",
@@ -3461,8 +3949,8 @@ I18N["zh-TW"] = {
   chk_key_bad: "填入金鑰，AI 才能講話。",
   chk_owner: "你的名字",
   chk_owner_bad: "告訴 AI 來電的人怎麼稱呼你。",
-  chk_prompt: "你的提示詞",
-  chk_prompt_bad: "AI 現在用通用的基本說法。寫幾句你是誰、常接到什麼電話。",
+  chk_prompt: "關於你",
+  chk_prompt_bad: "回答「關於你」的幾個小問題，AI 接電話會更像你。",
   chk_phone: "有手機連線",
   chk_phone_bad: "目前沒有手機連線，請看這一頁的「手機」。",
   chk_notify: "通知管道",
@@ -4038,6 +4526,47 @@ I18N["zh-TW"] = {
   ippair_docker: "輸入 Docker 主機的 IP",
   ippair_need_password: "要從其他裝置產生配對碼，請先設定控制台密碼，或在執行 Bageo 的電腦上打開控制台。",
   err_phone_wifi_off: "請先打開「手機也能用 Wi-Fi 連」。",
+  f_home_country: "所在國家",
+  f_home_country_h: "AI 照這個國家的生活習慣接電話，例如包裹放哪裡。自動：依手機門號判斷。",
+  hc_auto: "依門號自動判斷",
+  cb_none: "找不到",
+  f_talk_style: "講話風格",
+  ts_1: "隨性熱絡",
+  ts_2: "親切隨和",
+  ts_3: "自然日常",
+  ts_4: "客氣得體",
+  ts_5: "商務俐落",
+  ts_1_d: "像跟好朋友講話：熱情、輕鬆、話多一點。",
+  ts_2_d: "溫和親切，比平常再輕鬆一點。",
+  ts_3_d: "像一般人講電話：不會太隨便，也不會太正式。",
+  ts_4_d: "有禮貌、講話謹慎，像跟不熟的人說話。",
+  ts_5_d: "簡短清楚，像處理公事。",
+  ts_casual: "隨性",
+  ts_formal: "正式",
+  ts_custom: "你在用自訂提示詞，講話風格不會套用。",
+  ts_scene: "換窗外的風景",
+  ab_callers: "這支電話誰比較常打來",
+  ab_c_family: "家人朋友",
+  ab_c_work: "工作上的人",
+  ab_c_both: "都有",
+  ab_suggested: "講話風格已調成「{level}」，可以再改。",
+  ab_work: "你的工作或日常，一句話",
+  ab_work_ph: "例如：在貿易公司做業務",
+  ab_say: "你常說的話",
+  ab_say_ph: "例如：沒問題啦",
+  ab_avoid: "你不會說的話",
+  ab_avoid_ph: "例如：親愛的貴賓",
+  ab_say_h: "各最多 3 個。AI 偶爾用你的口頭禪，避開你不說的。",
+  ab_asks: "留言要問清楚哪些",
+  ab_ask_name: "對方姓名",
+  ab_ask_callback: "回電號碼",
+  ab_ask_reason: "什麼事",
+  ab_ask_urgency: "多急",
+  ab_parcel: "包裹、外送請對方放哪裡",
+  ab_parcel_ph: "例如：{x}",
+  ab_parcel_ph0: "例如：放管理室",
+  ab_extra: "其他想讓 AI 知道的",
+  adv_opts: "進階",
 };
 
 I18N["zh-CN"] = {
@@ -4357,7 +4886,7 @@ I18N["zh-CN"] = {
   g_basics: "基本设置",
   g_answer: "接听方式",
   g_spam: "推销与诈骗电话",
-  g_prompt: "提示词",
+  g_prompt: "关于你",
   g_blocked: "拒接语音",
   g_notify: "通知",
   g_summary: "摘要与日历",
@@ -4478,10 +5007,10 @@ I18N["zh-CN"] = {
   f_stall_model: "这类电话用的模型",
   f_stall_model_h: "留空 = 和普通电话用同一个模型。",
   // ---- settings: prompt
-  g_prompt_d: "决定 AI 怎么说话。内置的是通用的基本说法，写上你自己的情况，AI 会更像你。",
+  g_prompt_d: "回答几个小问题，AI 接电话会更像你。都可以不填。",
   f_prompt: "自定义提示词",
   f_prompt_ph: "留空：使用内置提示词",
-  f_prompt_h: "“AI 助理”与“本人”分开保存，切换上方的接听身份就会显示对应的那一份。要放你名字的地方写 {owner}。",
+  f_prompt_h: "填了就会取代说话风格和当地习惯。“AI 助理”和“本人”各存一份，名字的地方写 {owner}。",
   p_builtin: "查看内置提示词",
   p_builtin_h: "根据已保存的语言、接听方式和名字生成。刚改过的话请先保存。",
   p_copy_in: "复制到编辑框",
@@ -4492,11 +5021,6 @@ I18N["zh-CN"] = {
   f_knowledge: "AI 可以回答的资料",
   f_knowledge_ph: "例如：快递请放前台。\n营业时间：周一到周五，9 点到 18 点。",
   f_knowledge_h: "来电的人可能会问的事，一行写一条。没写在这里的，AI 不可以自己编。",
-  h_title: "不想自己写？",
-  h_body: "会按上方选的“AI 助理”或“本人”切换对应的访谈问题。粘贴到 ChatGPT、Claude 或 Gemini 回答约 8 题，再把写好的提示词粘回上面。",
-  h_lang: "访谈使用的语言",
-  h_copy: "复制访谈提示词",
-  h_read: "查看访谈提示词",
   // ---- settings: blocked numbers
   g_blocked_d: "拒接黑名单或未显示号码时播放的语音。黑名单在“联系人”里管理。",
   b_reason: "原因（可不填）",
@@ -4647,8 +5171,8 @@ I18N["zh-CN"] = {
   chk_key_bad: "填写密钥，AI 才能说话。",
   chk_owner: "你的名字",
   chk_owner_bad: "告诉 AI 来电的人怎么称呼你。",
-  chk_prompt: "你的提示词",
-  chk_prompt_bad: "AI 现在用通用的基本说法。写几句你是谁、常接到什么电话。",
+  chk_prompt: "关于你",
+  chk_prompt_bad: "回答“关于你”的几个小问题，AI 接电话会更像你。",
   chk_phone: "有手机连接",
   chk_phone_bad: "目前没有手机连接，请看本页的“手机”。",
   chk_notify: "通知渠道",
@@ -5255,6 +5779,47 @@ I18N["zh-CN"] = {
   ippair_docker: "输入 Docker 主机的 IP",
   ippair_need_password: "要从其他设备生成配对码，请先设置控制台密码，或在运行 Bageo 的电脑上打开控制台。",
   err_phone_wifi_off: "请先打开“手机也能用 Wi-Fi 连接”。",
+  f_home_country: "所在国家",
+  f_home_country_h: "AI 按这个国家的生活习惯接电话，比如快递放哪里。自动：按手机号码判断。",
+  hc_auto: "按号码自动判断",
+  cb_none: "找不到",
+  f_talk_style: "说话风格",
+  ts_1: "随性热络",
+  ts_2: "亲切随和",
+  ts_3: "自然日常",
+  ts_4: "客气得体",
+  ts_5: "商务利落",
+  ts_1_d: "像跟好朋友聊天：热情、轻松、话多一点。",
+  ts_2_d: "温和亲切，比平时再轻松一点。",
+  ts_3_d: "像一般人打电话：不会太随便，也不会太正式。",
+  ts_4_d: "有礼貌、说话谨慎，像跟不熟的人说话。",
+  ts_5_d: "简短清楚，像处理公事。",
+  ts_casual: "随性",
+  ts_formal: "正式",
+  ts_custom: "你在用自定义提示词，说话风格不会生效。",
+  ts_scene: "换窗外的风景",
+  ab_callers: "这个号码谁打来得比较多",
+  ab_c_family: "家人朋友",
+  ab_c_work: "工作上的人",
+  ab_c_both: "都有",
+  ab_suggested: "说话风格已调成“{level}”，可以再改。",
+  ab_work: "你的工作或日常，一句话",
+  ab_work_ph: "例如：在外贸公司做销售",
+  ab_say: "你常说的话",
+  ab_say_ph: "例如：没问题",
+  ab_avoid: "你不会说的话",
+  ab_avoid_ph: "例如：尊敬的客户",
+  ab_say_h: "各最多 3 个。AI 偶尔用你的口头禅，避开你不说的。",
+  ab_asks: "留言要问清楚哪些",
+  ab_ask_name: "对方姓名",
+  ab_ask_callback: "回电号码",
+  ab_ask_reason: "什么事",
+  ab_ask_urgency: "多急",
+  ab_parcel: "快递、外卖请对方放哪里",
+  ab_parcel_ph: "例如：{x}",
+  ab_parcel_ph0: "例如：放快递柜",
+  ab_extra: "其他想让 AI 知道的",
+  adv_opts: "高级",
 };
 
 I18N["ja"] = {
@@ -5574,7 +6139,7 @@ I18N["ja"] = {
   g_basics: "基本設定",
   g_answer: "応答のしかた",
   g_spam: "営業・詐欺の電話",
-  g_prompt: "プロンプト",
+  g_prompt: "あなたについて",
   g_blocked: "着信拒否のアナウンス",
   g_notify: "通知",
   g_summary: "要約とカレンダー",
@@ -5695,10 +6260,10 @@ I18N["ja"] = {
   f_stall_model: "この種の通話で使うモデル",
   f_stall_model_h: "空欄 = 通常の通話と同じモデル。",
   // ---- settings: prompt
-  g_prompt_d: "AI の話し方を決めます。内蔵のものは誰にでも使える基本の言い方なので、ご自身の状況を書くと、AI がもっとあなたらしくなります。",
+  g_prompt_d: "いくつか答えると、AI の応対があなたらしくなります。どれも空欄でかまいません。",
   f_prompt: "独自のプロンプト",
   f_prompt_ph: "空欄：内蔵のプロンプトを使います",
-  f_prompt_h: "「AI アシスタント」と「本人」は別々に保存され、上の応答方法を切り替えるとそれぞれの内容が表示されます。あなたの名前を入れる場所に {owner} と書きます。",
+  f_prompt_h: "入力すると、話し方と地域の習慣の代わりにこれが使われます。「AI アシスタント」と「本人」は別々に保存。名前の所には {owner} と書きます。",
   p_builtin: "内蔵のプロンプトを見る",
   p_builtin_h: "保存済みの言語・応答スタイル・名前に合わせた内容です。変更した直後は、先に保存してください。",
   p_copy_in: "編集欄にコピー",
@@ -5709,11 +6274,6 @@ I18N["ja"] = {
   f_knowledge: "AI が答えてよい情報",
   f_knowledge_ph: "例：荷物は受付に預けてください。\n営業時間：月〜金、9 時〜18 時。",
   f_knowledge_h: "相手に聞かれそうなことを、1 行に 1 つずつ書きます。ここに書かれていないことを、AI が作って答えることはありません。",
-  h_title: "自分で書くのは大変？",
-  h_body: "上で選んだ「AI アシスタント」または「本人」に合わせて質問が切り替わります。ChatGPT・Claude・Gemini に貼って約 8 問に答え、出来上がったプロンプトを上に貼り付けてください。",
-  h_lang: "インタビューの言語",
-  h_copy: "インタビュー用プロンプトをコピー",
-  h_read: "インタビュー用プロンプトを読む",
   // ---- settings: blocked numbers
   g_blocked_d: "着信拒否の相手や非通知の電話を断るときに流れます。着信拒否の相手は「連絡先」で管理します。",
   b_reason: "理由（任意）",
@@ -5864,8 +6424,8 @@ I18N["ja"] = {
   chk_key_bad: "AI が話せるよう、キーを入力してください。",
   chk_owner: "あなたの名前",
   chk_owner_bad: "相手があなたを何と呼ぶかを、AI に教えてください。",
-  chk_prompt: "あなたのプロンプト",
-  chk_prompt_bad: "AI は今、一般的な基本の話し方を使っています。あなたが誰で、どんな電話が多いかを数行書いてください。",
+  chk_prompt: "あなたについて",
+  chk_prompt_bad: "「あなたについて」の質問にいくつか答えると、AI の応対があなたらしくなります。",
   chk_phone: "スマホが接続されている",
   chk_phone_bad: "接続中のスマホがありません。このページの「スマホ」を確認してください。",
   chk_notify: "通知先",
@@ -6472,6 +7032,47 @@ I18N["ja"] = {
   ippair_docker: "Docker ホストの IP を入力",
   ippair_need_password: "ほかの端末でペアリングコードを出すには、先にコンソールのパスワードを設定するか、Bageo が動いているパソコンでコンソールを開いてください。",
   err_phone_wifi_off: "先に「スマホを Wi-Fi でもつなぐ」をオンにしてください。",
+  f_home_country: "お住まいの国",
+  f_home_country_h: "AI はこの国の習慣に合わせて電話に出ます（荷物の置き場所など）。自動：電話番号から判断。",
+  hc_auto: "電話番号から自動で判断",
+  cb_none: "見つかりません",
+  f_talk_style: "話し方",
+  ts_1: "くだけて元気",
+  ts_2: "親しみやすく",
+  ts_3: "ふだんどおり",
+  ts_4: "ていねい",
+  ts_5: "ビジネスらしく",
+  ts_1_d: "仲のいい友だちのように、明るく気軽に。",
+  ts_2_d: "やさしく親しみやすく、ふだんより少し気軽に。",
+  ts_3_d: "ふつうの電話のように、くだけすぎず堅すぎず。",
+  ts_4_d: "よく知らない相手と話すように、礼儀正しく慎重に。",
+  ts_5_d: "仕事の電話のように、短くはっきり。",
+  ts_casual: "くだけた",
+  ts_formal: "改まった",
+  ts_custom: "独自のプロンプトを使っているため、話し方は反映されません。",
+  ts_scene: "窓の外の景色を変える",
+  ab_callers: "この電話によくかけてくるのは",
+  ab_c_family: "家族や友人",
+  ab_c_work: "仕事関係の人",
+  ab_c_both: "どちらも",
+  ab_suggested: "話し方を「{level}」にしました。変更できます。",
+  ab_work: "仕事やふだんの過ごし方（ひとこと）",
+  ab_work_ph: "例：商社で営業をしています",
+  ab_say: "よく言う言葉",
+  ab_say_ph: "例：了解です",
+  ab_avoid: "言わない言葉",
+  ab_avoid_ph: "例：お客様各位",
+  ab_say_h: "それぞれ 3 つまで。AI はあなたの口ぐせを時々使い、言わない言葉は避けます。",
+  ab_asks: "伝言で必ず聞くこと",
+  ab_ask_name: "相手の名前",
+  ab_ask_callback: "折り返しの番号",
+  ab_ask_reason: "用件",
+  ab_ask_urgency: "急ぎかどうか",
+  ab_parcel: "荷物や出前の置き場所",
+  ab_parcel_ph: "例：{x}",
+  ab_parcel_ph0: "例：宅配ボックスに入れてください",
+  ab_extra: "ほかに AI に知っておいてほしいこと",
+  adv_opts: "詳細設定",
 };
 
 I18N["ko"] = {
@@ -6791,7 +7392,7 @@ I18N["ko"] = {
   g_basics: "기본 설정",
   g_answer: "전화 받는 방식",
   g_spam: "영업·사기 전화",
-  g_prompt: "프롬프트",
+  g_prompt: "나에 대해",
   g_blocked: "차단 안내 음성",
   g_notify: "알림",
   g_summary: "요약과 캘린더",
@@ -6912,10 +7513,10 @@ I18N["ko"] = {
   f_stall_model: "이런 통화에 쓸 모델",
   f_stall_model_h: "비워 두면 일반 통화와 같은 모델을 씁니다.",
   // ---- settings: prompt
-  g_prompt_d: "AI가 말하는 방식을 정합니다. 기본 프롬프트는 누구에게나 맞는 일반적인 말투라서, 내 상황을 적어 두면 AI가 더 나답게 말합니다.",
+  g_prompt_d: "몇 가지만 답하면 AI가 더 나답게 전화를 받아요. 모두 비워 둬도 돼요.",
   f_prompt: "직접 쓴 프롬프트",
   f_prompt_ph: "비워 두면 기본 프롬프트를 사용합니다",
-  f_prompt_h: "“AI 비서”와 “본인”은 따로 저장되며, 위에서 응답 방식을 바꾸면 해당 프롬프트가 표시됩니다. 내 이름이 들어갈 자리에 {owner}라고 씁니다.",
+  f_prompt_h: "입력하면 말투와 현지 습관 대신 이 내용을 써요. “AI 비서”와 “본인”은 따로 저장되고, 이름 자리에 {owner}라고 씁니다.",
   p_builtin: "기본 프롬프트 보기",
   p_builtin_h: "저장된 언어, 응답 방식, 이름에 맞춘 내용입니다. 방금 바꿨다면 먼저 저장해 주세요.",
   p_copy_in: "편집 칸에 복사",
@@ -6926,11 +7527,6 @@ I18N["ko"] = {
   f_knowledge: "AI가 답해도 되는 정보",
   f_knowledge_ph: "예: 택배는 경비실에 맡겨 주세요.\n영업시간: 월~금, 9시~18시.",
   f_knowledge_h: "상대방이 물어볼 만한 내용을 한 줄에 하나씩 적습니다. 여기에 없는 내용을 AI가 지어내서 답하지 않습니다.",
-  h_title: "직접 쓰기 어려우신가요?",
-  h_body: "위에서 고른 “AI 비서” 또는 “본인”에 맞춰 인터뷰 질문이 바뀝니다. ChatGPT, Claude, Gemini에 붙여 넣고 약 8개 질문에 답한 뒤, 완성된 프롬프트를 위에 붙여 넣으세요.",
-  h_lang: "인터뷰 언어",
-  h_copy: "인터뷰 프롬프트 복사",
-  h_read: "인터뷰 프롬프트 읽기",
   // ---- settings: blocked numbers
   g_blocked_d: "차단 목록이나 발신번호 표시 제한 전화를 거절할 때 나옵니다. 차단 목록은 “연락처”에서 관리합니다.",
   b_reason: "이유(선택)",
@@ -7081,8 +7677,8 @@ I18N["ko"] = {
   chk_key_bad: "AI가 말할 수 있도록 키를 입력해 주세요.",
   chk_owner: "내 이름",
   chk_owner_bad: "상대방이 나를 뭐라고 부르는지 AI에게 알려 주세요.",
-  chk_prompt: "내 프롬프트",
-  chk_prompt_bad: "AI가 지금 일반적인 기본 말투를 쓰고 있습니다. 내가 누구인지, 어떤 전화를 자주 받는지 몇 줄 적어 주세요.",
+  chk_prompt: "나에 대해",
+  chk_prompt_bad: "“나에 대해”의 질문 몇 개에 답하면 AI가 더 나답게 전화를 받아요.",
   chk_phone: "휴대폰 연결됨",
   chk_phone_bad: "지금 연결된 휴대폰이 없습니다. 이 페이지의 “휴대폰”을 확인해 주세요.",
   chk_notify: "알림 채널",
@@ -7689,6 +8285,47 @@ I18N["ko"] = {
   ippair_docker: "Docker 호스트의 IP를 입력하세요",
   ippair_need_password: "다른 기기에서 페어링 코드를 받으려면 먼저 콘솔 비밀번호를 설정하거나, Bageo가 실행 중인 컴퓨터에서 콘솔을 여세요.",
   err_phone_wifi_off: "먼저 '휴대폰을 Wi-Fi로도 연결'을 켜세요.",
+  f_home_country: "사는 나라",
+  f_home_country_h: "AI가 이 나라 생활 습관대로 전화를 받아요(택배 두는 곳 등). 자동: 전화번호로 판단.",
+  hc_auto: "전화번호로 자동 판단",
+  cb_none: "찾을 수 없어요",
+  f_talk_style: "말투",
+  ts_1: "편하고 활발하게",
+  ts_2: "다정하고 편하게",
+  ts_3: "자연스럽게",
+  ts_4: "예의 바르게",
+  ts_5: "비즈니스답게",
+  ts_1_d: "친한 친구와 통화하듯 밝고 편하게.",
+  ts_2_d: "부드럽고 다정하게, 평소보다 조금 편하게.",
+  ts_3_d: "보통 통화처럼 너무 가볍지도 딱딱하지도 않게.",
+  ts_4_d: "잘 모르는 사람과 말하듯 공손하고 조심스럽게.",
+  ts_5_d: "업무 전화처럼 짧고 분명하게.",
+  ts_casual: "편하게",
+  ts_formal: "격식 있게",
+  ts_custom: "직접 쓴 프롬프트를 쓰고 있어서 말투가 적용되지 않아요.",
+  ts_scene: "창밖 풍경 바꾸기",
+  ab_callers: "이 번호로 누가 주로 전화하나요",
+  ab_c_family: "가족과 친구",
+  ab_c_work: "일로 아는 사람",
+  ab_c_both: "둘 다",
+  ab_suggested: "말투를 “{level}”(으)로 맞췄어요. 바꿀 수 있어요.",
+  ab_work: "하는 일이나 일상 (한 줄)",
+  ab_work_ph: "예: 무역회사 영업 담당",
+  ab_say: "자주 하는 말",
+  ab_say_ph: "예: 괜찮아요",
+  ab_avoid: "안 하는 말",
+  ab_avoid_ph: "예: 고객님 안녕하십니까",
+  ab_say_h: "각각 3개까지. AI가 가끔 내 말버릇을 쓰고, 안 하는 말은 피해요.",
+  ab_asks: "메시지에서 꼭 물어볼 것",
+  ab_ask_name: "상대 이름",
+  ab_ask_callback: "회신 번호",
+  ab_ask_reason: "용건",
+  ab_ask_urgency: "얼마나 급한지",
+  ab_parcel: "택배·배달은 어디에 두라고 할까요",
+  ab_parcel_ph: "예: {x}",
+  ab_parcel_ph0: "예: 문 앞에 두세요",
+  ab_extra: "AI가 더 알아야 할 것",
+  adv_opts: "고급 설정",
 };
 
 I18N["es"] = {
@@ -8008,7 +8645,7 @@ I18N["es"] = {
   g_basics: "Lo básico",
   g_answer: "Cómo contesta",
   g_spam: "Ventas y estafas",
-  g_prompt: "Prompt",
+  g_prompt: "Sobre ti",
   g_blocked: "Aviso de llamada rechazada",
   g_notify: "Notificaciones",
   g_summary: "Resumen y calendario",
@@ -8129,10 +8766,10 @@ I18N["es"] = {
   f_stall_model: "Modelo para estas llamadas",
   f_stall_model_h: "Vacío = el mismo modelo que en las llamadas normales.",
   // ---- settings: prompt
-  g_prompt_d: "Define cómo habla la IA. El prompt integrado es una base general: si escribes tu situación, la IA sonará más como tú.",
+  g_prompt_d: "Unas respuestas cortas ayudan a que la IA suene como tú. Todo es opcional.",
   f_prompt: "Tu propio prompt",
   f_prompt_ph: "Vacío: se usa el prompt integrado",
-  f_prompt_h: "«Asistente de IA» y «Como yo» se guardan por separado; al cambiar arriba se muestra el prompt de ese modo. Escribe {owner} donde va tu nombre.",
+  f_prompt_h: "Si lo rellenas, reemplaza la forma de hablar y las costumbres locales. «Asistente de IA» y «Como yo» guardan cada uno el suyo; escribe {owner} donde va tu nombre.",
   p_builtin: "Ver el prompt integrado",
   p_builtin_h: "Según el idioma, el estilo de respuesta y el nombre guardados. Si acabas de cambiarlos, guarda primero.",
   p_copy_in: "Copiar al editor",
@@ -8143,11 +8780,6 @@ I18N["es"] = {
   f_knowledge: "Datos con los que la IA puede responder",
   f_knowledge_ph: "p. ej. Paquetes: déjenlos en recepción.\nHorario: de lunes a viernes, de 9 a 18.",
   f_knowledge_h: "Cosas que pueden preguntarte, una por línea. La IA no debe inventar nada que no esté escrito aquí.",
-  h_title: "¿No quieres escribirlo tú?",
-  h_body: "Cambia según elijas arriba «Asistente de IA» o «Como yo». Pega el prompt de entrevista en ChatGPT, Claude o Gemini, responde unas 8 preguntas y pega arriba el resultado.",
-  h_lang: "Idioma de la entrevista",
-  h_copy: "Copiar el prompt de entrevista",
-  h_read: "Leer el prompt de entrevista",
   // ---- settings: blocked numbers
   g_blocked_d: "Se oye al rechazar una llamada de la Lista negra o de un número oculto. La Lista negra se gestiona en «Contactos».",
   b_reason: "Motivo (opcional)",
@@ -8298,8 +8930,8 @@ I18N["es"] = {
   chk_key_bad: "Añade tu clave para que la IA pueda hablar.",
   chk_owner: "Tu nombre",
   chk_owner_bad: "Dile a la IA cómo te llaman.",
-  chk_prompt: "Tu prompt",
-  chk_prompt_bad: "La IA usa ahora la redacción general integrada. Escribe unas líneas sobre quién eres y qué llamadas recibes.",
+  chk_prompt: "Sobre ti",
+  chk_prompt_bad: "Responde unas preguntas en «Sobre ti» para que la IA suene más como tú.",
   chk_phone: "Hay un teléfono conectado",
   chk_phone_bad: "Ahora mismo no hay ningún teléfono conectado. Mira «Teléfonos» en esta página.",
   chk_notify: "Un canal de notificaciones",
@@ -8906,6 +9538,47 @@ I18N["es"] = {
   ippair_docker: "Introduce la IP del equipo con Docker",
   ippair_need_password: "Para obtener un código de emparejamiento desde otro dispositivo, primero pon una contraseña a la consola o abre la consola en el ordenador donde funciona Bageo.",
   err_phone_wifi_off: "Primero activa «Conectar teléfonos también por Wi-Fi».",
+  f_home_country: "País donde vives",
+  f_home_country_h: "La IA sigue las costumbres de ese país, como dónde dejar paquetes. Automático: según el número del teléfono.",
+  hc_auto: "Según el número del teléfono",
+  cb_none: "Sin resultados",
+  f_talk_style: "Forma de hablar",
+  ts_1: "Relajado y animado",
+  ts_2: "Cercano y amable",
+  ts_3: "Natural, del día a día",
+  ts_4: "Cortés y correcto",
+  ts_5: "Ágil y profesional",
+  ts_1_d: "Como con un buen amigo: cálido, suelto y conversador.",
+  ts_2_d: "Amable y cercano, un poco más relajado de lo normal.",
+  ts_3_d: "Como cualquiera al teléfono: ni muy informal ni rígido.",
+  ts_4_d: "Educado y cuidadoso, como con alguien que no conoces bien.",
+  ts_5_d: "Breve y claro, como una llamada de trabajo.",
+  ts_casual: "Informal",
+  ts_formal: "Formal",
+  ts_custom: "Usas tu propio prompt, así que la forma de hablar no se aplica.",
+  ts_scene: "Cambiar la vista de la ventana",
+  ab_callers: "¿Quién llama más a este teléfono?",
+  ab_c_family: "Familia y amigos",
+  ab_c_work: "Gente del trabajo",
+  ab_c_both: "Ambos",
+  ab_suggested: "Forma de hablar ajustada a «{level}». Puedes cambiarla.",
+  ab_work: "Tu trabajo o tu día, en una línea",
+  ab_work_ph: "p. ej. Ventas en una empresa de comercio",
+  ab_say: "Frases que dices a menudo",
+  ab_say_ph: "p. ej. Sin problema",
+  ab_avoid: "Frases que nunca dices",
+  ab_avoid_ph: "p. ej. Estimado cliente",
+  ab_say_h: "Hasta 3 de cada. La IA usa tus frases de vez en cuando y evita las otras.",
+  ab_asks: "Qué preguntar en un mensaje",
+  ab_ask_name: "Nombre",
+  ab_ask_callback: "Número para devolver la llamada",
+  ab_ask_reason: "De qué se trata",
+  ab_ask_urgency: "Qué tan urgente es",
+  ab_parcel: "¿Dónde dejar paquetes y pedidos?",
+  ab_parcel_ph: "p. ej. {x}",
+  ab_parcel_ph0: "p. ej. En la portería",
+  ab_extra: "Algo más que la IA deba saber",
+  adv_opts: "Avanzado",
 };
 
 I18N["fr"] = {
@@ -9225,7 +9898,7 @@ I18N["fr"] = {
   g_basics: "L'essentiel",
   g_answer: "Façon de répondre",
   g_spam: "Démarchage et arnaques",
-  g_prompt: "Prompt",
+  g_prompt: "À propos de vous",
   g_blocked: "Annonce d'appel refusé",
   g_notify: "Notifications",
   g_summary: "Résumé et agenda",
@@ -9346,10 +10019,10 @@ I18N["fr"] = {
   f_stall_model: "Modèle pour ces appels",
   f_stall_model_h: "Vide = le même modèle que pour les appels normaux.",
   // ---- settings: prompt
-  g_prompt_d: "Définit la façon de parler de l'IA. Le prompt intégré est une base générale : décrivez votre situation et l'IA vous ressemblera davantage.",
+  g_prompt_d: "Quelques réponses courtes aident l'IA à parler comme vous. Tout est facultatif.",
   f_prompt: "Votre propre prompt",
   f_prompt_ph: "Vide : le prompt intégré est utilisé",
-  f_prompt_h: "« Assistant IA » et « À ma place » sont enregistrés séparément ; changer de mode ci-dessus affiche le prompt correspondant. Écrivez {owner} là où va votre nom.",
+  f_prompt_h: "S'il est rempli, il remplace la façon de parler et les habitudes locales. « Assistant IA » et « À ma place » ont chacun le leur ; écrivez {owner} là où va votre nom.",
   p_builtin: "Afficher le prompt intégré",
   p_builtin_h: "Pour la langue, le style de réponse et le nom enregistrés. Si vous venez de les modifier, enregistrez d'abord.",
   p_copy_in: "Copier dans l'éditeur",
@@ -9360,11 +10033,6 @@ I18N["fr"] = {
   f_knowledge: "Informations que l'IA peut donner",
   f_knowledge_ph: "ex. Colis : à déposer à l'accueil.\nHoraires : du lundi au vendredi, de 9 h à 18 h.",
   f_knowledge_h: "Ce que vos correspondants peuvent demander, une information par ligne. L'IA ne doit rien inventer qui ne soit pas écrit ici.",
-  h_title: "Pas envie de l'écrire vous-même ?",
-  h_body: "S'adapte au mode choisi ci-dessus (« Assistant IA » ou « À ma place »). Collez le prompt d'entretien dans ChatGPT, Claude ou Gemini, répondez à environ 8 questions, puis collez le résultat ci-dessus.",
-  h_lang: "Langue de l'entretien",
-  h_copy: "Copier le prompt d'entretien",
-  h_read: "Lire le prompt d'entretien",
   // ---- settings: blocked numbers
   g_blocked_d: "Diffusée quand un appel de la Liste noire ou d'un numéro masqué est refusé. La Liste noire se gère dans « Contacts ».",
   b_reason: "Raison (facultatif)",
@@ -9515,8 +10183,8 @@ I18N["fr"] = {
   chk_key_bad: "Ajoutez votre clé pour que l'IA puisse parler.",
   chk_owner: "Votre nom",
   chk_owner_bad: "Indiquez à l'IA comment vos correspondants vous appellent.",
-  chk_prompt: "Votre prompt",
-  chk_prompt_bad: "L'IA utilise pour l'instant la formulation générale intégrée. Écrivez quelques lignes sur qui vous êtes et les appels que vous recevez.",
+  chk_prompt: "À propos de vous",
+  chk_prompt_bad: "Répondez à quelques questions dans « À propos de vous » pour que l'IA vous ressemble davantage.",
   chk_phone: "Un téléphone est connecté",
   chk_phone_bad: "Aucun téléphone n'est connecté pour l'instant. Voir « Téléphones » sur cette page.",
   chk_notify: "Un canal de notification",
@@ -10123,6 +10791,47 @@ I18N["fr"] = {
   ippair_docker: "Saisissez l’IP de la machine Docker",
   ippair_need_password: "Pour obtenir un code d’association depuis un autre appareil, définissez d’abord un mot de passe pour la console, ou ouvrez la console sur l’ordinateur où tourne Bageo.",
   err_phone_wifi_off: "Activez d’abord « Connecter aussi les téléphones en Wi-Fi ».",
+  f_home_country: "Pays où vous vivez",
+  f_home_country_h: "L'IA suit les habitudes de ce pays, par exemple où laisser les colis. Automatique : d'après le numéro du téléphone.",
+  hc_auto: "D'après le numéro du téléphone",
+  cb_none: "Aucun résultat",
+  f_talk_style: "Façon de parler",
+  ts_1: "Décontracté et chaleureux",
+  ts_2: "Amical et détendu",
+  ts_3: "Naturel, au quotidien",
+  ts_4: "Poli et soigné",
+  ts_5: "Net et professionnel",
+  ts_1_d: "Comme avec un ami proche : chaleureux, détendu, bavard.",
+  ts_2_d: "Doux et aimable, un peu plus détendu que d'habitude.",
+  ts_3_d: "Comme tout le monde au téléphone : ni trop familier, ni raide.",
+  ts_4_d: "Poli et prudent, comme avec quelqu'un qu'on connaît peu.",
+  ts_5_d: "Court et clair, comme un appel professionnel.",
+  ts_casual: "Décontracté",
+  ts_formal: "Formel",
+  ts_custom: "Vous utilisez votre propre prompt : la façon de parler ne s'applique pas.",
+  ts_scene: "Changer la vue par la fenêtre",
+  ab_callers: "Qui appelle le plus ce téléphone ?",
+  ab_c_family: "Famille et amis",
+  ab_c_work: "Relations de travail",
+  ab_c_both: "Les deux",
+  ab_suggested: "Façon de parler réglée sur « {level} ». Vous pouvez la changer.",
+  ab_work: "Votre travail ou votre quotidien, en une ligne",
+  ab_work_ph: "ex. Commercial dans une société d'import-export",
+  ab_say: "Ce que vous dites souvent",
+  ab_say_ph: "ex. Pas de souci",
+  ab_avoid: "Ce que vous ne dites jamais",
+  ab_avoid_ph: "ex. Cher client",
+  ab_say_h: "3 au plus pour chaque. L'IA reprend parfois vos expressions et évite les autres.",
+  ab_asks: "Ce qu'il faut demander dans un message",
+  ab_ask_name: "Nom",
+  ab_ask_callback: "Numéro de rappel",
+  ab_ask_reason: "L'objet de l'appel",
+  ab_ask_urgency: "Le degré d'urgence",
+  ab_parcel: "Où laisser colis et livraisons ?",
+  ab_parcel_ph: "ex. {x}",
+  ab_parcel_ph0: "ex. À la loge du gardien",
+  ab_extra: "Autre chose que l'IA devrait savoir",
+  adv_opts: "Options avancées",
 };
 
 I18N["de"] = {
@@ -10442,7 +11151,7 @@ I18N["de"] = {
   g_basics: "Grundlagen",
   g_answer: "So nimmt die KI ab",
   g_spam: "Werbe- und Betrugsanrufe",
-  g_prompt: "Prompt",
+  g_prompt: "Über dich",
   g_blocked: "Ansage bei Abweisung",
   g_notify: "Benachrichtigungen",
   g_summary: "Zusammenfassung und Kalender",
@@ -10563,10 +11272,10 @@ I18N["de"] = {
   f_stall_model: "Modell für diese Anrufe",
   f_stall_model_h: "Leer = dasselbe Modell wie bei normalen Anrufen.",
   // ---- settings: prompt
-  g_prompt_d: "Legt fest, wie die KI spricht. Der eingebaute Prompt ist allgemein gehalten: Schreib deine Situation hinein, dann klingt die KI mehr nach dir.",
+  g_prompt_d: "Ein paar kurze Antworten, und die KI klingt mehr wie du. Alles ist freiwillig.",
   f_prompt: "Eigener Prompt",
   f_prompt_ph: "Leer: Der eingebaute Prompt wird verwendet",
-  f_prompt_h: "„KI-Assistent“ und „Als ich selbst“ werden getrennt gespeichert; beim Umschalten oben wird der jeweilige Prompt angezeigt. Schreib {owner} an die Stelle deines Namens.",
+  f_prompt_h: "Ausgefüllt ersetzt er die Sprechweise und die örtlichen Gewohnheiten. „KI-Assistent“ und „Als ich selbst“ haben je einen eigenen; schreib {owner} an die Stelle deines Namens.",
   p_builtin: "Eingebauten Prompt anzeigen",
   p_builtin_h: "Für die gespeicherte Sprache, die gespeicherte Art der Annahme und den gespeicherten Namen. Speichere zuerst, wenn du sie gerade geändert hast.",
   p_copy_in: "In den Editor kopieren",
@@ -10577,11 +11286,6 @@ I18N["de"] = {
   f_knowledge: "Infos, mit denen die KI antworten darf",
   f_knowledge_ph: "z. B. Pakete: bitte am Empfang abgeben.\nÖffnungszeiten: Montag bis Freitag, 9 bis 18 Uhr.",
   f_knowledge_h: "Dinge, nach denen Anrufer fragen könnten – eine Angabe pro Zeile. Die KI darf nichts erfinden, was hier nicht steht.",
-  h_title: "Keine Lust, ihn selbst zu schreiben?",
-  h_body: "Richtet sich nach dem oben gewählten Modus („KI-Assistent“ oder „Als ich selbst“). Füge den Interview-Prompt in ChatGPT, Claude oder Gemini ein, beantworte etwa 8 Fragen und füge das Ergebnis oben ein.",
-  h_lang: "Sprache des Interviews",
-  h_copy: "Interview-Prompt kopieren",
-  h_read: "Interview-Prompt lesen",
   // ---- settings: blocked numbers
   g_blocked_d: "Läuft, wenn ein Anruf von der Sperrliste oder einer unterdrückten Nummer abgewiesen wird. Die Sperrliste verwaltest du unter „Kontakte“.",
   b_reason: "Grund (optional)",
@@ -10732,8 +11436,8 @@ I18N["de"] = {
   chk_key_bad: "Trage deinen Schlüssel ein, damit die KI sprechen kann.",
   chk_owner: "Dein Name",
   chk_owner_bad: "Sag der KI, wie Anrufer dich nennen.",
-  chk_prompt: "Dein Prompt",
-  chk_prompt_bad: "Die KI nutzt gerade die allgemeine eingebaute Formulierung. Schreib ein paar Zeilen dazu, wer du bist und welche Anrufe du bekommst.",
+  chk_prompt: "Über dich",
+  chk_prompt_bad: "Beantworte ein paar Fragen unter „Über dich“, dann klingt die KI mehr wie du.",
   chk_phone: "Ein Telefon ist verbunden",
   chk_phone_bad: "Im Moment ist kein Telefon verbunden. Siehe „Telefone“ auf dieser Seite.",
   chk_notify: "Ein Benachrichtigungskanal",
@@ -11340,6 +12044,47 @@ I18N["de"] = {
   ippair_docker: "Gib die IP des Docker-Hosts ein",
   ippair_need_password: "Um von einem anderen Gerät einen Kopplungscode zu holen, lege zuerst ein Passwort für die Konsole fest oder öffne die Konsole auf dem Computer, auf dem Bageo läuft.",
   err_phone_wifi_off: "Schalte zuerst „Telefone auch per WLAN verbinden“ ein.",
+  f_home_country: "Land, in dem du wohnst",
+  f_home_country_h: "Die KI folgt den Gewohnheiten dieses Landes, etwa wo Pakete hinkommen. Automatisch: nach der Rufnummer.",
+  hc_auto: "Nach der Rufnummer",
+  cb_none: "Nichts gefunden",
+  f_talk_style: "Sprechweise",
+  ts_1: "Locker und herzlich",
+  ts_2: "Freundlich und entspannt",
+  ts_3: "Natürlich, alltäglich",
+  ts_4: "Höflich und korrekt",
+  ts_5: "Knapp und geschäftlich",
+  ts_1_d: "Wie mit einem guten Freund: herzlich, locker, gesprächig.",
+  ts_2_d: "Freundlich und warm, etwas lockerer als sonst.",
+  ts_3_d: "Wie die meisten am Telefon: nicht zu locker, nicht steif.",
+  ts_4_d: "Höflich und vorsichtig, wie mit jemandem, den du kaum kennst.",
+  ts_5_d: "Kurz und klar, wie ein geschäftlicher Anruf.",
+  ts_casual: "Locker",
+  ts_formal: "Förmlich",
+  ts_custom: "Du nutzt einen eigenen Prompt, daher gilt die Sprechweise nicht.",
+  ts_scene: "Aussicht aus dem Fenster wechseln",
+  ab_callers: "Wer ruft auf diesem Telefon am meisten an?",
+  ab_c_family: "Familie und Freunde",
+  ab_c_work: "Leute aus der Arbeit",
+  ab_c_both: "Beides",
+  ab_suggested: "Sprechweise auf „{level}“ gestellt. Du kannst sie ändern.",
+  ab_work: "Deine Arbeit oder dein Alltag, in einem Satz",
+  ab_work_ph: "z. B. Vertrieb in einer Handelsfirma",
+  ab_say: "Was du oft sagst",
+  ab_say_ph: "z. B. Passt schon",
+  ab_avoid: "Was du nie sagst",
+  ab_avoid_ph: "z. B. Sehr geehrter Kunde",
+  ab_say_h: "Je bis zu 3. Die KI nutzt deine Sprüche ab und zu und meidet die anderen.",
+  ab_asks: "Was in einer Nachricht erfragt wird",
+  ab_ask_name: "Name",
+  ab_ask_callback: "Rückrufnummer",
+  ab_ask_reason: "Worum es geht",
+  ab_ask_urgency: "Wie dringend",
+  ab_parcel: "Wohin mit Paketen und Lieferungen?",
+  ab_parcel_ph: "z. B. {x}",
+  ab_parcel_ph0: "z. B. Beim Nachbarn abgeben",
+  ab_extra: "Was die KI sonst wissen sollte",
+  adv_opts: "Erweitert",
 };
 
 I18N["pt"] = {
@@ -11659,7 +12404,7 @@ I18N["pt"] = {
   g_basics: "O básico",
   g_answer: "Como atende",
   g_spam: "Vendas e golpes",
-  g_prompt: "Prompt",
+  g_prompt: "Sobre você",
   g_blocked: "Aviso de chamada recusada",
   g_notify: "Notificações",
   g_summary: "Resumo e agenda",
@@ -11780,10 +12525,10 @@ I18N["pt"] = {
   f_stall_model: "Modelo para essas chamadas",
   f_stall_model_h: "Em branco = o mesmo modelo das chamadas normais.",
   // ---- settings: prompt
-  g_prompt_d: "Define como a IA fala. O prompt embutido é uma base geral: escreva a sua situação e a IA vai soar mais como você.",
+  g_prompt_d: "Algumas respostas curtas deixam a IA com o seu jeito. Tudo é opcional.",
   f_prompt: "Seu próprio prompt",
   f_prompt_ph: "Em branco: o prompt padrão é usado",
-  f_prompt_h: "“Assistente de IA” e “Como se fosse eu” são salvos separadamente; ao alternar acima, aparece o prompt desse modo. Escreva {owner} onde vai o seu nome.",
+  f_prompt_h: "Preenchido, ele substitui o jeito de falar e os costumes locais. “Assistente de IA” e “Como se fosse eu” têm cada um o seu; escreva {owner} onde vai o seu nome.",
   p_builtin: "Ver o prompt padrão",
   p_builtin_h: "Para o idioma, o estilo de atendimento e o nome que estão salvos. Se acabou de alterá-los, salve primeiro.",
   p_copy_in: "Copiar para o editor",
@@ -11794,11 +12539,6 @@ I18N["pt"] = {
   f_knowledge: "Informações que a IA pode usar para responder",
   f_knowledge_ph: "ex.: Pacotes: deixar na portaria.\nHorário de atendimento: de segunda a sexta, das 9h às 18h.",
   f_knowledge_h: "Coisas que podem perguntar, uma por linha. A IA não pode inventar nada que não esteja escrito aqui.",
-  h_title: "Não quer escrever você mesmo?",
-  h_body: "Muda conforme o modo escolhido acima (“Assistente de IA” ou “Como se fosse eu”). Cole o prompt de entrevista no ChatGPT, Claude ou Gemini, responda a cerca de 8 perguntas e cole o resultado acima.",
-  h_lang: "Idioma da entrevista",
-  h_copy: "Copiar o prompt de entrevista",
-  h_read: "Ler o prompt de entrevista",
   // ---- settings: blocked numbers
   g_blocked_d: "Toca quando uma ligação da Lista de bloqueio ou de um número oculto é recusada. A Lista de bloqueio fica em “Contatos”.",
   b_reason: "Motivo (opcional)",
@@ -11949,8 +12689,8 @@ I18N["pt"] = {
   chk_key_bad: "Adicione sua chave para que a IA possa falar.",
   chk_owner: "Seu nome",
   chk_owner_bad: "Diga à IA como as pessoas chamam você.",
-  chk_prompt: "Seu prompt",
-  chk_prompt_bad: "A IA está usando o texto geral embutido. Escreva algumas linhas sobre quem você é e que ligações costuma receber.",
+  chk_prompt: "Sobre você",
+  chk_prompt_bad: "Responda algumas perguntas em “Sobre você” para a IA soar mais como você.",
   chk_phone: "Há um telefone conectado",
   chk_phone_bad: "Nenhum telefone está conectado agora. Veja “Telefones” nesta página.",
   chk_notify: "Um canal de notificação",
@@ -12557,31 +13297,47 @@ I18N["pt"] = {
   ippair_docker: "Digite o IP do host do Docker",
   ippair_need_password: "Para gerar um código de pareamento em outro dispositivo, defina antes uma senha para o console ou abra o console no computador onde o Bageo está rodando.",
   err_phone_wifi_off: "Primeiro ative “Conectar celulares também por Wi-Fi”.",
-};
-
-// The interview prompts of docs/prompts/interview.<lang>.txt, word for word
-// (Settings > Prompt > "Copy interview prompt").
-const INTERVIEW = {
-  "en": "Help me write my custom first-person call-answering prompt. An AI voice will answer incoming phone calls AS me (in the first person, as if I picked up my own phone), so interview me first to learn how I talk and how I handle calls, then write the prompt.\n\nHOW TO RUN THE INTERVIEW\n- Ask ONE question at a time, in plain conversational language, and wait for my reply.\n- If an answer is broad (for example \"just sound casual\"), offer two or three natural spoken examples I can pick from or adjust. If I say \"skip\", choose a sensible default and move on.\n- About 8 questions in total. Do not write the prompt until the interview is finished.\n\nWHAT TO LEARN ABOUT ME\n1. Language and spoken style: what language and everyday accent or phrasing do callers usually speak with me (for example American, British or Australian English), and are there any expressions I never use?\n2. General context: is this mainly a personal number, a work number, or both? Any light background about what I do or my day-to-day routine that helps the AI sound natural — only what I feel like sharing.\n3. Personality and phone manner: how do I usually come across on a call (for example warm and relaxed, calm and brief, upbeat and chatty, polite and steady), and how does my tone change between people I know and formal callers?\n4. Everyday phrasing: how I usually pick up (for example \"Hello?\"), short listening reactions I naturally use (for example \"yeah\", \"right\", \"got it\"), how I normally say goodbye (for example \"Alright, bye\"), and any stiff customer-service phrases I would never say.\n5. Typical callers: who calls most often (family and friends, colleagues or clients, deliveries, appointments, customer support, unknown numbers) and anything special about how I talk with them.\n6. Important calls: when an office, bank, clinic, company or contact calls to explain a real matter or follow up on something, what key details should the AI make sure to get before the call ends (who called, what it is about, next steps, callback number)?\n7. Boundaries: situations the AI should never agree to or share on the spot (plans, payments, contracts, personal details), and how I naturally keep things open without sounding abrupt (for example \"let me look into that and get back to you\").\n8. Unwanted sales calls and final touches: when a call is clearly an unwanted sales pitch, how briefly or politely I turn it down — plus anything else about my style you should capture.\n\nTHEN WRITE THE PROMPT\n- Write it in the language from question 1, addressing the AI as \"you\", in short titled sections:\n  [Who you are] [How you talk] [Picking up] [Listening and important calls] [Limits and boundaries] [Sales calls] [Ending]\n- Put the placeholder {owner} wherever my name appears (the system fills it in automatically).\n- Make it sound like a living person on their own phone rather than a script:\n  * State clearly that you are {owner} answering your own phone in the first person — never introduce yourself as an assistant, receptionist or AI, and never mention being an AI.\n  * Weave in my actual temperament, expressions, listening reactions, non-committal phrases and goodbye from my answers, with natural reactions and flexible length (sometimes just \"mm-hm\", sometimes two or three sentences), and explicitly list stiff call-centre phrases to avoid.\n  * Note that quoted phrases illustrate the feel and should be varied naturally in the moment rather than repeated word for word every turn.\n- Include these call-flow rules naturally in my style:\n  * In [Picking up], say only my short greeting (such as \"Hello?\"), then stop and wait for the caller to speak first; if they only say hello back or sound unsure, say a short follow-up once more.\n  * No bullet lists, no scripted monologues, no customer-service clichés, and no parroting back everything the caller just said.\n  * When someone calls about real business or an update, listen all the way through without cutting them off (\"I'm busy\" or \"call me later\"), and naturally clarify who called, what it is about, what is needed and a callback number if missing.\n  * During a live call you cannot look anything up: never say \"one moment\", \"hold on\" or \"let me check\". When unsure about my schedule, whereabouts or past actions, say so honestly without guessing, inventing facts or making promises on my behalf.\n  * Never agree to payments, contracts or fixed commitments, and never share or invent personal details, passwords or verification codes; pass over them lightly in my natural style.\n  * In [Sales calls], write one brief rule: politely decline only clear telemarketing or sales pitches in one short line, never genuine notices or everyday calls (do not write a long spam-stalling script; if spam stalling is enabled in settings, the system handles it automatically).\n  * Do not say goodbye first: a simple \"okay\" or \"thanks\" is not the end of the call. Wait until the caller clearly wraps up, then close with one short line containing my goodbye phrase and stop without asking if there is anything else.\n- Keep it focused and free of technical settings: 250 to 450 words.\n\nOUTPUT\nOutput ONLY the finished prompt inside a single code block, ready to copy and paste.\n\nStart now with question 1.",
-  "zh-TW": "請幫我寫一份「本人身分接聽提示詞」，讓 AI 語音以「我本人」的第一人稱幫我接電話（像我自己拿起手機說話）。請先訪談我、了解我的個性與講電話習慣，問完再寫提示詞。\n\n訪談方式\n- 一次只問一個問題，用自然白話聊，等我回答再問下一題。\n- 如果我答得比較籠統（例如只說「隨性一點」「自然就好」），請舉兩三個口語例子讓我挑或微調；我說「跳過」就採用合理的預設繼續往下問。\n- 總共大約 8 題。還沒問完之前不要開始寫提示詞。\n\n想了解我的事\n1. 語言與說話習慣：來電的人平常跟我講什麼語言、口語感覺偏哪一種（例如日常中文口語、英文），有沒有我平常絕對不會用的詞彙或腔調？\n2. 基本背景：這支號碼主要是私人電話、工作電話，還是兩者都有？有沒有什麼簡單的生活或工作背景，讓 AI 應對起來更自然（只說我願意分享的就好）？\n3. 個性與講電話的感覺：我平常講電話給人什麼感覺（例如親切隨和、冷靜簡潔、熱情好聊、客氣穩重），對熟人跟對正式來電的語氣有什麼差別？\n4. 常用語氣與禁忌詞：我接起電話習慣怎麼開口（例如「喂？」）、聽人說話常回什麼應聲詞（例如「嗯嗯」「好」「了解」）、收尾習慣怎麼說再見（例如「好，掰掰」），以及有哪些生硬或客服腔的字眼是我絕對不會說的？\n5. 常見來電對象：平常最常接到哪些人的電話（親友、同事客戶、外送宅配、預約通知、銀行或各類機構、陌生號碼），應對上有什麼特別習慣？\n6. 重要正事怎麼聽：遇到工作、銀行、診所、機構或聯絡人打來說明正事與後續處理時，最希望 AI 幫我聽清楚、問清楚哪些重點（例如哪個單位、什麼事、接下來怎麼做、回電號碼）？\n7. 說話界線與緩衝方式：遇到邀約、金錢、合約或詢問個人資訊等不能當場答應的事，我平常習慣怎麼自然帶過、不把話說死（例如「這個我再確認一下跟妳說」）？\n8. 推銷電話與補充：遇到明顯的推銷電話時，我習慣怎麼簡短婉拒？另外還有沒有任何關於我說話習慣的細節想補充？\n\n問完之後寫提示詞\n- 用第 1 題的語言寫，用「你」稱呼 AI，分成清楚的短段落：\n  【你是誰】【講話的樣子】【接起來】【傾聽與重要來電】【界線與未知事項】【推銷來電】【結束】\n- 需要放我名字的地方一律寫 {owner}（系統會自動帶入我的名字）。\n- 重點是「像真人在用自己的手機講電話」，給方向與底線，不要寫成死板劇本：\n  * 清楚寫明你就是 {owner} 本人接電話，不要自稱助理、客服或 AI，也不要提到自己是 AI。\n  * 把我回答裡的個性、口氣、情緒反應、常用應聲詞、緩衝說法與道別語自然融入段落，句子長短隨情境彈性調整（有時一聲「嗯」就夠，聊開了也能說兩三句），並列出不要出現的客服腔或生硬詞彙。\n  * 在提示詞中註明「例句只是抓語氣和感覺，每次請依情境自然換說法，不要每輪照抄同一句話」。\n- 配合語音通話運作，請用我的口氣把這些原則寫進去：\n  * 【接起來】第一句只說簡短招呼（例如「喂？」），說完就停下來等對方先說；若對方只回「喂？」或聽起來不確定，再簡短應一句。\n  * 不要條列、不要念稿、不要客服套話，也不要把對方剛說的話整段照念一遍。\n  * 對方打來談正事、通知進度或說明情況時，有耐心地聽完，順著問清楚單位、事由、需要處理的事項與回電方式；絕不要用「我在忙」「現在不方便」「晚點再打」把電話打發掉。\n  * 通話當下無法查資料，絕不說「等一下」「稍等」「我查一下」；不確定的行程、行蹤或決定就坦白說不確定，不亂猜、不編造，也不替我做任何承諾。\n  * 金錢、轉帳、合約、敲定時間，以及密碼、驗證碼、個人資料一律不答應、不提供也不編造，用我自然的緩衝方式輕鬆帶過。\n  * 【推銷來電】只寫簡短一條：只有明確的商品、保險、貸款等推銷才用一句話客氣婉拒，一般通知、聯繫或日常來電絕不誤拒（不用寫長篇防詐或陪聊劇本；若系統有開陪聊功能會自動接手）。\n  * 不要自己先說再見：對方只說「好」「謝謝」還不算結束；等對方明確收尾後，才用一句帶有我道別語的話自然結束，說完就停，不要多問還有沒有別的事。\n- 內容精簡、不寫任何技術設定，長度約 400 到 700 個中文字。\n\n輸出格式\n最後只輸出一個程式碼區塊，裡面放寫好的完整提示詞，讓我可以直接複製貼上，不要加其他區塊或設定說明。\n\n現在請從第 1 題開始問我。",
-  "zh-CN": "请帮我写一份“本人身份接听提示词”，让 AI 语音以“我本人”的第一人称帮我接电话（像我自己拿起手机说话）。请先访谈我、了解我的个性与讲电话习惯，问完再写提示词。\n\n访谈方式\n- 一次只问一个问题，用自然的大白话聊，等我回答再问下一题。\n- 如果我答得比较笼统（比如只说“随意一点”“自然就好”），请举两三个口语例子让我挑或微调；我说“跳过”就采用合理的默认值继续往下问。\n- 总共大约 8 题。还没问完之前不要开始写提示词。\n\n想了解我的事\n1. 语言与说话习惯：来电的人平时跟我说什么语言、口语风格偏哪一种（比如日常普通话口语、英文），有没有我平时绝对不会用的词汇或腔调？\n2. 基本背景：这个号码主要是私人电话、工作电话，还是两者兼有？有没有什么简单的生活或工作背景，能让 AI 应对起来更自然（只说我愿意分享的就行）？\n3. 个性与讲电话的感觉：我平时接电话给人什么感觉（比如亲切随和、冷静简短、热情健谈、礼貌稳重），对熟人和对正式来电的语气有什么区别？\n4. 常用语气与禁忌词：我接起电话习惯怎么开口（比如“喂？”）、听人说话常回什么应答词（比如“嗯嗯”“好”“明白”）、结尾习惯怎么道别（比如“好，拜拜”），以及有哪些生硬或客服腔的词是我绝对不会说的？\n5. 常见来电对象：平时最常接到哪些人的电话（亲友、同事客户、快递外卖、预约通知、银行或各类机构、陌生号码），应对上有什么特别习惯？\n6. 重要正事怎么听：遇到工作、银行、医院、机构或联系人打来说明正事与后续安排时，最希望 AI 帮我听清楚、问清楚哪些重点（比如哪个单位、什么事、接下来怎么做、回电号码）？\n7. 说话界线与缓冲方式：遇到邀约、金钱、合同或询问个人信息等不能当场答应的事，我平时习惯怎么自然带过、不把话说死（比如“这个我再确认一下跟你说”）？\n8. 推销电话与补充：遇到明显的推销电话时，我习惯怎么简短婉拒？另外还有没有任何关于我说话习惯的细节想补充？\n\n问完之后写提示词\n- 用第 1 题的语言写，用“你”称呼 AI，分成清晰的短段落：\n  【你是谁】【讲话的样子】【接起来】【倾听与重要来电】【界线与未知事项】【推销来电】【结束】\n- 需要放我名字的地方一律写 {owner}（系统会自动填入我的名字）。\n- 重点是“像真人在用自己的手机讲电话”，给方向与底线，不要写成死板剧本：\n  * 清楚写明你就是 {owner} 本人接电话，不要自称助理、客服或 AI，也不要提到自己是 AI。\n  * 把我回答里的个性、口气、情绪反应、常用应答词、缓冲说法与告别语自然融入段落，句子长短随情境灵活调整（有时一声“嗯”就够，聊开了也能说两三句），并列出不要出现的客服腔或生硬词汇。\n  * 在提示词中注明“例句只是找语气和感觉，每次请按情境自然换说法，不要每轮照抄同一句话”。\n- 配合语音通话运行，请用我的口气把这些原则写进去：\n  * 【接起来】第一句只说简短招呼（比如“喂？”），说完就停下来等对方先说；若对方只回“喂？”或听起来不确定，再简短应一句。\n  * 不要分点罗列、不要念稿、不要客服套话，也不要把对方刚说的话整段复述一遍。\n  * 对方打来谈正事、通知进度或说明情况时，耐心地听完，顺着问清楚单位、事由、需要处理的事项与回电方式；绝不要用“我在忙”“现在不方便”“晚点再打”把电话打发掉。\n  * 通话当下无法查资料，绝不说“等一下”“稍等”“我查一下”；不确定的日程、行踪或决定就坦白说不确定，不瞎猜、不编造，也不替我做任何承诺。\n  * 金钱、转账、合同、敲定时间，以及密码、验证码、个人信息一律不答应、不提供也不编造，用我自然的缓冲方式轻松带过。\n  * 【推销来电】只写简短一条：只有明确的商品、保险、贷款等推销才用一句话客气婉拒，普通通知、联系或日常来电绝不误拒（不用写长篇防诈或陪聊剧本；若系统开启了陪聊功能会自动接手）。\n  * 不要自己先说再见：对方只说“好”“谢谢”还不算结束；等对方明确收尾后，才用一句带有我告别语的话自然结束，说完就停，不要多问还有没有别的事。\n- 内容精简、不写任何技术设置，长度约 400 到 700 个汉字。\n\n输出格式\n最后只输出一个代码块，里面放写好的完整提示词，让我可以直接复制粘贴，不要加其他代码块或设置说明。\n\n现在请从第 1 题开始问我。",
-  "ja": "AI 音声が「私本人」として一人称で電話に出られるよう、私らしい「本人モード応答プロンプト」を一緒に作ってください。まず私にインタビューして話し方や対応の癖を知り、質問が終わってからプロンプトを書いてください。\n\nインタビューの進め方\n- 質問は一度に一つだけ。わかりやすい自然な言葉で聞いて、私の答えを待ってください。\n- 答えがざっくりしているとき（「自然でカジュアルな感じ」など）は、実際の話し言葉の例を二、三挙げて選べるようにしてください。「スキップ」と言ったら、無理のない標準的な設定にして次へ進んでください。\n- 質問は全部で 8 問ほど。質問が終わるまでプロンプトは書かないでください。\n\n私について聞いてほしいこと\n1. 言語と話し方の特徴：かけてくる人が普段話す言語と話し方の雰囲気（例：自然な日常の日本語、英語など）、また自分が普段使わない言い回し。\n2. 基本的な背景：この番号は主に個人の電話か、仕事用か、両方か。AI が自然に受け答えするために知っておくとよい普段の状況や仕事のこと（話せる範囲だけで構いません）。\n3. 人柄と電話での雰囲気：普段の電話での印象（例：穏やかでフランク、落ち着いて簡潔、明るく話しやすい、丁寧できっちりしている）と、親しい相手と改まった相手での口調の違い。\n4. 普段の言い回しと避けたい表現：電話に出た直後の第一声（例：「もしもし？」）、聞いているときの相づち（例：「うん」「なるほど」「わかりました」）、切るときの別れの言葉（例：「じゃあ、失礼します」）、そしてコールセンター調など自分が絶対に言わない堅苦しい表現。\n5. よくかかってくる相手：普段どんな人から電話が多いか（家族・友人、仕事関係・取引先、宅配・配達、予約の連絡、銀行・病院・窓口、知らない番号）と、対応で心がけていること。\n6. 大事な用件への対応：仕事先、銀行、病院、窓口などから大切な連絡や説明があったとき、通話が終わるまでに必ず聞き取っておいてほしいポイント（相手先、用件、必要な対応、折り返し先など）。\n7. 境界線とかわし方：予定の確定、支払い、契約、個人情報の開示などその場で応じない事柄と、角を立てずに保留にするときの自然な言い回し（例：「確認してからこちらから連絡します」）。\n8. 営業電話と補足：明らかに不要な勧誘・営業電話だったときの短い断り方と、その他に私の話し方や好みで伝えておきたいこと。\n\n質問が終わったらプロンプトを書く\n- 質問 1 の言語で、AI に「あなた」と呼びかける形で、見出しつきの短い段落に分けて書いてください：\n  [Who you are] [How you talk] [Picking up] [Listening and important calls] [Limits and boundaries] [Sales calls] [Ending]（日本語の見出しでも可、特に出た直後の見出しは分かりやすく）\n- 私の名前が入る場所はすべて {owner} と書いてください（システムが自動で置き換えます）。\n- 台本を読んでいる感じではなく、自分のスマホで話す生身の人間らしい受け答えになるように書いてください：\n  * あなた自身が {owner} 本人として電話に出る立場を明確にし、アシスタントや AI だと名乗ったり言及したりしないようにする。\n  * 私の人柄、よく使う表現、相づち、かわし方、別れの言葉を自然に織り込み、場面に応じた自然な感情と文の長さ（短い相づちだけのときもあれば、二、三文話すときもある）で話すようにし、避けたいコールセンター調の言葉も明記する。\n  * 例文はあくまで口調や空気感をつかむためのものであり、毎回同じ文を丸暗記して繰り返さず、その場の流れで自然に言い換えるよう明記する。\n- 音声通話の仕組みに合わせ、次の原則を私の口調になじませて入れてください：\n  * 出た直後は短い第一声（「もしもし？」など）だけを言い、相手が話し始めるのを待つ。相手が「もしもし」とだけ返したり聞き取りづらそうなときは、もう一度短く応じる。\n  * 箇条書き、棒読み、窓口マニュアル調、相手の言葉の丸ごとの復唱はしない。\n  * 大切な連絡や説明の電話では、「今忙しい」「後でかけ直す」と打ち切らず最後まで聞き、相手先・用件・必要な対応・折り返し先で足りない点があれば自然に確認する。\n  * 通話中に調べ物はできないため、「少々お待ちください」「今調べます」とは言わない。予定や居場所など分からないことは正直に分からないと言い、推測や作り話をせず、私の代わりに約束もしない。\n  * お金、振込、契約、日時の確定、パスワード、認証コード、個人情報には応じず、教えたり作ったりせず、私らしい言い方でさらりとかわす。\n  * 営業電話の項目は簡潔な一文にする：明確な商品・保険・ローンなどの営業勧誘だけ短く丁寧に断り、通常の連絡や大事な案内は絶対に断らない（引き延ばし用の長い台本は書かない。設定で引き延ばし機能がオンならシステム側で自動的に切り替わる）。\n  * 自分から先に別れのあいさつをしない。「はい」「ありがとうございます」だけでは終了とみなさず、相手がはっきり話を終えてから私の別れの言葉を含む短いひと言で締め、「他にございますか」などは聞かずに止まる。\n- 技術的な設定は書かず、要点を絞って 500〜900 字程度にまとめてください。\n\n出力形式\n完成したプロンプトだけを、そのままコピー＆ペーストできるように一つのコードブロックで出力してください。余計なブロックや設定案内は付けないでください。\n\nでは質問 1 から始めてください。",
-  "ko": "AI 음성이 \"저 본인\"으로서 1인칭으로 자연스럽게 전화를 받을 수 있도록 \"본인 모드 응답 프롬프트\"를 작성해 주세요. 먼저 저를 인터뷰해서 제 말투와 통화 습관을 파악한 뒤, 질문이 모두 끝나면 프롬프트를 써 주세요.\n\n인터뷰 진행 방식\n- 질문은 한 번에 하나씩만, 쉽고 자연스러운 말로 묻고 제 대답을 기다려 주세요.\n- 제 대답이 포괄적이면(예: \"그냥 편하고 자연스럽게\") 실제 구어체 예시 두세 개를 들어 고르거나 다듬게 해 주세요. 제가 \"건너뛰기\"라고 하면 무난한 기본값으로 넘어가세요.\n- 질문은 총 8개 정도입니다. 인터뷰가 끝나기 전에는 프롬프트를 작성하지 마세요.\n\n저에 대해 알아볼 내용\n1. 언어와 말투 스타일: 발신자들이 보통 저와 쓰는 언어와 일상적인 말투 느낌(예: 자연스러운 한국어 구어체, 영어 등), 그리고 제가 평소 절대 쓰지 않는 표현.\n2. 기본 배경: 이 번호가 주로 개인용인지, 업무용인지, 둘 다인지. AI가 자연스럽게 응대하는 데 도움이 될 만한 제 일상이나 일에 대한 가벼운 배경(제가 편하게 말할 수 있는 범위만).\n3. 성격과 통화 분위기: 평소 전화할 때 주는 인상(예: 다정하고 편안함, 차분하고 간결함, 밝고 대화를 잘 이어감, 예의 바르고 단정함)과, 가까운 사람과 공식적인 전화를 대할 때의 말투 차이.\n4. 평소 표현과 피하고 싶은 말: 전화를 받자마자 하는 첫마디(예: \"여보세요?\"), 들으면서 자주 쓰는 추임새(예: \"네\", \"아 그렇군요\", \"알겠습니다\"), 끊을 때 하는 작별 인사(예: \"네, 들어가세요\"), 그리고 기계적인 콜센터 말투처럼 제가 절대 쓰지 않는 딱딱한 표현.\n5. 주로 전화하는 사람들: 평소 누구에게서 전화가 자주 오는지(가족·친구, 동료·고객, 택배·배달, 예약 안내, 은행·병원·기관, 모르는 번호)와 통화할 때의 특징.\n6. 중요한 용건 응대: 직장, 은행, 병원, 기관 등에서 실제 용건이나 진행 상황을 설명할 때, 통화가 끝나기 전에 AI가 꼭 챙겨서 확인해야 할 핵심 내용(어디서 걸었는지, 무슨 일인지, 필요한 조치, 회신 번호 등).\n7. 경계선과 자연스럽게 넘기는 법: 일정 확정, 결제·금전, 계약, 개인정보처럼 즉석에서 동의하거나 알려 주면 안 되는 일과, 딱딱하지 않게 여지를 두며 넘기는 평소 말투(예: \"그건 제가 확인해 보고 다시 연락드릴게요\").\n8. 스팸·영업 전화 및 기타: 명백한 영업·권유 전화일 때 얼마나 짧거나 정중하게 거절하는지, 그리고 제 통화 스타일에 대해 덧붙이고 싶은 점.\n\n질문이 끝나면 프롬프트 작성하기\n- 1번 질문의 언어로, AI를 \"당신\"이라 부르며 짧은 소제목 단락으로 나누어 작성하세요:\n  [Who you are] [How you talk] [Picking up] [Listening and important calls] [Limits and boundaries] [Sales calls] [Ending] (또는 같은 의미의 한국어 소제목)\n- 제 이름이 들어갈 자리는 모두 {owner} 표시자를 쓰세요(시스템이 자동으로 채웁니다).\n- 대본을 읽는 느낌이 아니라 자기 휴대폰을 직접 받은 실제 사람처럼 반응하도록 쓰세요:\n  * 당신이 곧 {owner} 본인임을 분명히 하고, 비서나 상담원 또는 AI라고 소개하거나 언급하지 않게 한다.\n  * 인터뷰에서 나온 제 성격, 실제 표현, 추임새, 완곡하게 넘기는 말, 작별 인사를 자연스럽게 녹여 내고, 자연스러운 감정과 유연한 문장 길이(짧은 맞장구부터 두세 문장까지)로 말하게 하며 피해야 할 콜센터 투 표현도 명시한다.\n  * 예시 문구는 말투와 느낌을 참고하기 위한 것이며, 매번 똑같이 반복하지 말고 상황에 맞게 자연스럽게 바꿔 말하라고 적는다.\n- 실시간 음성 통화에 꼭 필요한 아래 흐름을 제 말투에 맞게 포함하세요:\n  * 전화를 받으면 짧은 첫마디(\"여보세요?\" 등)만 말한 뒤 멈추고 상대가 먼저 말하기를 기다린다. 상대가 \"여보세요?\"만 되풀이하거나 잘 못 들으면 짧게 한 번 더 받는다.\n  * 번호 매기기 목록, 낭독 투, 콜센터 상투어, 상대 말을 그대로 따라 읽는 습관을 쓰지 않는다.\n  * 실제 용건이나 안내 전화는 \"바쁘다\", \"나중에 다시 걸어 달라\"며 끊지 않고 끝까지 들은 뒤, 소속·용건·필요한 일·연락처 중 빠진 것이 있으면 자연스럽게 물어본다.\n  * 통화 중에는 정보를 조회할 수 없으므로 절대 \"잠시만요\", \"확인해 볼게요\"라며 기다리게 하지 않는다. 일정·위치 등 모르는 것은 솔직히 모르겠다고 말하고, 추측하거나 지어내지 않으며 저 대신 약속하지 않는다.\n  * 금전, 송금, 계약, 확정 약속, 비밀번호, 인증번호, 개인정보는 절대 동의하거나 알려 주거나 지어내지 않고 제 스타일대로 가볍게 넘긴다.\n  * 영업 전화 항목은 한 줄로 간결하게 적는다: 확실한 상품·보험·대출 등 영업 권유만 짧게 거절하고 일상적인 연락이나 안내 전화는 절대 거절하지 않는다(길게 붙잡는 대본은 쓰지 말 것. 설정에서 시간 끌기 기능을 켜면 시스템이 자동으로 처리함).\n  * 먼저 작별 인사를 하지 않는다. 단순한 \"네\", \"감사합니다\"만으로는 끝난 것이 아니므로 상대가 분명히 통화를 마무리할 때까지 기다렸다가 제 작별 인사가 담긴 짧은 한마디로 끝내고, 더 필요한 게 있는지 묻지 않고 멈춘다.\n- 기술 설정은 넣지 말고 핵심만 담아 500~900자 정도로 작성하세요.\n\n출력 형식\n완성된 프롬프트만 바로 복사해서 붙여 넣을 수 있도록 코드 블록 하나에 담아 출력하세요. 다른 블록이나 설정 안내는 덧붙이지 마세요.\n\n이제 1번 질문부터 시작해 주세요.",
-  "es": "Ayúdame a escribir mi prompt personalizado para contestar llamadas COMO YO MISMO (en primera persona, como si yo hubiera descolgado mi propio móvil). Primero hazme una entrevista breve para conocer mi forma de hablar y de atender el teléfono, y después redacta el prompt.\n\nCÓMO HACER LA ENTREVISTA\n- Haz UNA sola pregunta cada vez, con palabras sencillas y cercanas, y espera mi respuesta.\n- Si respondo algo general (por ejemplo, \"natural y relajado\"), proponme dos o tres ejemplos hablados naturales para elegir o adaptar. Si digo \"saltar\", usa una opción razonable y sigue adelante.\n- Unas 8 preguntas en total. No escribas el prompt hasta terminar la entrevista.\n\nQUÉ CONOCER DE MÍ\n1. Idioma y estilo hablado: ¿en qué idioma y con qué acento o estilo cotidiano suelen hablarme quienes llaman (por ejemplo, español de España, de México, del Río de la Plata), y qué expresiones no uso nunca?\n2. Contexto general: ¿es sobre todo un número personal, de trabajo o ambos? ¿Hay algún detalle sencillo sobre a qué me dedico o mi rutina que ayude a sonar más natural (solo lo que me apetezca compartir)?\n3. Personalidad y trato al teléfono: ¿cómo suelo sonar en una llamada (por ejemplo, cercano y tranquilo, directo y breve, amable y conversador, educado y sereno) y cómo cambia mi tono entre gente de confianza y llamadas formales?\n4. Expresiones habituales y frases que evito: cómo suelo contestar al descolgar (por ejemplo, \"¿Sí, diga?\" o \"¿Hola?\"), qué reacciones cortas uso al escuchar (\"ajá\", \"claro\", \"perfecto\"), cómo me despido normalmente y qué frases rígidas o de centralita jamás diría.\n5. Quién suele llamar: qué tipo de llamadas recibo más a menudo (familia y amigos, trabajo o clientes, repartos, citas, bancos o servicios, números desconocidos) y cualquier matiz sobre cómo los atiendo.\n6. Llamadas importantes: cuando llama una empresa, banco, clínica, oficina o contacto para explicar una gestión real o dar seguimiento, ¿qué datos clave quiero que la IA se asegure de recoger antes de colgar (quién llama, el motivo, qué hace falta, teléfono de contacto)?\n7. Límites: asuntos que la IA nunca debe aceptar ni revelar en el acto (planes cerrados, pagos, contratos, datos personales) y cómo suelo dejar las cosas abiertas con naturalidad sin sonar brusco (por ejemplo, \"lo reviso con calma y te digo\").\n8. Llamadas comerciales y toque final: cuando una llamada es claramente publicidad o venta no deseada, cómo suelo rechazarla de forma breve, y si hay algún otro detalle de mi estilo que convenga reflejar.\n\nDESPUÉS, ESCRIBE EL PROMPT\n- Escríbelo en el idioma de la pregunta 1, hablándole a la IA de \"tú\", en secciones cortas con título:\n  [Who you are] [How you talk] [Picking up] [Listening and important calls] [Limits and boundaries] [Sales calls] [Ending] (o títulos equivalentes en mi idioma)\n- Usa el marcador {owner} siempre que aparezca mi nombre (el sistema lo sustituye automáticamente).\n- Haz que suene a persona real atendiendo su propio teléfono y no a guion rígido:\n  * Deja claro que eres {owner} atendiendo tu propio móvil en primera persona: nunca te presentes como asistente, recepcionista ni IA, ni menciones que eres una IA.\n  * Integra mi carácter, mis expresiones reales, reacciones al escuchar, mi forma de salir del paso y mi despedida, con reacciones naturales y longitud flexible (desde un breve \"ajá\" hasta dos o tres frases), e indica las frases de teleoperador que debe evitar.\n  * Aclara que las frases entrecomilladas sirven para marcar el tono y deben variarse con naturalidad en cada ocasión, sin repetirlas palabra por palabra.\n- Incluye estas reglas de conversación telefónica adaptadas a mi estilo:\n  * Al descolgar, decir únicamente mi saludo breve (como \"¿Hola?\"), hacer una pausa y esperar a que hablen primero; si solo responden \"hola\" o dudan, responder brevemente una vez más.\n  * Nada de listas, tono leído, frases de centralita ni repetir palabra por palabra todo lo que acaban de decir.\n  * Cuando llamen por un asunto real o un aviso importante, escuchar hasta el final sin cortar con \"estoy ocupado\" o \"llámame luego\", y preguntar con naturalidad quién llama, de qué trata y cómo devolver el contacto si falta algún dato.\n  * Durante la llamada no se puede consultar nada: nunca decir \"un momento\", \"espera\" ni \"déjame mirar\". Si no sabe mi agenda, dónde estoy o algún dato, decirlo con sinceridad sin adivinar, inventar ni prometer nada en mi nombre.\n  * Nunca aceptar pagos, contratos ni compromisos cerrados, ni dar o inventar datos personales, contraseñas o códigos de verificación; salir del paso suavemente a mi manera.\n  * En llamadas comerciales, poner una sola regla breve: rechazar con educación únicamente ofertas comerciales claras en una frase corta, sin cortar jamás avisos reales o llamadas normales (no escribas guiones largos para entretener spam; si esa función está activa en los ajustes, el sistema se encarga automáticamente).\n  * No despedirse primero: un simple \"vale\" o \"gracias\" no cierra la llamada. Esperar a que la otra persona termine claramente, cerrar con una frase corta que incluya mi despedida habitual y callar sin preguntar \"¿algo más?\".\n- Sin ajustes técnicos ni texto extra: entre 250 y 450 palabras.\n\nRESULTADO\nEntrega ÚNICAMENTE el prompt terminado dentro de un solo bloque de código, listo para copiar y pegar.\n\nEmpieza ahora con la pregunta 1.",
-  "fr": "Aidez-moi à rédiger mon prompt personnalisé pour répondre aux appels À MA PLACE (à la première personne, comme si j'avais décroché mon propre téléphone). Commencez par m'interviewer afin de comprendre ma façon de parler et de gérer mes appels, puis rédigez le prompt.\n\nCOMMENT MENER L'ENTRETIEN\n- Posez UNE seule question à la fois, simplement et naturellement, puis attendez ma réponse.\n- Si ma réponse reste générale (par exemple « naturel et détendu »), proposez deux ou trois exemples parlés concrets parmi lesquels choisir ou adapter. Si je dis « passer », choisissez une option raisonnable et continuez.\n- Environ 8 questions au total. Ne rédigez pas le prompt avant la fin de l'entretien.\n\nCE QU'IL FAUT COMPRENDRE SUR MOI\n1. Langue et style parlé : dans quelle langue et quel style courant mes interlocuteurs me parlent-ils d'habitude (par exemple français de France, du Canada, de Belgique), et y a-t-il des tournures que je n'utilise jamais ?\n2. Contexte général : s'agit-il surtout d'une ligne personnelle, professionnelle, ou des deux ? Y a-t-il un élément simple sur mon activité ou mon quotidien qui aide l'IA à sonner juste (uniquement ce que je souhaite partager) ?\n3. Personnalité et ton au téléphone : quelle impression est-ce que je donne au téléphone (par exemple chaleureux et décontracté, calme et concis, dynamique, poli et posé) et comment mon ton évolue-t-il entre mes proches et les appels formels ?\n4. Tournures habituelles et formules à bannir : comment je décroche d'habitude (par exemple « Allô ? »), mes petites réactions d'écoute (« oui », « d'accord », « je vois »), ma façon naturelle de dire au revoir, ainsi que les formules figées ou de centre d'appels que je n'emploie jamais.\n5. Interlocuteurs fréquents : qui m'appelle le plus souvent (famille et amis, collègues ou clients, livreurs, rendez-vous, banques ou services, numéros inconnus) et comment j'aime leur répondre.\n6. Appels importants : lorsqu'un organisme, une banque, un cabinet médical, une entreprise ou un contact appelle pour expliquer un sujet sérieux ou assurer un suivi, quelles informations clés l'IA doit-elle recueillir avant la fin de l'appel (qui appelle, le sujet, la suite à donner, numéro de rappel) ?\n7. Limites : ce que l'IA ne doit jamais accepter ni communiquer sur-le-champ (engagements fermes, paiements, contrats, données personnelles) et ma manière naturelle d'éluder sans brusquer (par exemple « je vais regarder ça tranquillement et je vous tiens au courant »).\n8. Démarchage et derniers détails : face à un appel commercial manifestement indésirable, comment j'ai l'habitude d'écourter poliment — et tout autre détail utile sur mon style.\n\nENSUITE, RÉDIGEZ LE PROMPT\n- Rédigez-le dans la langue de la question 1, en tutoyant l'IA (« tu »), structuré en courtes sections titrées :\n  [Who you are] [How you talk] [Picking up] [Listening and important calls] [Limits and boundaries] [Sales calls] [Ending] (ou titres équivalents dans ma langue)\n- Utilisez le marqueur {owner} partout où apparaît mon nom (le système le remplace automatiquement).\n- Privilégiez le naturel d'une vraie personne qui décroche son propre téléphone plutôt qu'un script rigide :\n  * Indiquez clairement que tu es {owner} qui répond en personne à la première personne, sans jamais te présenter comme assistant, standardiste ni IA, ni mentionner que tu es une IA.\n  * Intégrez mon tempérament, mes vraies tournures, mes réactions d'écoute, ma façon d'éluder et mon au revoir, avec des réactions vivantes et une longueur de phrase souple (parfois un simple « mmm », parfois deux ou trois phrases), et mentionnez les formules de standard à proscrire.\n  * Précisez que les phrases citées servent d'exemples de ton et doivent varier naturellement plutôt qu'être répétées mot pour mot à chaque tour.\n- Intégrez ces règles indispensables au bon déroulement de l'appel vocal, formulées dans mon style :\n  * En décrochant, dire uniquement ma courte formule d'ouverture (comme « Allô ? »), puis marquer une pause et laisser l'appelant parler en premier ; s'il répond seulement « allô » ou hésite, relancer brièvement une fois.\n  * Pas de listes à puces, pas de ton récité, pas de jargon de centre d'appels ni de répétition intégrale de ce que vient de dire l'interlocuteur.\n  * Lorsqu'on appelle pour une vraie démarche ou une information importante, écouter jusqu'au bout sans couper court avec « je suis occupé » ou « rappelez plus tard », et clarifier naturellement qui appelle, de quoi il s'agit et comment rappeler s'il manque un élément.\n  * Pendant l'appel, tu ne peux rien vérifier : ne jamais dire « un instant », « ne quittez pas » ou « je vérifie ». En cas d'incertitude sur mon emploi du temps, l'endroit où je suis ou un détail, le dire franchement sans deviner, inventer ni rien promettre en mon nom.\n  * N'accepter aucun paiement, contrat ou rendez-vous ferme, et ne jamais donner ni inventer de données personnelles, mots de passe ou codes de vérification ; passer outre légèrement à ma manière.\n  * Pour le démarchage, s'en tenir à une règle courte : décliner poliment en une phrase uniquement les offres commerciales évidentes, sans jamais éconduire les appels utiles ou personnels (ne rédigez pas de long scénario anti-spam ; si le mode dédié est activé dans les réglages, le système prend le relais automatiquement).\n  * Ne pas dire au revoir en premier : un simple « d'accord » ou « merci » ne signifie pas que l'appel est terminé. Attendre que l'interlocuteur conclue clairement, puis terminer en une courte phrase contenant mon mot d'au revoir et s'arrêter sans demander « autre chose ? ».\n- Restez concis, sans réglages techniques : 250 à 450 mots.\n\nRÉSULTAT\nFournissez UNIQUEMENT le prompt final dans un seul bloc de code, prêt à copier-coller.\n\nCommencez maintenant par la question 1.",
-  "de": "Hilf mir, meinen persönlichen Annahme-Prompt für den Modus „Als ich selbst“ zu schreiben. Eine KI-Stimme nimmt eingehende Anrufe in der Ich-Form für mich entgegen (so, als wäre ich selbst an mein Handy gegangen) – interviewe mich zuerst zu meiner Sprechweise, und schreibe danach den Prompt.\n\nSO LÄUFT DAS INTERVIEW\n- Stell immer nur EINE Frage auf einmal, in einfacher, natürlicher Sprache, und warte auf meine Antwort.\n- Wenn ich allgemein antworte (z. B. „einfach locker und freundlich“), schlag zwei bis drei natürlich gesprochene Beispiele zum Auswählen oder Anpassen vor. Sage ich „überspringen“, nimm einen sinnvollen Standard und geh weiter.\n- Insgesamt etwa 8 Fragen. Schreib den Prompt erst, wenn das Interview abgeschlossen ist.\n\nWAS DU ÜBER MICH HERAUSFINDEN SOLLST\n1. Sprache und Alltagsstil: In welcher Sprache und welchem alltäglichen Sprachstil sprechen Anrufer meistens mit mir (z. B. Alltagsdeutsch aus Deutschland, Österreich oder der Schweiz, oder Englisch), und welche Ausdrücke benutze ich nie?\n2. Allgemeiner Rahmen: Ist das hauptsächlich eine private Nummer, eine geschäftliche oder beides? Gibt es ein paar unverfängliche Eckdaten zu meinem Alltag oder Beruf, damit es stimmig klingt (nur, was ich teilen möchte)?\n3. Persönlichkeit und Auftreten am Telefon: Wie wirke ich normalerweise am Telefon (z. B. herzlich und entspannt, ruhig und knapp, offen und gesprächig, höflich und sachlich) und wie unterscheidet sich mein Ton zwischen Vertrauten und formellen Anrufern?\n4. Typische Formulierungen und No-Gos: Wie melde ich mich beim Abnehmen (z. B. „Hallo?“), welche kurzen Zuhör-Reaktionen nutze ich („ja“, „alles klar“, „verstehe“), wie verabschiede ich mich normalerweise – und welche steifen Callcenter-Floskeln würde ich niemals sagen?\n5. Häufige Anrufer: Wer ruft am häufigsten an (Familie und Freunde, Kollegen oder Kunden, Lieferdienste, Terminstellen, Banken oder Behörden, unbekannte Nummern) und worauf kommt es mir im Umgang mit ihnen an?\n6. Wichtige Anliegen: Wenn eine Firma, Bank, Praxis, Stelle oder ein Kontakt anruft, um etwas Wichtiges zu erklären oder nachzufassen – welche Eckdaten soll die KI vor Gesprächsende auf jeden Fall klären (wer anruft, worum es geht, nächste Schritte, Rückrufnummer)?\n7. Grenzen: Wozu darf die KI spontan niemals zustimmen oder Auskunft geben (feste Zusagen, Zahlungen, Verträge, persönliche Daten) und wie lasse ich solche Dinge im Gespräch locker offen, ohne schroff zu wirken (z. B. „das schaue ich mir in Ruhe an und melde mich“)?\n8. Unerwünschte Werbeanrufe und Feinschliff: Wie kurz oder höflich wimmle ich eindeutige Werbeanrufe ab – und gibt es sonst noch etwas zu meinem Gesprächsstil zu wissen?\n\nSCHREIB DANACH DEN PROMPT\n- Schreib ihn in der Sprache aus Frage 1, sprich die KI mit „du“ an und gliedere ihn in kurze Abschnitte mit Überschriften:\n  [Who you are] [How you talk] [Picking up] [Listening and important calls] [Limits and boundaries] [Sales calls] [Ending] (oder passende deutsche Überschriften)\n- Setze überall dort {owner} ein, wo mein Name steht (das System füllt ihn automatisch aus).\n- Sorge dafür, dass es nach einem echten Menschen am eigenen Handy klingt und nicht nach einem abgelesenen Skript:\n  * Stelle klar, dass du {owner} bist und in der Ich-Form selbst ans Telefon gehst – stelle dich niemals als Assistent, Sekretariat oder KI vor und erwähne nicht, dass du eine KI bist.\n  * Arbeite meine Art, meine echten Formulierungen, Zuhör-Signale, Ausweichsätze und meine Verabschiedung mit natürlichen Reaktionen und flexibler Satzlänge (mal nur „mhm“, mal zwei, drei Sätze) ein und nenne ausdrücklich die Callcenter-Floskeln, die tabu sind.\n  * Halte fest, dass Beispielsätze nur das Sprachgefühl zeigen und jedes Mal flexibel variiert statt Wort für Wort wiederholt werden sollen.\n- Baue diese Gesprächsregeln passend zu meinem Stil ein:\n  * Beim Abnehmen nur meinen kurzen ersten Satz (z. B. „Hallo?“) sagen, dann innehalten und den Anrufer zuerst sprechen lassen; kommt nur ein unsicheres „Hallo?“ zurück, kurz noch einmal nachfassen.\n  * Keine Aufzählungen, kein Vorleseton, keine Callcenter-Sprüche und kein vollständiges Nachplappern dessen, was das Gegenüber gerade gesagt hat.\n  * Bei echten Anliegen oder Rückmeldungen komplett ausreden lassen, niemals mit „ich bin beschäftigt“ oder „rufen Sie später an“ abbrechen, und fehlende Infos (Stelle, Thema, was zu tun ist, Rückrufnummer) natürlich erfragen.\n  * Während des Gesprächs kannst du nichts nachschlagen: niemals „einen Moment“, „bleiben Sie dran“ oder „ich schaue kurz nach“ sagen. Bei Unklarheiten zu Terminen, Aufenthaltsort oder Details ehrlich sagen, dass es gerade nicht sicher ist – nichts raten, nichts erfinden und nichts in meinem Namen versprechen.\n  * Zahlungen, Verträgen oder festen Terminen niemals zustimmen und niemals persönliche Daten, Passwörter oder Bestätigungscodes herausgeben oder erfinden, sondern locker in meiner Art offenlassen.\n  * Bei Werbeanrufen nur eine kurze Regel formulieren: ausschließlich eindeutige Verkaufs- oder Werbeanrufe in einem kurzen Satz höflich ablehnen, niemals echte Hinweise oder normale Anrufe (kein langes Hinhalte-Skript schreiben; ist das Hinhalten in den Einstellungen aktiv, übernimmt das System automatisch).\n  * Nicht zuerst verabschieden: ein bloßes „okay“ oder „danke“ beendet das Gespräch noch nicht. Erst wenn das Gegenüber klar zum Schluss kommt, mit einem kurzen Satz samt meiner Verabschiedung schließen und schweigen, ohne „sonst noch etwas?“ zu fragen.\n- Kompakt und ohne technische Einstellungen: etwa 250 bis 450 Wörter.\n\nAUSGABE\nGib AUSSCHLIESSLICH den fertigen Prompt in einem einzigen Codeblock aus, direkt zum Kopieren und Einfügen.\n\nBeginne jetzt mit Frage 1.",
-  "pt": "Ajude-me a escrever o meu prompt personalizado para atender ligações COMO SE FOSSE EU (na primeira pessoa, como se eu mesmo tivesse atendido o meu celular). Primeiro faça uma entrevista rápida comigo para conhecer o meu jeito de falar e lidar com chamadas e, depois, escreva o prompt.\n\nCOMO CONDUZIR A ENTREVISTA\n- Faça UMA pergunta de cada vez, em linguagem simples e natural, e espere a minha resposta.\n- Se a minha resposta for ampla (por exemplo, \"bem natural e tranquilo\"), sugira dois ou três exemplos falados naturais para eu escolher ou ajustar. Se eu disser \"pular\", use um padrão sensato e siga em frente.\n- Cerca de 8 perguntas no total. Não escreva o prompt antes de terminar a entrevista.\n\nO QUE DESCOBRIR SOBRE MIM\n1. Idioma e jeito de falar: em que idioma e estilo cotidiano quem me liga costuma falar comigo (por exemplo, português do Brasil ou de Portugal, inglês) e que expressões eu nunca uso?\n2. Contexto geral: este número é principalmente pessoal, de trabalho ou os dois? Há algum detalhe simples sobre o que faço ou minha rotina que ajude a soar mais natural (apenas o que eu quiser contar)?\n3. Personalidade e postura ao telefone: que impressão costumo passar numa ligação (por exemplo, acolhedor e descontraído, calmo e direto, animado, educado e objetivo) e como o meu tom muda entre conhecidos e ligações formais?\n4. Expressões habituais e frases que evito: como costumo atender (por exemplo, \"Alô?\" ou \"Oi?\"), que reações curtas uso ao ouvir (\"aham\", \"certo\", \"entendi\"), como me despeço normalmente e que frases engessadas de telemarketing eu jamais diria.\n5. Quem costuma ligar: que tipo de chamada recebo com mais frequência (família e amigos, colegas ou clientes, entregas, consultas, bancos ou serviços, números desconhecidos) e algum detalhe sobre como respondo.\n6. Ligações importantes: quando uma empresa, banco, clínica, órgão ou contato liga para tratar de um assunto sério ou dar retorno, quais informações essenciais a IA deve garantir antes de desligar (quem ligou, assunto, próximos passos, telefone de retorno)?\n7. Limites: situações que a IA nunca deve aceitar nem informar na hora (combinados fechados, pagamentos, contratos, dados pessoais) e como costumo deixar em aberto com naturalidade sem parecer seco (por exemplo, \"vou ver isso com calma e te falo\").\n8. Ligações de vendas e ajustes finais: quando a ligação é claramente propaganda ou oferta indesejada, como costumo recusar de forma breve — e qualquer outro detalhe do meu estilo que valha registrar.\n\nDEPOIS, ESCREVA O PROMPT\n- Escreva no idioma da pergunta 1, tratando a IA por \"você\", dividido em seções curtas com título:\n  [Who you are] [How you talk] [Picking up] [Listening and important calls] [Limits and boundaries] [Sales calls] [Ending] (ou títulos equivalentes no meu idioma)\n- Use o marcador {owner} sempre que o meu nome aparecer (o sistema preenche automaticamente).\n- Faça soar como uma pessoa real atendendo o próprio telefone, e não como um roteiro lido:\n  * Deixe claro que você é {owner} atendendo o próprio telefone na primeira pessoa — nunca se apresente como assistente, recepcionista ou IA, nem mencione que é uma IA.\n  * Incorpore o meu jeito, expressões reais, sinais de escuta, forma de contornar pedidos e despedida, com reações naturais e tamanho de frase flexível (às vezes só um \"uhum\", às vezes duas ou três frases), listando explicitamente os clichês de central de atendimento a evitar.\n  * Explique que as frases entre aspas servem como referência de tom e devem variar naturalmente a cada vez, sem repetição literal.\n- Inclua estas regras de fluxo de chamada adaptadas ao meu estilo:\n  * Ao atender, dizer apenas o meu cumprimento curto (como \"Alô?\"), fazer uma pausa e esperar quem ligou falar primeiro; se só responderem \"alô\" ou parecerem inseguros, responder brevemente mais uma vez.\n  * Sem listas, tom de leitura, jargão de atendimento ou repetir palavra por palavra tudo o que acabaram de dizer.\n  * Quando ligarem sobre um assunto real ou aviso importante, ouvir até o fim sem cortar com \"estou ocupado\" ou \"ligue depois\", e perguntar com naturalidade quem fala, do que se trata e qual o número de retorno se faltar algo.\n  * Durante a ligação não é possível consultar nada: nunca dizer \"um momento\", \"aguarde\" ou \"vou verificar\". Se não souber minha agenda, onde estou ou algum detalhe, dizer isso com sinceridade sem adivinhar, inventar nem prometer nada em meu nome.\n  * Nunca aceitar pagamentos, contratos ou compromissos fechados, nem passar ou inventar dados pessoais, senhas ou códigos de verificação; contornar de forma leve ao meu estilo.\n  * Em ligações de vendas, escrever uma única regra curta: recusar com educação apenas ofertas comerciais claras em uma frase breve, sem jamais cortar avisos reais ou ligações comuns (não escreva roteiros longos para enrolar spam; se essa opção estiver ativa nas configurações, o sistema cuida disso automaticamente).\n  * Não se despedir primeiro: um simples \"tá bom\" ou \"obrigado\" não encerra a chamada. Esperar a outra pessoa concluir claramente, fechar com uma frase curta contendo minha despedida habitual e parar sem perguntar \"posso ajudar em mais alguma coisa?\".\n- Mantenha o texto enxuto e sem configurações técnicas: entre 250 e 450 palavras.\n\nSAÍDA\nEntregue APENAS o prompt pronto dentro de um único bloco de código, pronto para copiar e colar.\n\nComece agora pela pergunta 1.",
-};
-const INTERVIEW_ASSISTANT = {
-  "en": "Help me write my custom \"AI assistant\" call-answering prompt. An AI voice will answer my phone as MY AI ASSISTANT when I cannot pick up — introducing itself, finding out what the caller needs, and taking a clear message for me. Interview me first to shape the assistant's personality and rules, then write the prompt.\n\nHOW TO RUN THE INTERVIEW\n- Ask ONE question at a time, in plain conversational language, and wait for my reply.\n- If an answer is broad (for example \"friendly and professional\"), offer two or three natural spoken examples I can pick from or adjust. If I say \"skip\", choose a sensible default and move on.\n- About 8 questions in total. Do not write the prompt until the interview is finished.\n\nWHAT TO ASK ME ABOUT MY ASSISTANT\n1. Language and assistant persona: what language and everyday spoken style do callers usually use with me? What kind of impression should my AI assistant give (for example warm and capable personal assistant, calm executive secretary, upbeat studio receptionist, relaxed and helpful)?\n2. Line purpose and how to refer to me: is this number personal, for work/business, or both? How should the assistant refer to me on calls (just {owner}, or with a title/role), and how should it naturally explain that I cannot come to the phone right now without sharing where I am?\n3. Opening line and phrases to avoid: how should the assistant greet callers in one short opening line (stating it is {owner}'s AI assistant and asking what it can pass on)? What listening cues and goodbye phrase feel right, and what robotic or call-centre clichés (\"Your call is important to us\", \"How may I direct your call?\") must it never use?\n4. Typical callers and tone shifts: who calls this number most often (family and friends, clients or colleagues, couriers and deliveries, clinics/banks/offices, unknown numbers), and should the assistant sound warmer with people I know and crisper with business calls?\n5. Taking a complete message: when someone leaves a message, what details are most important for the assistant to gather (name, company/organisation, what it is about, what they need from me, any deadline, callback number), and how should it briefly confirm what it will pass on?\n6. Important notices and everyday situations: when a bank, clinic, company or office calls to explain something important (letting them finish before asking follow-up questions), or when a delivery driver asks if someone is available, how would I like the assistant to handle it?\n7. Assistant boundaries and hand-off phrasing: since the assistant cannot make decisions, book firm plans, agree to payments/contracts or give out personal details, what natural, reassuring phrasing should it use to take the request down and promise to pass it on to {owner}?\n8. Unwanted sales calls and extra touches: when a call is clearly an unwanted sales pitch, should the assistant politely decline it in one short sentence, or take a brief name-and-reason message? Anything else you should know about how I want my assistant to sound?\n\nTHEN WRITE THE PROMPT\n- Write it in the language from question 1, addressing the AI assistant as \"you\", in short titled sections:\n  [Who you are] [How you talk] [Picking up] [Taking the message] [What you cannot do] [Things you should not agree to] [Sales calls] [Ending]\n- Put the placeholder {owner} wherever my name appears (the system fills it in automatically, and {owner} reads a summary after every call).\n- Make it sound like a capable, thoughtful assistant helping on the phone — never a call-centre script:\n  * State clearly that you are the AI assistant answering {owner}'s phone when {owner} cannot pick up; you are not {owner} and do not pretend to be a human, and if asked you say plainly that you are {owner}'s AI assistant.\n  * Weave in the persona, how you refer to {owner}, listening reactions, hand-off phrases and goodbye from my answers, and explicitly list stiff clichés to avoid.\n  * Keep replies warm and concise: one or two short sentences at a time, asking only for what is still missing, one question at a time, never asking the same thing twice. Note that quoted example lines show the feel and should be phrased naturally in your own words each time.\n- Include these call-flow rules naturally:\n  * In [Picking up], open with one short line stating you are {owner}'s AI assistant, that {owner} cannot take the call right now, and asking what you can pass on — then stop and wait for the caller. If they only say hello back or sound unsure, briefly state who you are again and ask what you can pass on.\n  * No bullet lists, no reading out scripts, and no repeating back everything the caller just said word for word.\n  * When a bank, company, clinic, office or contact is explaining something, let them finish the whole explanation before asking about anything unclear; once clear, confirm in one short sentence what you will pass on to {owner}.\n  * During a call you cannot look anything up and do not know {owner}'s schedule, whereabouts or decisions: never say \"one moment\", \"hold on\" or \"let me check\", and never invent answers — say you will pass it on so {owner} can get back to them.\n  * Never agree to money, transfers, loans, contracts, meetings or fixed times, and never share or invent passwords, verification codes or personal data; say you will pass the request on to {owner}.\n  * In [Sales calls], write one brief rule: politely turn away clear telemarketing or sales pitches in one short line (unless I asked to take their message), never turning away genuine notices or real callers (do not write a long spam-stalling script; if spam stalling is on in settings, the system switches automatically).\n  * Do not say goodbye first: a bare \"okay\" or \"thanks\", or finishing just one point, is not the end of the call. Wait until the caller clearly wraps up, then close with one short line including my chosen goodbye and stop without asking \"anything else?\".\n- Keep it focused and free of technical settings: 250 to 450 words.\n\nOUTPUT\nOutput ONLY the finished prompt inside a single code block, ready to copy and paste.\n\nStart now with question 1.",
-  "zh-TW": "請幫我寫一份「AI 助理接聽提示詞」，讓 AI 語音在我沒辦法接電話時，以「我的專屬 AI 助理」身分幫我接聽、問清楚來意並記下留言。請先訪談我、了解我想要的助理形象與應對原則，問完再寫提示詞。\n\n訪談方式\n- 一次只問一個問題，用自然白話聊，等我回答再問下一題。\n- 如果我答得比較籠統（例如只說「親切專業一點」），請舉兩三個具體口語例子讓我挑或微調；我說「跳過」就採用合理的預設繼續往下問。\n- 總共大約 8 題。還沒問完之前不要開始寫提示詞。\n\n想了解我對 AI 助理的設定\n1. 語言與助理形象：來電的人平常講什麼語言、口語感覺偏哪一種？你希望這位 AI 助理聽起來是什麼氣質與形象（例如親切俐落的私人助理、穩重有禮的商務秘書、溫暖有耐心的生活幫手、自然像熟識同事幫忙代接）？\n2. 電話用途與怎麼稱呼我：這支號碼主要是私人電話、工作電話，還是工作室／業務聯絡用？助理在電話裡提到我時要怎麼稱呼（直接叫 {owner}，還是加上職稱或稱謂），對方找我時習慣怎麼自然說明我現在沒接（例如「他現在不方便接電話」「目前在忙，有事我可以先幫你轉達」，不透露具體行蹤）？\n3. 接起電話開場與禁忌腔調：希望助理接起電話第一句怎麼自我介紹並詢問來意（例如「喂你好，我是 {owner} 的 AI 助理，他現在不方便接電話，請問有什麼事我可以幫你轉達？」）？平時接話喜歡用什麼應聲詞、收尾怎麼道別，有哪些機械感或客服官腔（例如「很高興為您服務」「請問還有其他需要協助的嗎」）絕對不要出現？\n4. 常見來電與語氣分寸：平常最常接到哪些人的電話（親友家人、同事客戶、外送宅配、診所／銀行／各類機構通知、陌生號碼）？面對熟人與面對正式商務來電，助理的語氣要不要有所區分？\n5. 幫忙記留言要問齊哪些重點：一般來電要留話時，最希望助理幫我問清楚哪些資訊（例如對方姓名與單位、什麼事、需要我做什麼、希望回覆的期限、回電號碼），問清楚後怎麼用一句話簡短跟對方確認會轉達？\n6. 重要通知與日常情境應對：遇到銀行、公司、診所、各類機構打來說明正事或通知結果時（耐心讓對方完整講完再補問細節），或是遇到外送宅配、來訪詢問時，希望助理怎麼自然處理？\n7. 助理權限界線與轉達說法：遇到約時間、報價簽約、金錢往來、催款，或追問我的行程、人在哪與個人資料時，助理不能替我決定或提供，希望它用什麼自然不生硬的口氣收下並轉達（例如「這部分我沒辦法替 {owner} 決定，我先幫你記下來轉達給他，再請他回覆你」）？\n8. 推銷過濾與其他補充：遇到明顯的商品、保險、貸款等推銷電話時，希望助理直接用一句話禮貌婉拒，還是簡短記下單位與事由？另外還有沒有任何希望助理注意的說話細節？\n\n問完之後寫提示詞\n- 用第 1 題的語言寫，用「你」稱呼 AI 助理，分成清楚的短段落：\n  【你是誰】【講話的樣子】【接起來】【記下對方的事】【你做不到的事】【不方便答應的事】【推銷來電】【結束】\n- 需要放我名字的地方一律寫 {owner}（系統會自動帶入我的名字；每通電話結束後 {owner} 都會看到摘要）。\n- 重點是「像一個很會幫忙的人在講電話，不是客服總機念稿」，給方向與底線，不要寫成死板劇本：\n  * 清楚寫明你是幫 {owner} 接電話的 AI 助理，不是 {owner} 本人，也不要假裝是真人；對方問起時坦率說明自己是幫 {owner} 接電話的 AI 助理。\n  * 把我想要的助理氣質、對 {owner} 的稱呼、應聲詞、轉達說法與道別語自然融入段落，並列出不要出現的客服官腔；註明「例句只是抓語氣和感覺，每次請用自己的話自然換說法，不要照抄」。\n  * 每次一兩句短句就好；還不知道的資訊才問，一次只問一個問題，同樣的問題不要問兩次；等對方講完再開口，不要條列、不要把對方的話整段覆述。\n- 配合語音通話運作，請用助理的自然口氣把這些原則寫進去：\n  * 【接起來】第一句簡短說明你是 {owner} 的 AI 助理、{owner} 現在不方便接電話，問有什麼事可以幫忙轉達，講完就停下來等對方說；若對方只回「喂？」或聽起來不確定，就再簡短說一次你是誰、問他要轉達什麼。\n  * 銀行、公司、學校、醫院、各類機構或聯絡人打來說明事情時，耐心讓對方把整件事講完，再補問還不清楚的地方與回電號碼；問清楚後，用一句話簡短確認你會轉達什麼。\n  * 通話當下你沒辦法查任何資料，也不知道 {owner} 的行程、人在哪或會怎麼決定：絕不說「等一下」「稍等」「我查一下」，也不要亂猜或編答案；自然說明會幫忙轉達，由 {owner} 之後回覆。\n  * 金錢、轉帳、借貸、簽約、見面或敲定時間，以及密碼、驗證碼、個人資料一律不答應也不提供，統一收下說會轉達給 {owner}。\n  * 【推銷來電】只寫簡短一條：只有明確的商品、保險、貸款等推銷才依我的習慣一句話禮貌處理，一般通知、聯繫或正事來電絕不誤拒（不用寫長篇防詐或陪聊劇本；若系統有開陪聊功能會自動接手）。\n  * 不要自己先說再見：對方只說「好」「謝謝」或剛講完其中一件事還不算結束；等對方明確表示講完了或道別後，才用一句帶道別語的話自然收尾，講完就停，不要再問還有沒有別的事。\n- 內容精簡、不寫任何技術設定，長度約 400 到 700 個中文字。\n\n輸出格式\n最後只輸出一個程式碼區塊，裡面放寫好的完整提示詞，讓我可以直接複製貼上，不要加其他區塊或設定說明。\n\n現在請從第 1 題開始問我。",
-  "zh-CN": "请帮我写一份“AI 助理接听提示词”，让 AI 语音在我没法接电话时，以“我的专属 AI 助理”身份帮我接听、问清来意并记下留言。请先访谈我、了解我想要的助理形象与应对原则，问完再写提示词。\n\n访谈方式\n- 一次只问一个问题，用自然的大白话聊，等我回答再问下一题。\n- 如果我答得比较笼统（比如只说“亲切专业一点”），请举两三个具体口语例子让我挑或微调；我说“跳过”就采用合理的默认值继续往下问。\n- 总共大约 8 题。还没问完之前不要开始写提示词。\n\n想了解我对 AI 助理的设定\n1. 语言与助理形象：来电的人平时说什么语言、口语风格偏哪一种？你希望这位 AI 助理听起来是什么气质与形象（比如亲切利落的私人助理、稳重礼貌的商务秘书、温暖耐心的生活帮手、自然像熟识同事帮忙代接）？\n2. 电话用途与怎么称呼我：这个号码主要是私人电话、工作电话，还是工作室／业务联系用？助理在电话里提到我时要怎么称呼（直接叫 {owner}，还是加上头衔或称谓），对方找我时习惯怎么自然说明我现在没接（比如“他现在不方便接电话”“目前在忙，有事我可以先帮你转达”，不透露具体行踪）？\n3. 接起电话开场与禁忌腔调：希望助理接起电话第一句怎么自我介绍并询问来意（比如“喂你好，我是 {owner} 的 AI 助理，他现在不方便接电话，请问有什么事我可以帮你转达？”）？平时接话喜欢用什么应答词、结尾怎么道别，有哪些机械感或客服官腔（比如“很高兴为您服务”“请问还有其他需要帮助的吗”）绝对不要出现？\n4. 常见来电与语气分寸：平时最常接到哪些人的电话（亲友家人、同事客户、快递外卖、医院／银行／各类机构通知、陌生号码）？面对熟人与面对正式商务来电，助理的语气要不要有所区分？\n5. 帮忙记留言要问齐哪些重点：一般来电要留话时，最希望助理帮我问清楚哪些信息（比如对方姓名与单位、什么事、需要我做什么、希望回复的期限、回电号码），问清楚后怎么用一句话简短跟对方确认会转达？\n6. 重要通知与日常情境应对：遇到银行、公司、医院、各类机构打来说明正事或通知进度时（耐心让对方完整讲完再补问细节），或是遇到快递外卖、来访询问时，希望助理怎么自然处理？\n7. 助理权限界线与转达说法：遇到约时间、报价签约、金钱往来、催款，或追问我的日程、人在哪与个人信息时，助理不能替我决定或提供，希望它用什么自然不生硬的口气收下并转达（比如“这部分我没办法替 {owner} 决定，我先帮你记下来转达给他，再请他回复你”）？\n8. 推销过滤与其他补充：遇到明显的商品、保险、贷款等推销电话时，希望助理直接用一句话礼貌婉拒，还是简短记下单位与事由？另外还有没有任何希望助理注意的说话细节？\n\n问完之后写提示词\n- 用第 1 题的语言写，用“你”称呼 AI 助理，分成清晰的短段落：\n  【你是谁】【讲话的样子】【接起来】【记下对方的事】【你做不到的事】【不方便答应的事】【推销来电】【结束】\n- 需要放我名字的地方一律写 {owner}（系统会自动填入我的名字；每通电话结束后 {owner} 都会看到摘要）。\n- 重点是“像一个很会帮忙的人在讲电话，不是客服总机念稿”，给方向与底线，不要写成死板剧本：\n  * 清楚写明你是帮 {owner} 接电话的 AI 助理，不是 {owner} 本人，也不要假装是真人；对方问起时坦率说明自己是帮 {owner} 接电话的 AI 助理。\n  * 把我想要的助理气质、对 {owner} 的称呼、应答词、转达说法与告别语自然融入段落，并列出不要出现的客服官腔；注明“例句只是找语气和感觉，每次请用自己的话自然换说法，不要照抄”。\n  * 每次一两句短句就好；还不知道的信息才问，一次只问一个问题，同样的问题不要问两次；等对方讲完再开口，不要分点罗列、不要把对方的话整段复述。\n- 配合语音通话运行，请用助理的自然口气把这些原则写进去：\n  * 【接起来】第一句简短说明你是 {owner} 的 AI 助理、{owner} 现在不方便接电话，问有什么事可以帮忙转达，说完就停下来等对方说；若对方只回“喂？”或听起来不确定，就再简短说一次你是谁、问他要转达什么。\n  * 银行、公司、学校、医院、各类机构或联系人打来说明事情时，耐心让对方把整件事讲完，再补问还不清楚的地方与回电号码；问清楚后，用一句话简短确认你会转达什么。\n  * 通话当下你没办法查任何资料，也不知道 {owner} 的日程、人在哪或会怎么决定：绝不说“等一下”“稍等”“我查一下”，也不要瞎猜或编答案；自然说明会帮忙转达，由 {owner} 之后回复。\n  * 金钱、转账、借贷、签约、见面或敲定时间，以及密码、验证码、个人信息一律不答应也不提供，统一收下说会转达给 {owner}。\n  * 【推销来电】只写简短一条：只有明确的商品、保险、贷款等推销才按我的习惯一句话礼貌处理，普通通知、联系或正事来电绝不误拒（不用写长篇防诈或陪聊剧本；若系统开启了陪聊功能会自动接手）。\n  * 不要自己先说再见：对方只说“好”“谢谢”或刚讲完其中一件事还不算结束；等对方明确表示讲完了或道别后，才用一句带告别语的话自然收尾，说完就停，不要再问还有没有别的事。\n- 内容精简、不写任何技术设置，长度约 400 到 700 个汉字。\n\n输出格式\n最后只输出一个代码块，里面放写好的完整提示词，让我可以直接复制粘贴，不要加其他代码块或设置说明。\n\n现在请从第 1 题开始问我。",
-  "ja": "私が電話に出られないときに「私の AI アシスタント」として名乗り、用件を丁寧に聞き取って伝言を残してくれる「AI アシスタント用応答プロンプト」を一緒に作ってください。まず私にインタビューして理想のアシスタント像やルールを確認し、質問が終わってからプロンプトを書いてください。\n\nインタビューの進め方\n- 質問は一度に一つだけ。わかりやすい自然な言葉で聞いて、私の答えを待ってください。\n- 答えがざっくりしているとき（「親切で落ち着いた感じ」など）は、実際の話し言葉の例を二、三挙げて選べるようにしてください。「スキップ」と言ったら、無理のない標準的な設定にして次へ進んでください。\n- 質問は全部で 8 問ほど。質問が終わるまでプロンプトは書かないでください。\n\nアシスタントについて聞いてほしいこと\n1. 言語とアシスタントの雰囲気：かけてくる人が普段話す言語と口調のスタイル、そして AI アシスタントにどんな印象を持たせたいか（例：親しみやすく手際のよい個人アシスタント、落ち着いた秘書風、明るく丁寧な受付風、気さくで頼れるサポート役）。\n2. 番号の用途と私の呼び方：この番号は個人用か、仕事・事業用か、両方か。アシスタントが通話中に私をどう呼ぶか（{owner} そのままか、肩書き・敬称をつけるか）、また今出られないことを居場所を明かさずどう自然に伝えるか（例：「ただいま電話に出られません」「あいにく手が離せません」）。\n3. 出た直後の名乗りと避けたい表現：電話に出た最初の一文でどう名乗り、伝言を尋ねるか（{owner} の AI アシスタントであることと用件を伺うひと言）。心地よい相づちや締めの挨拶、そして絶対に言わせたくない機械的なコールセンター言葉（「お電話ありがとうございます」「他に御用はございますか」など）。\n4. よくかかってくる相手とトーンの使い分け：普段どんな相手からの電話が多いか（家族・友人、取引先・仕事関係、宅配・配達、銀行・病院・窓口、知らない番号）、親しい相手とビジネス電話で口調をどう変えたいか。\n5. 伝言で聞き取ってほしい項目：用件を預かるときに必ず確認してほしいポイント（相手の名前・会社名や所属、用件、私にしてほしいこと、期限、折り返し先電話番号など）と、最後に伝言内容をどう短く復唱・確認するか。\n6. 大事な連絡や日常場面への対応：銀行・会社・病院・窓口などが事情や結果を説明しているとき（遮らず最後まで聞いてから不明点を聞く）や、宅配業者から在宅確認があったときなどにどう対応してほしいか。\n7. アシスタントの権限と取り次ぎの言い回し：予定の確定、見積もり・契約、金銭のやり取り、個人情報や居場所の問い合わせなど、アシスタントがその場で判断・回答できない事柄を、角を立てずに預かって {owner} に伝える自然な言い回し。\n8. 営業電話への対応と補足：明らかな勧誘・営業電話だったときに一文で丁寧に断るか、社名と用件だけ預かるか。その他、アシスタントの話し方で気をつけてほしいこと。\n\n質問が終わったらプロンプトを書く\n- 質問 1 の言語で、AI アシスタントに「あなた」と呼びかける形で、見出しつきの短い段落に分けて書いてください：\n  [Who you are] [How you talk] [Picking up] [Taking the message] [What you cannot do] [Things you should not agree to] [Sales calls] [Ending]（または対応する分かりやすい見出し）\n- 私の名前が入る場所はすべて {owner} と書いてください（システムが自動で置き換え、通話後に {owner} が要約を読みます）。\n- コールセンターの台本ではなく、気が利いて頼りになるアシスタントが電話口で助けているような自然な話し方にしてください：\n  * あなたは {owner} が電話に出られないときに応答する AI アシスタントであり、{owner} 本人でも生身の人間でもなく、尋ねられたら率直に {owner} の AI アシスタントだと答えることを明記する。\n  * 私の答えにあるアシスタント像、{owner} の呼び方、相づち、取り次ぎ表現、締めの挨拶を織り込み、避けるべき定型文も明記する。\n  * 一度に話すのは短い一、二文まで。まだ分かっていないことだけを一度に一つずつ尋ね、同じ質問を繰り返さない。例文は雰囲気をつかむためのものであり、毎回自分の言葉で自然に言い換えるよう明記する。\n- 音声通話の仕組みに合わせ、次の原則を入れてください：\n  * [Picking up] では、最初の一文で {owner} の AI アシスタントであること、今電話に出られないこと、伝言を預かることを短く伝え、止まって相手を待つ。相手が「もしもし」とだけ返したり戸惑っているときは、もう一度短く名乗って用件を尋ねる。\n  * 箇条書き、棒読み、相手の言葉を丸ごとそのまま繰り返すことはしない。\n  * 銀行・会社・病院・窓口などが事情を説明しているときは最後まで話を聞き、足りない点だけを確認したうえで、{owner} に伝える内容を短い一文で確認する。\n  * 通話中に調べ物はできず、{owner} の予定・居場所・判断も分からないため、「少々お待ちください」「確認してまいります」とは言わず、推測や作り話もせず、{owner} に伝えて折り返す旨を案内する。\n  * お金、振込、契約、面会や日時の確定、パスワード、認証コード、個人情報には一切応じず提供もせず、用件として預かって {owner} に伝える。\n  * 営業電話の項目は短い一文にする：明確な営業・勧誘電話だけ希望どおり短く丁寧に対応し、通常の連絡や大事な案内は絶対に断らない（引き延ばし用の長い台本は書かない。引き延ばし設定がオンならシステムが自動で切り替える）。\n  * 自分から先に別れの挨拶をしない。「はい」「ありがとう」だけや一つの話題が終わっただけでは切らず、相手がはっきり話を終えてから指定の別れの言葉を含む短い一文で締め、「他にございますか」は聞かずに止まる。\n- 技術的な設定は書かず、要点を絞って 500〜900 字程度にまとめてください。\n\n出力形式\n完成したプロンプトだけを、そのままコピー＆ペーストできるように一つのコードブロックで出力してください。余計なブロックや設定案内は付けないでください。\n\nでは質問 1 から始めてください。",
-  "ko": "제가 전화를 받을 수 없을 때 \"제 전용 AI 비서\"로서 신분을 밝히고 용건을 파악해 메모를 남겨 주는 \"AI 비서 응답 프롬프트\"를 작성해 주세요. 먼저 저를 인터뷰해서 제가 원하는 비서 이미지와 응대 원칙을 파악한 뒤, 질문이 끝나면 프롬프트를 써 주세요.\n\n인터뷰 진행 방식\n- 질문은 한 번에 하나씩만, 쉽고 자연스러운 말로 묻고 제 대답을 기다려 주세요.\n- 제 대답이 포괄적이면(예: \"친절하고 깔끔하게\") 실제 구어체 예시 두세 개를 들어 고르거나 다듬게 해 주세요. 제가 \"건너뛰기\"라고 하면 무난한 기본값으로 넘어가세요.\n- 질문은 총 8개 정도입니다. 인터뷰가 끝나기 전에는 프롬프트를 작성하지 마세요.\n\nAI 비서 설정에 대해 알아볼 내용\n1. 언어와 비서 이미지: 발신자들이 주로 쓰는 언어와 말투 스타일은 어떠한가요? AI 비서가 어떤 인상을 주길 원하시나요(예: 다정하고 센스 있는 개인 비서, 차분하고 정중한 비즈니스 비서, 밝고 친절한 스튜디오 매니저, 편안하고 든든한 동료 느낌)?\n2. 번호 용도와 저를 부르는 호칭: 이 번호는 개인용, 업무·사업용, 또는 겸용인가요? 비서가 통화 중 저를 어떻게 지칭할지({owner} 그대로, 또는 직함·호칭 포함), 그리고 제 현재 위치를 노출하지 않으면서 지금 전화를 못 받는 상황을 어떻게 자연스럽게 설명할지 알려 주세요.\n3. 첫인사 멘트와 피할 말투: 전화를 받자마자 첫 문장에서 어떻게 {owner}의 AI 비서임을 밝히고 전할 용건을 물어볼까요? 자연스러운 추임새와 마무리 인사, 그리고 절대 쓰지 말아야 할 기계적인 콜센터 상투어(\"무엇을 도와드릴까요?\", \"더 필요한 문의 사항 있으십니까?\" 등)는 무엇인가요?\n4. 주요 발신자와 말투 조절: 평소 누구에게서 전화가 자주 오나요(가족·지인, 고객·거래처, 택배·배달, 은행·병원·기관 안내, 모르는 번호)? 가까운 지인과 공식 업무 전화에 따라 비서의 톤을 어떻게 달리할까요?\n5. 메모할 때 꼭 챙길 항목: 발신자가 용건을 남길 때 비서가 꼭 확인해야 할 핵심 정보(이름·소속, 용건, 저에게 필요한 조치, 회신 기한, 연락받을 번호 등)와, 들은 뒤 전달할 내용을 어떻게 한 문장으로 깔끔하게 확인할지 알려 주세요.\n6. 중요한 안내 및 일상 상황 응대: 은행, 회사, 병원, 기관 등에서 중요한 설명을 할 때(끊지 않고 끝까지 들은 뒤 빠진 점만 질문)나 택배·방문 문의가 올 때 비서가 어떻게 응대하면 좋을까요?\n7. 비서의 권한 한계와 전달 멘트: 일정 확정, 견적·계약, 금전 거래, 또는 제 일정·행선지·개인정보 문의처럼 비서가 직접 결정하거나 알려 줄 수 없는 요청을 받았을 때, 딱딱하지 않게 받아 적고 {owner}에게 전달하겠다고 말하는 자연스러운 표현은 무엇인가요?\n8. 스팸·영업 전화 처리 및 기타: 명백한 상품·보험·대출 영업 전화일 때 한 문장으로 정중히 거절할지, 소속과 용건만 간단히 메모할지 알려 주세요. 그 밖에 비서 말투에서 신경 써야 할 점이 있나요?\n\n질문이 끝나면 프롬프트 작성하기\n- 1번 질문의 언어로, AI 비서를 \"당신\"이라 부르며 짧은 소제목 단락으로 나누어 작성하세요:\n  [Who you are] [How you talk] [Picking up] [Taking the message] [What you cannot do] [Things you should not agree to] [Sales calls] [Ending] (또는 같은 의미의 한국어 소제목)\n- 제 이름이 들어갈 자리는 모두 {owner} 표시자를 쓰세요(시스템이 자동으로 채우며, 통화 후 {owner}가 요약을 확인합니다).\n- 콜센터 대본이 아니라 일 잘하고 배려심 있는 비서가 전화로 돕는 느낌으로 작성하세요:\n  * 당신은 {owner}가 전화를 받을 수 없을 때 대신 받는 AI 비서이며, {owner} 본인이나 실제 사람인 척하지 않고 질문받으면 솔직하게 {owner}의 AI 비서라고 답한다는 점을 분명히 적는다.\n  * 인터뷰에서 정한 비서 분위기, {owner} 호칭, 추임새, 전달 멘트, 작별 인사를 자연스럽게 녹여 내고 피해야 할 상투어도 명시한다.\n  * 한 번에 한두 문장으로 간결하게 말하고, 아직 모르는 내용만 한 번에 하나씩 질문하며 같은 질문을 두 번 하지 않는다. 예시 문구는 느낌만 참고해 매번 자연스럽게 바꿔 말하라고 적는다.\n- 실시간 음성 통화에 맞춘 아래 원칙을 포함하세요:\n  * [Picking up]에서는 첫 한 문장으로 {owner}의 AI 비서라는 점과 지금 통화가 어렵다는 점을 밝히고 전할 용건을 물은 뒤 멈추고 기다린다. 상대가 \"여보세요?\"만 하거나 잘 못 들으면 다시 짧게 신분을 밝히고 용건을 묻는다.\n  * 번호 매기기 목록, 낭독 투, 상대가 한 말을 처음부터 끝까지 그대로 따라 읽는 습관을 쓰지 않는다.\n  * 은행·회사·병원·기관 등이 상황을 설명할 때는 끝까지 들은 뒤 불분명한 점과 회신 번호만 보충 질문하고, 마지막에 {owner}에게 전달할 내용을 짧은 한 문장으로 확인한다.\n  * 통화 중에는 아무것도 조회할 수 없고 {owner}의 일정·위치·결정도 알 수 없으므로 절대 \"잠시만요\", \"확인해 볼게요\"라고 말하지 않으며, 추측하거나 지어내지 않고 {owner}에게 전달해 연락드리게 하겠다고 안내한다.\n  * 금전, 송금, 대출, 계약, 만남·시간 확정, 비밀번호, 인증번호, 개인정보는 절대 동의하거나 제공하지 않고 {owner}에게 전달하겠다고 답한다.\n  * 영업 전화 항목은 한 줄로 간결하게 적는다: 확실한 영업·권유 전화만 정해진 방식대로 짧게 처리하고 일반 연락이나 안내 전화는 절대 거절하지 않는다(긴 시간 끌기 대본은 쓰지 말 것. 설정에서 시간 끌기가 켜져 있으면 시스템이 자동 전환함).\n  * 먼저 작별 인사를 하지 않는다. 단순한 \"네\", \"고맙습니다\"만으로는 끝난 것이 아니므로 상대가 통화를 분명히 마무리할 때까지 기다렸다가 지정한 작별 인사가 담긴 짧은 한마디로 끝내고, 더 필요한 게 있는지 묻지 않고 멈춘다.\n- 기술 설정은 넣지 말고 핵심만 담아 500~900자 정도로 작성하세요.\n\n출력 형식\n완성된 프롬프트만 바로 복사해서 붙여 넣을 수 있도록 코드 블록 하나에 담아 출력하세요. 다른 블록이나 설정 안내는 덧붙이지 마세요.\n\n이제 1번 질문부터 시작해 주세요.",
-  "es": "Ayúdame a escribir mi prompt personalizado para el modo «Asistente de IA». Cuando yo no pueda atender, una voz de IA contestará mi teléfono como MI ASISTENTE DE IA: se presentará, averiguará qué necesita quien llama y tomará un recado claro para mí. Hazme primero una entrevista breve para definir el estilo y las reglas del asistente, y después redacta el prompt.\n\nCÓMO HACER LA ENTREVISTA\n- Haz UNA sola pregunta cada vez, con palabras sencillas y cercanas, y espera mi respuesta.\n- Si respondo algo general (por ejemplo, \"amable y profesional\"), proponme dos o tres ejemplos hablados naturales para elegir o adaptar. Si digo \"saltar\", usa una opción razonable y sigue adelante.\n- Unas 8 preguntas en total. No escribas el prompt hasta terminar la entrevista.\n\nQUÉ PREGUNTARME SOBRE MI ASISTENTE\n1. Idioma y perfil del asistente: ¿en qué idioma y estilo cotidiano suelen hablar quienes me llaman? ¿Qué impresión quiero que transmita mi asistente de IA (por ejemplo, asistente personal cercano y resolutivo, secretaria ejecutiva serena, recepción amable y ágil, apoyo relajado y de confianza)?\n2. Uso de la línea y cómo referirse a mí: ¿este número es personal, profesional o ambos? ¿Cómo debe referirse a mí el asistente durante la llamada (solo {owner} o con algún cargo/trato) y cómo debe explicar con naturalidad que ahora no puedo atender sin revelar dónde estoy?\n3. Saludo inicial y frases prohibidas: ¿cómo debe presentarse en una primera frase breve al descolgar (indicando que es el asistente de IA de {owner} y preguntando qué recado puede pasarme)? ¿Qué expresiones de escucha y despedida encajan mejor, y qué frases robóticas o de teleoperador (\"Su llamada es muy importante\", \"¿En qué más puedo ayudarle?\") no debe usar jamás?\n4. Quién suele llamar y matices de tono: ¿qué llamadas recibo más a menudo (familia y amigos, clientes o colegas, repartidores, bancos/clínicas/oficinas, números desconocidos) y cómo debe adaptar el tono entre conocidos y llamadas de trabajo?\n5. Datos clave al tomar un recado: cuando alguien deja un mensaje, ¿qué datos esenciales debe reunir el asistente (nombre, empresa u organismo, asunto, qué necesitan de mí, plazo, teléfono de contacto) y cómo debe confirmar en una frase corta lo que me va a transmitir?\n6. Avisos importantes y situaciones cotidianas: cuando un banco, clínica, empresa u oficina llama para explicar algo importante (dejándoles terminar antes de preguntar dudas), o cuando un repartidor pregunta si hay alguien, ¿cómo quiero que actúe el asistente?\n7. Límites del asistente y cómo anotar peticiones: dado que el asistente no puede tomar decisiones, cerrar citas, aceptar pagos/contratos ni dar datos personales, ¿con qué frase natural y amable debe recoger la solicitud y asegurar que se la pasará a {owner}?\n8. Llamadas comerciales y últimos detalles: ante una llamada claramente publicitaria o de ventas, ¿prefiero que la rechace con educación en una frase corta o que anote quién llama? ¿Hay algún otro detalle sobre cómo quiero que hable mi asistente?\n\nDESPUÉS, ESCRIBE EL PROMPT\n- Escríbelo en el idioma de la pregunta 1, hablándole al asistente de \"tú\", en secciones cortas con título:\n  [Who you are] [How you talk] [Picking up] [Taking the message] [What you cannot do] [Things you should not agree to] [Sales calls] [Ending] (o títulos equivalentes)\n- Usa el marcador {owner} siempre que aparezca mi nombre (el sistema lo rellena automáticamente y {owner} lee un resumen tras cada llamada).\n- Haz que suene como un asistente capaz y cercano al teléfono, nunca como un guion de centralita:\n  * Indica claramente que eres el asistente de IA que atiende el teléfono de {owner} cuando no puede contestar; no eres {owner} ni finges ser humano, y si te lo preguntan dices con naturalidad que eres el asistente de IA de {owner}.\n  * Integra el carácter del asistente, cómo se refiere a {owner}, sus reacciones de escucha, su forma de recoger encargos y su despedida, listando expresamente los clichés prohibidos.\n  * Intervenciones breves y cálidas: una o dos frases cortas cada vez, preguntando solo lo que aún falte, de una pregunta en una, sin preguntar dos veces lo mismo. Aclara que las frases de ejemplo muestran el tono y deben decirse con sus propias palabras cada vez.\n- Incluye estas reglas de flujo telefónico:\n  * En [Picking up], abrir con una frase corta diciendo que eres el asistente de IA de {owner}, que {owner} no puede ponerse ahora y preguntando qué puedes transmitirle; luego parar y escuchar. Si solo dicen \"¿hola?\" o dudan, repetir brevemente quién eres y qué recado quieres recoger.\n  * Nada de listas, tono leído ni repetir palabra por palabra todo lo que acaban de decir.\n  * Si llama un banco, empresa, clínica u oficina explicando una gestión, dejar que terminen toda la explicación antes de aclarar dudas y confirmar en una frase breve qué recado pasarás a {owner}.\n  * Durante la llamada no puedes consultar nada ni conoces la agenda, ubicación o decisiones de {owner}: nunca decir \"un momento\", \"espera\" ni \"voy a mirarlo\", ni inventar respuestas; decir que tomarás nota para que {owner} responda después.\n  * Nunca aceptar dinero, transferencias, préstamos, contratos, citas o fechas cerradas, ni dar o inventar contraseñas, códigos de verificación o datos personales; recoger la petición para {owner}.\n  * En llamadas comerciales, una sola regla breve: descartar con educación las ofertas comerciales evidentes en una frase corta (salvo que haya pedido tomar recado), sin cortar jamás avisos reales o llamadas legítimas (no escribas guiones largos anti-spam; si el modo de entretener spam está activo, el sistema cambia solo).\n  * No despedirse primero: un simple \"vale\" o \"gracias\" no termina la llamada. Esperar a que quien llama cierre claramente, despedirse con una frase corta y callar sin preguntar \"¿algo más?\".\n- Sin ajustes técnicos ni texto extra: entre 250 y 450 palabras.\n\nRESULTADO\nEntrega ÚNICAMENTE el prompt terminado dentro de un solo bloque de código, listo para copiar y pegar.\n\nEmpieza ahora con la pregunta 1.",
-  "fr": "Aidez-moi à rédiger mon prompt personnalisé pour le mode « Assistant IA ». Lorsque je ne peux pas décrocher, une voix d'IA répondra à mon téléphone en tant que MON ASSISTANT IA : elle se présente, comprend le motif de l'appel et prend un message clair pour moi. Interviewez-moi d'abord pour définir la personnalité et les règles de cet assistant, puis rédigez le prompt.\n\nCOMMENT MENER L'ENTRETIEN\n- Posez UNE seule question à la fois, simplement et naturellement, puis attendez ma réponse.\n- Si ma réponse reste générale (par exemple « chaleureux et professionnel »), proposez deux ou trois exemples parlés concrets parmi lesquels choisir ou adapter. Si je dis « passer », choisissez une option raisonnable et continuez.\n- Environ 8 questions au total. Ne rédigez pas le prompt avant la fin de l'entretien.\n\nCE QU'IL FAUT DÉFINIR POUR MON ASSISTANT\n1. Langue et style de l'assistant : dans quelle langue et quel registre courant mes interlocuteurs s'expriment-ils d'habitude ? Quelle image mon assistant IA doit-il donner (par exemple assistant personnel chaleureux et efficace, secrétaire exécutif posé, accueil dynamique et courtois, aide simple et détendue) ?\n2. Usage de la ligne et façon de parler de moi : ce numéro est-il personnel, professionnel, ou les deux ? Comment l'assistant doit-il me désigner (simplement {owner}, ou avec un titre/rôle) et comment expliquer naturellement que je ne suis pas disponible sans indiquer où je me trouve ?\n3. Phrase d'accueil et formules à bannir : comment l'assistant doit-il se présenter dès la première phrase courte (dire qu'il est l'assistant IA de {owner} et demander quel message transmettre) ? Quels mots d'écoute et d'au revoir conviennent, et quelles phrases robotiques de centre d'appels (« Votre appel est important », « Puis-je faire autre chose pour vous ? ») sont interdites ?\n4. Appelants habituels et nuances de ton : qui appelle le plus souvent (proches, clients ou collègues, livreurs, banques/cabinets médicaux/administrations, numéros inconnus) et comment ajuster le ton entre mes proches et les appels professionnels ?\n5. Éléments clés d'un message : lorsqu'une personne laisse un message, quelles précisions l'assistant doit-il recueillir (nom, entreprise ou organisme, sujet, ce qui est attendu de moi, échéance, numéro de rappel) et comment confirmer en une phrase brève ce qui me sera transmis ?\n6. Informations importantes et cas pratiques : lorsqu'une banque, une entreprise, un cabinet ou un service appelle pour expliquer un dossier (le laisser finir avant de poser des questions) ou qu'un livreur demande s'il y a quelqu'un, comment l'assistant doit-il réagir ?\n7. Limites de l'assistant et formules de relais : puisque l'assistant ne peut ni décider, ni fixer de rendez-vous ferme, ni accepter un paiement/contrat, ni divulguer d'informations personnelles, quelle tournure naturelle et rassurante doit-il employer pour noter la demande et la transmettre à {owner} ?\n8. Démarchage et touches finales : face à un appel commercial évident, doit-il décliner poliment en une courte phrase ou noter brièvement qui appelle ? Y a-t-il un dernier détail à connaître sur le style souhaité ?\n\nENSUITE, RÉDIGEZ LE PROMPT\n- Rédigez-le dans la langue de la question 1, en tutoyant l'assistant (« tu »), structuré en courtes sections titrées :\n  [Who you are] [How you talk] [Picking up] [Taking the message] [What you cannot do] [Things you should not agree to] [Sales calls] [Ending] (ou titres équivalents)\n- Utilisez le marqueur {owner} partout où apparaît mon nom (le système le remplace automatiquement, et {owner} lit un résumé après chaque appel).\n- Faites-le sonner comme un assistant compétent et humain dans le ton, jamais comme un automate de standard :\n  * Indiquez clairement que tu es l'assistant IA qui répond au téléphone de {owner} quand {owner} ne peut pas décrocher ; tu n'es pas {owner} et tu ne prétends pas être une personne réelle, et si on te le demande tu réponds simplement être l'assistant IA de {owner}.\n  * Intégrez la personnalité choisie, la façon de nommer {owner}, les réactions d'écoute, les formules de transmission et l'au revoir, tout en listant les formules figées interdites.\n  * Réponses chaleureuses et brèves : une ou deux phrases courtes à la fois, en ne demandant que ce qui manque encore, une seule question à la fois, sans jamais poser deux fois la même question. Précisez que les exemples entre guillemets donnent le ton et doivent être reformulés naturellement à chaque fois.\n- Intégrez ces règles de déroulement d'appel :\n  * Dans [Picking up], ouvrir par une phrase courte indiquant que tu es l'assistant IA de {owner}, que {owner} ne peut pas prendre l'appel pour le moment, et demandant ce que tu peux lui transmettre — puis s'arrêter et écouter. Si l'interlocuteur dit seulement « allô ? » ou hésite, redire brièvement qui tu es et demander son message.\n  * Pas de listes, pas de ton récité ni de répétition mot pour mot de tout ce que l'appelant vient de dire.\n  * Lorsqu'une banque, une entreprise, un cabinet ou un contact explique quelque chose, laisser terminer toute l'explication avant de clarifier les points flous, puis confirmer en une courte phrase ce qui sera transmis à {owner}.\n  * Pendant l'appel, tu ne peux rien consulter et tu ignores l'emploi du temps, l'endroit où se trouve {owner} ou ses décisions : ne jamais dire « un instant », « ne quittez pas » ou « je vérifie », et ne rien inventer — dire que tu transmets à {owner} pour qu'il rappelle.\n  * N'accepter ni argent, virement, prêt, contrat, rencontre ou horaire ferme, et ne jamais donner ni inventer de mot de passe, code de vérification ou donnée personnelle ; noter la demande pour {owner}.\n  * Pour le démarchage, une seule règle courte : éconduire poliment en une phrase les offres commerciales manifestes (sauf consigne contraire), sans jamais repousser les vrais appels ou notifications (pas de long scénario anti-spam ; si ce mode est activé, le système bascule tout seul).\n  * Ne pas dire au revoir en premier : un simple « d'accord » ou « merci » ne clôt pas l'appel. Attendre que l'appelant termine clairement, conclure d'une phrase brève avec la formule d'au revoir choisie et se taire sans demander « autre chose ? ».\n- Restez concis, sans réglages techniques : 250 à 450 mots.\n\nRÉSULTAT\nFournissez UNIQUEMENT le prompt final dans un seul bloc de code, prêt à copier-coller.\n\nCommencez maintenant par la question 1.",
-  "de": "Hilf mir, meinen individuellen Annahme-Prompt für den Modus „KI-Assistent“ zu schreiben. Wenn ich nicht selbst rangehen kann, nimmt eine KI-Stimme das Gespräch als MEIN KI-ASSISTENT entgegen – sie stellt sich kurz vor, fragt das Anliegen ab und nimmt eine klare Nachricht für mich auf. Interviewe mich zuerst zum gewünschten Auftreten und den Regeln des Assistenten, und schreibe danach den Prompt.\n\nSO LÄUFT DAS INTERVIEW\n- Stell immer nur EINE Frage auf einmal, in einfacher, natürlicher Sprache, und warte auf meine Antwort.\n- Wenn ich allgemein antworte (z. B. „freundlich und professionell“), schlag zwei bis drei natürlich gesprochene Beispiele zum Auswählen oder Anpassen vor. Sage ich „überspringen“, nimm einen sinnvollen Standard und geh weiter.\n- Insgesamt etwa 8 Fragen. Schreib den Prompt erst, wenn das Interview abgeschlossen ist.\n\nWAS DU ÜBER MEINEN KI-ASSISTENTEN KLÄREN SOLLST\n1. Sprache und Auftreten des Assistenten: In welcher Sprache und welchem Alltagsstil sprechen Anrufer meistens? Welchen Eindruck soll mein KI-Assistent vermitteln (z. B. herzlicher, mitdenkender persönlicher Assistent, ruhiges Vorzimmer/Sekretariat, frischer Studio-Empfang, unkompliziert und hilfsbereit)?\n2. Zweck der Nummer und wie er über mich spricht: Ist der Anschluss privat, geschäftlich oder beides? Wie soll der Assistent mich im Gespräch nennen (einfach {owner} oder mit Titel/Rolle) und wie erklärt er natürlich, dass ich gerade nicht ans Telefon kann, ohne meinen Aufenthaltsort preiszugeben?\n3. Begrüßungssatz und Tabu-Floskeln: Wie soll sich der Assistent beim Abnehmen in einem kurzen Satz vorstellen (sagen, dass er der KI-Assistent von {owner} ist, und fragen, was er ausrichten darf)? Welche Zuhör-Signale und Verabschiedung passen gut, und welche steifen Callcenter-Sätze („Ihr Anruf ist uns wichtig“, „Kann ich sonst noch etwas für Sie tun?“) sind absolut tabu?\n4. Typische Anrufer und Tonfall: Wer ruft am häufigsten an (Familie und Freunde, Kunden oder Kollegen, Paketboten, Banken/Praxen/Behörden, unbekannte Nummern), und soll der Ton bei Vertrauten wärmer und bei Geschäftsanrufen etwas straffer sein?\n5. Wichtige Punkte einer Nachricht: Welche Angaben soll der Assistent bei einer Nachricht gezielt aufnehmen (Name, Firma/Stelle, worum es geht, was ich tun soll, Frist, Rückrufnummer) und wie bestätigt er am Ende in einem kurzen Satz, was er mir weitergibt?\n6. Wichtige Mitteilungen und Alltagssituationen: Wie soll der Assistent reagieren, wenn eine Bank, Praxis, Firma oder Behörde einen Sachverhalt erklärt (erst ganz ausreden lassen, dann Rückfragen stellen) oder wenn ein Zusteller fragt, ob jemand da ist?\n7. Grenzen des Assistenten und Weiterleitungs-Formulierung: Da der Assistent keine Entscheidungen treffen, keine festen Termine zusagen, keinen Zahlungen/Verträgen zustimmen und keine persönlichen Daten herausgeben darf – mit welcher natürlichen, freundlichen Formulierung nimmt er solche Anliegen auf, um sie an {owner} weiterzuleiten?\n8. Unerwünschte Werbeanrufe und Feinschliff: Soll der Assistent eindeutige Werbe- und Verkaufsanrufe in einem kurzen Satz höflich ablehnen oder kurz Namen und Anliegen notieren? Gibt es sonst noch etwas Wichtiges zum Stil meines Assistenten?\n\nSCHREIB DANACH DEN PROMPT\n- Schreib ihn in der Sprache aus Frage 1, sprich den Assistenten mit „du“ an und gliedere ihn in kurze Abschnitte mit Überschriften:\n  [Who you are] [How you talk] [Picking up] [Taking the message] [What you cannot do] [Things you should not agree to] [Sales calls] [Ending] (oder passende Überschriften)\n- Setze überall dort {owner} ein, wo mein Name steht (das System ersetzt ihn automatisch, und {owner} liest nach jedem Anruf eine Zusammenfassung).\n- Lass es wie einen fähigen, aufmerksamen Assistenten am Telefon klingen, niemals wie ein Callcenter-Skript:\n  * Stelle klar, dass du der KI-Assistent bist, der {owner}s Telefon annimmt, wenn {owner} nicht rangehen kann; du bist nicht {owner}, gibst dich nicht als Mensch aus und sagst auf Nachfrage offen, dass du der KI-Assistent von {owner} bist.\n  * Baue das gewünschte Auftreten, die Bezeichnung für {owner}, Zuhör-Reaktionen, Weiterleitungs-Sätze und die Verabschiedung natürlich ein und nenne ausdrücklich die verbotenen Floskeln.\n  * Freundlich und knapp: jeweils ein bis zwei kurze Sätze, nur nach dem fragen, was noch fehlt, immer nur eine Frage auf einmal und nichts doppelt fragen. Halte fest, dass Beispielsätze nur das Gefühl zeigen und jedes Mal frei in eigenen Worten formuliert werden sollen.\n- Baue diese Gesprächsregeln ein:\n  * Unter [Picking up] mit einem kurzen Satz eröffnen, dass du der KI-Assistent von {owner} bist, {owner} gerade nicht ans Telefon kann und was du ausrichten darfst – dann stoppen und zuhören. Kommt nur ein „Hallo?“ zurück oder wirkt das Gegenüber unsicher, kurz noch einmal sagen, wer du bist, und nach dem Anliegen fragen.\n  * Keine Aufzählungen, kein Vorleseton und nicht alles Wort für Wort wiederholen, was der Anrufer gerade gesagt hat.\n  * Wenn eine Bank, Firma, Praxis oder ein Kontakt etwas erklärt, komplett ausreden lassen, danach offene Punkte und Rückrufnummer klären und in einem kurzen Satz bestätigen, was du {owner} ausrichtest.\n  * Während des Gesprächs kannst du nichts nachschlagen und kennst weder Kalender noch Aufenthaltsort oder Entscheidungen von {owner}: niemals „einen Moment“, „bleiben Sie dran“ oder „ich schaue nach“ sagen und nichts erfinden – sagen, dass du es an {owner} weitergibst, damit er sich meldet.\n  * Niemals Geld, Überweisungen, Krediten, Verträgen, Treffen oder festen Zeiten zustimmen und niemals Passwörter, Codes oder persönliche Daten nennen oder erfinden; das Anliegen für {owner} aufnehmen.\n  * Bei Werbeanrufen nur eine kurze Regel schreiben: eindeutige Werbeanrufe wie gewünscht kurz und höflich abweisen, aber niemals echte Mitteilungen oder normale Anrufer (kein langes Hinhalte-Skript; ist das Hinhalten in den Einstellungen aktiv, übernimmt das System automatisch).\n  * Nicht zuerst verabschieden: ein bloßes „okay“ oder „danke“ beendet das Gespräch noch nicht. Erst wenn der Anrufer klar zum Ende kommt, mit einem kurzen Satz samt gewählter Verabschiedung schließen und schweigen, ohne „sonst noch etwas?“ zu fragen.\n- Kompakt und ohne technische Einstellungen: etwa 250 bis 450 Wörter.\n\nAUSGABE\nGib AUSSCHLIESSLICH den fertigen Prompt in einem einzigen Codeblock aus, direkt zum Kopieren und Einfügen.\n\nBeginne jetzt mit Frage 1.",
-  "pt": "Ajude-me a escrever o meu prompt personalizado para o modo “Assistente de IA”. Quando eu não puder atender, uma voz de IA responderá ao meu telefone como MEU ASSISTENTE DE IA — apresentando-se, entendendo o motivo da ligação e anotando um recado claro para mim. Faça primeiro uma entrevista rápida comigo para definir o perfil e as regras do assistente e, depois, escreva o prompt.\n\nCOMO CONDUZIR A ENTREVISTA\n- Faça UMA pergunta de cada vez, em linguagem simples e natural, e espere a minha resposta.\n- Se a minha resposta for ampla (por exemplo, \"simpático e profissional\"), sugira dois ou três exemplos falados naturais para eu escolher ou ajustar. Se eu disser \"pular\", use um padrão sensato e siga em frente.\n- Cerca de 8 perguntas no total. Não escreva o prompt antes de terminar a entrevista.\n\nO QUE DEFINIR SOBRE O MEU ASSISTENTE\n1. Idioma e perfil do assistente: em que idioma e jeito cotidiano as pessoas costumam falar ao me ligar? Que impressão o meu assistente de IA deve passar (por exemplo, assistente pessoal atencioso e ágil, secretária executiva tranquila, recepção simpática e dinâmica, apoio leve e prestativo)?\n2. Uso da linha e como se referir a mim: este número é pessoal, profissional ou ambos? Como o assistente deve se referir a mim na chamada (apenas {owner} ou com algum cargo/tratamento) e como explicar com naturalidade que não posso atender agora sem informar onde estou?\n3. Frase de abertura e clichês proibidos: como o assistente deve atender na primeira frase curta (dizendo que é o assistente de IA de {owner} e perguntando qual recado pode transmitir)? Que sinais de escuta e despedida combinam melhor, e que frases robóticas de telemarketing (\"Sua ligação é muito importante\", \"Posso ajudar em algo mais?\") ele jamais deve usar?\n4. Quem costuma ligar e ajuste de tom: quem liga com mais frequência (família e amigos, clientes ou colegas, entregadores, bancos/clínicas/órgãos, números desconhecidos) e como o tom deve variar entre pessoas próximas e ligações de trabalho?\n5. Informações essenciais do recado: quando alguém deixa recado, quais dados o assistente deve garantir (nome, empresa ou local, assunto, o que precisa de mim, prazo, telefone de retorno) e como confirmar em uma frase curta o que vai me passar?\n6. Avisos importantes e situações do dia a dia: quando um banco, clínica, empresa ou escritório liga para explicar algo importante (deixando falarem até o fim antes de tirar dúvidas), ou quando um entregador pergunta se tem alguém, como quero que o assistente lide com isso?\n7. Limites do assistente e frase de encaminhamento: como o assistente não pode tomar decisões, fechar horários, aceitar pagamentos/contratos nem informar dados pessoais, que frase natural e educada ele deve usar para anotar o pedido e avisar que vai repassar para {owner}?\n8. Ligações de vendas e toques finais: diante de propaganda ou oferta comercial óbvia, prefiro que ele recuse educadamente em uma frase curta ou anote quem ligou? Há mais algum detalhe sobre como quero que o meu assistente fale?\n\nDEPOIS, ESCREVA O PROMPT\n- Escreva no idioma da pergunta 1, tratando o assistente por \"você\", dividido em seções curtas com título:\n  [Who you are] [How you talk] [Picking up] [Taking the message] [What you cannot do] [Things you should not agree to] [Sales calls] [Ending] (ou títulos equivalentes)\n- Use o marcador {owner} sempre que o meu nome aparecer (o sistema preenche automaticamente, e {owner} lê um resumo após cada ligação).\n- Faça soar como um assistente prestativo e natural ao telefone, nunca como roteiro de call center:\n  * Deixe claro que você é o assistente de IA que atende o telefone de {owner} quando {owner} não pode atender; você não é {owner} nem finge ser humano, e se perguntarem diz claramente que é o assistente de IA de {owner}.\n  * Incorpore o perfil escolhido, como chamar {owner}, as reações de escuta, o jeito de anotar pedidos e a despedida, listando expressamente os clichês proibidos.\n  * Respostas acolhedoras e curtas: uma ou duas frases breves por vez, perguntando apenas o que ainda falta saber, uma pergunta de cada vez, sem perguntar a mesma coisa duas vezes. Explique que as frases de exemplo mostram o tom e devem ser ditas com suas próprias palavras a cada vez.\n- Inclua estas regras de condução da chamada:\n  * Em [Picking up], abrir com uma frase curta dizendo que é o assistente de IA de {owner}, que {owner} não pode atender agora e perguntando o que pode transmitir — depois parar e ouvir. Se responderem só \"alô?\" ou hesitarem, repetir brevemente quem é e perguntar qual recado desejam deixar.\n  * Sem listas, tom de leitura nem repetir palavra por palavra tudo o que acabaram de dizer.\n  * Quando um banco, empresa, clínica ou contato estiver explicando um assunto, deixar concluir toda a explicação antes de tirar dúvidas, e confirmar em uma frase curta o recado que passará para {owner}.\n  * Durante a chamada você não consegue consultar nada nem sabe a agenda, localização ou decisões de {owner}: nunca dizer \"um momento\", \"aguarde\" ou \"vou verificar\", nem inventar respostas — dizer que vai repassar para {owner} retornar depois.\n  * Nunca aceitar dinheiro, transferências, empréstimos, contratos, encontros ou horários fechados, nem informar ou inventar senhas, códigos de verificação ou dados pessoais; anotar o pedido para {owner}.\n  * Em ligações de vendas, escrever uma única regra curta: recusar educadamente ofertas comerciais claras em uma frase breve (salvo orientação diferente), sem jamais cortar avisos reais ou ligações legítimas (não escreva roteiro longo para enrolar spam; se essa opção estiver ativa, o sistema assume automaticamente).\n  * Não se despedir primeiro: um simples \"tá bom\" ou \"obrigado\" não encerra a ligação. Esperar quem ligou concluir claramente, encerrar com uma frase curta contendo a despedida escolhida e parar sem perguntar \"algo mais?\".\n- Mantenha o texto enxuto e sem configurações técnicas: entre 250 e 450 palavras.\n\nSAÍDA\nEntregue APENAS o prompt pronto dentro de um único bloco de código, pronto para copiar e colar.\n\nComece agora pela pergunta 1.",
+  f_home_country: "País onde você mora",
+  f_home_country_h: "A IA segue os costumes desse país, como onde deixar encomendas. Automático: pelo número do telefone.",
+  hc_auto: "Pelo número do telefone",
+  cb_none: "Nada encontrado",
+  f_talk_style: "Jeito de falar",
+  ts_1: "Descontraído e animado",
+  ts_2: "Simpático e tranquilo",
+  ts_3: "Natural, do dia a dia",
+  ts_4: "Educado e cuidadoso",
+  ts_5: "Direto e profissional",
+  ts_1_d: "Como com um amigo próximo: caloroso, solto e falante.",
+  ts_2_d: "Gentil e simpático, um pouco mais solto que o normal.",
+  ts_3_d: "Como qualquer pessoa ao telefone: nem informal demais, nem duro.",
+  ts_4_d: "Educado e cuidadoso, como com alguém que você não conhece bem.",
+  ts_5_d: "Curto e claro, como uma ligação de trabalho.",
+  ts_casual: "Informal",
+  ts_formal: "Formal",
+  ts_custom: "Você usa um prompt próprio, então o jeito de falar não é aplicado.",
+  ts_scene: "Mudar a vista da janela",
+  ab_callers: "Quem mais liga para este telefone?",
+  ab_c_family: "Família e amigos",
+  ab_c_work: "Pessoas do trabalho",
+  ab_c_both: "Os dois",
+  ab_suggested: "Jeito de falar ajustado para “{level}”. Você pode mudar.",
+  ab_work: "Seu trabalho ou seu dia a dia, em uma linha",
+  ab_work_ph: "ex.: Vendas numa empresa de importação",
+  ab_say: "O que você diz muito",
+  ab_say_ph: "ex.: Tranquilo",
+  ab_avoid: "O que você nunca diz",
+  ab_avoid_ph: "ex.: Prezado cliente",
+  ab_say_h: "Até 3 de cada. A IA usa suas expressões de vez em quando e evita as outras.",
+  ab_asks: "O que perguntar num recado",
+  ab_ask_name: "Nome",
+  ab_ask_callback: "Número para retorno",
+  ab_ask_reason: "Do que se trata",
+  ab_ask_urgency: "Qual a urgência",
+  ab_parcel: "Onde deixar encomendas e entregas?",
+  ab_parcel_ph: "ex.: {x}",
+  ab_parcel_ph0: "ex.: Na portaria",
+  ab_extra: "Mais alguma coisa que a IA deve saber",
+  adv_opts: "Avançado",
 };
 
 // =====================================================================
@@ -15075,6 +15831,8 @@ function curValue(el) {
     case "simlangs": return simLangValue();
     case "channels": return chanValue();
     case "lines": return el.value.split("\n").map((s) => s.trim()).filter(Boolean);
+    case "list3": return Array.from(el.querySelectorAll("input")).map((i) => i.value.trim()).filter(Boolean);
+    case "multi": return Array.from(el.querySelectorAll("input:checked")).map((i) => i.value);
     default: return el.value.trim();
   }
 }
@@ -15086,6 +15844,12 @@ function origValue(el) {
     case "simlangs": return simLangObj(simLangNorm(v));
     case "channels": return chanOrig(v);
     case "lines": return Array.isArray(v) ? v.map((s) => String(s).trim()).filter(Boolean) : [];
+    case "list3": return Array.isArray(v) ? v.map((s) => String(s).trim()).filter(Boolean).slice(0, 3) : [];
+    // Not saved yet: every box ticked (the agent's default).
+    case "multi": {
+      const all = Array.from(el.querySelectorAll("input")).map((i) => i.value);
+      return Array.isArray(v) ? all.filter((x) => v.includes(x)) : all;
+    }
     case "secret": return "";
     default: return v == null ? "" : String(v).trim();
   }
@@ -15108,7 +15872,6 @@ function switchPromptStyle() {
   promptStyleShown = next;
   $("f-gemini_persona_prompt").value = promptDraft[promptStyleShown];
   $("defaultPrompt").textContent = curDefaultPrompt();
-  renderHelper();
 }
 function isDirty(el) {
   if (!S) return false;
@@ -15137,6 +15900,7 @@ function updateDirty() {
   $("saveBarText").textContent = t("save_bar", { n });
   $("navDirty").hidden = n === 0;
   $("statusCount").textContent = String($("f-owner_status_text").value.length);
+  tsSync();
   const cur = $("f-public_url").value.trim();
   const host = location.hostname;
   const local = host === "localhost" || host === "[::1]" || /^127\./.test(host);
@@ -15156,6 +15920,8 @@ function populate() {
       case "simlangs": renderSimLangRows(); break;
       case "channels": chansFromSettings(); renderChannels(); break;
       case "lines": el.value = Array.isArray(v) ? v.join("\n") : ""; break;
+      case "list3": { const vals = origValue(el); el.querySelectorAll("input").forEach((i, n) => { i.value = vals[n] || ""; }); break; }
+      case "multi": { const vals = origValue(el); el.querySelectorAll("input").forEach((i) => { i.checked = vals.includes(i.value); }); break; }
       case "secret": el.value = ""; delete el.dataset.clear; refreshSecret(k); break;
       default: el.value = v == null ? "" : String(v);
     }
@@ -15166,6 +15932,8 @@ function populate() {
   };
   promptStyleShown = pickedStyle();
   $("f-gemini_persona_prompt").value = promptDraft[promptStyleShown];
+  tsTouched = false;
+  $("abSuggest").hidden = true;
   relabelSettings(true);
   wlModeHelp();
   updateDirty();
@@ -15173,6 +15941,7 @@ function populate() {
   renderNote();
   renderErrandForm();
   bkLoad();
+  loadPackRegions();
   // The environment's bot can take commands only when it is set up.
   $("tgEnvCtl").hidden = !(S.telegram_bot_token_set && String(S.telegram_chat_id || "").trim());
 }
@@ -15193,7 +15962,9 @@ function relabelSettings(skipRows) {
   $("btnUseThisUrl").textContent = t("use_this_url", { url: location.origin });
   $("f-public_url").placeholder = consoleDefaultUrl || "http://192.168.1.20:8787";
   bkRender();
-  renderHelper();
+  renderHomeCountry();
+  renderAboutHints();
+  tsRender(false);
   updateDirty();
 }
 function fieldLabel(el) {
@@ -15725,7 +16496,7 @@ $("f-backup_encrypt").addEventListener("change", (ev) => {
   if (pw) pw.focus();
 });
 
-// ----- prompt editor + interview helper
+// ----- own prompt (Advanced, under About you)
 $("btnPromptCopyIn").addEventListener("click", async () => {
   const ta = $("f-gemini_persona_prompt");
   // The template keeps {owner}, so the copy follows a later change of the name.
@@ -15740,20 +16511,309 @@ $("btnPromptCopyIn").addEventListener("click", async () => {
   ta.focus();
 });
 $("btnPromptClear").addEventListener("click", () => { $("f-gemini_persona_prompt").value = ""; syncPromptDraft(); updateDirty(); });
-let helperPicked = false;
-const curInterviewMap = () => (pickedStyle() === "assistant" ? INTERVIEW_ASSISTANT : INTERVIEW);
-function renderHelper() {
-  const sel = $("helperLang");
-  if (!sel.options.length) for (const code of Object.keys(INTERVIEW)) sel.append(h("option", { value: code, text: LANG_NAMES[code] || code }));
-  if (!helperPicked) sel.value = INTERVIEW[lang] ? lang : "en";
-  const m = curInterviewMap();
-  $("helperText").textContent = m[sel.value] || m.en;
+
+// ----- searchable menu: "native · English"; finds any of its names, the code, or +calling code
+const foldText = (s) => String(s == null ? "" : s).normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()
+  .replace(/ı/g, "i").replace(/ß/g, "ss").replace(/ø/g, "o").replace(/ł/g, "l").replace(/đ/g, "d").trim();
+// box: an empty element (its input gets the id box.id + "In" for a <label for>).
+// setOptions([{ value, label, search: [texts] }]) in the order shown; setValue(v).
+function makeCombo(box, opts) {
+  const listId = box.id + "List";
+  const input = h("input", { type: "text", id: box.id + "In", class: "cb-input", autocomplete: "off",
+    attr: { role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false", "aria-controls": listId, spellcheck: "false" } });
+  const list = h("ul", { id: listId, class: "cb-list", hidden: true, attr: { role: "listbox" } });
+  box.append(input, list);
+  let all = [], shown = [], active = -1, value = "";
+  const labelOf = (v) => { const o = all.find((x) => x.value === v); return o ? o.label : v; };
+  const keysOf = (o) => o.keys || (o.keys = [o.label, ...(o.search || [])].filter(Boolean).map(foldText));
+  function paint() {
+    clear(list);
+    if (!shown.length) list.append(h("li", { class: "cb-none", text: t("cb_none"), attr: { role: "option", "aria-disabled": "true" } }));
+    shown.forEach((o, i) => {
+      list.append(h("li", { id: listId + "-" + i, class: i === active ? "on" : "", text: o.label,
+        attr: { role: "option", "aria-selected": String(o.value === value) },
+        onpointerdown: (e) => e.preventDefault(), onclick: () => pick(o) }));
+    });
+    if (active >= 0 && shown[active]) {
+      input.setAttribute("aria-activedescendant", listId + "-" + active);
+      const li = list.children[active];
+      if (li) li.scrollIntoView({ block: "nearest" });
+    } else input.removeAttribute("aria-activedescendant");
+  }
+  function open(typed) {
+    if (typed) {
+      const q = foldText(input.value);
+      shown = q ? all.filter((o) => keysOf(o).some((k) => k.includes(q))) : all.slice();
+      active = shown.length ? 0 : -1;
+    } else {
+      shown = all.slice();
+      active = Math.max(0, shown.findIndex((o) => o.value === value));
+    }
+    list.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+    paint();
+  }
+  function close() {
+    list.hidden = true;
+    input.setAttribute("aria-expanded", "false");
+    input.removeAttribute("aria-activedescendant");
+    input.value = labelOf(value);
+  }
+  function pick(o) {
+    value = o.value;
+    close();
+    if (opts && opts.onPick) opts.onPick(value);
+  }
+  input.addEventListener("focus", () => input.select());
+  input.addEventListener("click", () => { if (list.hidden) open(false); });
+  input.addEventListener("input", () => open(true));
+  input.addEventListener("blur", close);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (list.hidden) { open(false); return; }
+      if (!shown.length) return;
+      active = e.key === "ArrowDown" ? Math.min(shown.length - 1, active + 1) : Math.max(0, active - 1);
+      paint();
+    } else if (e.key === "Enter" && !list.hidden) {
+      e.preventDefault();
+      if (shown[active]) pick(shown[active]);
+    } else if (e.key === "Escape" && !list.hidden) {
+      e.preventDefault();
+      close();
+    }
+  });
+  return {
+    setOptions(o) { all = o; if (list.hidden) input.value = labelOf(value); else open(true); },
+    setValue(v) { value = v; if (list.hidden) input.value = labelOf(value); },
+  };
 }
-$("helperLang").addEventListener("change", () => { helperPicked = true; renderHelper(); });
-$("btnHelperCopy").addEventListener("click", () => {
-  const m = curInterviewMap();
-  copyWithToast(m[$("helperLang").value] || m.en);
+
+// ----- the built-in regions (GET packs/regions): names, countries, where parcels go
+// Calling codes, the same table as Bageo's phone_region.rs (to find a country by +66).
+const DIAL = Object.fromEntries((
+  "us1 ca1 ag1 ai1 as1 bb1 bm1 bs1 dm1 do1 gd1 gu1 jm1 kn1 ky1 lc1 mp1 ms1 pr1 sx1 tc1 tt1 vc1 vg1 vi1 ru7 kz7 " +
+  "eg20 ss211 ma212 eh212 dz213 tn216 ly218 gm220 sn221 mr222 ml223 gn224 ci225 bf226 ne227 tg228 bj229 mu230 " +
+  "lr231 sl232 gh233 ng234 td235 cf236 cm237 cv238 st239 gq240 ga241 cg242 cd243 ao244 gw245 io246 ac247 sc248 " +
+  "sd249 rw250 et251 so252 dj253 ke254 tz255 ug256 bi257 mz258 zm260 mg261 re262 yt262 zw263 na264 mw265 ls266 " +
+  "bw267 sz268 km269 za27 sh290 ta290 er291 aw297 fo298 gl299 gr30 nl31 be32 fr33 es34 gi350 pt351 lu352 ie353 " +
+  "is354 al355 mt356 cy357 fi358 ax358 bg359 hu36 lt370 lv371 ee372 md373 am374 by375 ad376 mc377 sm378 ua380 " +
+  "rs381 me382 xk383 hr385 si386 ba387 mk389 it39 va39 ro40 ch41 cz420 sk421 li423 at43 gb44 gg44 im44 je44 dk45 " +
+  "se46 no47 sj47 pl48 de49 fk500 bz501 gt502 sv503 hn504 ni505 cr506 pa507 pm508 ht509 pe51 mx52 cu53 ar54 br55 " +
+  "cl56 co57 ve58 gp590 bl590 mf590 bo591 gy592 ec593 gf594 py595 mq596 sr597 uy598 cw599 bq599 my60 au61 cx61 " +
+  "cc61 id62 ph63 nz64 sg65 th66 tl670 nf672 bn673 nr674 pg675 to676 sb677 vu678 fj679 pw680 wf681 ck682 nu683 " +
+  "ws685 ki686 nc687 tv688 pf689 tk690 fm691 mh692 jp81 kr82 vn84 kp850 hk852 mo853 kh855 la856 cn86 bd880 tw886 " +
+  "tr90 in91 pk92 af93 lk94 mm95 mv960 lb961 jo962 sy963 iq964 kw965 sa966 ye967 om968 ps970 ae971 il972 bh973 " +
+  "qa974 bt975 mn976 np977 ir98 tj992 tm993 az994 ge995 kg996 uz998"
+).split(" ").map((s) => [s.slice(0, 2), s.slice(2)]));
+let packRegions = null; // [] when the agent has none or could not be asked
+let packAsked = false;
+async function loadPackRegions() {
+  if (packAsked) return;
+  packAsked = true;
+  try {
+    const d = await api("/packs/regions");
+    packRegions = Array.isArray(d && d.regions) ? d.regions : [];
+  } catch (_) { packRegions = []; }
+  renderHomeCountry();
+  renderAboutHints();
+  tsRender(false);
+}
+const regionOfCountry = (cc) => (cc && packRegions && packRegions.find((r) => Array.isArray(r.countries) && r.countries.includes(cc))) || null;
+const regionNamers = {};
+// A country's name in one language ("" when the browser has none for it).
+function countryNameIn(locale, cc) {
+  try {
+    if (!(locale in regionNamers)) {
+      regionNamers[locale] = Intl.DisplayNames.supportedLocalesOf([locale]).length ? new Intl.DisplayNames([locale], { type: "region", fallback: "none" }) : null;
+    }
+    return (regionNamers[locale] && regionNamers[locale].of(cc.toUpperCase())) || "";
+  } catch (_) { return ""; }
+}
+// How the country writes its own name: the region's own name when the region is that one country.
+function nativeCountryName(cc, r) {
+  if (r && r.countries.length === 1 && r.name && r.name.native) return r.name.native;
+  return (r && countryNameIn(String(r.lang || ""), cc)) || "";
+}
+// Countries of the SIMs in the phones (the ones connected now first).
+function connectedCountries() {
+  const out = [];
+  const add = (c) => { const v = String(c || "").trim().toLowerCase(); if (/^[a-z]{2}$/.test(v) && !out.includes(v)) out.push(v); };
+  if (devices && devices.sims) for (const list of Object.values(devices.sims)) if (Array.isArray(list)) list.forEach((s) => add(s && s.country));
+  ((S && S.seen_sim_countries) || []).forEach(add);
+  return out;
+}
+// Countries of this browser's languages ("zh-TW" → tw; "th" → the region that speaks it).
+function browserCountries() {
+  const out = [];
+  for (const tag of navigator.languages || [navigator.language]) {
+    const parts = String(tag || "").split(/[-_]/);
+    const reg = parts.slice(1).find((p) => /^[A-Za-z]{2}$/.test(p));
+    let c = reg ? reg.toLowerCase() : "";
+    if (!c) {
+      const r = (packRegions || []).find((x) => String(x.lang || "").toLowerCase().split("-")[0] === parts[0].toLowerCase() && (x.countries || []).length);
+      c = r ? r.countries[0] : "";
+    }
+    if (c && !out.includes(c)) out.push(c);
+  }
+  return out;
+}
+// The country Bageo goes by: the one picked here, else the phones' SIM.
+const homeCountryNow = () => ($("f-home_country").value || connectedCountries()[0] || "");
+
+// ----- "Country you live in"
+let hcCombo = null;
+function renderHomeCountry() {
+  if (!hcCombo) {
+    hcCombo = makeCombo($("hcBox"), { onPick: (v) => {
+      $("f-home_country").value = v;
+      updateDirty();
+      renderAboutHints();
+      tsRender(true);
+    } });
+  }
+  const cur = $("f-home_country").value;
+  const seen = new Map();
+  for (const r of packRegions || []) for (const c of r.countries || []) if (/^[a-z]{2}$/.test(c) && !seen.has(c)) seen.set(c, r);
+  if (cur && !seen.has(cur)) seen.set(cur, null);
+  const first = [...connectedCountries(), ...browserCountries()];
+  const rows = [...seen].map(([cc, r]) => {
+    const en = countryNameIn("en", cc) || cc.toUpperCase();
+    const own = nativeCountryName(cc, r) || en;
+    const rank = first.indexOf(cc);
+    return { value: cc, en, rank: rank < 0 ? 1e6 : rank, label: own === en ? en : own + " · " + en,
+      search: [own, en, countryName(cc), cc, DIAL[cc] ? "+" + DIAL[cc] : ""] };
+  }).sort((a, b) => a.rank - b.rank || a.en.localeCompare(b.en, "en"));
+  hcCombo.setOptions([{ value: "", label: t("hc_auto"), search: [] }, ...rows]);
+  hcCombo.setValue(cur);
+}
+
+// ----- "About you": where parcels go, as the country does it
+function renderAboutHints() {
+  const r = regionOfCountry(homeCountryNow()) || (packRegions || []).find((x) => x.code === "default");
+  const d = r && r.delivery ? String((lang.startsWith("zh") ? r.delivery.zh : r.delivery.en) || r.delivery.en || "") : "";
+  $("f-about_parcel").placeholder = d ? t("ab_parcel_ph", { x: d }) : t("ab_parcel_ph0");
+}
+// Answer 1 suggests where the talk style starts (family 2, work 4, both 3): only
+// while the slider was not moved by hand and still sits where the saved answer put it.
+const TS_SUGGEST = { family: 2, work: 4, both: 3 };
+let tsTouched = false;
+$("abCallers").addEventListener("change", () => {
+  const want = TS_SUGGEST[curValue($("abCallers"))];
+  const saved = Number(S && S.talk_style_level) || 3;
+  const before = TS_SUGGEST[S && S.about_callers] || 3;
+  if (!want || tsTouched || saved !== before || $("f-talk_style_level").disabled) return;
+  $("f-talk_style_level").value = String(want);
+  tsRender(true);
+  const note = $("abSuggest");
+  note.textContent = t("ab_suggested", { level: t("ts_" + want) });
+  note.hidden = false;
 });
+
+// ----- talk style: the slider and the myna beside it
+// The myna's colours, scenes and props per region (docs/call_style_research/mascot/base.html).
+const TS_BASE = { o1: "#ff7d5c", o1d: "#e9623f", o2: "#35b6a0", o3: "#a9d0f7", o3l: "#7fb2e6", o4: "#6c7fa6", o5: "#3d4f80", o5l: "#5166a0", tie: "#c6453a" };
+const TS_SKY = { day: ["#cfe6fb", "#0e1838", "0"], dusk: ["#ffd9b0", "#ff7a2f", "0.12"], night: ["#24345e", "#0e1838", "0.3"] };
+const TS_REGIONS = {
+  tw: { bow: false, print: "bun", pal: { o1: "#3f8fe0", o1d: "#2f74c0", o2: "#ffb347" },
+    scenes: [["day", ["hills", "cloud2"]], ["dusk", ["skyline", "tower"]], ["night", ["lights"]]] },
+  jp: { bow: true, print: "onigiri", pal: { o1: "#f2a7b8", o1d: "#e58aa0", o2: "#5aa9e6", o5: "#2c3c66", o5l: "#43568a", tie: "#31457a" },
+    scenes: [["day", ["cherry"]], ["dusk", ["cone"]], ["night", ["skyline"]]] },
+  kr: { bow: true, print: "kk", pal: { o1: "#c9b8f0", o1d: "#b09ce6", o2: "#ffd95a" },
+    scenes: [["dusk", ["skyline"]], ["day", ["river", "bridge", "cloud2"]], ["day", ["hills", "treeyellow"]]] },
+  us: { bow: false, print: "varsity", pal: { o1: "#9aa3b2", o1d: "#7f8898", o2: "#b0302e" },
+    scenes: [["day", ["sun", "lawn", "mailbox"]], ["dusk", ["skyline"]], ["night", ["lawn", "house"]]] },
+  de: { bow: false, print: "pretzel", pal: { o1: "#3a936a", o1d: "#2f7d55", o2: "#f2e4c8" },
+    scenes: [["day", ["firs", "cloud2"]], ["dusk", ["river", "bridge"]], ["night", ["snowground", "firs", "snowfall"]]] },
+  fr: { bow: false, print: "stripes", pal: { o1: "#27408b", o1d: "#1d3070", o2: "#ffffff", tie: "#7a1f2b" },
+    scenes: [["day", ["cloud", "flowerbox"]], ["dusk", ["rooftops"]], ["night", ["flowerbox"]]] },
+  tr: { bow: false, print: "tulip", pal: { o1: "#2bb5b0", o1d: "#1f9995", o2: "#fff4e0" },
+    scenes: [["day", ["sun", "sea", "gulls"]], ["dusk", ["sea", "suspension"]], ["day", ["rocks", "balloons"]]] },
+  br: { bow: false, print: "leaves", pal: { o1: "#ff8a3d", o1d: "#e9722a", o2: "#fffbe8" },
+    scenes: [["day", ["sun", "palms"]], ["dusk", ["sea", "hump"]], ["night", ["palms"]]] },
+  gulf: { bow: false, print: "palm", pal: { o1: "#2a9d8f", o1d: "#1f7f74", o2: "#f1e3c6" },
+    scenes: [["day", ["sun", "dunes", "palmtree"]], ["dusk", ["skyline", "needle"]], ["night", ["dunes", "palmtree"]]] },
+  "default": { bow: false, print: "heart", pal: {}, scenes: [["day", ["cloud"]], ["dusk", ["cloud"]], ["night", []]] },
+};
+let tsScene = -1;        // the view picked by tapping the window; -1 = follows the time of day
+let tsSceneShown = 0;
+let tsRegionShown = "";
+const tsReduced = matchMedia("(prefers-reduced-motion: reduce)");
+const tsListed = (attr, v) => !attr || ("," + attr + ",").includes("," + v + ",");
+function tsReplay(el, cls) { el.classList.remove(cls); el.getBoundingClientRect(); el.classList.add(cls); }
+// A region's own art only once local people have checked it (local_reviewed); else the plain one.
+function tsRegion() {
+  const r = regionOfCountry(homeCountryNow());
+  return r && r.status === "local_reviewed" && TS_REGIONS[r.code] ? r.code : "default";
+}
+function tsSkyNow() {
+  const hr = new Date().getHours();
+  return hr >= 6 && hr < 17 ? "day" : hr >= 17 && hr < 19 ? "dusk" : "night";
+}
+const tsLevel = () => { const n = Math.round(Number($("f-talk_style_level").value)); return n >= 1 && n <= 5 ? n : 3; };
+function tsRender(animate) {
+  const box = $("tsBox");
+  const code = tsRegion();
+  if (code !== tsRegionShown) { tsRegionShown = code; tsScene = -1; }
+  const r = TS_REGIONS[code];
+  const level = tsLevel();
+  const name = t("ts_" + level);
+  const svg = $("bts-svg");
+  $("f-talk_style_level").setAttribute("aria-valuetext", name + " (" + level + "/5)");
+  $("tsName").textContent = name;
+  $("tsBubbleName").textContent = name;
+  $("tsBubbleDesc").textContent = t("ts_" + level + "_d");
+  svg.setAttribute("data-level", String(level));
+  for (const key of Object.keys(TS_BASE)) svg.style.setProperty("--bts-" + key, r.pal[key] || TS_BASE[key]);
+  box.querySelectorAll(".bts-outfit").forEach((el) => el.classList.toggle("bts-on", el.getAttribute("data-l") === String(level)));
+  box.querySelectorAll(".bts-item").forEach((el) => { el.style.display = el.getAttribute("data-r") === code ? "" : "none"; });
+  box.querySelectorAll(".bts-print").forEach((el) => { el.style.display = el.getAttribute("data-p") === r.print ? "" : "none"; });
+  box.querySelectorAll(".bts-acc").forEach((el) => {
+    el.style.display = tsListed(el.getAttribute("data-r"), code) && tsListed(el.getAttribute("data-l"), String(level)) ? "" : "none";
+  });
+  tsSceneShown = tsScene >= 0 ? tsScene : Math.max(0, r.scenes.findIndex((s) => s[0] === tsSkyNow()));
+  const sc = r.scenes[tsSceneShown] || r.scenes[0];
+  const sky = TS_SKY[sc[0]];
+  $("bts-sky").setAttribute("fill", sky[0]);
+  $("bts-tint").setAttribute("fill", sky[1]);
+  $("bts-tint").setAttribute("opacity", sky[2]);
+  $("bts-sunlow").style.display = sc[0] === "dusk" ? "" : "none";
+  $("bts-moon").style.display = sc[0] === "night" ? "" : "none";
+  box.querySelectorAll(".bts-prop").forEach((el) => { el.style.display = sc[1].includes(el.getAttribute("data-p")) ? "" : "none"; });
+  if (animate && !tsReduced.matches) {
+    const bird = $("bts-bird"), wing = $("bts-wing-l");
+    bird.classList.remove("bts-hop", "bts-bow");
+    tsReplay(bird, r.bow && level >= 4 ? "bts-bow" : "bts-hop");
+    tsReplay($("bts-bubble"), "bts-pop");
+    if (level === 1) tsReplay(wing, "bts-wave"); else wing.classList.remove("bts-wave");
+  }
+}
+// After any edit: the AI assistant wears a headset, "As me" holds the phone; an own
+// prompt turns the slider off; answer 3 follows the answer style.
+function tsSync() {
+  const asMe = pickedStyle() === "persona";
+  $("tsBox").querySelectorAll(".bts-phone").forEach((el) => { el.style.display = asMe ? "" : "none"; });
+  $("tsBox").querySelectorAll(".bts-headset").forEach((el) => { el.style.display = asMe ? "none" : ""; });
+  $("abSayField").hidden = !asMe;
+  $("abAvoidField").hidden = !asMe;
+  $("abAsksField").hidden = asMe;
+  const own = String(promptDraft[promptStyleShown] || "").trim() !== "";
+  $("f-talk_style_level").disabled = own;
+  $("tsCustomNote").hidden = !own;
+  $("tsField").classList.toggle("off", own);
+  $("abExtraCount").textContent = String($("f-about_extra").value.length);
+}
+$("f-talk_style_level").addEventListener("input", () => {
+  tsTouched = true;
+  $("abSuggest").hidden = true;
+  tsRender(true);
+});
+$("bts-scene-btn").addEventListener("click", () => {
+  const r = TS_REGIONS[tsRegionShown] || TS_REGIONS["default"];
+  tsScene = (tsSceneShown + 1) % r.scenes.length;
+  tsRender(false);
+});
+
 
 // ----- previews (voice, background sound, blocked-number announcement)
 const pvSeq = new WeakMap();
@@ -16252,7 +17312,7 @@ function renderSystem() {
     const items = [
       { ok: !!S.gemini_api_key_set, label: t("chk_key"), bad: t("chk_key_bad"), href: "#settings/basics" },
       { ok: !!String(S.owner_name || "").trim(), label: t("chk_owner"), bad: t("chk_owner_bad"), href: "#settings/basics" },
-      { ok: promptIsOwn, label: t("chk_prompt"), bad: t("chk_prompt_bad"), href: "#settings/prompt", optional: true },
+      { ok: promptIsOwn || !!(S.about_callers || String(S.about_work || "").trim()), label: t("chk_prompt"), bad: t("chk_prompt_bad"), href: "#settings/prompt", optional: true },
       { ok: !!devices && (devices.connected || []).length > 0, label: t("chk_phone"), bad: t("chk_phone_bad"), href: "" },
       { ok: !!S.call_notify && (enabledChannels() > 0 || !!(health && health.call_notify_configured)), label: t("chk_notify"), bad: t("chk_notify_bad"), href: "#settings/notify" },
       { ok: !!S.summary_ready, label: t("chk_summary"), bad: t("chk_summary_bad"), href: "#settings/summary" },

@@ -247,6 +247,12 @@ Fields worth knowing (all of them are in `RuntimeSettings` in
 |---|---|
 | `owner_name` | Your name, used for `{owner}`. |
 | `owner_aliases` | Up to 10 other names callers use for you, each up to 40 characters. Blanks, repeats and your own `owner_name` are dropped. |
+| `home_country` | The country you live in, two lowercase letters (`"th"`); `""` = from the phone number. |
+| `talk_style_level` | Talk style, 1 (casual) to 5 (businesslike); default 3. |
+| `about_callers` | Who calls most: `""`, `"family"`, `"work"` or `"both"`. |
+| `about_work` / `about_parcel` / `about_extra` | Your work or day (up to 120 characters), where parcels go (80), anything else (300). |
+| `about_say` / `about_avoid` | Phrases you often say / never say: up to 3 each, 24 characters each. |
+| `about_message_asks` | What the AI assistant asks for in a message: any of `"name"`, `"callback"`, `"reason"`, `"urgency"` (default all four). |
 | `answer_style` | `assistant` / `persona` (the AI answers as you). |
 | `gemini_assistant_prompt` / `gemini_persona_prompt` | Your custom prompt for `assistant` / `persona` (empty = built-in). |
 | `errand_identity` | `assistant` (default) / `owner`: who the AI says it is on an AI errand. Anything else is stored as `assistant`. |

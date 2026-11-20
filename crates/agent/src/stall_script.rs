@@ -617,6 +617,7 @@ mod tests {
             status: "",
             stall: crate::gemini_live::StallPrompt::Full,
             knowledge: "",
+            about: None,
             carrier_note: false,
             auto_language: true,
         }

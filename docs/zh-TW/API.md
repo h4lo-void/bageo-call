@@ -219,6 +219,12 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 |---|---|
 | `owner_name` | 你的名字，用在 `{owner}`。 |
 | `owner_aliases` | 別人怎麼叫你，最多 10 個，每個最多 40 字。空白的、重複的和跟 `owner_name` 相同的會被拿掉。 |
+| `home_country` | 所在國家，兩個小寫字母（`"th"`）；`""` = 依門號判斷。 |
+| `talk_style_level` | 講話風格，1（隨性）到 5（商務）；預設 3。 |
+| `about_callers` | 誰比較常打來：`""`、`"family"`、`"work"` 或 `"both"`。 |
+| `about_work`／`about_parcel`／`about_extra` | 工作或日常（最多 120 字）、包裹放哪裡（80）、其他（300）。 |
+| `about_say`／`about_avoid` | 常說的話／不會說的話：各最多 3 個，每個最多 24 字。 |
+| `about_message_asks` | AI 助理留言要問的：`"name"`、`"callback"`、`"reason"`、`"urgency"` 任選（預設四個都有）。 |
 | `answer_style` | `assistant`／`persona`（AI 以你本人身分接）。 |
 | `gemini_assistant_prompt`／`gemini_persona_prompt` | `assistant`／`persona` 各自的自訂提示詞（留空 = 內建）。 |
 | `errand_identity` | `assistant`（預設）／`owner`：AI 代打時說自己是誰。其他值存成 `assistant`。 |

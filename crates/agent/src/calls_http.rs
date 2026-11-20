@@ -1257,6 +1257,34 @@ async fn settings_get(
     .into_response()
 }
 
+/// The regions of the region data pack in use (the built-in one, or an
+/// installed newer one), for the console's country picker. No secrets.
+async fn packs_regions(State(state): State<CallsState>, headers: HeaderMap, Query(query): Query<TokenQuery>) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    let pack = crate::packs_store::current();
+    let regions: Vec<Value> = pack
+        .regions
+        .values()
+        .map(|r| {
+            json!({
+                "code": r.code,
+                "countries": r.countries,
+                "name": {
+                    "en": r.name.en,
+                    "native": r.name.native,
+                    "zh": r.name.zh.as_deref().unwrap_or(&r.name.en),
+                },
+                "lang": r.lang,
+                "status": r.status,
+                "delivery": { "en": r.delivery.en, "zh": r.delivery.zh },
+            })
+        })
+        .collect();
+    Json(json!({ "version": pack.version, "regions": regions })).into_response()
+}
+
 /// The console's address as other devices open it (empty: this computer only).
 fn console_url(state: &CallsState) -> String {
     crate::settings_store::effective_console_url(&state.settings_store.snapshot().effective(&state.settings))
@@ -4920,37 +4948,42 @@ mod tests {
         assert_eq!(parse_mode_body(b""), Err("bad_request"));
     }
 
-    #[test]
-    fn interview_prompts_in_html_match_docs_files_word_for_word() {
-        let codes = ["en", "zh-TW", "zh-CN", "ja", "ko", "es", "fr", "de", "pt"];
-        let prompts_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/prompts");
-        for (const_name, prefix) in [
-            ("const INTERVIEW = {", "interview"),
-            ("const INTERVIEW_ASSISTANT = {", "interview_assistant"),
-        ] {
-            let start = UI_HTML.find(const_name).unwrap_or_else(|| panic!("{const_name} start"));
-            let after = &UI_HTML[start + const_name.len() - 1..];
-            let end = after.find("\n};").or_else(|| after.find("\r\n};")).expect("INTERVIEW end");
-            // Turn the JS object literal (trailing comma before closing brace) into JSON.
-            let body = after[..end].trim_end();
-            let json_str = format!("{}}}", body.strip_suffix(',').unwrap_or(body));
-            let map: serde_json::Map<String, Value> =
-                serde_json::from_str(&json_str).expect("INTERVIEW is valid JSON once trailing comma is stripped");
-            assert_eq!(map.len(), codes.len());
-            for code in codes {
-                let got = map
-                    .get(code)
-                    .and_then(Value::as_str)
-                    .unwrap_or_else(|| panic!("missing {code} in {const_name}"));
-                assert!(got.contains("{owner}"), "{prefix}.{code} missing {{owner}} placeholder");
-                let file = prompts_dir.join(format!("{prefix}.{code}.txt"));
-                assert!(file.is_file(), "missing {}", file.display());
-                let raw = std::fs::read_to_string(&file).expect("read interview file");
-                let expected = raw.replace("\r\n", "\n");
-                let expected = expected.trim_end_matches('\n');
-                assert_eq!(got, expected, "calls.html {prefix}[{code}] drifted from {}", file.display());
+    #[tokio::test]
+    async fn regions_api_lists_the_built_in_pack_and_wants_the_password() {
+        let root = std::env::temp_dir().join(format!("bageo-regions-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut state = quick_state(&root);
+        state.settings.calls_ui_token = "regions-test-pw".into();
+        let no_token = packs_regions(State(state.clone()), HeaderMap::new(), Query(TokenQuery { token: None })).await;
+        assert_eq!(no_token.status(), StatusCode::UNAUTHORIZED);
+        let wrong = packs_regions(State(state.clone()), HeaderMap::new(), Query(TokenQuery { token: Some("nope".into()) })).await;
+        assert_eq!(wrong.status(), StatusCode::UNAUTHORIZED);
+
+        let ok = packs_regions(State(state.clone()), HeaderMap::new(), Query(TokenQuery { token: Some("regions-test-pw".into()) })).await;
+        assert_eq!(ok.status(), StatusCode::OK);
+        let got: Value = serde_json::from_str(&body_text(ok).await).unwrap();
+        let pack = crate::packs_store::current();
+        assert_eq!(got["version"], json!(pack.version));
+        let regions = got["regions"].as_array().expect("regions is a list");
+        assert_eq!(regions.len(), pack.regions.len());
+        assert!(regions.len() > 10, "{} regions", regions.len());
+        for r in regions {
+            let code = r["code"].as_str().unwrap_or_default();
+            assert!(!code.is_empty(), "{r}");
+            assert!(r["countries"].is_array(), "{code}: countries");
+            for key in ["en", "native", "zh"] {
+                assert!(r["name"][key].as_str().is_some_and(|s| !s.is_empty()), "{code}: name.{key}");
+            }
+            assert!(r["lang"].as_str().is_some_and(|s| !s.is_empty()), "{code}: lang");
+            assert!(r["status"].as_str().is_some_and(|s| !s.is_empty()), "{code}: status");
+            for key in ["en", "zh"] {
+                assert!(r["delivery"][key].as_str().is_some_and(|s| !s.is_empty()), "{code}: delivery.{key}");
             }
         }
+        let tw = regions.iter().find(|r| r["code"] == json!("tw")).expect("the pack has tw");
+        assert!(tw["countries"].as_array().unwrap().contains(&json!("tw")));
+        assert_eq!(tw["lang"], json!(pack.region("tw").unwrap().lang));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     async fn spawn_router(state: CallsState) -> String {
@@ -5322,6 +5355,7 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/audio/{id}/vm", get(audio_vm))
         .route("/api/audio/{id}/remote", get(audio_remote))
         .route("/api/settings", get(settings_get).put(settings_put))
+        .route("/api/packs/regions", get(packs_regions))
         .route("/api/preview", get(preview))
         .route("/api/notify/test", post(notify_test))
         .route("/api/notify/send", post(notify_send))

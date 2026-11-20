@@ -956,6 +956,7 @@ pub fn persona_system_prompt(
         status: if owner_status_enabled { owner_status } else { "" },
         stall,
         knowledge: "",
+        about: None,
         carrier_note: active.lang == crate::locale::Lang::ZhTw,
         auto_language: false,
     })
@@ -13049,6 +13050,7 @@ mod tests {
                         status: "",
                         stall,
                         knowledge: "",
+                        about: None,
                         carrier_note: lang == Lang::ZhTw,
                         auto_language: true,
                     });
