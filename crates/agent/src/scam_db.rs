@@ -2986,4 +2986,317 @@ mod tests {
             assert!(own_matter(t), "{lang}: {t}");
         }
     }
+
+    /// Countries added from the regional research: two typical scam lines in the
+    /// country's language trip the keywords of its own cards and engage the way a
+    /// live call does (a scam-only demand, or a score of 3 with one keyword of
+    /// weight 2, over the whole call); ordinary bank, courier and clinic calls
+    /// there trip none of its keywords and do not engage, one by one or together.
+    #[test]
+    fn added_countries_catch_their_scams_and_leave_ordinary_calls_alone() {
+        let engages = |hits: &[Hit]| {
+            let mut seen: Vec<&str> = Vec::new();
+            let (mut score, mut strong, mut hard) = (0, false, false);
+            for h in hits {
+                if seen.contains(&h.text) {
+                    continue;
+                }
+                seen.push(h.text);
+                score += h.weight;
+                strong |= h.weight >= 2;
+                hard |= h.hard;
+            }
+            hard || (score >= 3 && strong)
+        };
+        let from_country = |iso: &str, hits: &[Hit]| {
+            hits.iter().any(|h| {
+                db().country_kw_map
+                    .get(&normalized_hit_key(h.text))
+                    .is_some_and(|pairs| pairs.iter().any(|(i, _)| i == iso))
+            })
+        };
+        let countries: &[(&str, [&str; 2], [&str; 3])] = &[
+            (
+                "hk",
+                [
+                    "你好，我係內地公安，你名下電話卡涉及跨境洗黑錢，依家要你簽保密令，配合資產清查",
+                    "阿媽係我呀，聽唔出我係邊個？我撞車喺警署被扣留，急需保釋金，我叫朋友上門收現金",
+                ],
+                [
+                    "你好，呢度係銀行，通知你上個月嘅月結單已經寄出咗，有問題可以去分行查詢",
+                    "你好，順豐速運，你嘅包裹今日下晝派到你公司，麻煩有人簽收",
+                    "你好，呢度係診所，提提你聽日朝早十點覆診，記得帶埋覆診卡",
+                ],
+            ),
+            (
+                "ca",
+                [
+                    "This is the Canada Revenue Agency. Your compromised SIN is linked to unpaid taxes and the RCMP will be sent unless you verify your SIN today",
+                    "Grandpa, it's me, I was in a car accident and the public defender says I need bail money, a cash courier will come by tonight",
+                ],
+                [
+                    "Hi, this is your bank calling to let you know your new debit card was mailed today",
+                    "Hello, this is Canada Post, your parcel will arrive tomorrow between nine and noon",
+                    "Hi, this is the family clinic reminding you of your appointment on Thursday at ten",
+                ],
+            ),
+            (
+                "au",
+                [
+                    "This is the Australian Taxation Office, there is a warrant for your arrest, you must move your funds to a federal holding account today",
+                    "Hi, this is CommBank fraud protection, please read me the NetCode we just sent and we will move your savings to a safe account",
+                ],
+                [
+                    "G'day, it's your bank, just letting you know your new card has been posted",
+                    "Hi, Australia Post here, your parcel will be delivered this afternoon",
+                    "Hi, it's the medical centre reminding you of your appointment tomorrow at nine",
+                ],
+            ),
+            (
+                "mx",
+                [
+                    "Le hablamos de prevención de fraudes de su banco, detectamos cargos no reconocidos, para protegerlo vamos a pasar su saldo a una bóveda segura",
+                    "Tenemos a tu hijo, apaga tu celular y haz un depósito en Oxxo ahora mismo",
+                ],
+                [
+                    "Buenas tardes, le hablamos de su banco para avisarle que su nueva tarjeta ya llegó a la sucursal",
+                    "Hola, le hablo de la paquetería, su paquete llega mañana entre las nueve y las dos",
+                    "Buenos días, le llamamos del consultorio para confirmar su cita del jueves a las diez",
+                ],
+            ),
+            (
+                "ar",
+                [
+                    "Te llamo del área de seguridad de Mercado Pago, hay un consumo desconocido y para frenarlo tenés que pasar el CBU y cambiar el alias",
+                    "Hola tía, me dijeron en el banco que los dólares cara chica son billetes fuera de circulación, mando a alguien a buscarlos",
+                ],
+                [
+                    "Hola, te llamo del banco para avisarte que tu tarjeta nueva ya está en la sucursal",
+                    "Hola, soy del correo, mañana te llevo el paquete a la tarde",
+                    "Buenos días, le llamamos del consultorio para recordarle el turno del jueves a las diez",
+                ],
+            ),
+            (
+                "at",
+                [
+                    "Hier ist die Sicherheitsabteilung Ihrer Bank, Ihr ID Austria Zertifikat läuft ab, nennen Sie mir Ihre Verfügernummer und bestätigen Sie die Freigabe in George",
+                    "Landeskriminalamt hier, Einbrecher haben Ihre Adresse, Sie müssen Stillschweigen bewahren und die Goldmünzen übergeben",
+                ],
+                [
+                    "Grüß Gott, hier ist Ihre Bank, Ihre neue Bankomatkarte liegt in der Filiale zur Abholung bereit",
+                    "Hallo, hier ist die Österreichische Post, Ihr Paket kommt morgen Vormittag",
+                    "Grüß Gott, Ordination Doktor Huber, wir erinnern Sie an Ihren Termin am Donnerstag um zehn",
+                ],
+            ),
+            (
+                "ch",
+                [
+                    "Hier ist die Kantonspolizei, Ihr Sohn hatte einen schweren Unfall, das bleibt streng geheim, Sie müssen die Wertsachen übergeben",
+                    "Hier ist der TWINT Support, lesen Sie mir den TWINT-Code vor, dann müssen Sie die Zahlung freigeben",
+                ],
+                [
+                    "Grüezi, hier ist Ihre Kantonalbank, Ihre neue Debitkarte ist unterwegs",
+                    "Grüezi, die Post hier, Ihr Paket kommt morgen zwischen acht und zwölf",
+                    "Grüezi, hier ist die Arztpraxis am See, wir erinnern Sie an Ihren Termin am Donnerstag um zehn",
+                ],
+            ),
+        ];
+        for (iso, scams, ordinary) in countries {
+            assert!(db().countries.contains_key(*iso), "missing country profile: {iso}");
+            for t in scams {
+                let hits = keyword_hits(t);
+                assert!(engages(&hits), "{iso}: scam not caught: {t} {hits:?}");
+                assert!(from_country(iso, &hits), "{iso}: none of its own keywords: {t} {hits:?}");
+            }
+            for t in ordinary {
+                let hits = keyword_hits(t);
+                assert!(!engages(&hits), "{iso}: ordinary call engaged: {t} {hits:?}");
+                assert!(!from_country(iso, &hits), "{iso}: ordinary call hit its keywords: {t} {hits:?}");
+            }
+            let whole = keyword_hits(&ordinary.join(" "));
+            assert!(!engages(&whole), "{iso}: ordinary calls together engaged: {whole:?}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod review_probe_tests {
+    use super::*;
+
+    /// The engage rule the live call uses (gemini_live::stall_engages): any scam-only
+    /// demand, or a score of 3 with one clear keyword (weight 2 or more).
+    /// Hits are distinct keywords, as a call accumulates them.
+    fn engaged(text: &str) -> (bool, u32, Vec<String>) {
+        let hits = keyword_hits(text);
+        let mut seen: Vec<&'static str> = Vec::new();
+        let mut score = 0;
+        let mut strong = false;
+        let mut hard = false;
+        let mut shown = Vec::new();
+        for h in &hits {
+            shown.push(format!("{}({}{})", h.text, h.weight, if h.hard { ",hard" } else { "" }));
+            if seen.contains(&h.text) {
+                continue;
+            }
+            seen.push(h.text);
+            score += h.weight;
+            strong |= h.weight >= 2;
+            hard |= h.hard;
+        }
+        (hard || (score >= 3 && strong), score, shown)
+    }
+
+    /// Existing behavior, not asserted: these ordinary calls score on keywords the database had before the added countries (信用卡, 轉帳, credit card, insurance, transferencia, crédito, kredit).
+    const ORDINARY_ON_EXISTING_WORDS: &[&str] = &[
+        "你好，呢度係銀行客戶服務部，你張信用卡就嚟到期，我哋會寄新卡畀你，請留意郵件",
+        "你好，我係業主，今個月租金可以轉賬到我之前個戶口，下個月我會請師傅嚟檢查冷氣機",
+        "Hi, this is TD Bank calling about your credit card statement. Your payment is due on the fifteenth and you can pay online or at any branch.",
+        "Hello, this is the dental office reminding you about your cleaning on Friday at two. Please bring your insurance card.",
+        "Hola, le habla el arrendador, el depósito de la renta se hace el día primero, puede hacer la transferencia a la misma cuenta.",
+        "Hola, te llamo del Banco Galicia, tu tarjeta de crédito vence el mes que viene y te enviamos una nueva al domicilio.",
+        "Hola, soy el dueño del departamento, el alquiler se paga por transferencia como siempre, el CBU es el mismo.",
+        "Grüß Gott, hier ist die Erste Bank, Ihre Kreditkartenabrechnung ist im Online-Banking bereit, die Zahlung wird am Monatsende abgebucht.",
+        "Grüezi, hier ist die UBS, Ihre Kreditkartenabrechnung ist im E-Banking bereit, die Zahlung wird per Lastschrift eingezogen.",
+    ];
+
+    const ORDINARY: &[(&str, &[&str])] = &[
+        ("hk", &[
+            "你好，我係送貨員，你嘅快遞喺大廈樓下，可唔可以落嚟攞，或者留低喺管理處",
+            "你好，呢度係牙醫診所，提醒你星期三下晝三點洗牙，如果唔方便可以改期",
+            "你好，我係學校老師，你個仔今日喺學校發燒，請你盡快嚟接佢",
+        ]),
+        ("ca", &[
+            "Hello, this is Canada Post, we tried to deliver your package today. We will try again tomorrow, or you can pick it up at the post office.",
+            "Hi, this is your landlord, the rent for next month is due on the first, you can send an e-transfer as usual.",
+            "Hello, this is Mrs. Lee from the school, your son has a bit of a fever and we need you to pick him up.",
+        ]),
+        ("au", &[
+            "Hi, this is Commonwealth Bank, your new card has been posted and should arrive in a few days. You can activate it in the app.",
+            "G'day, Australia Post here, we have a parcel for you, we'll deliver it this afternoon, someone needs to sign.",
+            "Hi, it's the dental clinic, just confirming your check-up on Thursday at ten.",
+            "Hi, it's the real estate agent, the rental inspection will be next Tuesday, and the rent is due on Friday via direct debit.",
+            "Hi, it's your accountant, your tax return is ready to lodge with the ATO, do you want me to submit it?",
+        ]),
+        ("mx", &[
+            "Buenas tardes, le llamamos de BBVA para avisarle que su estado de cuenta ya está disponible en la aplicación y que su pago vence el día quince.",
+            "Hola, soy repartidor de Mercado Libre, tengo su paquete, estoy afuera de su casa, ¿me abre?",
+            "Buenos días, le llamamos del consultorio dental para recordarle su limpieza del viernes a las cuatro de la tarde.",
+            "Buenas tardes, soy la maestra de su hijo, la próxima semana hay junta de padres, ¿podría venir?",
+        ]),
+        ("ar", &[
+            "Hola, soy de Andreani, tengo un paquete para vos, ¿vas a estar en casa esta tarde?",
+            "Buen día, te llamamos de la clínica para recordarte el turno con el odontólogo el jueves a las diez.",
+            "Hola, soy la directora de la escuela, mañana no hay clases por el paro, avisale a tu hija.",
+        ]),
+        ("at", &[
+            "Hallo, hier ist der Paketdienst, wir stehen vor Ihrer Tür, aber niemand öffnet. Wir liefern morgen noch einmal.",
+            "Grüß Gott, hier ist die Zahnarztpraxis, wir erinnern Sie an Ihren Kontrolltermin am Dienstag um halb neun.",
+            "Grüß Gott, hier ist Ihr Vermieter, die Miete überweisen Sie bitte wieder auf das gleiche Konto, nächste Woche kommt der Installateur wegen der Heizung.",
+            "Grüß Gott, hier ist die Volksschule, Ihr Sohn hat Fieber und muss abgeholt werden.",
+        ]),
+        ("ch", &[
+            "Grüezi, hier ist die Post, wir haben ein Paket für Sie, wir bringen es morgen Nachmittag noch einmal.",
+            "Grüezi, hier ist die Zahnarztpraxis, wir erinnern Sie an Ihre Dentalhygiene am Mittwoch um vierzehn Uhr.",
+            "Grüezi, hier ist die Verwaltung, bitte zahlen Sie die Miete wie immer per Dauerauftrag, die Heizung wird morgen kontrolliert.",
+            "Grüezi, hier ist die Schule, Ihre Tochter hat Bauchweh und muss abgeholt werden.",
+        ]),
+    ];
+
+    const SCAMS: &[(&str, [&str; 2])] = &[
+        ("hk", [
+            "我係香港警務處，你涉嫌洗黑錢，要將戶口所有款項轉入政府保管賬戶，唔好同任何人講",
+            "喂，你仲記唔記得我？我係你老友，我而家出咗事要借錢，你快啲轉數快俾我",
+        ]),
+        ("ca", [
+            "This is Service Canada, your social insurance number has been suspended due to suspicious activity, press 1 to speak with an officer, you must pay in gift cards",
+            "Hi grandma, it's me, I've been arrested, please don't tell mom and dad, I need bail money in bitcoin",
+        ]),
+        ("au", [
+            "This is Telstra, your internet will be disconnected, we need remote access to your computer, please download AnyDesk",
+            "This is the Australian Federal Police, your identity was used for money laundering, you must transfer your savings to a safe account",
+        ]),
+        ("mx", [
+            "Soy de la policía federal, su número está ligado a un secuestro, no cuelgue, deposite en Oxxo el rescate y no hable con nadie",
+            "Buenas tardes, soy del SAT, tiene un adeudo pendiente, debe pagar hoy con tarjetas de regalo o se le emitirá una orden de aprehensión",
+        ]),
+        ("ar", [
+            "Hola mamá, soy yo, se me rompió el celular, es un número nuevo, necesito que me hagas una transferencia urgente",
+            "Le llamamos de ARCA, su CUIT tiene una deuda, para evitar un embargo debe pasar el token de su home banking",
+        ]),
+        ("at", [
+            "Hier ist Europol, Ihr Konto wurde gehackt, Sie müssen Ihr Geld auf ein sicheres Konto überweisen und mit niemandem darüber sprechen",
+            "Hier ist Microsoft Support, Ihr Computer ist infiziert, bitte installieren Sie AnyDesk, damit wir Fernzugriff haben",
+        ]),
+        ("ch", [
+            "Hier ist die Polizei, Sie müssen Bargeld und Schmuck an einen Abholer übergeben, sprechen Sie mit niemandem",
+            "Hier ist die Bank, bitte geben Sie mir den Code aus der Banking-App, damit wir Ihr Konto schützen können",
+        ]),
+    ];
+
+    /// Ordinary calls, one at a time: no hard hit, not engaged, no strong keyword at all.
+    #[test]
+    fn review_probe_ordinary_calls_one_by_one() {
+        let mut bad = Vec::new();
+        for t in ORDINARY_ON_EXISTING_WORDS {
+            let (_, _, shown) = engaged(t);
+            println!("existing words: {shown:?} :: {t}");
+        }
+        for (iso, calls) in ORDINARY {
+            for t in calls.iter() {
+                let (eng, score, shown) = engaged(t);
+                if eng || score > 1 {
+                    bad.push(format!("{iso}: engaged={eng} score={score} {shown:?} :: {t}"));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "ordinary calls with hits:\n{}", bad.join("\n"));
+    }
+
+    /// The same five calls heard in one call (hits accumulate over a call).
+    #[test]
+    fn review_probe_ordinary_calls_accumulated() {
+        let mut bad = Vec::new();
+        for (iso, calls) in ORDINARY {
+            let all = calls.join(" ");
+            let (eng, score, shown) = engaged(&all);
+            if eng {
+                bad.push(format!("{iso}: engaged score={score} {shown:?}"));
+            }
+        }
+        assert!(bad.is_empty(), "accumulated ordinary calls engaged:\n{}", bad.join("\n"));
+    }
+
+    #[test]
+    fn review_probe_scams_engage() {
+        let mut bad = Vec::new();
+        for (iso, calls) in SCAMS {
+            for t in calls {
+                let (eng, score, shown) = engaged(t);
+                if !eng {
+                    bad.push(format!("{iso}: not engaged score={score} {shown:?} :: {t}"));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "scams not caught:\n{}", bad.join("\n"));
+    }
+
+    /// Weights of the new countries' keywords: plain common words stay at 1.
+    #[test]
+    fn review_probe_weights_listed() {
+        let mut lines = Vec::new();
+        for iso in ["hk", "ca", "au", "mx", "ar", "at", "ch"] {
+            let mut by_w = std::collections::BTreeMap::<u32, Vec<&str>>::new();
+            for (k, pairs) in db().country_kw_map.iter() {
+                if pairs.iter().any(|(i, _)| i == iso) {
+                    if let Some(h) = keyword(k) {
+                        by_w.entry(h.weight).or_default().push(h.text);
+                    }
+                }
+            }
+            for (w, v) in by_w {
+                lines.push(format!("{iso} w={w} n={} {:?}", v.len(), v));
+            }
+        }
+        println!("{}", lines.join("\n"));
+    }
 }

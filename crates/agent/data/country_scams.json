@@ -16,7 +16,14 @@
     "PT",
     "ID",
     "IT",
-    "IN"
+    "IN",
+    "HK",
+    "CA",
+    "AU",
+    "MX",
+    "AR",
+    "AT",
+    "CH"
   ],
   "countries": {
     "TW": {
@@ -1666,6 +1673,775 @@
           "sources": [
             "RBI",
             "CERT-In"
+          ]
+        }
+      ]
+    },
+    "HK": {
+      "name": "Hong Kong",
+      "name_local": "香港",
+      "iso": "hk",
+      "calling_code": "+852",
+      "languages": [
+        "yue",
+        "zh-TW",
+        "en"
+      ],
+      "prevalence_note": "ADCC and OFCA 2025-2026: fake mainland police or Immigration officers demanding secrecy and asset checks, fake courier or Customs parcel holds with clearance fees, and 'guess who' relatives needing bail cash dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "hk_fake_official_police",
+          "typology": "fake_official",
+          "name": "假冒內地公安／入境處職員（保密令・資產清查）",
+          "name_en": "Fake mainland police or Immigration staff demanding secrecy and an asset check",
+          "prevalence": "very_high",
+          "lang": "zh-TW",
+          "context_keywords": [
+            "內地公安",
+            "入境事務處",
+            "跨境洗黑錢"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "保密令",
+              "weight": 2,
+              "hard": true
+            },
+            {
+              "text": "資產清查",
+              "weight": 2,
+              "hard": true
+            }
+          ],
+          "signals_en": "Poses as mainland public security or HK Immigration staff saying the owner's phone card or ID is tied to cross-border money laundering; demands secrecy, a video statement, an asset check or a transfer to a 'safe account'.",
+          "legit_en": "Real HK police or Immigration staff ask the owner to come to a station or office in person and never demand secrecy orders, asset checks or transfers by phone.",
+          "bait_tactics": [
+            "扮好緊張咁配合，話身份證同銀行簿擺咗喺抽屜底要慢慢搵，請佢先講清楚保密令點運作",
+            "扮聽唔清楚案件編號同部門名，請佢一個字一個字再講，順便問資產清查要幾耐"
+          ],
+          "sources": [
+            "ADCC",
+            "OFCA"
+          ]
+        },
+        {
+          "id": "hk_parcel_customs_hold",
+          "typology": "fake_customs_parcel",
+          "name": "假冒速遞公司／海關扣件（補繳清關手續費）",
+          "name_en": "Fake courier or Customs parcel hold demanding a clearance fee",
+          "prevalence": "high",
+          "lang": "zh-TW",
+          "context_keywords": [
+            "海關扣查",
+            "違禁品"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "清關手續費",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Poses as a courier or Customs saying a parcel in the owner's name holds contraband or is held, then demands a clearance fee by link or card, or passes the call to 'law enforcement'.",
+          "legit_en": "Real couriers call about delivery times or addresses for parcels the owner expects; duties are paid through the courier's own app or on delivery, without threats.",
+          "bait_tactics": [
+            "扮好擔心，話唔記得最近有冇網購，請佢逐件講包裹入面有咩",
+            "話信用卡唔喺身邊要去另一間房搵，請佢先慢慢解釋清關手續費點計"
+          ],
+          "sources": [
+            "ADCC",
+            "Hong Kong Customs"
+          ]
+        },
+        {
+          "id": "hk_guess_who_bail",
+          "typology": "fake_relative_money",
+          "name": "猜猜我是誰／假冒親友急需保釋金",
+          "name_en": "'Guess who' relative with a new number urgently needing bail cash",
+          "prevalence": "high",
+          "lang": "zh-TW",
+          "context_keywords": [
+            "聽唔出我係邊個",
+            "換咗新號碼"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "保釋金",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "仲記唔記得我",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "上門收現金",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Plays a relative with a new number or a sore throat, then claims to be held after a crash and urgently needs bail or a settlement, sending a 'friend' to collect cash or asking for a transfer.",
+          "legit_en": "A real relative who changed numbers chats normally and can answer family questions; they do not ask for urgent bail cash or a courier at the door.",
+          "bait_tactics": [
+            "扮好關心，問佢最近食咗咩、屋企啲親戚近況，慢慢傾",
+            "話要去銀行先有現金但唔記得提款卡放喺邊，請佢慢慢講保釋金點交收"
+          ],
+          "sources": [
+            "ADCC"
+          ]
+        }
+      ]
+    },
+    "CA": {
+      "name": "Canada",
+      "name_local": "Canada",
+      "iso": "ca",
+      "calling_code": "+1",
+      "languages": [
+        "en",
+        "fr"
+      ],
+      "prevalence_note": "Canadian Anti-Fraud Centre 2025-2026: fake CRA or Service Canada agents threatening arrest over a 'compromised SIN', fake CBSA parcel holds, and grandparent emergency scams with cash couriers dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "ca_cra_service_canada",
+          "typology": "irs_ssa_impersonation",
+          "name": "Fake CRA / Service Canada (compromised SIN, arrest threat)",
+          "name_en": "Fake Canada Revenue Agency or Service Canada agent threatening arrest over a compromised SIN",
+          "prevalence": "very_high",
+          "lang": "en",
+          "context_keywords": [
+            "canada revenue agency",
+            "service canada",
+            "rcmp"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "compromised sin",
+              "weight": 2,
+              "hard": true
+            },
+            {
+              "text": "verify your sin",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Poses as CRA or Service Canada saying the owner's SIN is compromised or taxes are unpaid and the RCMP will arrest them unless they pay at once by gift cards, crypto ATM or e-Transfer.",
+          "legit_en": "Real CRA and Service Canada contact people mostly by mail or My Account messages and never threaten arrest or ask for gift cards, crypto or e-Transfers.",
+          "bait_tactics": [
+            "Sound worried and ask them to explain slowly which tax year it is about while you look for your old tax papers",
+            "Say your SIN card is in a drawer somewhere and keep asking which office and agent number to write down"
+          ],
+          "sources": [
+            "Canadian Anti-Fraud Centre",
+            "Canada Revenue Agency"
+          ]
+        },
+        {
+          "id": "ca_grandparent_emergency",
+          "typology": "fake_relative_money",
+          "name": "Grandparent scam (bail money, cash courier)",
+          "name_en": "Grandparent emergency scam asking for bail money through a cash courier",
+          "prevalence": "high",
+          "lang": "en",
+          "context_keywords": [
+            "public defender",
+            "gag order"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "bail money",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "cash courier",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A 'grandchild' or a 'lawyer' says the grandchild crashed a car and sits in jail, needs bail money now, asks to keep it secret from the parents and sends a courier for cash.",
+          "legit_en": "Real family emergencies come with names and details the family can check, and courts never send couriers to collect bail cash at the door.",
+          "bait_tactics": [
+            "Act shaken and ask the 'grandchild' about family things while you look for your reading glasses",
+            "Ask slowly how the courier will find the house and what the receipt will look like"
+          ],
+          "sources": [
+            "Canadian Anti-Fraud Centre"
+          ]
+        },
+        {
+          "id": "ca_cbsa_parcel",
+          "typology": "fake_customs_parcel",
+          "name": "Fake CBSA intercepted parcel",
+          "name_en": "Fake Canada Border Services Agency call about an intercepted parcel in the owner's name",
+          "prevalence": "medium",
+          "lang": "en",
+          "context_keywords": [
+            "canada border services agency",
+            "cbsa"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "illegal bank cards",
+              "weight": 2,
+              "hard": true
+            },
+            {
+              "text": "customs clearance fee",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Poses as CBSA saying a parcel in the owner's name with drugs or illegal bank cards was intercepted, then transfers to 'police' and asks for money to clear their name.",
+          "legit_en": "Real couriers and CBSA notices about parcels the owner expects ask only for duties through the courier, with no threats or transfers to police.",
+          "bait_tactics": [
+            "Sound confused and ask them to read out every item and the sender's address slowly",
+            "Say you have to find the shipping email first and ask what the parcel looked like"
+          ],
+          "sources": [
+            "Canadian Anti-Fraud Centre"
+          ]
+        }
+      ]
+    },
+    "AU": {
+      "name": "Australia",
+      "name_local": "Australia",
+      "iso": "au",
+      "calling_code": "+61",
+      "languages": [
+        "en"
+      ],
+      "prevalence_note": "Scamwatch and ATO 2025-2026: fake ATO / myGov arrest threats, fake bank fraud teams asking for NetCodes and moves to a 'safe account', and fake toll or parcel fee calls dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "au_ato_mygov",
+          "typology": "fake_official",
+          "name": "Fake ATO / myGov (arrest warrant, holding account)",
+          "name_en": "Fake Australian Taxation Office or myGov caller threatening arrest over a tax debt",
+          "prevalence": "very_high",
+          "lang": "en",
+          "context_keywords": [
+            "australian taxation office",
+            "mygov"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "federal holding account",
+              "weight": 2,
+              "hard": true
+            }
+          ],
+          "signals_en": "Poses as the ATO or myGov saying the owner owes tax or their tax file number is compromised, threatening arrest unless money moves to a 'federal holding account' or is paid by gift cards or crypto.",
+          "legit_en": "The real ATO never threatens arrest on the phone or asks for gift cards, crypto or transfers to a holding account; it sends letters and myGov messages.",
+          "bait_tactics": [
+            "Sound worried and ask which tax return it is about while you look for your old paperwork",
+            "Ask them to spell the officer's name and the reference number slowly so you can write it down"
+          ],
+          "sources": [
+            "Scamwatch",
+            "Australian Taxation Office"
+          ]
+        },
+        {
+          "id": "au_bank_netcode_safe_account",
+          "typology": "fake_bank_account_alert",
+          "name": "Fake bank fraud team (NetCode, safe account)",
+          "name_en": "Fake bank fraud team asking for a NetCode and a move to a safe account",
+          "prevalence": "high",
+          "lang": "en",
+          "context_keywords": [
+            "commbank"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "netcode",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Poses as a bank's fraud team about suspicious charges, asks the owner to read out the NetCode or one-time code just sent, set up a new PayID or move savings to a 'safe account'.",
+          "legit_en": "Real Australian banks may call about a card but never ask for NetCodes or one-time codes, new PayIDs or moving money to another account.",
+          "bait_tactics": [
+            "Say the phone is slow to show messages and ask them to explain again what the code is for",
+            "Ask slowly which charges they mean and when they happened while you find your statement"
+          ],
+          "sources": [
+            "Scamwatch",
+            "CommBank"
+          ]
+        },
+        {
+          "id": "au_linkt_toll",
+          "typology": "fake_utility",
+          "name": "Fake Linkt overdue toll",
+          "name_en": "Fake Linkt toll call about an overdue toll notice",
+          "prevalence": "medium",
+          "lang": "en",
+          "context_keywords": [
+            "linkt"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "overdue toll notice",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Says the owner has an overdue toll and faces a fine unless they pay now through a link or by card over the phone.",
+          "legit_en": "Real toll operators send notices by mail or through the owner's account and do not demand card details on an unexpected call.",
+          "bait_tactics": [
+            "Ask which road and date the toll was for while you look for the car papers",
+            "Say you have two cars and ask them to describe the plate slowly"
+          ],
+          "sources": [
+            "Scamwatch"
+          ]
+        }
+      ]
+    },
+    "MX": {
+      "name": "Mexico",
+      "name_local": "México",
+      "iso": "mx",
+      "calling_code": "+52",
+      "languages": [
+        "es"
+      ],
+      "prevalence_note": "CONDUSEF and local police 2025-2026: fake bank security asking to move money to a 'bóveda segura', virtual kidnapping and crossed-call extortion, and fake customs parcel fines dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "mx_falso_banco_boveda",
+          "typology": "fake_bank_account_alert",
+          "name": "Falso banco: bóveda segura / cuenta de resguardo",
+          "name_en": "Fake bank security moving money to a 'safe vault' or holding account",
+          "prevalence": "very_high",
+          "lang": "es",
+          "context_keywords": [
+            "cargos no reconocidos"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "bóveda segura",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "cuenta de resguardo",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Poses as the bank's fraud area about unrecognized charges and asks to move the balance to a 'bóveda segura' or holding account, to read out the NIP or CVV, or to make a cardless withdrawal.",
+          "legit_en": "Real Mexican banks may confirm a purchase but never ask to move money to another account, read out the NIP or CVV, or make cardless withdrawals.",
+          "bait_tactics": [
+            "Mostrarse preocupado y pedir que le expliquen despacio qué cargos son mientras busca el estado de cuenta",
+            "Decir que la tarjeta está en otra bolsa y preguntar con calma cómo funciona la bóveda segura"
+          ],
+          "sources": [
+            "CONDUSEF"
+          ]
+        },
+        {
+          "id": "mx_secuestro_virtual",
+          "typology": "fake_relative_money",
+          "name": "Secuestro virtual / llamada cruzada",
+          "name_en": "Virtual kidnapping or crossed-call extortion over a relative",
+          "prevalence": "high",
+          "lang": "es",
+          "context_keywords": [
+            "llamada cruzada"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "depósito en oxxo",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "apaga tu celular",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Claims a relative is held or in danger, keeps the owner on the line, tells them to switch off their phone or not tell anyone, and demands an urgent Oxxo deposit or SPEI transfer.",
+          "legit_en": "Real family emergencies can be checked by calling the relative; police and hospitals never ask for Oxxo deposits or SPEI transfers.",
+          "bait_tactics": [
+            "Sonar asustado y pedir que repitan despacio el nombre y la ropa del familiar",
+            "Decir que no sabe hacer depósitos y preguntar paso por paso cómo se hace"
+          ],
+          "sources": [
+            "SSPC",
+            "CONDUSEF"
+          ]
+        },
+        {
+          "id": "mx_falso_sat",
+          "typology": "fake_official",
+          "name": "Falso SAT: adeudo fiscal y orden de aprehensión",
+          "name_en": "Fake tax office (SAT) call threatening an arrest warrant over a tax debt",
+          "prevalence": "medium",
+          "lang": "es",
+          "context_keywords": [
+            "servicio de administración tributaria"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "orden de aprehensión",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "tarjetas de regalo",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Poses as the SAT saying the owner has a tax debt and an arrest warrant will be issued unless they pay today with gift cards, a deposit or a transfer.",
+          "legit_en": "The real SAT writes through its tax mailbox and never threatens arrest on the phone or takes gift cards or deposits.",
+          "bait_tactics": [
+            "Preguntar despacio de qué año es el adeudo mientras busca sus papeles",
+            "Decir que no sabe dónde se compran esas tarjetas y pedir que se lo expliquen paso por paso"
+          ],
+          "sources": [
+            "SAT",
+            "CONDUSEF"
+          ]
+        },
+        {
+          "id": "mx_falsa_aduana_paquete",
+          "typology": "fake_customs_parcel",
+          "name": "Falsa aduana: paquete detenido con multa",
+          "name_en": "Fake customs call about a held parcel and a customs fine",
+          "prevalence": "medium",
+          "lang": "es",
+          "context_keywords": [
+            "aduana mexicana",
+            "paquete detenido"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "multa aduanal",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Poses as customs or a courier saying a parcel is held and a customs fine or tax must be deposited today through a payment link.",
+          "legit_en": "Real couriers charge import duties through their own site or on delivery for parcels the owner expects, without fines by phone.",
+          "bait_tactics": [
+            "Preguntar despacio qué hay en el paquete y quién lo manda",
+            "Decir que tiene que buscar el número de guía y pedir que expliquen otra vez cómo se calcula la multa"
+          ],
+          "sources": [
+            "CONDUSEF"
+          ]
+        }
+      ]
+    },
+    "AR": {
+      "name": "Argentina",
+      "name_local": "Argentina",
+      "iso": "ar",
+      "calling_code": "+54",
+      "languages": [
+        "es"
+      ],
+      "prevalence_note": "Argentine prosecutors' cybercrime unit 2024-2026: fake Mercado Pago or bank security asking to pass the CBU or change the alias, 'cuento del tío' relatives and old-dollar exchanges, and fake ANSES benefits dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "ar_mercadopago_cbu",
+          "typology": "fake_bank_account_alert",
+          "name": "Falso soporte de Mercado Pago / banco (CBU, alias)",
+          "name_en": "Fake Mercado Pago or bank security asking to pass the CBU or change the alias",
+          "prevalence": "very_high",
+          "lang": "es",
+          "context_keywords": [
+            "mercado pago"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "pasar el cbu",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "cambiar el alias",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Poses as Mercado Pago or the bank's security area about an unknown purchase, asks to pass the CBU, change the alias, share the screen or read out a security code.",
+          "legit_en": "Real Mercado Pago or bank support never asks to pass the CBU, change the alias, share the screen or read out codes.",
+          "bait_tactics": [
+            "Decir que no encuentra dónde está el CBU en la aplicación y pedir que se lo expliquen despacio",
+            "Preguntar con calma qué compra es y de qué día mientras busca el resumen"
+          ],
+          "sources": [
+            "Ministerio Público Fiscal"
+          ]
+        },
+        {
+          "id": "ar_cuento_del_tio_dolares",
+          "typology": "fake_relative_money",
+          "name": "Cuento del tío: dólares cara chica fuera de circulación",
+          "name_en": "Fake relative or bank clerk collecting 'old' small-face dollars",
+          "prevalence": "high",
+          "lang": "es",
+          "context_keywords": [
+            "cambio de billetes"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "dólares cara chica",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "billetes fuera de circulación",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Plays a relative or a bank clerk saying old small-face dollars go out of circulation and must be handed over or exchanged, then sends someone to the house to collect cash.",
+          "legit_en": "Banks never send people to the house to collect cash or exchange old notes; old US dollars stay valid.",
+          "bait_tactics": [
+            "Mostrarse interesado y preguntar despacio cómo se distinguen los billetes cara chica",
+            "Decir que la plata está guardada en otro lado y preguntar cómo es el trámite paso por paso"
+          ],
+          "sources": [
+            "Ministerio Público Fiscal"
+          ]
+        },
+        {
+          "id": "ar_anses_bono",
+          "typology": "fake_government_subsidy",
+          "name": "Falso bono de ANSES (clave de homebanking)",
+          "name_en": "Fake ANSES benefit asking for the home-banking password",
+          "prevalence": "medium",
+          "lang": "es",
+          "context_keywords": [
+            "anses"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "clave de homebanking",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Poses as ANSES about an extra bonus or refund for retirees and asks for the home-banking password, a token or a trip to the ATM to 'activate' it.",
+          "legit_en": "Real ANSES benefits are paid without calls asking for passwords, tokens or ATM steps.",
+          "bait_tactics": [
+            "Preguntar despacio cuánto es el bono y cuándo se cobra",
+            "Decir que la clave la tiene anotada en un cuaderno que no encuentra y pedir que expliquen otra vez el trámite"
+          ],
+          "sources": [
+            "ANSES"
+          ]
+        }
+      ]
+    },
+    "AT": {
+      "name": "Austria",
+      "name_local": "Österreich",
+      "iso": "at",
+      "calling_code": "+43",
+      "languages": [
+        "de"
+      ],
+      "prevalence_note": "Watchlist Internet and police 2025-2026: fake bank calls about expiring ID Austria certificates asking for the Verfügernummer and app approval, fake police collecting gold and cash, and fake post or customs fees dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "at_id_austria_bankanruf",
+          "typology": "fake_bank_account_alert",
+          "name": "ID Austria / Bankanruf (Verfügernummer, Freigabe)",
+          "name_en": "Fake bank call about ID Austria asking for the Verfügernummer and an app approval",
+          "prevalence": "very_high",
+          "lang": "de",
+          "context_keywords": [
+            "id austria",
+            "finanzonline"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "verfügernummer",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "freigabe in george",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Poses as the bank's security team about an expiring ID Austria certificate, asks for the Verfügernummer, an approval in the banking app or a move to a 'Sicherheitskonto'.",
+          "legit_en": "Real Austrian banks never ask for the Verfügernummer, approvals in the app or moving money by phone.",
+          "bait_tactics": [
+            "Verwirrt fragen, wo man die Verfügernummer überhaupt findet, und sich alles langsam erklären lassen",
+            "Sagen, dass das Handy gerade lädt, und nachfragen, was genau mit dem Zertifikat passiert"
+          ],
+          "sources": [
+            "Watchlist Internet"
+          ]
+        },
+        {
+          "id": "at_falsche_polizisten",
+          "typology": "fake_relative_money",
+          "name": "Falsche Polizisten / Unfall-Kaution",
+          "name_en": "Fake police or relative-crash call collecting gold or cash",
+          "prevalence": "high",
+          "lang": "de",
+          "context_keywords": [
+            "landeskriminalamt"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "goldmünzen übergeben",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "stillschweigen bewahren",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Fake officers say burglars or a relative's crash put the owner's savings at risk, ask to keep silent and hand cash, gold coins or valuables to a messenger.",
+          "legit_en": "Real Austrian police never collect cash, gold or valuables and never ask people to keep silent toward their family.",
+          "bait_tactics": [
+            "Erschrocken klingen und langsam nach dem Namen des Beamten und der Dienststelle fragen",
+            "Sagen, dass der Schlüssel zum Kasten gerade nicht auffindbar ist, und fragen, wie die Übergabe genau ablaufen soll"
+          ],
+          "sources": [
+            "Bundeskriminalamt",
+            "Watchlist Internet"
+          ]
+        }
+      ]
+    },
+    "CH": {
+      "name": "Switzerland",
+      "name_local": "Schweiz",
+      "iso": "ch",
+      "calling_code": "+41",
+      "languages": [
+        "de",
+        "fr",
+        "it"
+      ],
+      "prevalence_note": "Swiss Crime Prevention and cantonal police 2025-2026: fake police shock calls collecting valuables, TWINT or e-banking approval scams, and spoofed fedpol robocalls dominate.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "ch_falsche_polizisten_schockanruf",
+          "typology": "fake_relative_money",
+          "name": "Falsche Polizisten / Schockanruf (Wertsachen)",
+          "name_en": "Fake police shock call collecting valuables",
+          "prevalence": "very_high",
+          "lang": "de",
+          "context_keywords": [
+            "kantonspolizei",
+            "untersuchungshaft"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "an einen abholer",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "wertsachen übergeben",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "streng geheim",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Fake cantonal police say a relative caused a serious accident or burglars target the owner, demand strict secrecy and send a courier for cash or valuables.",
+          "legit_en": "Real Swiss police never collect cash or valuables at the door and never ask people to keep it secret from their family.",
+          "bait_tactics": [
+            "Besorgt klingen und langsam nach Namen, Posten und Aktenzeichen fragen",
+            "Sagen, dass der Tresorschlüssel bei der Nachbarin ist, und fragen, wie der Kurier genau vorgeht"
+          ],
+          "sources": [
+            "Schweizerische Kriminalprävention"
+          ]
+        },
+        {
+          "id": "ch_twint_freigabe",
+          "typology": "otp_theft",
+          "name": "TWINT / E-Banking Freigabe",
+          "name_en": "Fake support asking for a TWINT code or a payment approval",
+          "prevalence": "high",
+          "lang": "de",
+          "context_keywords": [
+            "twint"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "twint code",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "code aus der banking app",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "zahlung freigeben",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "Poses as TWINT or bank support about a suspicious debit and asks the owner to read out a TWINT code, scan a QR code or approve a payment in the app.",
+          "legit_en": "Real TWINT and bank support never ask for codes, QR scans or payment approvals on the phone.",
+          "bait_tactics": [
+            "Sagen, dass die App gerade nicht aufgeht, und sich langsam erklären lassen, wo der Code steht",
+            "Nachfragen, welche Abbuchung genau gemeint ist und von welchem Tag"
+          ],
+          "sources": [
+            "Schweizerische Kriminalprävention"
+          ]
+        },
+        {
+          "id": "ch_fedpol_spoofing",
+          "typology": "fake_official",
+          "name": "Falscher fedpol-Anruf",
+          "name_en": "Spoofed fedpol or federal prosecutor robocall",
+          "prevalence": "medium",
+          "lang": "de",
+          "context_keywords": [
+            "fedpol",
+            "bundesanwaltschaft"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "strafanzeige vermeiden",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A recorded voice or fake officer from fedpol says the owner's identity was misused and they must pay or transfer money to avoid a criminal complaint.",
+          "legit_en": "Real federal authorities write letters and never demand payments or transfers on the phone.",
+          "bait_tactics": [
+            "Verwirrt nachfragen, welches Verfahren gemeint ist, und sich alles langsam erklären lassen",
+            "Sagen, dass man erst die Brille holen muss, und um die Aktennummer bitten"
+          ],
+          "sources": [
+            "fedpol"
           ]
         }
       ]
