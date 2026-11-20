@@ -105,7 +105,7 @@ const EN_COMPACT_BLOCK: &str = "\n[Keep them talking — overrides every rule ab
 /// [EN_COMPACT_BLOCK] in `lang` with the script of `family` (general moves when
 /// none fits).
 fn compact_block(lang: Lang, family: Family) -> String {
-    let script = script(family, lang).unwrap_or_else(|| match lang {
+    let script = script(family, lang).unwrap_or_else(|| match lang.base() {
         Lang::En => EN_GENERAL_SCRIPT.to_string(),
         _ => format!("{EN_GENERAL_SCRIPT}{EN_IN_CALLER_LANGUAGE}"),
     });
@@ -117,7 +117,7 @@ fn compact_block(lang: Lang, family: Family) -> String {
 /// speak the caller's language). General: none (the full stall block stays).
 pub fn script(family: Family, lang: Lang) -> Option<String> {
     let pick = |table: &[(Family, &'static str)]| table.iter().find(|(f, _)| *f == family).map(|(_, s)| *s);
-    match lang {
+    match lang.base() {
         Lang::ZhTw => pick(&ZH_SCRIPTS).map(str::to_string),
         Lang::ZhCn => pick(&ZH_SCRIPTS).map(crate::zh_convert::to_cn),
         Lang::En => pick(&EN_SCRIPTS).map(str::to_string),
@@ -264,7 +264,7 @@ const OTHER_MARK: &str = "[Note, in caller's language] ";
 
 /// A hint's text in `lang`, with its note mark.
 fn cue_text(m: &Hint, lang: Lang) -> String {
-    match lang {
+    match lang.base() {
         Lang::ZhTw => format!("{ZH_MARK}{}", m.1),
         Lang::ZhCn => crate::zh_convert::to_cn(&format!("{ZH_MARK}{}", m.1)),
         Lang::En => format!("{EN_MARK}{}", m.2),

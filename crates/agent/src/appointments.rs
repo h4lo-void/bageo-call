@@ -1417,7 +1417,7 @@ fn read_back_example(lang: Lang, t: NaiveDateTime) -> String {
             let mon = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"][m_idx];
             format!("\"Então fica para {wd}, {} de {mon}, às {:02}:{:02}, certo?\"", t.day(), t.hour(), t.minute())
         }
-        Lang::En => format!(
+        Lang::En | Lang::Ext(_) => format!(
             "\"So that's {}, {} {}, at {hour12}:{:02} {}, right?\"",
             t.format("%A"),
             t.format("%B"),
@@ -2046,7 +2046,7 @@ fn phone_sms_code(lang: Lang, code: &str) -> Option<&'static str> {
             "手机 App 出错了",
             "找不到指定的 SIM 卡",
         ],
-        Lang::En => [
+        Lang::En | Lang::Ext(_) => [
             "the phone app may not send texts",
             "the number or the text was not accepted",
             "no mobile signal",
@@ -2223,7 +2223,7 @@ fn reply_words(lang: Lang) -> ReplyWords {
     match lang {
         Lang::ZhTw => w("回覆方式", "按同意或不同意後，AI 會打電話告訴對方", "未顯示號碼，沒辦法通知對方", "沒有通知對方", "AI 正在回電給 {}", "AI 沒有回電：{}", "沒有可以撥號的手機連線", "手機沒收到撥號指令"),
         Lang::ZhCn => w("回复方式", "按同意或不同意后，AI 会打电话告诉对方", "未显示号码，没办法通知对方", "没有通知对方", "AI 正在回拨给 {}", "AI 没有回拨：{}", "没有可以拨号的手机连接", "手机没收到拨号指令"),
-        Lang::En => w("Reply", "the AI calls them back once you tap Accept or Decline", "hidden number: the caller can't be told", "the caller was not told", "The AI is calling {} back", "No call-back: {}", "no phone is connected to place the call", "the phone did not get the request to call"),
+        Lang::En | Lang::Ext(_) => w("Reply", "the AI calls them back once you tap Accept or Decline", "hidden number: the caller can't be told", "the caller was not told", "The AI is calling {} back", "No call-back: {}", "no phone is connected to place the call", "the phone did not get the request to call"),
         Lang::Ja => w("返事の方法", "承諾またはお断りの後、AI が電話で伝えます", "非通知のため相手に伝えられません", "相手には伝えていません", "AI が {} に折り返し電話しています", "折り返し電話をかけていません：{}", "電話をかけられるスマホが接続されていません", "スマホに発信の指示が届きませんでした"),
         Lang::Ko => w("회신 방법", "수락하거나 거절하면 AI가 전화로 알려 줍니다", "발신번호 표시 제한이라 알릴 수 없습니다", "상대에게 알리지 않았습니다", "AI가 {}에게 다시 전화하는 중입니다", "다시 전화하지 않았습니다: {}", "전화를 걸 수 있는 휴대폰이 연결되어 있지 않음", "휴대폰이 발신 요청을 받지 못함"),
         Lang::Es => w("Respuesta", "la IA le llama para decírselo cuando aceptes o rechaces", "número oculto: no se le puede avisar", "no se avisó a quien llamó", "La IA está llamando a {}", "No se devolvió la llamada: {}", "no hay ningún teléfono conectado para llamar", "el teléfono no recibió la orden de llamar"),
@@ -3140,7 +3140,7 @@ fn callback_words(lang: Lang) -> CallbackWords {
     match lang {
         Lang::ZhTw => w("AI 回電", "等打給同一個號碼的前一通回電結束，AI 再撥", "AI 沒有回電：這個號碼不能回電（國外、免付費、加值或特殊號碼）", "AI 回電接通，已告訴對方結果", "AI 回電了，對方沒接", "AI 回電撥不出去", "AI 回電的通話已結束"),
         Lang::ZhCn => w("AI 回拨", "等拨给同一个号码的前一通回拨结束，AI 再拨", "AI 没有回拨：这个号码不能回拨（境外、免费、增值或特殊号码）", "AI 回拨接通，已告诉对方结果", "AI 回拨了，对方没接", "AI 回拨拨不出去", "AI 回拨的通话已结束"),
-        Lang::En => w("AI call-back", "The AI calls once its earlier call-back to the same number has ended", "No call-back: this number can't be called back (abroad, toll-free, premium or a short code)", "The AI's call-back got through and the caller was told", "The AI called back; nobody answered", "The AI's call-back couldn't be placed", "The AI's call-back has ended"),
+        Lang::En | Lang::Ext(_) => w("AI call-back", "The AI calls once its earlier call-back to the same number has ended", "No call-back: this number can't be called back (abroad, toll-free, premium or a short code)", "The AI's call-back got through and the caller was told", "The AI called back; nobody answered", "The AI's call-back couldn't be placed", "The AI's call-back has ended"),
         Lang::Ja => w("AI の折り返し電話", "同じ番号への前の折り返し電話が終わってから AI が電話します", "折り返し電話なし：この番号には折り返せません（海外・フリーダイヤル・有料・短縮番号）", "AI の折り返し電話がつながり、結果を伝えました", "AI が電話しましたが、相手は出ませんでした", "AI の折り返し電話をかけられませんでした", "AI の折り返し電話は終わりました"),
         Lang::Ko => w("AI 회신 전화", "같은 번호로 건 앞의 회신 전화가 끝나면 AI가 전화합니다", "회신 전화 없음: 이 번호로는 다시 걸 수 없습니다(해외, 수신자 부담, 유료, 특수 번호)", "AI의 회신 전화가 연결되어 결과를 알렸습니다", "AI가 전화했지만 받지 않았습니다", "AI가 전화를 걸지 못했습니다", "AI의 회신 전화가 끝났습니다"),
         Lang::Es => w("Llamada de la IA", "La IA llamará cuando termine su llamada anterior al mismo número", "Sin llamada: a este número no se puede llamar (extranjero, gratuito, de tarificación especial o corto)", "La llamada de la IA conectó y se le dio la respuesta", "La IA llamó y nadie contestó", "La IA no pudo hacer la llamada", "La llamada de la IA terminó"),

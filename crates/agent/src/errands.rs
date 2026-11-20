@@ -1212,7 +1212,7 @@ fn words(lang: Lang) -> Words {
             ["没有可以拨号的手机连线", "拨号指令送不到手机", "电话拨不出去", "手机一直在通话中，排队超过 10 分钟没拨出去", "agent 重新启动，这通没打完", "需要按键的语音菜单", "电信语音：{}", "结果没有自动整理出来，请看逐字稿", "手机用了别的 SIM 卡拨出（可能换过卡），已立刻挂断；先打给这部手机一通让系统重新识别卡再试", "拨给同一个号码的前一通电话太久没结束，排队超过 25 分钟没拨出去"],
             ["拨号中", "对方接起", "AI 在问你：{}", "通话结束", "等手机空出来再拨", "等拨给同一个号码的前一通电话结束再拨", "已取消"],
         ),
-        Lang::En => words_of(
+        Lang::En | Lang::Ext(_) => words_of(
             "AI errand call",
             ["Done", "Partly done", "Not done", "Your decision", "No answer", "Voicemail: message left", "Didn't get through"],
             ["Details", "Next", "Your decision", "Agreed time", "The AI settled something you didn't answer ({}); check it, and call back to change it if it doesn't suit", "Not confirmed by the other side"],
@@ -1276,7 +1276,7 @@ fn redial_words(lang: Lang) -> RedialWords {
     let (wait, gave_up, voicemail) = match lang {
         Lang::ZhTw => ("撥到通：第 {n} 次沒接，{time} 再撥", "撥了 {n} 次都沒人接", "進了語音信箱，沒留言"),
         Lang::ZhCn => ("拨到通：第 {n} 次没接，{time} 再拨", "拨了 {n} 次都没人接", "进了语音信箱，没留言"),
-        Lang::En => ("Redial until answered: try {n} got no answer, calling again at {time}", "Called {n} times, nobody answered", "Voicemail: no message left"),
+        Lang::En | Lang::Ext(_) => ("Redial until answered: try {n} got no answer, calling again at {time}", "Called {n} times, nobody answered", "Voicemail: no message left"),
         Lang::Ja => ("つながるまでかけ直す：{n} 回目も出ませんでした。{time} にかけ直します", "{n} 回かけましたが、誰も出ませんでした", "留守電でした（メッセージは残していません）"),
         Lang::Ko => ("연결될 때까지 다시 걸기: {n}번째도 받지 않아 {time}에 다시 겁니다", "{n}번 걸었지만 아무도 받지 않았습니다", "음성사서함이라 메시지를 남기지 않았습니다"),
         Lang::Es => ("Llamar hasta que contesten: intento {n} sin respuesta, vuelve a llamar a las {time}", "Llamó {n} veces y nadie contestó", "Buzón de voz: no se dejó mensaje"),
@@ -2620,8 +2620,8 @@ pub fn errand_prompt_with(s: &Script, redial: bool) -> String {
         (Lang::De, false) => "Ich prüfe das kurz, einen Moment bitte".to_string(),
         (Lang::Pt, true) => format!("Vou confirmar com {owner}, um momento por favor"),
         (Lang::Pt, false) => "Vou confirmar isso, um momento por favor".to_string(),
-        (Lang::En, true) => format!("let me check with {owner}, one moment please"),
-        (Lang::En, false) => "let me check, one moment please".to_string(),
+        (Lang::En | Lang::Ext(_), true) => format!("let me check with {owner}, one moment please"),
+        (Lang::En | Lang::Ext(_), false) => "let me check, one moment please".to_string(),
     };
     let example_question = match s.owner_lang {
         Lang::ZhTw => "店家說 7 點沒位子，7 點半可以嗎？",
@@ -2632,7 +2632,7 @@ pub fn errand_prompt_with(s: &Script, redial: bool) -> String {
         Lang::Fr => "Il n'y a plus de table à 19 h ; est-ce que 19 h 30 convient ?",
         Lang::De => "Um 19 Uhr ist kein Tisch frei; passt 19:30 Uhr?",
         Lang::Pt => "Não há mesa às 7; às 7:30 tudo bem?",
-        Lang::En => "They have no table at 7; is 7:30 fine?",
+        Lang::En | Lang::Ext(_) => "They have no table at 7; is 7:30 fine?",
     };
     // A read-back is a question with the time said in full: a real call took
     // a fast 「四點半可以」 (transcribed 「字點看可以」) for four o'clock and
@@ -2646,7 +2646,7 @@ pub fn errand_prompt_with(s: &Script, redial: bool) -> String {
         Lang::Fr => "C'est donc bien aujourd'hui à 16 h 30 ?",
         Lang::De => "Also heute Nachmittag um 16:30 Uhr, richtig?",
         Lang::Pt => "Então fica para hoje às 16:30, certo?",
-        Lang::En => "So that's today at 4:30 in the afternoon, right?",
+        Lang::En | Lang::Ext(_) => "So that's today at 4:30 in the afternoon, right?",
     };
     // How the AI says who calls: always the owner, never a name from the matter.
     let intro = match (s.lang, assistant) {
@@ -2664,8 +2664,8 @@ pub fn errand_prompt_with(s: &Script, redial: bool) -> String {
         (Lang::De, false) => format!("Guten Tag, hier spricht {owner}"),
         (Lang::Pt, true) => format!("Olá, falo em nome de {owner}"),
         (Lang::Pt, false) => format!("Olá, aqui é {owner}"),
-        (Lang::En, true) => format!("Hello, I'm {owner}'s assistant"),
-        (Lang::En, false) => format!("Hello, this is {owner}"),
+        (Lang::En | Lang::Ext(_), true) => format!("Hello, I'm {owner}'s assistant"),
+        (Lang::En | Lang::Ext(_), false) => format!("Hello, this is {owner}"),
     };
     let whose = if assistant { "whose assistant you are" } else { "who you are" };
     let voicemail = if redial {

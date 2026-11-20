@@ -475,7 +475,7 @@ pub(crate) fn sales_labels(lang: Lang) -> (&'static str, &'static str) {
     match lang {
         Lang::ZhTw => ("推銷電話", "疑似詐騙"),
         Lang::ZhCn => ("推销电话", "疑似诈骗"),
-        Lang::En => ("Sales call", "Suspected scam"),
+        Lang::En | Lang::Ext(_) => ("Sales call", "Suspected scam"),
         Lang::Ja => ("営業電話", "詐欺の疑い"),
         Lang::Ko => ("영업 전화", "사기 의심"),
         Lang::Es => ("Llamada comercial", "Posible estafa"),
@@ -511,7 +511,7 @@ pub fn summary_says_sales(lang: Lang, summary: &str) -> bool {
         Lang::ZhTw | Lang::ZhCn => &[
             "語音廣告", "语音广告", "催收騷擾", "催收骚扰", "討債騷擾", "讨债骚扰", "惡意騷擾", "恶意骚扰",
         ],
-        Lang::En => &[
+        Lang::En | Lang::Ext(_) => &[
             "sales pitch", "likely scam", "probable scam", "sales call", "debt-collection harassment", "debt collection harassment", "abusive harassment", "malicious harassment",
         ],
         Lang::Ja => &["セールス電話", "詐欺電話", "悪質な取り立て", "嫌がらせ電話", "脅迫電話"],
@@ -1020,6 +1020,7 @@ fn latin_function_words(lang: Lang) -> &'static [&'static str] {
 /// `owner`: one of them has at least two of its common words in it, more than
 /// the owner's language has.
 fn latin_line_in_other_language(text: &str, owner: Lang) -> bool {
+    let owner = owner.base();
     let words: Vec<String> = text
         .split(|c: char| !(c.is_alphabetic() || c == '\'' || c == '’'))
         .map(|w| w.trim_matches(|c| c == '\'' || c == '’').replace('’', "'").to_lowercase())

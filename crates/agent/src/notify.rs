@@ -1195,7 +1195,7 @@ fn pick(t: [&str; 9]) -> String {
     let i = match locale::notify_lang() {
         locale::Lang::ZhTw => 0,
         locale::Lang::ZhCn => 1,
-        locale::Lang::En => 2,
+        locale::Lang::En | locale::Lang::Ext(_) => 2,
         locale::Lang::Ja => 3,
         locale::Lang::Ko => 4,
         locale::Lang::Es => 5,
@@ -2063,7 +2063,7 @@ pub async fn notify_ai_request(
             locale::Lang::Fr => ("Liste noire", "Les faire parler", "Liste blanche"),
             locale::Lang::De => ("Sperrliste", "Hinhalten", "Whitelist"),
             locale::Lang::Pt => ("Bloquear", "Manter falando", "Lista branca"),
-            locale::Lang::En => ("Block", "Stall", "Whitelist"),
+            locale::Lang::En | locale::Lang::Ext(_) => ("Block", "Stall", "Whitelist"),
         };
         for (lbl, act) in [(lbl_blk, "block"), (lbl_stl, "stall"), (lbl_wht, "white")] {
             let u = crate::calendar::quick_action_url(&console, act, caller_id.trim(), name_hint);

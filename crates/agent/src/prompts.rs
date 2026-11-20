@@ -473,7 +473,7 @@ const EN_WAIT_ONE_MORE: &str = "Wait, one more question";
 
 /// `{p_wait}` in `lang`'s prompts: [EN_WAIT_ONE_MORE] in English, else the language's own line.
 pub(crate) fn wait_one_more(lang: Lang) -> &'static str {
-    match lang {
+    match lang.base() {
         Lang::En => EN_WAIT_ONE_MORE,
         _ => locale::phrases(lang).wait_one_more,
     }
@@ -494,7 +494,7 @@ struct ShortText {
 
 fn short_text(lang: Lang) -> &'static ShortText {
     match lang {
-        Lang::En => &ShortText {
+        Lang::En | Lang::Ext(_) => &ShortText {
             language: "Speak English, in everyday phone speech.",
             hold: "Money, transfers, contracts, passwords, verification codes, personal details, meeting up or fixing a time: agree to none of it; pass over it lightly.",
             sales: "Sales pitches and scams: decline briefly and leave it there.",
@@ -730,7 +730,9 @@ pub fn pack(lang: Lang) -> &'static Pack {
             })
             .collect()
     });
-    &packs[&lang]
+    // Only the core languages have a pack; any other language uses English's
+    // (`Lang::base`), so a code without its own pack never panics here.
+    &packs[&lang.base()]
 }
 
 /// The pack of the running agent's language.
@@ -743,7 +745,7 @@ fn language_label(pack_lang: Lang, lang: Lang) -> &'static str {
     let (tw, cn) = match lang {
         Lang::ZhTw => ("台灣國語", "台湾国语"),
         Lang::ZhCn => ("普通話", "普通话"),
-        Lang::En => ("英文", "英语"),
+        Lang::En | Lang::Ext(_) => ("英文", "英语"),
         Lang::Ja => ("日文", "日语"),
         Lang::Ko => ("韓文", "韩语"),
         Lang::Es => ("西班牙文", "西班牙语"),

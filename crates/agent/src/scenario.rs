@@ -163,7 +163,7 @@ pub fn cue(scenario: Scenario, lang: Lang, _region: Option<Region>, booking: boo
         Scenario::WrongNumber => 6,
         Scenario::None => return None,
     };
-    let row_lang = if lang == Lang::ZhCn { Lang::ZhTw } else { lang };
+    let row_lang = if lang == Lang::ZhCn { Lang::ZhTw } else { lang.base() };
     let (_, mark, texts) = CUES.iter().find(|(l, _, _)| *l == row_lang)?;
     let text = format!("{mark}{}", texts[i]);
     Some(if lang == Lang::ZhCn { crate::zh_convert::to_cn(&text) } else { text })
@@ -172,7 +172,7 @@ pub fn cue(scenario: Scenario, lang: Lang, _region: Option<Region>, booking: boo
 /// The note mark the cues of `lang` start with (Traditional for both Chinese
 /// scripts: the caller converts the whole note).
 pub fn note_mark(lang: Lang) -> &'static str {
-    let row_lang = if lang == Lang::ZhCn { Lang::ZhTw } else { lang };
+    let row_lang = if lang == Lang::ZhCn { Lang::ZhTw } else { lang.base() };
     CUES.iter().find(|(l, _, _)| *l == row_lang).map_or("[Note] ", |(_, mark, _)| *mark)
 }
 

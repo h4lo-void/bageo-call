@@ -83,7 +83,7 @@ pub fn lang_default_country(lang: Lang) -> &'static str {
     match lang {
         Lang::ZhTw => "tw",
         Lang::ZhCn => "cn",
-        Lang::En => "us",
+        Lang::En | Lang::Ext(_) => "us",
         Lang::Ja => "jp",
         Lang::Ko => "kr",
         Lang::Es => "mx",

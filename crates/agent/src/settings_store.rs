@@ -3108,7 +3108,7 @@ fn language_country(lang: crate::locale::Lang) -> &'static str {
     match lang {
         Lang::ZhTw => "tw",
         Lang::ZhCn => "cn",
-        Lang::En => "us",
+        Lang::En | Lang::Ext(_) => "us",
         Lang::Ja => "jp",
         Lang::Ko => "kr",
         Lang::Es => "es",

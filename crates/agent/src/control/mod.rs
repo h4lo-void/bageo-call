@@ -482,7 +482,7 @@ fn list_hint_text(lang: locale::Lang) -> &'static str {
         Lang::Fr => "Pour donner des commandes ici, ajoutez votre ID dans « Qui peut donner des commandes » de ce chat, dans les réglages de la console Bageo. Votre ID : {id}",
         Lang::De => "Um hier Befehle zu geben, trage in den Einstellungen der Bageo-Konsole deine ID unter „Wer Befehle geben darf“ für diesen Chat ein. Deine ID: {id}",
         Lang::Pt => "Para dar comandos aqui, coloque seu ID em “Quem pode dar comandos” deste chat, nas configurações do console do Bageo. Seu ID: {id}",
-        Lang::En => "To give commands here, add your ID under “Who may give commands” for this chat in the Bageo console's settings. Your ID: {id}",
+        Lang::En | Lang::Ext(_) => "To give commands here, add your ID under “Who may give commands” for this chat in the Bageo console's settings. Your ID: {id}",
     }
 }
 

@@ -12,6 +12,48 @@
 //! The settings value lives in a process-wide slot ([`set_current`]) because
 //! the Live session's helpers are free functions. Unset (unit tests) = zh-TW.
 
+use bageo_packs::data::{OfficialLang, OFFICIAL_LANG_INFO};
+
+/// A Gemini Live language outside the nine core ones (Italian, Thai, Arabic,
+/// ...): an index into [`OFFICIAL_LANG_INFO`] that only ever points at a
+/// non-core entry. Until a language has its own phrases and prompts, every
+/// part of the agent treats it the way it treats English.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Ext(u8);
+
+impl Ext {
+    /// The non-core language whose primary code is `code` (`it`, `fil`,
+    /// `nb`; lower case). Core codes (`en`, `ja`, ...) give None.
+    pub fn from_code(code: &str) -> Option<Ext> {
+        bageo_packs::data::official_ext_index(code).and_then(|i| u8::try_from(i).ok()).map(Ext)
+    }
+
+    /// Every non-core official language, in the order of the official list.
+    pub fn all() -> impl Iterator<Item = Ext> {
+        OFFICIAL_LANG_INFO.iter().enumerate().filter(|(_, l)| !l.core).filter_map(|(i, _)| u8::try_from(i).ok()).map(Ext)
+    }
+
+    fn info(self) -> &'static OfficialLang {
+        &OFFICIAL_LANG_INFO[usize::from(self.0)]
+    }
+
+    /// Settings code: the primary code (`it`, `fil`, `nb`).
+    pub fn code(self) -> &'static str {
+        self.info().code
+    }
+
+    /// The code exactly as the official list writes it (`it-IT`, `fil`).
+    pub fn official(self) -> &'static str {
+        self.info().official
+    }
+}
+
+impl std::fmt::Debug for Ext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.code())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Lang {
     ZhTw,
@@ -23,9 +65,13 @@ pub enum Lang {
     Fr,
     De,
     Pt,
+    /// A language outside the nine core ones. [`Lang::parse`] never returns
+    /// it; only [`Lang::parse_any`] does.
+    Ext(Ext),
 }
 
-pub const ALL: [Lang; 9] = [
+/// The nine core languages: the ones settings accept and the UI lists.
+pub const CORE: [Lang; 9] = [
     Lang::En,
     Lang::ZhTw,
     Lang::ZhCn,
@@ -37,8 +83,12 @@ pub const ALL: [Lang; 9] = [
     Lang::Pt,
 ];
 
+/// Same as [`CORE`]. Code that walks every language a user can pick today.
+pub const ALL: [Lang; 9] = CORE;
+
 impl Lang {
-    /// Settings / UI code (`en`, `zh-TW`, …). Unknown → English.
+    /// Settings / UI code (`en`, `zh-TW`, …). Unknown → English. Only ever
+    /// returns one of the nine core languages.
     pub fn parse(s: &str) -> Lang {
         let t = s.trim().to_ascii_lowercase().replace('_', "-");
         match t.as_str() {
@@ -56,6 +106,41 @@ impl Lang {
         }
     }
 
+    /// Like [`Lang::parse`], but also knows the other official languages, and
+    /// says None for a code it does not know instead of falling back to English.
+    ///
+    /// Order: a core language (whatever [`Lang::parse`] recognises, plus
+    /// `cmn` read as `zh`), then a non-core official language by its official
+    /// code (`it-IT`) or primary code (`it`, `it-CH`). Legacy and macro codes
+    /// browsers and Android still send are mapped first: `no` → `nb`,
+    /// `iw` → `he`, `in` → `id`, `tl` → `fil`.
+    pub fn parse_any(s: &str) -> Option<Lang> {
+        let t = s.trim().to_ascii_lowercase().replace('_', "-");
+        let mut parts = t.splitn(2, '-');
+        let primary = parts.next().unwrap_or("");
+        let rest = parts.next();
+        let primary = match primary {
+            "cmn" => "zh",
+            "no" => "nb",
+            "iw" => "he",
+            "in" => "id",
+            "tl" => "fil",
+            p => p,
+        };
+        if primary.is_empty() {
+            return None;
+        }
+        let norm = match rest {
+            Some(r) => format!("{primary}-{r}"),
+            None => primary.to_string(),
+        };
+        let core = Lang::parse(&norm);
+        if core != Lang::En || primary == "en" {
+            return Some(core);
+        }
+        Ext::from_code(primary).map(Lang::Ext)
+    }
+
     pub fn code(self) -> &'static str {
         match self {
             Lang::ZhTw => "zh-TW",
@@ -67,6 +152,37 @@ impl Lang {
             Lang::Fr => "fr",
             Lang::De => "de",
             Lang::Pt => "pt",
+            Lang::Ext(e) => e.code(),
+        }
+    }
+
+    /// One of the nine core languages.
+    pub fn is_core(self) -> bool {
+        !matches!(self, Lang::Ext(_))
+    }
+
+    /// The language's name in English (`Italian`, `Traditional Chinese (Taiwan Mandarin)`).
+    pub fn name_en(self) -> &'static str {
+        match self {
+            Lang::Ext(e) => e.info().name_en,
+            core => phrases(core).name_en,
+        }
+    }
+
+    /// Written right to left (Arabic, Hebrew, Persian, Urdu, ...).
+    pub fn rtl(self) -> bool {
+        match self {
+            Lang::Ext(e) => e.info().rtl,
+            _ => false,
+        }
+    }
+
+    /// The language whose settings, phrases and prompts stand in for this one
+    /// until it has its own: English for every non-core language.
+    pub fn base(self) -> Lang {
+        match self {
+            Lang::Ext(_) => Lang::En,
+            core => core,
         }
     }
 
@@ -676,7 +792,7 @@ pub fn phrases(lang: Lang) -> &'static Phrases {
     match lang {
         Lang::ZhTw => &ZH_TW,
         Lang::ZhCn => &ZH_CN,
-        Lang::En => &EN,
+        Lang::En | Lang::Ext(_) => &EN,
         Lang::Ja => &JA,
         Lang::Ko => &KO,
         Lang::Es => &ES,
@@ -3705,5 +3821,260 @@ mod tests {
         assert!(ends_with_farewell("Vale, hasta luego.", 1));
         assert!(!ends_with_farewell("Gracias", 1));
         assert_eq!(strip_trailing_thanks("Vale, gracias."), "Vale");
+    }
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+    use bageo_packs::data::{OFFICIAL_LANGS, OFFICIAL_LANG_INFO};
+
+    /// [Lang::parse] as it was before non-core languages existed.
+    fn parse_before(s: &str) -> Lang {
+        let t = s.trim().to_ascii_lowercase().replace('_', "-");
+        match t.as_str() {
+            "zh-tw" | "zh-hant" | "zh-hk" | "zh" => Lang::ZhTw,
+            "zh-cn" | "zh-hans" | "zh-sg" => Lang::ZhCn,
+            _ => match t.split('-').next().unwrap_or("") {
+                "ja" => Lang::Ja,
+                "ko" => Lang::Ko,
+                "es" => Lang::Es,
+                "fr" => Lang::Fr,
+                "de" => Lang::De,
+                "pt" => Lang::Pt,
+                _ => Lang::En,
+            },
+        }
+    }
+
+    fn ext(code: &str) -> Lang {
+        Lang::Ext(Ext::from_code(code).unwrap_or_else(|| panic!("{code}")))
+    }
+
+    #[test]
+    fn parse_is_unchanged_for_every_input() {
+        let mut inputs: Vec<String> = [
+            "zh-TW", "zh_TW", "zh-tw", "ZH-HANT", "zh-Hant", "zh-HK", "zh", " zh ", "zh-CN", "zh_cn", "zh-Hans", "zh-SG",
+            "zh-MO", "zh-Hant-TW", "cmn", "cmn-TW", "en", "EN", "en-US", "en-GB", "en_IN", "ja", "ja-JP", "JA_jp", "ko",
+            "ko-KR", "es", "es-US", "es-ES", "es-419", "fr", "fr-FR", "fr-CA", "de", "de-DE", "de-CH", "pt", "pt-BR",
+            "pt-PT", "it", "it-IT", "th", "th-TH", "ar", "ar-EG", "ru", "ru-RU", "hi", "hi-IN", "fil", "nb", "nn", "no",
+            "iw", "in", "tl", "xx", "", "  ", "-", "--", "_", "english", "日本語", "it-", "-it",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        for code in OFFICIAL_LANGS {
+            inputs.push(code.to_string());
+            inputs.push(code.to_ascii_uppercase());
+            inputs.push(code.replace('-', "_"));
+        }
+        for s in &inputs {
+            let l = Lang::parse(s);
+            assert_eq!(l, parse_before(s), "{s:?}");
+            assert!(l.is_core(), "{s:?}");
+        }
+    }
+
+    #[test]
+    fn core_list() {
+        assert_eq!(ALL, CORE);
+        assert_eq!(CORE.len(), 9);
+        for l in CORE {
+            assert!(l.is_core());
+            assert!(!l.rtl());
+            assert_eq!(l.base(), l);
+            assert_eq!(Lang::parse_any(l.code()), Some(l));
+            assert_eq!(l.name_en(), phrases(l).name_en);
+        }
+    }
+
+    #[test]
+    fn every_official_code_round_trips() {
+        assert_eq!(Ext::all().count(), 70);
+        for info in &OFFICIAL_LANG_INFO {
+            for input in [info.official.to_string(), info.official.to_ascii_lowercase(), info.official.replace('-', "_")] {
+                let l = Lang::parse_any(&input).unwrap_or_else(|| panic!("{input}"));
+                assert_eq!(l.is_core(), info.core, "{input}");
+                assert_eq!(Lang::parse_any(l.code()), Some(l), "{input}");
+                if !info.core {
+                    assert_eq!(l.code(), info.code);
+                    assert_eq!(l.name_en(), info.name_en);
+                    assert_eq!(l.rtl(), info.rtl);
+                    assert_eq!(l.base(), Lang::En);
+                    let Lang::Ext(e) = l else { unreachable!() };
+                    assert_eq!(e.official(), info.official);
+                    assert_eq!(format!("{e:?}"), info.code);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn parse_any_examples() {
+        assert_eq!(Lang::parse_any("it-IT"), Some(ext("it")));
+        assert_eq!(Lang::parse_any("it_CH"), Some(ext("it")));
+        assert_eq!(Lang::parse_any("th"), Some(ext("th")));
+        assert_eq!(Lang::parse_any("ar-EG"), Some(ext("ar")));
+        assert_eq!(Lang::parse_any("ar-SA"), Some(ext("ar")));
+        assert_eq!(Lang::parse_any(" RU "), Some(ext("ru")));
+        assert_eq!(Lang::parse_any("hi_IN"), Some(ext("hi")));
+        assert_eq!(Lang::parse_any("fil-PH"), Some(ext("fil")));
+        // Legacy and macro codes browsers and Android still send.
+        assert_eq!(Lang::parse_any("no"), Some(ext("nb")));
+        assert_eq!(Lang::parse_any("nb-NO"), Some(ext("nb")));
+        assert_eq!(Lang::parse_any("nn"), Some(ext("nn")));
+        assert_ne!(ext("nb"), ext("nn"));
+        assert_eq!(Lang::parse_any("iw"), Some(ext("he")));
+        assert_eq!(Lang::parse_any("in-ID"), Some(ext("id")));
+        assert_eq!(Lang::parse_any("tl"), Some(ext("fil")));
+        // Core languages as before, Mandarin's official code read as zh.
+        assert_eq!(Lang::parse_any("cmn"), Some(Lang::ZhTw));
+        assert_eq!(Lang::parse_any("zh_TW"), Some(Lang::ZhTw));
+        assert_eq!(Lang::parse_any("zh-Hans"), Some(Lang::ZhCn));
+        assert_eq!(Lang::parse_any("en-IN"), Some(Lang::En));
+        assert_eq!(Lang::parse_any("es-US"), Some(Lang::Es));
+        assert_eq!(Lang::parse_any("pt-BR"), Some(Lang::Pt));
+        // Unknown stays unknown: no fallback to English.
+        for s in ["", " ", "xx", "zh-MO", "yue", "nan", "hak", "-", "english"] {
+            assert_eq!(Lang::parse_any(s), None, "{s:?}");
+        }
+        assert!(ext("ar").rtl() && ext("he").rtl() && ext("fa").rtl() && ext("ur").rtl());
+        assert!(!ext("it").rtl() && !ext("th").rtl() && !ext("ru").rtl() && !ext("hi").rtl());
+        assert_eq!(format!("{:?}", ext("th")), "Ext(th)");
+        assert!(Ext::from_code("ar").unwrap() < Ext::from_code("ur").unwrap());
+        assert_eq!(Ext::from_code("en"), None);
+        assert_eq!(Ext::from_code("cmn"), None);
+    }
+
+    /// Until a non-core language has its own phrases and prompts, every entry
+    /// point treats it exactly like English and none of them panics.
+    #[test]
+    fn every_ext_language_works_like_english() {
+        use crate::stall_script::Family;
+        let en = Lang::En;
+        let dt = chrono::NaiveDate::from_ymd_opt(2026, 11, 21).unwrap().and_hms_opt(15, 30, 0).unwrap();
+        let rt = crate::settings_store::RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        let regions = crate::country_profile::all();
+        let families = [
+            Family::Investment,
+            Family::Insurance,
+            Family::Credit,
+            Family::Impersonation,
+            Family::Collection,
+            Family::Harassment,
+            Family::General,
+        ];
+        let lines = [
+            "Buongiorno, sono il corriere, ha un pacco per lei.",
+            "สวัสดีครับ มีพัสดุมาส่งครับ",
+            "مرحبا، لدي طرد لك، هل أنت في المنزل؟",
+            "Здравствуйте, вам посылка, вы дома?",
+            "नमस्ते, आपके लिए एक पार्सल है, क्या आप घर पर हैं?",
+            "Hello, I have a delivery for you.",
+        ];
+        for e in Ext::all() {
+            let l = Lang::Ext(e);
+            assert!(std::ptr::eq(phrases(l), phrases(en)), "{l:?}");
+            assert!(std::ptr::eq(crate::prompts::pack(l), crate::prompts::pack(en)), "{l:?}");
+            assert!(std::ptr::eq(crate::control::words::words(l), crate::control::words::words(en)));
+            for a in [false, true] {
+                assert_eq!(crate::prompts::kick_open(l, a, None), crate::prompts::kick_open(en, a, None));
+                assert_eq!(crate::prompts::kick_open_call(l, a, None, true), crate::prompts::kick_open_call(en, a, None, true));
+                assert_eq!(crate::prompts::default_prompt(l, a, "Alex"), crate::prompts::default_prompt(en, a, "Alex"));
+                assert_eq!(crate::prompts::default_prompt_template(l, a), crate::prompts::default_prompt_template(en, a));
+                assert_eq!(crate::prompts::persona_chars(l, a, "Alex", ""), crate::prompts::persona_chars(en, a, "Alex", ""));
+                assert_eq!(crate::contacts::caller_block(l, a, "Alex", "Sam", "note"), crate::contacts::caller_block(en, a, "Alex", "Sam", "note"));
+                assert_eq!(crate::urgent_call::not_answered_turn(l, a, "Alex"), crate::urgent_call::not_answered_turn(en, a, "Alex"));
+                assert_eq!(crate::urgent_call::callback_turn(l, a, "Alex"), crate::urgent_call::callback_turn(en, a, "Alex"));
+                for who in [crate::urgent_call::TransferWho::Whitelist, crate::urgent_call::TransferWho::Contact, crate::urgent_call::TransferWho::Stranger] {
+                    for will_call in [false, true] {
+                        assert_eq!(
+                            crate::contacts::urgent_block(l, a, "Alex", who, will_call),
+                            crate::contacts::urgent_block(en, a, "Alex", who, will_call)
+                        );
+                    }
+                }
+            }
+            let _ = crate::prompts::kick_open(Lang::ZhTw, false, Some(l));
+            let _ = crate::prompts::call_language_note(l, Lang::Ja);
+            let _ = crate::prompts::call_language_note(Lang::ZhTw, l);
+            let _ = crate::prompts::language_drift_note(Lang::De, l);
+            assert_eq!(crate::prompts::other_call_language_note(l), crate::prompts::other_call_language_note(en));
+            assert_eq!(crate::prompts::owner_label(l, "Alex"), crate::prompts::owner_label(en, "Alex"));
+            let aliases = vec!["Al".to_string()];
+            assert_eq!(crate::prompts::alias_list(l, "Alex", &aliases), crate::prompts::alias_list(en, "Alex", &aliases));
+            assert_eq!(crate::prompts::with_caller_language_note("x", l), crate::prompts::with_caller_language_note("x", en));
+            assert_eq!(crate::prompts::wait_one_more(l), crate::prompts::wait_one_more(en));
+            assert_eq!(rt.gemini_system_prompt_for_call_in(Some(l)), rt.gemini_system_prompt_for_call_in(Some(en)));
+            assert_eq!(rt.persona_stall_system_prompt_in(Some(l)), rt.persona_stall_system_prompt_in(Some(en)));
+            assert_eq!(rt.persona_user_chars(Some(l)), rt.persona_user_chars(Some(en)));
+            // Owner-facing words: notifications, summaries, alerts.
+            assert_eq!(crate::summary::summary_system_prompt(l, "Alex", &aliases), crate::summary::summary_system_prompt(en, "Alex", &aliases));
+            assert_eq!(crate::summary::sales_labels(l), crate::summary::sales_labels(en));
+            assert_eq!(crate::summary::summary_says_sales(l, "Sales call"), crate::summary::summary_says_sales(en, "Sales call"));
+            assert_eq!(crate::extract::intent_system_prompt(l), crate::extract::intent_system_prompt(en));
+            assert_eq!(crate::urgent_call::alert_title(l), crate::urgent_call::alert_title(en));
+            for alert in [crate::urgent_call::Alert::AiEnded, crate::urgent_call::Alert::StillOnHold] {
+                assert_eq!(crate::urgent_call::alert_line(alert, l), crate::urgent_call::alert_line(alert, en));
+            }
+            assert_eq!(crate::urgent_call::with_caller_language("x", Some(l)), crate::urgent_call::with_caller_language("x", Some(en)));
+            assert_eq!(crate::urgency::language_name(l), "English");
+            assert!(crate::urgency::is_latin_lang(l));
+            assert_eq!(crate::direct_transfer_words(l), crate::direct_transfer_words(en));
+            assert_eq!(zh_or_in(l, "是", "yes"), "yes");
+            assert_eq!(for_owner_in(l, "Ciao"), "Ciao");
+            assert_eq!(quoted(l, "ok"), quoted(en, "ok"));
+            assert_eq!(date_time(l, &dt), date_time(en, &dt));
+            assert_eq!(date_only(l, &dt.date()), date_only(en, &dt.date()));
+            assert_eq!(duration(l, 75.0), duration(en, 75.0));
+            assert_eq!(crate::zh_tw::to_tw_in(l, "这个"), crate::zh_tw::to_tw_in(en, "这个"));
+            assert_eq!(crate::backup::failure_text(l, "io"), crate::backup::failure_text(en, "io"));
+            assert_eq!(crate::lan::bad_host_words(l), crate::lan::bad_host_words(en));
+            assert_eq!(crate::lan::page_words(l), crate::lan::page_words(en));
+            let _ = crate::lan::need_password_page(l);
+            assert_eq!(crate::appointments::sms_code_text(l, "busy"), crate::appointments::sms_code_text(en, "busy"));
+            assert_eq!(crate::appointments::callback_headline(l, "+15550100"), crate::appointments::callback_headline(en, "+15550100"));
+            assert_eq!(crate::appointments::callback_result_line(l, "busy", "+15550100"), crate::appointments::callback_result_line(en, "busy", "+15550100"));
+            assert_eq!(crate::appointments::when_text(l, &dt), crate::appointments::when_text(en, &dt));
+            assert_eq!(crate::calendar::extraction_prompt(l, "Alex", dt), crate::calendar::extraction_prompt(en, "Alex", dt));
+            assert_eq!(crate::preflight::opening(l), crate::preflight::opening(en));
+            assert_eq!(crate::preflight::card_text(l, &[]), crate::preflight::card_text(en, &[]));
+            // Voice preview.
+            assert_eq!(crate::voice_preview::sample_lines(l), crate::voice_preview::sample_lines(en));
+            assert_eq!(crate::voice_preview::reject_announce_text_in(l), crate::voice_preview::reject_announce_text_in(en));
+            // Regions, scenarios, stalling.
+            assert_eq!(crate::country_profile::lang_default_country(l), "us");
+            assert_eq!(crate::country_profile::prompt_overhead(l), crate::country_profile::prompt_overhead(en));
+            assert_eq!(crate::country_profile::stall_overhead(l), crate::country_profile::stall_overhead(en));
+            let _ = crate::country_profile::resolve(None, l);
+            for r in regions.iter().copied().take(4) {
+                assert_eq!(crate::country_profile::block(r, l, false), crate::country_profile::block(r, en, false));
+                assert_eq!(crate::country_profile::habits_block(r, l), crate::country_profile::habits_block(r, en));
+                assert_eq!(crate::country_profile::style_line(r, l, false, 3, "Alex"), crate::country_profile::style_line(r, en, false, 3, "Alex"));
+                assert_eq!(crate::country_profile::stall_line(r, l), crate::country_profile::stall_line(r, en));
+                assert_eq!(crate::country_profile::stall_block(r, l), crate::country_profile::stall_block(r, en));
+                assert_eq!(crate::prompts::dialect_note(r, l), crate::prompts::dialect_note(r, en));
+            }
+            for f in families {
+                assert_eq!(crate::stall_script::script(f, l), crate::stall_script::script(f, en));
+            }
+            for sc in crate::scenario::Scenario::ALL {
+                for booking in [false, true] {
+                    assert_eq!(crate::scenario::cue(sc, l, None, booking), crate::scenario::cue(sc, en, None, booking));
+                }
+            }
+            assert_eq!(crate::scenario::note_mark(l), crate::scenario::note_mark(en));
+            // Language checks on lines in several languages.
+            for text in lines {
+                assert_eq!(crate::summary::needs_translation(text, l), crate::summary::needs_translation(text, en), "{l:?}: {text}");
+                assert_eq!(crate::urgency::latin_margin(text, l, Lang::Es), crate::urgency::latin_margin(text, en, Lang::Es));
+                let _ = crate::summary::lines_to_translate(&format!("對方：{text}\n接聽：Ok"), l);
+                let mut call = crate::lang_lock::CallLanguage::new(l, l);
+                let _ = call.caller_turn(text);
+                let _ = call.ai_turn(text, true);
+            }
+            let _ = crate::gemini_live::callback_lang_plan(l, en);
+            let _ = crate::gemini_live::callback_lang_plan(Lang::Ja, l);
+        }
     }
 }

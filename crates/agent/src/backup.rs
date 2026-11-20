@@ -1726,7 +1726,7 @@ pub fn failure_text(lang: Lang, code: &str) -> (&'static str, String) {
             "保存时出了问题。",
             "Bageo 每小时会再试一次。请到控制台的“备份”看看存放位置。",
         ),
-        Lang::En => (
+        Lang::En | Lang::Ext(_) => (
             "Bageo couldn't finish the automatic backup",
             "The backup folder can't be written to right now. It may have been moved or renamed, or an external drive isn't connected.",
             "The disk that holds the backups is full.",

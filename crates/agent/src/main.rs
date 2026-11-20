@@ -5726,7 +5726,7 @@ fn direct_transfer_words(lang: locale::Lang) -> [&'static str; 8] {
             "Transferência direta acionada (sem passar pela IA)",
             "Número de transferência",
         ],
-        locale::Lang::En => [
+        locale::Lang::En | locale::Lang::Ext(_) => [
             "real number",
             "Call forwarded straight to your phone",
             "Forwarded directly without AI screening to",
@@ -8353,7 +8353,7 @@ async fn run_gemini_session_to_end(
                             locale::Lang::Fr => ("Urgence", "Numéro de transfert", "Veuillez rappeler ou prendre le relais immédiatement !"),
                             locale::Lang::De => ("Dringendes Anliegen", "Weiterleitungsnummer", "Bitte sofort zurückrufen oder übernehmen!"),
                             locale::Lang::Pt => ("Assunto urgente", "Número de transferência", "Por favor, retorne a ligação ou assuma imediatamente!"),
-                            locale::Lang::En => ("Urgent matter", "Forwarding number", "Please call back or take over immediately!"),
+                            locale::Lang::En | locale::Lang::Ext(_) => ("Urgent matter", "Forwarding number", "Please call back or take over immediately!"),
                         };
                         let fwd_line = if fwd.is_empty() {
                             String::new()

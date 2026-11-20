@@ -117,7 +117,7 @@ impl VoicePreviews {
 
     fn paths(&self, model: &str, voice: &str, lang: Lang) -> Vec<PathBuf> {
         // Per language: the lines are spoken in it.
-        let dir = self.dir.join(model_dir(model)).join(lang.code());
+        let dir = self.dir.join(model_dir(model)).join(lang.base().code());
         (0..LINES)
             .map(|i| dir.join(format!("{voice}_{i}.pcm")))
             .collect()
@@ -126,7 +126,7 @@ impl VoicePreviews {
     /// A bundled sample (`part` = line number or `reject`) as s16le, when there is
     /// one recorded at `sample_rate`.
     fn bundled_clip(&self, lang: Lang, voice: &str, part: &str, sample_rate: u32) -> Option<Vec<u8>> {
-        let path = self.bundled.join(lang.code()).join(format!("{}_{part}.wav", file_voice(voice)));
+        let path = self.bundled.join(lang.base().code()).join(format!("{}_{part}.wav", file_voice(voice)));
         let (rate, pcm) = crate::adpcm::decode_wav(&std::fs::read(path).ok()?).ok()?;
         (rate == sample_rate && pcm.len() >= 3_200).then_some(pcm)
     }
@@ -188,7 +188,7 @@ impl VoicePreviews {
     fn reject_path(&self, model: &str, voice: &str, lang: Lang) -> PathBuf {
         self.dir
             .join(model_dir(model))
-            .join(lang.code())
+            .join(lang.base().code())
             .join(format!("{}_reject.pcm", file_voice(voice)))
     }
 
@@ -366,7 +366,7 @@ pub async fn make_bundle(out: &Path) -> Result<()> {
 
 /// The missing samples of one voice in one language.
 async fn make_voice(out: &Path, key: &str, model: &str, lang: Lang, voice: &str, sr: u32) -> Result<()> {
-    let dir = out.join(lang.code());
+    let dir = out.join(lang.base().code());
     std::fs::create_dir_all(&dir)?;
     let (phrases, pack) = (crate::locale::phrases(lang), crate::prompts::pack(lang));
     let parts = phrases

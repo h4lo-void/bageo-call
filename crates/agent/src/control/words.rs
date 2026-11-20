@@ -113,7 +113,7 @@ pub fn words(lang: Lang) -> &'static Words {
     match lang {
         Lang::ZhTw => &ZH_TW,
         Lang::ZhCn => &ZH_CN,
-        Lang::En => &EN,
+        Lang::En | Lang::Ext(_) => &EN,
         Lang::Ja => &JA,
         Lang::Ko => &KO,
         Lang::Es => &ES,

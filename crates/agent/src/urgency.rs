@@ -1328,12 +1328,12 @@ fn latin_scores(text: &str) -> Option<LatinRead> {
 pub fn latin_margin(text: &str, lang: Lang, other: Lang) -> i32 {
     let (langs, score) = latin_score_table(text);
     let of = |l: Lang| langs.iter().position(|x| *x == l).map_or(0, |i| score[i]);
-    of(lang) - of(other)
+    of(lang.base()) - of(other.base())
 }
 
 /// The Latin-script languages [latin_scores] tells apart.
 pub fn is_latin_lang(lang: Lang) -> bool {
-    matches!(lang, Lang::En | Lang::Es | Lang::Fr | Lang::De | Lang::Pt)
+    matches!(lang.base(), Lang::En | Lang::Es | Lang::Fr | Lang::De | Lang::Pt)
 }
 
 fn latin_score_table(text: &str) -> ([Lang; 5], [i32; 5]) {
@@ -1387,7 +1387,7 @@ fn latin_word_and_total_scores(text: &str) -> ([Lang; 5], [i32; 5], [i32; 5]) {
 pub fn language_name(lang: Lang) -> &'static str {
     match lang {
         Lang::ZhTw | Lang::ZhCn => "Chinese",
-        Lang::En => "English",
+        Lang::En | Lang::Ext(_) => "English",
         Lang::Ja => "Japanese",
         Lang::Ko => "Korean",
         Lang::Es => "Spanish",

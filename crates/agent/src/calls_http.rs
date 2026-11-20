@@ -3333,7 +3333,7 @@ fn quick_words(lang: crate::locale::Lang) -> QuickWords {
         Lang::Fr => w("Faire ceci ?", "Confirmer", "Ce lien a expiré", "Ouvrez la console pour le faire.", "Ce lien ne fonctionne pas", "Ouvrez la console pour le faire.", "Liste noire", "Les faire parler", "Liste blanche", "Retirer de la liste"),
         Lang::De => w("Wirklich ausführen?", "Bestätigen", "Dieser Link ist abgelaufen", "Öffne die Konsole und erledige es dort.", "Dieser Link funktioniert nicht", "Öffne die Konsole und erledige es dort.", "Sperrliste", "Hinhalten", "Whitelist", "Von der Liste nehmen"),
         Lang::Pt => w("Fazer isto?", "Confirmar", "Este link expirou", "Abra o console para fazer por lá.", "Este link não funciona", "Abra o console para fazer por lá.", "Bloquear", "Manter falando", "Lista branca", "Tirar da lista"),
-        Lang::En => w("Do this?", "Confirm", "This link has expired", "Open the console to do it there.", "This link doesn't work", "Open the console to do it there.", "Block", "Stall", "Whitelist", "Remove from list"),
+        Lang::En | Lang::Ext(_) => w("Do this?", "Confirm", "This link has expired", "Open the console to do it there.", "This link doesn't work", "Open the console to do it there.", "Block", "Stall", "Whitelist", "Remove from list"),
     }
 }
 
@@ -3368,7 +3368,7 @@ fn quick_action_page(title: &str, detail: &str, status: StatusCode, form: &str) 
         Lang::Fr => ("fr", "Ouvrir la console Bageo"),
         Lang::De => ("de", "Bageo-Konsole öffnen"),
         Lang::Pt => ("pt-BR", "Abrir o console do Bageo"),
-        Lang::En => ("en", "Open Bageo Console"),
+        Lang::En | Lang::Ext(_) => ("en", "Open Bageo Console"),
     };
     let tone = if status.is_success() { "" } else { " warn" };
     let esc = html_escape;
@@ -3608,7 +3608,7 @@ async fn quick_action_run(
                 Lang::Fr => "Opération inconnue",
                 Lang::De => "Unbekannte Aktion",
                 Lang::Pt => "Operação desconhecida",
-                Lang::En => "Unknown operation",
+                Lang::En | Lang::Ext(_) => "Unknown operation",
             };
             reply_out(false, unknown, op)
         }
