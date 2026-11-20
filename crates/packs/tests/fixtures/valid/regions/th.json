@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "code": "th",
+  "countries": ["th"],
+  "name": {"en": "Thailand", "native": "ประเทศไทย", "zh": "泰國"},
+  "lang": "th-TH",
+  "layer": "en",
+  "stt": "th-TH",
+  "hello": {"hello": "สวัสดีครับ?", "hello_again": "ได้ยินไหมครับ?"},
+  "delivery": {"en": "Parcels go to the front desk or the guard post", "zh": "包裹放櫃檯或警衛室"},
+  "habits": {"en": "Use polite particles at the end of a sentence.", "zh": "句尾用客氣的語助詞。"},
+  "vocab": {"delivery": ["พัสดุ", "宅配"]},
+  "status": "draft"
+}

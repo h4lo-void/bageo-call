@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "code": "jp",
+  "countries": ["jp"],
+  "name": {"en": "Japan", "native": "日本"},
+  "lang": "ja-JP",
+  "status": "draft",
+  "extra_field": 1
+}

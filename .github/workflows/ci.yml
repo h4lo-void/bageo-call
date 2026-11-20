@@ -25,6 +25,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Test
         run: cargo test -p agent
+      - name: Test packs
+        run: cargo test -p bageo-packs
       - name: Build
         run: cargo build --release -p agent
 

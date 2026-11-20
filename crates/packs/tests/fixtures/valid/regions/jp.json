@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "code": "jp",
+  "countries": ["jp"],
+  "name": {"en": "Japan", "native": "日本", "zh": "日本"},
+  "lang": "ja-JP",
+  "layer": "en",
+  "stt": "ja-JP",
+  "hello": {"hello": "もしもし？", "hello_again": "もしもし、聞こえますか？"},
+  "delivery": {"en": "Parcels: the delivery box or the front desk", "zh": "包裹放宅配櫃或櫃檯"},
+  "delivery_key": {"en": "delivery box", "zh": "宅配櫃"},
+  "readback": {"en": "Read phone numbers digit by digit; dates as month then day", "zh": "電話號碼逐位唸，日期先月後日"},
+  "fraud": {"en": "A caller asking to move money or share a PIN is a scam", "zh": "要你轉帳或說出密碼的都是詐騙"},
+  "habits": {"en": "Polite です・ます speech with strangers; casual with friends.", "zh": "對陌生人用敬體，對朋友用輕鬆口吻。"},
+  "talk_style": {
+    "persona": {
+      "3": {"en": "Calm and polite, like an ordinary person picking up in Japan.", "zh": "像日本一般人接電話：平靜有禮。"}
+    }
+  },
+  "vocab": {"delivery": ["宅配便", "置き配"], "bank": ["振込"]},
+  "status": "draft",
+  "notes": "Invented sample data for tests."
+}

@@ -179,6 +179,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bageo-packs"
+version = "1.6.9"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

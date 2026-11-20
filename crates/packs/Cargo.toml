@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+# SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
+[package]
+name = "bageo-packs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Bageo local data packs: source-file format, checks and the single bageo-pack.json bundle"
+
+[lib]
+name = "bageo_packs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "packs"
+path = "src/main.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
