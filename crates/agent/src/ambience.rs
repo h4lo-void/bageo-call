@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
+use anyhow::Result;
 use tracing::{info, warn};
 
 /// Bed files `ambience_<kind>.wav` in the assets dir: 150 Hz–7 kHz, end
@@ -84,7 +85,7 @@ impl AmbienceLibrary {
             if !path.is_file() {
                 continue;
             }
-            match crate::hold_music::decode_audio_to_pcm16(&path, sample_rate) {
+            match read_bed(&path, sample_rate) {
                 Ok(pcm) if pcm.len() >= sample_rate as usize * 2 * 5 => {
                     let samples: Vec<i16> = pcm
                         .chunks_exact(2)
@@ -114,6 +115,22 @@ impl AmbienceLibrary {
             .filter(|k| self.beds.contains_key(k))
             .collect()
     }
+}
+
+/// One bed file as s16le mono at `sample_rate`. Beds ship as IMA ADPCM WAV;
+/// plain 16-bit PCM WAV still works. Anything else goes to the generic decoder.
+fn read_bed(path: &Path, sample_rate: u32) -> Result<Vec<u8>> {
+    if let Ok((rate, pcm)) = std::fs::read(path)
+        .map_err(anyhow::Error::from)
+        .and_then(|file| crate::adpcm::decode_wav(&file))
+    {
+        return Ok(if rate == sample_rate {
+            pcm
+        } else {
+            crate::hold_music::resample_s16le_mono_pub(&pcm, rate, sample_rate)
+        });
+    }
+    crate::hold_music::decode_audio_to_pcm16(path, sample_rate)
 }
 
 fn rms_s16le(pcm: &[u8]) -> f32 {
@@ -294,5 +311,89 @@ mod tests {
         for _ in 0..30 {
             assert!(rms_s16le(&m.bed_frame(1280, 1.0)) > 400.0);
         }
+    }
+
+    /// Room-tone-like test signal: low-passed pseudo-random noise with a slow swell.
+    fn noisy_bed(samples: usize) -> Vec<i16> {
+        let (mut seed, mut lp) = (12_345u32, 0f64);
+        (0..samples)
+            .map(|i| {
+                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                let white = f64::from((seed >> 16) as i16);
+                lp += 0.3 * (white - lp);
+                let swell = 0.6 + 0.4 * (i as f64 / 16_000.0 * 0.7).sin();
+                (lp * 0.2 * swell) as i16
+            })
+            .collect()
+    }
+
+    fn snr_db(src: &[i16], back: &[i16]) -> f64 {
+        let (sig, err) = src.iter().zip(back).fold((0f64, 0f64), |(s, e), (a, b)| {
+            (s + f64::from(*a).powi(2), e + (f64::from(*a) - f64::from(*b)).powi(2))
+        });
+        10.0 * (sig / err.max(1.0)).log10()
+    }
+
+    fn s16(pcm: &[u8]) -> Vec<i16> {
+        pcm.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]])).collect()
+    }
+
+    #[test]
+    fn beds_load_from_adpcm_and_from_plain_pcm() {
+        let src = noisy_bed(16_000 * 8 + 123); // not a whole number of ADPCM blocks
+        let pcm: Vec<u8> = src.iter().flat_map(|s| s.to_le_bytes()).collect();
+        let dir = std::env::temp_dir().join(format!("bageo-ambience-fmt-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (plain, packed) = (dir.join("ambience_office.wav"), dir.join("ambience_home.wav"));
+        std::fs::write(&plain, crate::calls::wav_from_pcm(&pcm, 16_000, 1)).unwrap();
+        let adpcm = crate::adpcm::encode_wav(&pcm, 16_000);
+        std::fs::write(&packed, &adpcm).unwrap();
+        let lib = AmbienceLibrary::load(&dir, 16_000);
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(lib.loaded(), vec!["office", "home"]);
+        let (a, b) = (lib.get("office").unwrap(), lib.get("home").unwrap());
+        assert_eq!(a.len(), src.len());
+        assert_eq!(b.len(), src.len(), "same number of samples after ADPCM");
+        assert_eq!(*a, src, "plain PCM is read back untouched");
+        let snr = snr_db(&src, &b);
+        println!("ADPCM bed: {} -> {} bytes, SNR {snr:.1} dB", pcm.len(), adpcm.len());
+        assert!(snr > 20.0, "SNR {snr:.1} dB");
+        assert!(adpcm.len() * 3 < pcm.len());
+    }
+
+    /// One-off converter, run by hand: turns the plain-PCM beds in `BED_SRC_DIR`
+    /// into IMA ADPCM WAV files of the same names in `BED_OUT_DIR`.
+    /// `cargo test -p agent convert_beds_to_adpcm -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn convert_beds_to_adpcm() {
+        let src_dir = std::path::PathBuf::from(std::env::var("BED_SRC_DIR").expect("BED_SRC_DIR"));
+        let out_dir = std::path::PathBuf::from(std::env::var("BED_OUT_DIR").expect("BED_OUT_DIR"));
+        std::fs::create_dir_all(&out_dir).unwrap();
+        let (mut before, mut after) = (0usize, 0usize);
+        for kind in KINDS {
+            let name = format!("ambience_{kind}.wav");
+            let file = std::fs::read(src_dir.join(&name)).unwrap();
+            let (rate, pcm) = crate::adpcm::decode_wav(&file).unwrap();
+            assert_eq!(rate, 16_000, "{name}");
+            let packed = crate::adpcm::encode_wav(&pcm, rate);
+            let (rate2, back) = crate::adpcm::decode_wav(&packed).unwrap();
+            assert_eq!((rate2, back.len()), (rate, pcm.len()), "{name}: same sample count");
+            let (src, back) = (s16(&pcm), s16(&back));
+            let rms_err = (src.iter().zip(&back).map(|(a, b)| (f64::from(*a) - f64::from(*b)).powi(2)).sum::<f64>()
+                / src.len() as f64)
+                .sqrt();
+            println!(
+                "{name}: {} -> {} bytes, {} samples, SNR {:.1} dB, RMS error {rms_err:.1}",
+                file.len(),
+                packed.len(),
+                src.len(),
+                snr_db(&src, &back)
+            );
+            std::fs::write(out_dir.join(&name), &packed).unwrap();
+            before += file.len();
+            after += packed.len();
+        }
+        println!("total: {before} -> {after} bytes");
     }
 }
