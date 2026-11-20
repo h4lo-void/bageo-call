@@ -1,3 +1,9 @@
+# Unreleased
+
+- **AI errands ask only what is really missing, and know the place you call.** A detail you wrote counts however you wrote it ("7 adults", "2大1小", "party of 7", "大人7名"), and once your name is set it is the booking name, so "book a restaurant tomorrow at 3, 7 adults, phone 0912345678" dials without questions. For numbers in Taiwan, the United States, Hong Kong and Macau, and Japan, Bageo knows what each kind of business there usually asks (17 kinds, from restaurants and clinics to hotels and taxis), asks only what that place needs, can add a one-line note before you dial, and gives the AI on the call the same local habits. See [Features](docs/en/FEATURES.md) and [API](docs/en/API.md).
+- **AI 代打只問真的缺的，也知道你打去的地方。** 你怎麼寫都算數（「7個大人」「2大1小」「party of 7」「大人7名」），設定了你的名字就直接用它訂位，所以「預約明天三點餐廳 7個大人 電話0912345678」會直接撥出、不再補問。打到台灣、美國、香港與澳門、日本的號碼時，Bageo 知道當地各類店家（餐廳、診所到飯店、叫車共 17 類）通常會問什麼，只問那類店家需要的，撥號前可能多一句提醒，也把同樣的當地習慣交給通話中的 AI。見[功能](docs/zh-TW/FEATURES.md)與 [API](docs/zh-TW/API.md)。
+- **AI 代打只问真的缺的，也知道你打去的地方。** 你怎么写都算数（“7个大人”“2大1小”“party of 7”“大人7名”），设置了你的名字就直接用它订位，所以“预约明天三点餐厅 7个大人 电话0912345678”会直接拨出、不再补问。打到台湾、美国、香港与澳门、日本的号码时，Bageo 知道当地各类商家（餐厅、诊所到酒店、叫车共 17 类）通常会问什么，只问那类商家需要的，拨号前可能多一句提醒，也把同样的当地习惯交给通话中的 AI。见[功能](docs/zh-CN/FEATURES.md)与 [API](docs/zh-CN/API.md)。
+
 # Bageo v1.6.9
 
 - **Ready-made Docker images.** Starting with 1.6.9, each release is also on Docker Hub as `bageo/bageo-call` and on GitHub as `ghcr.io/h4lo-void/bageo-call`, for amd64 and arm64. Each release has two tags: its version, like `1.6.9`, and `latest`. See [Getting started](docs/en/GETTING_STARTED.md#with-docker).

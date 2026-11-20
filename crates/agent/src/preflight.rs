@@ -6,10 +6,13 @@
 //! order in which the owner would give way (a ladder of times), and the short
 //! block of all that the call's script carries.
 //!
-//! The first look is local and takes microseconds. Only a request the local
-//! look cannot read (another script, long text full of numbers) asks a small
-//! model, within [MODEL_TIMEOUT]; an answer that does not come in time (or an
-//! error) lets the call go ahead without questions.
+//! The first look is local and takes microseconds: a request it reads with
+//! nothing missing goes ahead at once. One where it finds something missing,
+//! or one it cannot read (another script, long text full of numbers), asks a
+//! small model within [MODEL_TIMEOUT], with what businesses where the number
+//! is usually need ([crate::place_habits]) and what Bageo already knows. An
+//! answer that does not come in time (or an error) leaves the local look's
+//! questions (none for words it cannot read).
 
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
@@ -22,7 +25,7 @@ use crate::locale::Lang;
 pub const GEMINI_BASE: &str = "https://generativelanguage.googleapis.com";
 pub const MODEL: &str = "gemini-flash-lite-latest";
 /// The most the model may take: the owner never waits longer to dial.
-pub const MODEL_TIMEOUT: Duration = Duration::from_millis(900);
+pub const MODEL_TIMEOUT: Duration = Duration::from_millis(2500);
 /// What the script block may be, in characters.
 pub const BLOCK_MAX_CHARS: usize = 300;
 /// The most questions asked.
@@ -35,8 +38,10 @@ const LADDER_MAX: usize = 4;
 const TASK_FOR_MODEL_CHARS: usize = 600;
 
 /// The details a question can be about (also the keys of an errand's answers).
-pub const KEYS: [&str; 11] = [
-    "time", "party", "phone", "name", "item", "contact", "backup", "spec", "pickup", "substitute", "orig_time",
+/// Every detail a kind of call needs in [crate::place_habits] is one of them.
+pub const KEYS: [&str; 23] = [
+    "time", "party", "phone", "name", "item", "contact", "backup", "spec", "pickup", "substitute", "orig_time", "for_whom", "visit_type",
+    "question", "checkin_out", "guests", "address", "pet_detail", "reference_no", "pickup_place", "dropoff_place", "room_type", "duration",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,25 +66,14 @@ impl Kind {
         }
     }
 
-    fn parse(s: &str) -> Option<Kind> {
-        match s.trim().to_ascii_lowercase().as_str() {
-            "restaurant" => Some(Kind::Restaurant),
-            "appointment" => Some(Kind::Appointment),
-            "order" => Some(Kind::Order),
-            "change" => Some(Kind::Change),
-            "contact" => Some(Kind::Contact),
-            _ => None,
-        }
-    }
-
-    /// The details a call of this kind may ask about.
-    fn keys(self) -> &'static [&'static str] {
-        match self {
-            Kind::Restaurant => &["time", "party", "phone", "name"],
-            Kind::Appointment => &["time", "item", "contact", "backup"],
-            Kind::Order => &["spec", "pickup", "substitute"],
-            Kind::Change => &["orig_time", "contact"],
-            Kind::Contact => &[],
+    /// The kind of a business call the data names ([crate::place_habits::TYPES]).
+    pub fn of_place(place: &str) -> Kind {
+        match place {
+            "restaurant" => Kind::Restaurant,
+            "clinic" | "beauty" | "repair" | "hotel" | "activity" | "home_service" | "pet" => Kind::Appointment,
+            "takeout" | "shop_order" => Kind::Order,
+            "change" => Kind::Change,
+            _ => Kind::Contact,
         }
     }
 }
@@ -460,48 +454,173 @@ fn has_phone(c: &[char]) -> bool {
     false
 }
 
-const PARTY_UNITS: [&str; 22] = [
-    "位", "人", "個人", "个人", "名", "명", "people", "persons", "person", "guests", "guest", "ppl", "pax", "adults", "adult", "kids", "children",
-    "personas", "personnes", "personen", "pessoas", "pers.",
+/// Units after a number that make it a number of people in Chinese, Japanese
+/// and Korean ("4位", "7個大人", "大人7名", "어른 7명", "4인").
+const PARTY_UNITS: [&str; 17] = [
+    "位", "人", "個人", "个人", "個大人", "个大人", "大人", "名", "명", "인", "個囡仔", "个囡仔", "個小孩", "个小孩", "個小朋友", "个小朋友", "位小朋友",
 ];
-const PARTY_PREFIXES: [&str; 7] = ["for ", "party of ", "table for ", "para ", "pour ", "für ", "x"];
-const NUMBER_WORDS: [&str; 13] = [
-    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "dos", "tres", "cuatro",
+/// Right after such a unit: the number counts something else ("2人份" and
+/// "4人前" servings, "3位數", "3인분").
+const NOT_PEOPLE_AFTER: [char; 11] = ['份', '分', '前', '民', '數', '数', '置', '분', '字', '單', '单'];
+/// Words right before a number that make it people ("おとな3、こども1", "어른 7").
+const PARTY_BEFORE: [&str; 7] = ["大人", "おとな", "子ども", "子供", "こども", "어른", "아이"];
+/// Words after a number that make it a number of people ("4 people", "2 adultos y 1 niño").
+const PARTY_WORDS: &[&str] = &[
+    "people", "persons", "person", "ppl", "pax", "guests", "guest", "adults", "adult", "kids", "kid", "children", "child", "babies", "baby",
+    "personas", "persona", "adultos", "adulto", "niños", "niño", "niñas", "niña", "bebés", "bebé", "personnes", "personne", "adultes", "adulte",
+    "enfants", "enfant", "personen", "erwachsene", "erwachsener", "kinder", "pessoas", "pessoa", "crianças", "criança", "pers",
+];
+/// Words right before a number that make it the number of people ("table for
+/// 4", "party of 2", "somos 6", "wir sind 6"; "me + 3" is read apart).
+const PARTY_LEADS: &[&[&str]] = &[
+    &["for"], &["party", "of"], &["group", "of"], &["just"], &["only"], &["we", "are"], &["we're"], &["para"], &["grupo", "de"], &["somos"],
+    &["pour"], &["sommes"], &["für"], &["sind"], &["são"],
+];
+/// What may come right after "for 4" when the 4 is people ("for 4 at 7",
+/// "para 4 mañana"); anything else ("for 2 hours", "for 2 pizzas") is not.
+const AFTER_LEAD: &[&str] = &[
+    "at", "on", "tomorrow", "tonight", "today", "this", "next", "under", "please", "and", "with", "around", "a", "al", "à", "um", "mañana",
+    "hoy", "esta", "este", "demain", "ce", "heute", "morgen", "amanhã", "hoje", "às", "y", "et", "und", "e", "con", "avec", "mit", "com",
+    "inside", "outside", "indoors", "outdoors",
+];
+/// Numbers written as words, one to twelve or so, in the Latin-script languages
+/// read here (Italian is left to the model, [OTHER_LATIN_WORDS]).
+const NUMBER_WORDS: &[&str] = &[
+    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "uno", "una", "dos", "tres", "cuatro",
+    "cinco", "seis", "siete", "ocho", "nueve", "diez", "un", "une", "deux", "trois", "quatre", "cinq", "sept", "huit", "neuf", "dix", "ein",
+    "eine", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun", "zehn", "um", "uma", "dois", "duas", "três", "quatro", "sete",
+    "oito", "nove", "dez",
+];
+/// Whole phrases that give the party without a number to read.
+const PARTY_PHRASES: &[&str] = &[
+    "para mí solo", "para mi solo", "solo yo", "just me", "only me", "pour moi seul", "nur ich", "só eu", "apenas eu", "ひとり", "ふたり", "한 명",
+    "두 명", "세 명", "네 명", "다섯 명", "여섯 명", "일곱 명", "여덟 명", "아홉 명", "열 명", "두명", "세명", "네명", "한 분", "두 분", "세 분", "네 분",
 ];
 
-fn has_party(low: &str, c: &[char]) -> bool {
+/// A number of people in the Chinese, Japanese and Korean way: a number and
+/// a unit ("7個大人", "大人7名"), or adults and children ("兩大一小", "四大兩細").
+/// Not an ordinal ("第5診"), a time ("7點"), or a long number (a phone number).
+fn has_party_cjk(c: &[char]) -> bool {
     let mut i = 0;
     while i < c.len() {
         let Some((_, len)) = read_number(c, i) else {
+            // A run of digits too long to be a count is skipped whole.
             i += 1;
+            while i < c.len() && digit_of(c[i - 1]).is_some() && digit_of(c[i]).is_some() {
+                i += 1;
+            }
             continue;
         };
         let after = i + len;
+        let ordinal = i > 0 && matches!(c[i - 1], '第' | '#' | '＃');
         let clock = c.get(skip_spaces(c, after)).is_some_and(|x| is_hour_char(*x)) || matches!(c.get(after), Some(':') | Some('：'));
-        if !clock {
-            let rest: String = c[after..].iter().take(10).collect();
-            let rest = rest.trim_start();
-            if PARTY_UNITS.iter().any(|u| rest.starts_with(u)) {
+        if !ordinal && !clock {
+            let mut b = i;
+            while b > 0 && c[b - 1] == ' ' {
+                b -= 1;
+            }
+            let before: String = c[b.saturating_sub(3)..b].iter().collect();
+            if PARTY_BEFORE.iter().any(|w| before.ends_with(w)) {
                 return true;
             }
-            let before: String = c[i.saturating_sub(12)..i].iter().collect();
-            if PARTY_PREFIXES.iter().take(6).any(|p| before.ends_with(p)) {
-                return true;
+            let j = skip_spaces(c, after).min(c.len());
+            let rest = &c[j..];
+            for unit in PARTY_UNITS {
+                let unit: Vec<char> = unit.chars().collect();
+                if rest.starts_with(&unit) && !rest.get(unit.len()).is_some_and(|x| NOT_PEOPLE_AFTER.contains(x)) {
+                    return true;
+                }
+            }
+            if rest.first() == Some(&'大') {
+                let k = skip_spaces(c, j + 1);
+                if let Some((_, l2)) = read_number(c, k) {
+                    if matches!(c.get(k + l2), Some('小' | '細' | '细')) {
+                        return true;
+                    }
+                }
             }
         }
         i = after;
     }
-    for w in NUMBER_WORDS {
-        for p in ["for ", "party of ", "table for ", "para ", "pour ", "für "] {
-            if low.contains(&format!("{p}{w}")) {
+    false
+}
+
+/// Where the words are: runs of letters, digits and apostrophes (start, end).
+fn word_spans(c: &[char]) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < c.len() {
+        if c[i].is_alphanumeric() || c[i] == '\'' {
+            let start = i;
+            while i < c.len() && (c[i].is_alphanumeric() || c[i] == '\'') {
+                i += 1;
+            }
+            out.push((start, i));
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+/// A number of people written with words ("7 adults", "party of 4", "4pax",
+/// "6 of us", "mesa para 4", "me + 3", "Tisch für zwei"). Not a time, a date,
+/// a share or a duration ("for 7 pm", "24/7", "70%", "for 2 hours").
+fn has_party_words(c: &[char]) -> bool {
+    let spans = word_spans(c);
+    let words: Vec<String> = spans.iter().map(|(s, e)| c[*s..*e].iter().collect()).collect();
+    for (k, w) in words.iter().enumerate() {
+        let digits = w.chars().take_while(char::is_ascii_digit).count();
+        let len = w.chars().count();
+        if digits > 0 && digits < len {
+            let rest: String = w.chars().skip(digits).collect();
+            if PARTY_WORDS.contains(&rest.as_str()) {
+                return true;
+            }
+            continue;
+        }
+        if !((digits > 0 && digits <= 3) || NUMBER_WORDS.contains(&w.as_str())) {
+            continue;
+        }
+        let (start, end) = spans[k];
+        let next_digit = c.get(end + 1).is_some_and(char::is_ascii_digit);
+        let not_a_count = matches!(c.get(end), Some(':' | '：' | '/' | '%'))
+            || (matches!(c.get(end), Some('.' | '-')) && next_digit)
+            || ampm_after(c, end).1 > end
+            || hour_unit_end(c, end).is_some()
+            || (start > 0 && matches!(c[start - 1], '#' | '＃'));
+        if not_a_count {
+            continue;
+        }
+        let next = words.get(k + 1).map(String::as_str);
+        if next.is_some_and(|n| PARTY_WORDS.contains(&n)) || (next == Some("of") && words.get(k + 2).map(String::as_str) == Some("us")) {
+            return true;
+        }
+        let led = PARTY_LEADS.iter().any(|lead| k >= lead.len() && lead.iter().enumerate().all(|(j, l)| words[k - lead.len() + j] == *l))
+            || (k > 0 && words[k - 1] == "me" && c[spans[k - 1].1..start].contains(&'+'));
+        if led {
+            let breaks = match spans.get(k + 1) {
+                None => true,
+                Some((s, _)) => c[end..*s].iter().any(|x| ",;.!?()（）、，".contains(*x)),
+            };
+            if breaks || next.is_some_and(|n| AFTER_LEAD.contains(&n)) {
                 return true;
             }
         }
-        if low.contains(&format!("{w} people")) || low.contains(&format!("{w} of us")) || low.contains(&format!("{w} guests")) {
-            return true;
-        }
     }
-    contains_any(low, &["deux personnes", "zwei personen", "duas pessoas", "dois", "für zwei", "pour deux"])
+    false
+}
+
+fn has_party(low: &str, c: &[char]) -> bool {
+    has_party_cjk(c) || has_party_words(c) || contains_any(low, PARTY_PHRASES)
+}
+
+/// Whether the words give a number of people, in any of the ways above.
+#[cfg(test)]
+pub fn names_party(text: &str) -> bool {
+    let low = fold(text);
+    let c: Vec<char> = low.chars().collect();
+    has_party(&low, &c)
 }
 
 fn has_date(low: &str, c: &[char]) -> bool {
@@ -673,20 +792,76 @@ fn classify(low: &str, c: &[char]) -> Kind {
     kind
 }
 
+/// Words of a doctor's, a hairdresser's and a repair appointment: which kind
+/// of business an appointment is ([crate::place_habits::TYPES]).
+const CLINIC_WORDS: &[&str] = &[
+    "診所", "诊所", "看診", "看诊", "看醫生", "看医生", "掛號", "挂号", "約診", "约诊", "牙醫", "牙医", "洗牙", "醫院", "医院", "dentist", "doctor", "clinic",
+    "checkup", "check-up", "病院", "歯医者", "診察", "병원", "진료", "치과", "médico", "dentista", "médecin", "dentiste", "arzt", "zahnarzt", "consulta",
+];
+const BEAUTY_WORDS: &[&str] = &[
+    "剪髮", "剪发", "剪頭髮", "剪头发", "燙髮", "烫发", "染髮", "染发", "護髮", "护发", "美髮", "美发", "理髮", "理发", "按摩", "美甲", "美睫", "haircut", "hair cut",
+    "hairdresser", "barber", "salon", "massage", "nail", "manicure", "美容", "散髪", "カット", "미용실", "네일", "peluquería", "corte de pelo", "coiffeur",
+    "friseur", "cabeleireiro",
+];
+const REPAIR_WORDS: &[&str] = &[
+    "維修", "维修", "修理", "保養", "保养", "換機油", "换机油", "repair", "fix", "수리", "reparación", "réparation", "reparatur", "conserto",
+];
+
+/// The kind of business call a kind of request is: `contact` for a personal
+/// call, empty for an appointment the words do not place.
+fn place_of(low: &str, kind: Kind) -> &'static str {
+    match kind {
+        Kind::Restaurant => "restaurant",
+        Kind::Order => "takeout",
+        Kind::Change => "change",
+        Kind::Contact => "contact",
+        Kind::Appointment if contains_any(low, CLINIC_WORDS) => "clinic",
+        Kind::Appointment if contains_any(low, BEAUTY_WORDS) => "beauty",
+        Kind::Appointment if contains_any(low, REPAIR_WORDS) => "repair",
+        Kind::Appointment => "",
+    }
+}
+
+/// The kind of business call the local look reads in the words
+/// ([crate::place_habits::TYPES]), `contact`, or empty when it cannot tell.
+pub fn place_type_of(task: &str) -> &'static str {
+    let low = fold(task);
+    let c: Vec<char> = low.chars().collect();
+    place_of(&low, classify(&low, &c))
+}
+
+/// What Bageo knows besides the owner's words.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Known {
+    /// The owner's name is set: a booking can go under it (unless the call is
+    /// for someone else where that counts).
+    pub owner_named: bool,
+    /// Where the number called is; None: no local data, the general needs.
+    pub region: Option<&'static crate::place_habits::Region>,
+}
+
 /// What the quick local look found.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Local {
     pub kind: Kind,
+    /// The kind of business call ([place_type_of]).
+    pub place: &'static str,
     /// The questions, most important first (at most [MISSING_MAX]).
     pub missing: Vec<&'static str>,
     /// The words are in a form this look cannot read (another language): the model should.
     pub unsure: bool,
 }
 
+/// [local_with], knowing nothing beyond the words.
+pub fn local(task: &str) -> Local {
+    local_with(task, &Known::default())
+}
+
 /// The local look: pure text work, microseconds. A simple call to someone the
 /// owner knows, and a request that already says what the call needs, have
-/// nothing missing.
-pub fn local(task: &str) -> Local {
+/// nothing missing. A table needs a phone number to leave, and a name unless
+/// the owner's name is set.
+pub fn local_with(task: &str, known: &Known) -> Local {
     let low = fold(task);
     let c: Vec<char> = low.chars().collect();
     let kind = classify(&low, &c);
@@ -704,8 +879,11 @@ pub fn local(task: &str) -> Local {
             if !has_party(&low, &c) {
                 miss.push("party");
             }
-            if !phone && !name {
+            if !phone {
                 miss.push("phone");
+            }
+            let owner_name = known.owner_named && !crate::place_habits::for_whom_matters(known.region, "restaurant");
+            if !name && !owner_name {
                 miss.push("name");
             }
         }
@@ -747,7 +925,7 @@ pub fn local(task: &str) -> Local {
     miss.truncate(MISSING_MAX);
     let has_digit = c.iter().any(|ch| digit_of(*ch).is_some());
     let unsure = kind == Kind::Contact && (foreign_script(&low) || (has_digit && c.len() >= 24));
-    Local { kind, missing: miss, unsure }
+    Local { kind, place: place_of(&low, kind), missing: miss, unsure }
 }
 
 /// The times the owner would accept, best first ("19:30", "20:30"); empty
@@ -766,48 +944,94 @@ pub fn ladder_of(task: &str, kind: Kind) -> Vec<String> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Verdict {
     pub kind: Kind,
+    /// The kind of business call ([crate::place_habits::TYPES]), `contact`, or empty when not known.
+    pub place: String,
     pub missing: Vec<&'static str>,
     pub ladder: Vec<String>,
-    /// `local`, `model` or `timeout` (the model did not answer in time: go ahead).
+    /// One line for the owner before dialing, in the owner's language (from the model only).
+    pub note: String,
+    /// `local`, `model` or `timeout` (the model did not answer in time: the local questions).
     pub source: &'static str,
     pub ms: f64,
 }
 
-const SYSTEM_PROMPT: &str = "A person asks an AI assistant to make a phone call for them; the request may be in any language. Decide what kind of call it is and which details the request does not give yet.\n\
-kind: restaurant (book a table), appointment (clinic, hair, repair or another booking), order (takeout or ordering goods), change (reschedule or cancel a booking), contact (talking to someone the person knows, or anything simple).\n\
-Details (keys): time (day and time), party (how many people; restaurant), phone (contact phone; restaurant), name (booking name; restaurant), item (service, symptom or model; appointment), contact (name and phone to give; appointment or change), backup (backup time; appointment), spec (what and how many; order), pickup (pickup time; order), substitute (what if out of stock; order), orig_time (original booking time; change).\n\
-List a key only if the request really does not say it in any wording or language, and does not ask the other side to tell it. List at most 3, the most important first. For contact list nothing. Answer with JSON only.";
+/// What the model answered.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Answer {
+    /// One of [crate::place_habits::TYPES] or `contact`.
+    pub place: &'static str,
+    pub missing: Vec<&'static str>,
+    pub note: String,
+}
 
-pub fn request_body(task: &str, l: &Local) -> Value {
+const SYSTEM_PROMPT: &str = "A person asks an AI assistant to phone a business (or someone they know) for them. The request may be in any language and any wording. Decide the type of call and which details the business will need that the request does not give yet.\n\
+type: restaurant, clinic, beauty, repair, takeout, shop_order, change (move or cancel a booking), inquiry (only a question), hotel, activity, home_service, pet, tracking, customer_service, transport, property, government_school; or contact (someone they know, or a call that needs nothing). A call about a booking that already exists (a question about it, an early check-in, moving or cancelling it) is change or inquiry, not a new booking.\n\
+Detail codes: time (day and time), party (how many people), name (name to give or book under), phone (callback number), for_whom (who it is for and their name), visit_type (first or return visit), item (the service, symptom, problem or thing), spec (what and how many), pickup (pickup or delivery time), orig_time (the original booking's time), question (what to ask), checkin_out (check-in and check-out dates), guests (how many guests), address (where), pet_detail (the pet's kind, breed and size), pickup_place (where to be picked up), dropoff_place (where to go), reference_no (order, booking or tracking number), room_type (kind of room), duration (how long).\n\
+A detail is given when the request mentions it at all, in any wording or language, even briefly or loosely: \"7個大人\", \"2大1小\", \"兩大一小\", \"party of 7\", \"7 adults\", \"7 adultos\", \"大人7名\" and \"어른 7명\" all give party; \"from the airport to the hotel\" gives pickup_place and dropoff_place; \"トリミング\" gives item; \"ask if they are open today\" gives question. It is also given when the request asks the other side to tell it, or when Bageo already knows it.\n\
+missing: only codes the chosen type needs there, the most important first, at most 3; empty when nothing is missing, and always empty for contact.\n\
+note: usually empty. Only when the local note of that type changes what the person should do before this very call (the place takes no phone bookings, wants a deposit or card, or will ask for something only they can give), one short sentence for them. The local notes are in Chinese: always write the note in the language named in the request, translated, never copied.\n\
+Answer with JSON only.";
+
+pub fn request_body(task: &str, l: &Local, known: &Known, lang: Lang) -> Value {
     let task: String = task.trim().chars().take(TASK_FOR_MODEL_CHARS).collect();
+    let place = match known.region {
+        Some(r) => format!("The number called is in {} ({}).", r.region_name, r.countries.join(", ")),
+        None => "The number called is in no region with local notes: use the general needs below.".to_string(),
+    };
+    let knows = if known.owner_named {
+        "Bageo already knows the person's own name: it is the name a booking goes under, unless the type marks who it is for and the words show the call is for someone else."
+    } else {
+        "Bageo knows nothing beyond the words."
+    };
     let user = format!(
-        "Request:\n{task}\n\nA fast local check read it as kind={} and missing={}.",
-        l.kind.as_str(),
-        l.missing.join(",")
+        "Request:\n{task}\n\n{place}\nWhat each type of call needs before dialing there (detail codes):\n{}\n\n{knows}\nA fast local check read it as type={} and missing={}.\nWrite the note in {}.",
+        crate::place_habits::model_brief(known.region),
+        if l.place.is_empty() { "unknown" } else { l.place },
+        l.missing.join(","),
+        crate::locale::phrases(lang).name_en,
     );
+    let mut types: Vec<&str> = crate::place_habits::TYPES.to_vec();
+    types.push("contact");
     json!({
         "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": [{"role": "user", "parts": [{"text": user}]}],
         "generationConfig": {
             "temperature": 0,
-            "maxOutputTokens": 120,
+            "maxOutputTokens": 200,
             "responseMimeType": "application/json",
             "thinkingConfig": {"thinkingLevel": "minimal"},
             "responseSchema": {
                 "type": "OBJECT",
                 "properties": {
-                    "kind": {"type": "STRING", "enum": KINDS},
-                    "missing": {"type": "ARRAY", "items": {"type": "STRING", "enum": KEYS}}
+                    "type": {"type": "STRING", "enum": types},
+                    "missing": {"type": "ARRAY", "items": {"type": "STRING", "enum": KEYS}},
+                    "note": {"type": "STRING"}
                 },
-                "required": ["kind", "missing"]
+                "required": ["type", "missing", "note"]
             }
         }
     })
 }
 
-/// The kind and questions in a generateContent response; only keys that fit
-/// the kind count.
-pub fn parse_answer(body: &str) -> Option<(Kind, Vec<&'static str>)> {
+/// One clean line of at most [NOTE_MAX_CHARS] characters.
+fn note_line(s: &str) -> String {
+    let line: String = s.split_whitespace().collect::<Vec<_>>().join(" ").chars().filter(|c| !c.is_control()).collect();
+    if line.chars().count() <= NOTE_MAX_CHARS {
+        return line;
+    }
+    // Too long: cut at a word where there is one, never inside it, and say so.
+    let cut: String = line.chars().take(NOTE_MAX_CHARS - 1).collect();
+    let cut = match cut.rfind(' ') {
+        Some(i) if i > cut.len() / 2 => cut[..i].to_string(),
+        _ => cut,
+    };
+    format!("{}…", cut.trim_end_matches([',', ';', ' ', '，', '、']))
+}
+
+/// The type, questions and note in a generateContent response. Only keys the
+/// type needs where the number is count, and not the booking name when the
+/// owner's name stands for it.
+pub fn parse_answer(body: &str, known: &Known) -> Option<Answer> {
     let v: Value = serde_json::from_str(body.trim()).ok()?;
     let text: String = v
         .pointer("/candidates/0/content/parts")?
@@ -821,50 +1045,68 @@ pub fn parse_answer(body: &str) -> Option<(Kind, Vec<&'static str>)> {
         return None;
     }
     let answer: Value = serde_json::from_str(&text[start..=end]).ok()?;
-    let kind = Kind::parse(answer.get("kind")?.as_str()?)?;
+    let t = answer.get("type")?.as_str()?.trim().to_ascii_lowercase();
+    let place: &'static str = if t == "contact" { "contact" } else { crate::place_habits::TYPES.iter().copied().find(|x| *x == t)? };
+    let needs = if place == "contact" { Vec::new() } else { crate::place_habits::must_have(known.region, place) };
+    let owner_name = known.owner_named && !crate::place_habits::for_whom_matters(known.region, place);
     let mut missing: Vec<&'static str> = Vec::new();
     for k in answer.get("missing").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
-        if let Some(key) = kind.keys().iter().find(|x| **x == k.trim()) {
-            if !missing.contains(key) {
+        let Some(key) = KEYS.iter().copied().find(|x| *x == k.trim() && needs.contains(x)) else { continue };
+        // The errand's own words are what to ask: "question" is never missing.
+        if key == "question" || (key == "name" && owner_name) {
+            continue;
+        }
+        if !missing.contains(&key) {
                 missing.push(key);
-            }
         }
     }
     missing.truncate(MISSING_MAX);
-    Some((kind, missing))
+    // A note stops the owner only where such places seldom get it done by phone.
+    let note = if crate::place_habits::hard_by_phone(known.region, place) {
+        note_line(answer.get("note").and_then(Value::as_str).unwrap_or(""))
+    } else {
+        String::new()
+    };
+    Some(Answer { place, missing, note })
 }
 
-async fn ask_model(http: &Client, base: &str, key: &str, task: &str, l: &Local) -> Option<(Kind, Vec<&'static str>)> {
+async fn ask_model(http: &Client, base: &str, key: &str, task: &str, l: &Local, known: &Known, lang: Lang) -> Option<Answer> {
     let url = format!("{}/v1beta/models/{MODEL}:generateContent", base.trim_end_matches('/'));
-    let resp = http.post(&url).header("x-goog-api-key", key).json(&request_body(task, l)).send().await.ok()?;
+    let resp = http.post(&url).header("x-goog-api-key", key).json(&request_body(task, l, known, lang)).send().await.ok()?;
     if !resp.status().is_success() {
         return None;
     }
-    parse_answer(&resp.text().await.ok()?)
+    parse_answer(&resp.text().await.ok()?, known)
 }
 
 fn since_ms(t0: Instant) -> f64 {
     (t0.elapsed().as_secs_f64() * 10_000.0).round() / 10.0
 }
 
-/// The look at an errand's words before it dials. A request the local look can
-/// read is settled locally, with its questions (the model needs over a second,
-/// more than the owner may wait). One in words the local look cannot read asks
-/// the model, which has `limit` in all: later than that (or any error) the call
-/// goes ahead without questions. No key: the local look stands.
-pub async fn check(http: &Client, base: &str, key: &str, task: &str, limit: Duration) -> Verdict {
+/// The look at an errand's words before it dials. A request the local look
+/// reads with nothing missing goes ahead at once. One where it finds
+/// something missing, or cannot read, asks the model, which has `limit` in
+/// all and knows where the number is and what Bageo knows: later than that
+/// (or any error) the local questions stand (none for words it cannot read).
+/// No key: the local look stands. lang: the owner's, for the note.
+pub async fn check(http: &Client, base: &str, key: &str, task: &str, known: &Known, lang: Lang, limit: Duration) -> Verdict {
     let t0 = Instant::now();
-    let l = local(task);
+    let l = local_with(task, known);
     let ladder = ladder_of(task, l.kind);
-    if !l.unsure || key.trim().is_empty() {
-        return Verdict { kind: l.kind, missing: l.missing, ladder, source: "local", ms: since_ms(t0) };
+    let settled = !l.unsure && l.missing.is_empty();
+    if settled || key.trim().is_empty() {
+        return Verdict { kind: l.kind, place: l.place.to_string(), missing: l.missing, ladder, note: String::new(), source: "local", ms: since_ms(t0) };
     }
-    match tokio::time::timeout(limit, ask_model(http, base, key, task, &l)).await {
-        Ok(Some((kind, missing))) => {
+    match tokio::time::timeout(limit, ask_model(http, base, key, task, &l, known, lang)).await {
+        Ok(Some(a)) => {
+            let kind = Kind::of_place(a.place);
             let ladder = if kind == l.kind { ladder } else { ladder_of(task, kind) };
-            Verdict { kind, missing, ladder, source: "model", ms: since_ms(t0) }
+            Verdict { kind, place: a.place.to_string(), missing: a.missing, ladder, note: a.note, source: "model", ms: since_ms(t0) }
         }
-        _ => Verdict { kind: l.kind, missing: Vec::new(), ladder, source: "timeout", ms: since_ms(t0) },
+        _ => {
+            let missing = if l.unsure { Vec::new() } else { l.missing };
+            Verdict { kind: l.kind, place: l.place.to_string(), missing, ladder, note: String::new(), source: "timeout", ms: since_ms(t0) }
+        }
     }
 }
 
@@ -885,7 +1127,7 @@ fn lang_index(lang: Lang) -> usize {
 }
 
 /// Per key, the question in zh-TW, zh-CN, en, ja, ko, es, fr, de, pt.
-const QUESTIONS: [(&str, [&str; 9]); 11] = [
+const QUESTIONS: [(&str, [&str; 9]); 23] = [
     ("time", ["哪一天、幾點？", "哪一天、几点？", "What day and time?", "何日の何時ですか？", "며칠 몇 시인가요?", "¿Qué día y a qué hora?", "Quel jour et à quelle heure ?", "Welcher Tag, welche Uhrzeit?", "Que dia e a que horas?"]),
     ("party", ["幾位用餐？（幾大幾小）", "几位用餐？（几大几小）", "How many people (adults and kids)?", "何名様ですか？（大人と子ども）", "몇 명인가요? (어른, 아이)", "¿Cuántas personas (adultos y niños)?", "Combien de personnes (adultes et enfants) ?", "Wie viele Personen (Erwachsene, Kinder)?", "Quantas pessoas (adultos e crianças)?"]),
     ("phone", ["留哪支聯絡電話？", "留哪个联系电话？", "Which phone number should they note?", "連絡先の電話番号は？", "연락처 전화번호는?", "¿Qué teléfono de contacto dejo?", "Quel numéro de téléphone laisser ?", "Welche Telefonnummer soll ich angeben?", "Qual telefone de contato deixo?"]),
@@ -897,12 +1139,62 @@ const QUESTIONS: [(&str, [&str; 9]); 11] = [
     ("pickup", ["幾點取貨？", "几点取货？", "What time to pick up?", "受け取りは何時？", "몇 시에 가져가나요?", "¿A qué hora se recoge?", "À quelle heure passer ?", "Um wie viel Uhr abholen?", "A que horas retirar?"]),
     ("substitute", ["缺貨時可以換什麼？", "缺货时可以换什么？", "What if it is out of stock?", "品切れなら代わりは？", "품절이면 대체는?", "¿Y si no hay existencias?", "Et en cas de rupture ?", "Was tun, wenn es ausverkauft ist?", "E se estiver esgotado?"]),
     ("orig_time", ["原本預約是哪天幾點？", "原来预约是哪天几点？", "When was the original booking?", "元の予約は何日の何時？", "원래 예약은 언제인가요?", "¿Cuándo era la reserva original?", "Quand était la réservation initiale ?", "Wann war die ursprüngliche Buchung?", "Quando era a reserva original?"]),
+    ("for_whom", ["幫誰辦的？對方叫什麼名字？", "帮谁办的？对方叫什么名字？", "Who is it for, and what is their name?", "どなたの用件ですか？お名前は？", "누구 일인가요? 이름은요?", "¿Para quién es y cómo se llama?", "C'est pour qui, et quel est son nom ?", "Für wen ist es, und wie heißt die Person?", "É para quem, e qual é o nome?"]),
+    ("visit_type", ["第一次去，還是回診？", "第一次去，还是复诊？", "First visit or a return visit?", "初めてですか、2回目以降ですか？", "처음 가는 건가요, 다시 가는 건가요?", "¿Es la primera vez o ya has ido antes?", "Première visite ou suivi ?", "Zum ersten Mal oder schon mal dort gewesen?", "É a primeira vez ou retorno?"]),
+    ("question", ["想問對方什麼？", "想问对方什么？", "What should I ask them?", "何を聞きますか？", "무엇을 물어볼까요?", "¿Qué les pregunto?", "Que dois-je leur demander ?", "Was soll ich fragen?", "O que devo perguntar?"]),
+    ("checkin_out", ["哪天入住、哪天退房？", "哪天入住、哪天退房？", "Check-in and check-out dates?", "チェックインとチェックアウトの日は？", "체크인, 체크아웃 날짜는?", "¿Fechas de entrada y salida?", "Dates d'arrivée et de départ ?", "An- und Abreisetag?", "Datas de entrada e saída?"]),
+    ("guests", ["共幾位？（幾大幾小）", "共几位？（几大几小）", "How many guests (adults and kids)?", "何名ですか？（大人と子ども）", "모두 몇 명인가요? (어른, 아이)", "¿Cuántas personas (adultos y niños)?", "Combien de personnes (adultes et enfants) ?", "Wie viele Personen (Erwachsene, Kinder)?", "Quantas pessoas (adultos e crianças)?"]),
+    ("address", ["地址在哪裡？", "地址在哪里？", "What is the address?", "住所はどこですか？", "주소가 어떻게 되나요?", "¿Cuál es la dirección?", "Quelle est l'adresse ?", "Wie lautet die Adresse?", "Qual é o endereço?"]),
+    ("pet_detail", ["什麼寵物？品種、體重？", "什么宠物？品种、体重？", "What pet (breed and weight)?", "どんなペットですか？（種類・体重）", "어떤 반려동물인가요? (품종, 몸무게)", "¿Qué mascota (raza y peso)?", "Quel animal (race et poids) ?", "Welches Tier (Rasse, Gewicht)?", "Qual animal (raça e peso)?"]),
+    ("reference_no", ["訂單或貨運單號是多少？", "订单或运单号是多少？", "What is the order or tracking number?", "注文番号か追跡番号は？", "주문 번호나 송장 번호는?", "¿Número de pedido o de seguimiento?", "Numéro de commande ou de suivi ?", "Bestell- oder Sendungsnummer?", "Número do pedido ou de rastreio?"]),
+    ("pickup_place", ["在哪裡上車？", "在哪里上车？", "Where should they pick you up?", "どこで乗りますか？", "어디서 타나요?", "¿Dónde te recogen?", "Où doit-on vous prendre ?", "Wo soll man dich abholen?", "Onde vão te buscar?"]),
+    ("dropoff_place", ["要到哪裡？", "要到哪里？", "Where are you going?", "行き先はどこですか？", "어디로 가나요?", "¿A dónde vas?", "Où allez-vous ?", "Wohin geht es?", "Para onde você vai?"]),
+    ("room_type", ["要什麼房型？", "要什么房型？", "What kind of room?", "部屋のタイプは？", "어떤 객실로 할까요?", "¿Qué tipo de habitación?", "Quel type de chambre ?", "Welche Zimmerart?", "Que tipo de quarto?"]),
+    ("duration", ["要用多久？", "要用多久？", "For how long?", "利用時間はどのくらいですか？", "얼마 동안 이용하나요?", "¿Por cuánto tiempo?", "Pour combien de temps ?", "Wie lange?", "Por quanto tempo?"]),
 ];
 
 /// The question for a key in a language ("" for an unknown key).
 pub fn question(lang: Lang, key: &str) -> &'static str {
     QUESTIONS.iter().find(|(k, _)| *k == key).map(|(_, q)| q[lang_index(lang)]).unwrap_or("")
 }
+
+/// The name to leave, for a call other than a table booking.
+const NAME_ANY: [&str; 9] = [
+    "要留什麼稱呼？",
+    "要留什么称呼？",
+    "What name should I leave?",
+    "お名前は何とお伝えしますか？",
+    "어떤 이름으로 남길까요?",
+    "¿A nombre de quién lo dejo?",
+    "À quel nom ?",
+    "Auf welchen Namen?",
+    "Em nome de quem?",
+];
+
+/// [question] for a kind of call ([crate::place_habits::TYPES]): the name is
+/// a booking name with seating wishes only at a restaurant.
+pub fn question_for(lang: Lang, key: &str, place: &str) -> &'static str {
+    if key == "name" && !place.is_empty() && place != "restaurant" {
+        return NAME_ANY[lang_index(lang)];
+    }
+    if key == "party" && !place.is_empty() && place != "restaurant" {
+        return PARTY_ANY[lang_index(lang)];
+    }
+    question(lang, key)
+}
+
+/// How many people, for a call that is not about a meal (a taxi, a room, a court).
+const PARTY_ANY: [&str; 9] = [
+    "幾位？（幾大幾小）",
+    "几位？（几大几小）",
+    "How many people (adults and kids)?",
+    "何名ですか？（大人と子ども）",
+    "몇 명인가요? (어른, 아이)",
+    "¿Cuántas personas (adultos y niños)?",
+    "Combien de personnes (adultes et enfants) ?",
+    "Wie viele Personen (Erwachsene, Kinder)?",
+    "Quantas pessoas (adultos e crianças)?",
+];
 
 const CARD_HEAD: [&str; 9] = [
     "撥出前還缺：",
@@ -981,12 +1273,24 @@ pub fn sanitize_answers(v: Option<&Value>) -> BTreeMap<String, String> {
 }
 
 /// The answers in the order of their weight, each with the words it goes by.
-const DETAIL_LABELS: [(&str, &str); 12] = [
+const DETAIL_LABELS: [(&str, &str); 24] = [
     ("phone", "phone"),
     ("name", "booking name"),
     ("contact", "name and phone"),
     ("party", "people"),
+    ("for_whom", "for whom"),
     ("item", "for"),
+    ("visit_type", "visit"),
+    ("pet_detail", "pet"),
+    ("guests", "guests"),
+    ("checkin_out", "stay"),
+    ("room_type", "room"),
+    ("duration", "how long"),
+    ("address", "address"),
+    ("pickup_place", "pickup place"),
+    ("dropoff_place", "destination"),
+    ("reference_no", "reference"),
+    ("question", "question"),
     ("spec", "order"),
     ("pickup", "pickup"),
     ("substitute", "if out"),
@@ -1097,12 +1401,12 @@ mod tests {
     #[test]
     fn a_request_that_says_what_the_call_needs_has_nothing_missing() {
         let clear = [
-            ("訂今晚 7 點 4 位，姓王", Kind::Restaurant),
-            ("Book a table for 4 tomorrow at 7 pm under Alex", Kind::Restaurant),
-            ("Please book a table for two at 7:30 pm under Alex", Kind::Restaurant),
-            ("明日の夜7時に4名、王で予約", Kind::Restaurant),
-            ("내일 저녁 7시 4명 김 이름으로 예약", Kind::Restaurant),
-            ("訂位 19:30 4人 電話 0912345678", Kind::Restaurant),
+            ("訂今晚 7 點 4 位，姓王，0912345678", Kind::Restaurant),
+            ("Book a table for 4 tomorrow at 7 pm under Alex, phone 212-555-0123", Kind::Restaurant),
+            ("Please book a table for two at 7:30 pm under Alex, 212 555 0123", Kind::Restaurant),
+            ("明日の夜7時に4名、王で予約、電話0912345678", Kind::Restaurant),
+            ("내일 저녁 7시 4명 김 이름으로 예약 010-1234-5678", Kind::Restaurant),
+            ("訂位 19:30 4人 電話 0912345678 王先生", Kind::Restaurant),
             ("預約剪頭髮 明天下午 3 點，王小姐 0912345678", Kind::Appointment),
             ("點一份雞排加辣，問幾點可以拿", Kind::Order),
             ("取消明天晚上 7 點的訂位，姓王", Kind::Change),
@@ -1114,6 +1418,12 @@ mod tests {
             let l = local(task);
             assert_eq!((l.kind, l.missing.clone(), l.unsure), (kind, vec![], false), "{task}");
         }
+        // A table with a name but no number to leave asks for the number.
+        assert_eq!(local("Book a table for 4 tomorrow at 7 pm under Alex").missing, ["phone"]);
+        // A number but no name: the owner's name, once set, is the booking name.
+        assert_eq!(local("訂位 19:30 4人 電話 0912345678").missing, ["name"]);
+        let named = Known { owner_named: true, region: None };
+        assert!(local_with("訂位 19:30 4人 電話 0912345678", &named).missing.is_empty());
     }
 
     #[test]
@@ -1166,15 +1476,15 @@ mod tests {
 
     #[tokio::test]
     async fn a_clear_request_never_asks_the_model() {
-        let v = check(&Client::new(), "http://127.0.0.1:1", "key", "訂今晚 7 點 4 位，姓王", MODEL_TIMEOUT).await;
+        let v = check(&Client::new(), "http://127.0.0.1:1", "key", "訂今晚 7 點 4 位，姓王，0912345678", &Known::default(), Lang::ZhTw, MODEL_TIMEOUT).await;
         assert_eq!((v.source, v.missing.is_empty()), ("local", true));
         assert!(v.ms < 50.0, "{}", v.ms);
     }
 
     #[tokio::test]
     async fn a_request_the_local_look_cannot_read_asks_the_model_for_what_is_missing() {
-        let base = stand_in(200, 20, gemini_json(r#"{"kind":"restaurant","missing":["party","backup","party","phone"]}"#)).await;
-        let v = check(&Client::new(), &base, "key", RU, MODEL_TIMEOUT).await;
+        let base = stand_in(200, 20, gemini_json(r#"{"type":"restaurant","missing":["party","backup","party","phone"],"note":""}"#)).await;
+        let v = check(&Client::new(), &base, "key", RU, &Known::default(), Lang::En, MODEL_TIMEOUT).await;
         assert_eq!(v.source, "model");
         assert_eq!(v.kind, Kind::Restaurant);
         // "backup" is no question of a table booking; a key is asked once.
@@ -1184,16 +1494,16 @@ mod tests {
 
     #[tokio::test]
     async fn the_model_in_another_language_can_say_nothing_is_missing() {
-        let base = stand_in(200, 10, gemini_json(r#"{"kind":"restaurant","missing":[]}"#)).await;
-        let v = check(&Client::new(), &base, "key", "Prenota un tavolo alle 20 per due persone, grazie", MODEL_TIMEOUT).await;
+        let base = stand_in(200, 10, gemini_json(r#"{"type":"restaurant","missing":[]}"#)).await;
+        let v = check(&Client::new(), &base, "key", "Prenota un tavolo alle 20 per due persone, grazie", &Known::default(), Lang::En, MODEL_TIMEOUT).await;
         assert_eq!((v.source, v.kind, v.missing.is_empty()), ("model", Kind::Restaurant, true));
     }
 
     #[tokio::test]
     async fn a_slow_model_lets_the_call_go_ahead_within_the_limit() {
-        let base = stand_in(200, 700, gemini_json(r#"{"kind":"restaurant","missing":["party"]}"#)).await;
+        let base = stand_in(200, 700, gemini_json(r#"{"type":"restaurant","missing":["party"]}"#)).await;
         let t0 = Instant::now();
-        let v = check(&Client::new(), &base, "key", RU, Duration::from_millis(120)).await;
+        let v = check(&Client::new(), &base, "key", RU, &Known::default(), Lang::En, Duration::from_millis(120)).await;
         assert_eq!((v.source, v.missing.is_empty()), ("timeout", true));
         assert!(t0.elapsed() < Duration::from_millis(500), "{:?}", t0.elapsed());
         assert!(v.ms >= 100.0 && v.ms < 500.0, "{}", v.ms);
@@ -1203,33 +1513,49 @@ mod tests {
     async fn a_model_error_or_nonsense_also_lets_the_call_go_ahead() {
         for (status, body) in [(500, "{}".to_string()), (200, "not json".to_string()), (200, gemini_json("no object here"))] {
             let base = stand_in(status, 5, body).await;
-            let v = check(&Client::new(), &base, "key", RU, MODEL_TIMEOUT).await;
+            let v = check(&Client::new(), &base, "key", RU, &Known::default(), Lang::En, MODEL_TIMEOUT).await;
             assert_eq!((v.source, v.missing.is_empty()), ("timeout", true), "{status}");
         }
-        let gone = check(&Client::new(), "http://127.0.0.1:1", "key", RU, MODEL_TIMEOUT).await;
+        let gone = check(&Client::new(), "http://127.0.0.1:1", "key", RU, &Known::default(), Lang::En, MODEL_TIMEOUT).await;
         assert_eq!((gone.source, gone.missing.is_empty()), ("timeout", true));
     }
 
     #[tokio::test]
-    async fn a_request_the_local_look_reads_keeps_its_questions_and_never_waits_for_the_model() {
-        for key in ["key", " "] {
-            let v = check(&Client::new(), "http://127.0.0.1:1", key, "訂餐廳 7 點半，不行就 8 點半", MODEL_TIMEOUT).await;
-            assert_eq!((v.source, v.kind, v.missing, v.ladder), ("local", Kind::Restaurant, vec!["party", "phone", "name"], vec!["19:30".to_string(), "20:30".to_string()]));
+    async fn a_request_with_gaps_keeps_its_local_questions_when_the_model_fails_or_there_is_no_key() {
+        for (key, source) in [("key", "timeout"), (" ", "local")] {
+            let v = check(&Client::new(), "http://127.0.0.1:1", key, "訂餐廳 7 點半，不行就 8 點半", &Known::default(), Lang::ZhTw, MODEL_TIMEOUT).await;
+            assert_eq!((v.source, v.kind, v.missing, v.ladder), (source, Kind::Restaurant, vec!["party", "phone", "name"], vec!["19:30".to_string(), "20:30".to_string()]));
             assert!(v.ms < 50.0, "{}", v.ms);
         }
         // Unreadable words and no key: the local look stands.
-        let v = check(&Client::new(), "http://127.0.0.1:1", " ", RU, MODEL_TIMEOUT).await;
+        let v = check(&Client::new(), "http://127.0.0.1:1", " ", RU, &Known::default(), Lang::En, MODEL_TIMEOUT).await;
         assert_eq!(v.source, "local");
     }
 
     #[test]
-    fn the_model_request_is_small_and_answers_are_checked_against_the_kind() {
-        let body = request_body("訂餐廳", &local("訂餐廳"));
+    fn the_model_request_is_small_and_answers_are_checked_against_the_type() {
+        let none = Known::default();
+        let body = request_body("訂餐廳", &local("訂餐廳"), &none, Lang::ZhTw);
         assert_eq!(body["generationConfig"]["thinkingConfig"]["thinkingLevel"], "minimal");
         assert_eq!(body["generationConfig"]["responseMimeType"], "application/json");
-        assert_eq!(parse_answer(&gemini_json("{\"kind\":\"order\",\"missing\":[\"spec\",\"time\",\"pickup\"]}")), Some((Kind::Order, vec!["spec", "pickup"])));
-        assert_eq!(parse_answer(&gemini_json("{\"kind\":\"contact\",\"missing\":[\"time\"]}")), Some((Kind::Contact, vec![])));
-        assert_eq!(parse_answer(&gemini_json("{\"kind\":\"cooking\",\"missing\":[]}")), None);
+        let takeout = parse_answer(&gemini_json(r#"{"type":"takeout","missing":["spec","party","pickup"],"note":"  Busy at noon.\n"}"#), &none).unwrap();
+        // No region: no note stops the owner.
+        assert_eq!((takeout.place, takeout.missing, takeout.note.as_str()), ("takeout", vec!["spec", "pickup"], ""));
+        // A note too long is cut at a word, never inside one.
+        let long = format!("{} insurance card number", "Clinics there answer with a voice menu and ask for a date of birth and".repeat(2));
+        let cut = note_line(&long);
+        assert!(cut.chars().count() <= NOTE_MAX_CHARS && cut.ends_with('…') && !cut.contains(" num…"), "{cut}");
+        assert_eq!(question_for(Lang::ZhTw, "party", "transport"), "幾位？（幾大幾小）");
+        assert_eq!(question_for(Lang::ZhTw, "party", "restaurant"), "幾位用餐？（幾大幾小）");
+        assert_eq!(parse_answer(&gemini_json(r#"{"type":"contact","missing":["time"]}"#), &none).map(|a| a.missing), Some(vec![]));
+        assert_eq!(parse_answer(&gemini_json(r#"{"type":"cooking","missing":[]}"#), &none), None);
+        // The owner's name is the booking name, but not where whose matter it is counts.
+        let named = Known { owner_named: true, region: crate::place_habits::for_country("us") };
+        let table = parse_answer(&gemini_json(r#"{"type":"restaurant","missing":["name","phone"]}"#), &named).unwrap();
+        assert_eq!(table.missing, ["phone"]);
+        let hk = Known { owner_named: true, region: crate::place_habits::for_country("hk") };
+        let ride = parse_answer(&gemini_json(r#"{"type":"transport","missing":["name","phone"]}"#), &hk).unwrap();
+        assert_eq!(ride.missing, ["name", "phone"]);
     }
 
     #[test]
@@ -1398,5 +1724,105 @@ mod tests {
         assert!(b.contains("when tomorrow 7") && b.contains("note window seat"), "{b}");
         let all: serde_json::Map<String, Value> = KEYS.iter().chain(&["note"]).map(|k| (k.to_string(), json!("v"))).collect();
         assert_eq!(sanitize_answers(Some(&Value::Object(all))).len(), KEYS.len() + 1);
+    }
+
+    /// The owner's own request: a table for seven adults with a number to
+    /// leave, to a US number, with the owner's name set. Nothing is missing,
+    /// and the model is not asked.
+    #[tokio::test]
+    async fn the_owners_request_for_seven_adults_asks_nothing() {
+        let task = "預約明天三點餐廳 7個大人 電話0912345678";
+        let known = Known { owner_named: true, region: crate::place_habits::for_number("+12125550123", "tw") };
+        assert_eq!(known.region.map(|r| r.region.as_str()), Some("us"));
+        let l = local_with(task, &known);
+        assert_eq!((l.kind, l.place, l.missing.clone()), (Kind::Restaurant, "restaurant", vec![]));
+        let v = check(&Client::new(), "http://127.0.0.1:1", "key", task, &known, Lang::ZhTw, MODEL_TIMEOUT).await;
+        assert_eq!((v.source, v.missing.is_empty(), v.place.as_str()), ("local", true, "restaurant"));
+        // Without the owner's name, the booking name is the one thing to ask.
+        assert_eq!(local(task).missing, ["name"]);
+    }
+
+    #[test]
+    fn a_party_is_read_in_any_wording_and_look_alikes_are_not() {
+        let party = [
+            "7個大人", "兩大一小", "2大2小", "4大人1小孩", "三大兩小", "6位大人1個BB", "三個大人一個囡仔", "四大兩細", "7 adults", "2 adults 1 kid",
+            "party of 4", "table for 2", "4 ppl", "4 pax", "4pax", "me + 3", "6 of us", "group of 8", "Party of 7, please", "mesa para 4", "somos 6",
+            "2 adultos y 1 niño", "7 adultos", "para dos personas", "大人7名", "大人2名と子ども1名", "おとな3、こども1", "4人で", "어른 7명", "4인 예약", "두 명",
+            "pour 4 personnes", "nous sommes 5", "une table pour deux", "2 adultes et 1 enfant", "für 4 Personen", "Tisch für zwei", "wir sind 6",
+            "2 Erwachsene und 1 Kind", "mesa para duas pessoas", "2 adultos e 1 criança",
+        ];
+        for p in party {
+            assert!(names_party(p), "{p}");
+        }
+        let not_party = [
+            "7個小時", "5分熟", "3分糖", "3號餐", "4樓", "7-11", "85度C", "第5診", "電話0912345678", "combo #3", "for 2 hours", "apt 4B", "table 12",
+            "for 7 pm", "at 7:30", "24/7", "pendant 2 heures", "für 2 Stunden", "um 20 Uhr", "pour 20h", "por 2 horas", "Tisch 12", "3인분", "7시",
+            "2人前", "7時", "3番", "order for 2 pizzas",
+        ];
+        for p in not_party {
+            assert!(!names_party(p), "{p}");
+        }
+    }
+
+    #[test]
+    fn requests_in_many_languages_with_seven_adults_miss_nothing_once_the_owner_is_named() {
+        let known = Known { owner_named: true, region: crate::place_habits::for_country("us") };
+        for task in [
+            "預約明天三點餐廳 7個大人 電話0912345678",
+            "Book a table tomorrow at 7 pm, 7 adults, phone 212-555-0123",
+            "Reservar una mesa mañana a las 8 de la noche, 7 adultos, teléfono 212 555 0123",
+            "明日の夜7時にレストランを予約、大人7名、電話0912345678",
+            "내일 저녁 7시 식당 예약 어른 7명 010-1234-5678",
+            "Réservation d'une table demain à 19h30 pour 7 personnes, 06 12 34 56 78",
+            "Reservierung für 7 Personen morgen um 19 Uhr, Telefon 0151 2345 6789",
+            "Reservar uma mesa amanhã às 19h30 para 7 pessoas, telefone 11 91234 5678",
+        ] {
+            let l = local_with(task, &known);
+            assert_eq!((l.kind, l.missing.clone()), (Kind::Restaurant, vec![]), "{task}");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_model_gets_the_region_and_its_needs_and_its_answer_wins() {
+        let known = Known { owner_named: false, region: crate::place_habits::for_country("us") };
+        let task = "Book a table at Luigi's tomorrow, 7 pm";
+        let l = local_with(task, &known);
+        assert_eq!(l.missing, ["party", "phone", "name"]);
+        let body = request_body(task, &l, &known, Lang::Es).to_string();
+        assert!(body.contains("the United States (us)") && body.contains("restaurant: needs time,party,name,phone"), "{body}");
+        assert!(body.contains("type=restaurant and missing=party,phone,name") && body.contains("Write the note in Spanish"), "{body}");
+        // The model reads a party the local look missed: nothing to ask.
+        let base = stand_in(200, 10, gemini_json(r#"{"type":"restaurant","missing":[],"note":""}"#)).await;
+        let v = check(&Client::new(), &base, "key", task, &known, Lang::En, MODEL_TIMEOUT).await;
+        assert_eq!((v.source, v.missing.is_empty(), v.note.as_str()), ("model", true, ""));
+        // Another type, with a note; codes that type does not need there are dropped.
+        let base = stand_in(200, 10, gemini_json(r#"{"type":"clinic","missing":["for_whom","party","visit_type","phone"],"note":"Muchas clínicas contestan con un menú de voz."}"#)).await;
+        let v = check(&Client::new(), &base, "key", "Llama al dentista para una cita el lunes", &known, Lang::Es, MODEL_TIMEOUT).await;
+        assert_eq!((v.place.as_str(), v.kind, v.missing.clone()), ("clinic", Kind::Appointment, vec!["for_whom", "visit_type", "phone"]));
+        assert_eq!(v.note, "Muchas clínicas contestan con un menú de voz.");
+        // A restaurant there takes phone bookings: its note is dropped. An inquiry's
+        // question is the errand itself, never asked back.
+        let a = parse_answer(&gemini_json(r#"{"type":"restaurant","missing":["party"],"note":"Popular places book online."}"#), &known).unwrap();
+        assert_eq!((a.missing.clone(), a.note.as_str()), (vec!["party"], ""));
+        let a = parse_answer(&gemini_json(r#"{"type":"inquiry","missing":["question"],"note":""}"#), &known).unwrap();
+        assert!(a.missing.is_empty(), "{:?}", a.missing);
+        assert_eq!(question_for(Lang::Es, "for_whom", &v.place), "¿Para quién es y cómo se llama?");
+        // Too slow: the local questions stand.
+        let base = stand_in(200, 700, gemini_json(r#"{"type":"restaurant","missing":[]}"#)).await;
+        let v = check(&Client::new(), &base, "key", task, &known, Lang::En, Duration::from_millis(120)).await;
+        assert_eq!((v.source, v.missing), ("timeout", l.missing.clone()));
+    }
+
+    #[test]
+    fn the_kind_of_business_is_read_from_the_words() {
+        assert_eq!(place_type_of("Book a table for 4 at 7 pm"), "restaurant");
+        assert_eq!(place_type_of("Appointment with the dentist on Monday"), "clinic");
+        assert_eq!(place_type_of("Cita en la peluquería el lunes a las 5"), "beauty");
+        assert_eq!(place_type_of("Termin für die Reparatur am Montag"), "repair");
+        assert_eq!(place_type_of("Commande à emporter pour midi"), "takeout");
+        assert_eq!(place_type_of("予約をキャンセルしてください"), "change");
+        assert_eq!(place_type_of("Ask Sam if he is coming to dinner"), "contact");
+        assert_eq!(question_for(Lang::En, "name", "repair"), "What name should I leave?");
+        assert_eq!(question_for(Lang::En, "name", "restaurant"), question(Lang::En, "name"));
     }
 }

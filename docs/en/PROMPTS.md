@@ -394,6 +394,8 @@ A wait you set yourself wins; see `goodbye_hangup_delay_ms` in [Settings](SETTIN
 
 **AI errands.** Besides the task, an errand's script carries a short block (up to 300 characters): your answers to the questions Bageo asked before dialing, the order in which you would give way (if 7:30 is full, 8:30) and the polite phrases of the place called. The questions come from the check described under `POST /calls/api/errands/preflight` in the [API](API.md).
 
+When the number called is in a place Bageo has notes on (Taiwan, the United States, Hong Kong and Macau, and Japan for now), the script also carries up to 900 characters on what such businesses there usually ask, how to handle what may come up (settle it, ask you, never give it, or decline) and how names, numbers and times are said there. It gives a direction only; the AI uses its own words.
+
 ## What you cannot change
 
 Bageo appends these to every prompt, built-in or your own:
