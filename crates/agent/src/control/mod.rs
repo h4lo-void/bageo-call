@@ -1120,10 +1120,16 @@ impl Controller {
                 errands::pick_phone(&now.phones, &number, "", &errands::home_region(&now.rt)).map_err(error_outcome)?;
                 body["task"] = json!(task);
                 let mut summary = words::ask_errand(w, &who, &number, &task);
-                let gaps = crate::preflight::local_with(&task, &errand_known(&now.rt, &number)).missing;
+                let known = errand_known(&now.rt, &number);
+                let gaps = crate::preflight::local_with(&task, &known).missing;
                 if !gaps.is_empty() {
                     summary = format!("{summary}\n\n{}", crate::preflight::card_text(locale::notify_lang(), &gaps));
                     body["preflight_gaps"] = json!(true);
+                }
+                // What such places there are like, before the owner confirms.
+                let note = crate::preflight::local_note(locale::notify_lang(), &task, &known);
+                if !note.is_empty() {
+                    summary = format!("{summary}\n\n{note}");
                 }
                 Ok((Job::Errand { body }, summary))
             }
@@ -1386,10 +1392,15 @@ impl Controller {
         self.limits.note_errand(origin);
         let w = words(locale::notify_lang());
         let mut summary = words::ask_errand(w, &who, &number, &task);
-        let gaps = crate::preflight::local_with(&task, &errand_known(&now.rt, &number)).missing;
+        let known = errand_known(&now.rt, &number);
+        let gaps = crate::preflight::local_with(&task, &known).missing;
         if !gaps.is_empty() {
             summary = format!("{summary}\n\n{}", crate::preflight::card_text(locale::notify_lang(), &gaps));
             body["preflight_gaps"] = json!(true);
+        }
+        let note = crate::preflight::local_note(locale::notify_lang(), &task, &known);
+        if !note.is_empty() {
+            summary = format!("{summary}\n\n{note}");
         }
         let keys: Vec<String> = chats.iter().map(|(c, i)| access::chat_key(c, i)).collect();
         let code = self.confirms.ask_many(&keys, confirm::ANY_SENDER, Job::Errand { body });

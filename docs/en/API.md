@@ -563,7 +563,7 @@ had already picked up.
 |---|---|
 | `GET /calls/api/errands` | `{ok, errands}`, newest first, at most 200. |
 | `POST /calls/api/errands` | Start one. Body `{number, name, contact_id, task, identity, serial, follow_up_of, answers, redial}` (`redial`: `true` for **Redial until answered**, default `false`). Answer `{ok, errand}` with status `dialing`, or `queued` when the phone or the number is busy. |
-| `POST /calls/api/errands/preflight` | What the errand still lacks before it dials. Body `{task, lang, number}`; answer `{ok, kind, type, missing, note, region, ladder, source, ms}`. Nothing is dialed. Details are below the table. |
+| `POST /calls/api/errands/preflight` | What the errand still lacks before it dials. Body `{task, lang, number}`; answer `{ok, kind, type, missing, note, remind, optional, region, ladder, source, ms}`. Nothing is dialed. Details are below the table. |
 | `POST /calls/api/errands/{id}/cancel` | Waiting: dropped. Dialing or on the call: hung up. An errand already over comes back unchanged. `{ok, errand}`. |
 | `POST /calls/api/errands/{id}/retry` | The same errand once more (`attempts` + 1, the last try moved to `history`). `{ok, errand}`. Still under way (or its last call not ended yet): 400 `busy`; the phone codes as for a new errand. |
 | `DELETE /calls/api/errands/{id}` | Removes it from the list (its call records stay). `{ok}`; dialing or on the call: 400 `busy`. |
@@ -573,7 +573,7 @@ had already picked up.
 Details for these routes:
 
 - Creating an errand requires `task`, and a number (or a contact or an earlier errand whose number is used). Empty `identity` means `errand_identity`; empty `serial` means any suitable phone.
-- `answers` is optional: what you added after the questions, as `{key: text}`. The keys are the ones `preflight` returns, plus `note` for free text; up to 80 characters each (`note`: 120). Unknown keys are dropped. They reach the AI as a short block in the call's script.
+- `answers` is optional: what you added after the questions, as `{key: text}`. The keys are the ones `preflight` returns in `missing` and `optional`, plus `note` for free text; up to 80 characters each (`note`: 120). Unknown keys are dropped. They reach the AI as a short block in the call's script.
 - `place_type` is optional: the `type` that `preflight` returned. Without it, Bageo reads the kind of call from the task.
 - `lines`: the captions after `seq`, `[{seq, who, text, at}]`, with `who` `ai`, `callee`, `owner` or `system`. The newest 400 are kept; a line is complete after 1.2 s without more words.
 - `question`: `null` or `{id, text, options, asked_at, expires_at}`, the question waiting for you.
@@ -582,12 +582,14 @@ Details for these routes:
   - `kind`: `restaurant`, `appointment`, `order`, `change` or `contact`.
   - `type`: the kind of business call, one of `restaurant`, `clinic`, `beauty`, `repair`, `takeout`, `shop_order`, `change`, `inquiry`, `hotel`, `activity`, `home_service`, `pet`, `tracking`, `customer_service`, `transport`, `property`, `government_school`, or `contact`; empty when it is not known.
   - `missing`: at most 3 `{key, question}`, the most important first; empty when nothing is missing. Only details that kind of call needs where the number is: `time`, `party`, `phone`, `name`, `item`, `contact`, `backup`, `spec`, `pickup`, `substitute`, `orig_time`, `for_whom`, `visit_type`, `checkin_out`, `guests`, `address`, `pet_detail`, `reference_no`, `pickup_place`, `dropoff_place`, `room_type`, `duration`. When the owner's name is set, `name` is not asked unless the call is for someone else where that counts.
-  - `note`: one sentence worth knowing before dialing, in `lang`, only for a kind of call such places seldom take by phone (a clinic that answers with a voice menu, a customer line that checks your identity); otherwise empty.
+  - `note`: what is worth knowing before dialing that kind of call there, in `lang`; it comes with questions or with `remind`, otherwise it is empty. In Chinese it is Bageo's own local note; in other languages the small model words it, and without a model answer it is a general line (such places seldom book by phone, or may ask for your ID details).
+  - `remind`: `true` when nothing is missing but the console still shows `note` before dialing, with **Call anyway** and **Cancel**: such places there seldom take bookings by phone, or usually ask for your ID details (an ID or passport number, a residence permit, a date of birth, a health insurance card, a social security number). A card number, a deposit, a password or a door or verification code does not count: the AI handles those on the call.
+  - `optional`: at most 4 `{key, question}` the place may also ask about; the call goes without them. Only with questions or `remind`. Besides the keys above: `kids_detail`, `seating_pref`, `staff_pref`, `budget`, `vehicle_plate`, `floor_elevator`, `customization`, `name_kana`, `allergy`.
   - `region`: the region whose habits applied (`tw`, `us`, `hk-mo`, `jp`, `cn`, `sg`, `kr`, `gb-ie`, `ca`, `au-nz`, `es`, `mx`, `latam`, `ar-uy`, `fr`, `be`, `lu`, `de`, `at`, `ch`, `br` or `pt`), or empty.
   - `ladder`: the times you would accept, best first (`["19:30", "20:30"]`), at most 4. Empty unless the task names two or more times.
   - `source` and `ms`: `local`, `model` or `timeout`, and how long it took in milliseconds.
-- A task Bageo reads itself with nothing missing is answered locally in a few milliseconds. When it finds something missing, or cannot read the words (another script, long text full of numbers), it asks a small model (`gemini-flash-lite-latest`) through the Gemini key, for at most 2.5 seconds; a detail written in any wording or language counts ("7個大人", "party of 7", "7 adultos"). When no answer comes in time (`source` `timeout`) or there is no key, Bageo's own questions stand, and words it could not read get none.
-- In a chat, the confirmation card lists the same questions. Replying to the card with the answers saves your reply as `answers.note` and the AI calls with it; replying "cancel" dials nothing.
+- A task Bageo reads itself with nothing missing is answered locally in a few milliseconds. When it finds something missing, or cannot read the words (another script, long text full of numbers), it asks a small model (`gemini-flash-lite-latest`) through the Gemini key, for at most 2.5 seconds; a detail written in any wording or language counts ("7個大人", "party of 7", "7 adultos"). When no answer comes in time (`source` `timeout`) or there is no key, Bageo's own questions stand, and words it could not read get none. A task with nothing missing to a place worth a reminder asks the model too when `lang` is not Chinese, only to word `note`.
+- In a chat, the confirmation card lists the same questions. Replying to the card with the answers saves your reply as `answers.note` and the AI calls with it; replying "cancel" dials nothing. When that kind of call there is worth a reminder, the card also shows the note.
 
 Error codes (HTTP 400 `{ok: false, error, code}`, the same word in both):
 

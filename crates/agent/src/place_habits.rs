@@ -3,8 +3,11 @@
 
 //! What businesses in a region usually ask on the phone, for AI errands. The
 //! pre-dial check ([crate::preflight]) reads which details a kind of call
-//! needs there, and the call's script gets a short block on what the other
-//! side tends to ask and how to handle it ([call_block]).
+//! needs there, what it may also ask, what the owner should know before
+//! dialing, and how owners write times, names, numbers and the purpose of a
+//! call ([lexicon]). The call's script gets a block on what the other side
+//! tends to ask and how to handle it ([call_block]), and the result of the
+//! call says how such places confirm ([Region::callback_habits]).
 //!
 //! The data is `data/place_habits.json`, one object per region (a region may
 //! cover several countries). The number called decides the region; a number
@@ -23,23 +26,57 @@ pub const TYPES: [&str; 17] = [
     "tracking", "customer_service", "transport", "property", "government_school",
 ];
 
-/// Every detail code the data may name.
-pub const CODES: [&str; 27] = [
-    "time", "party", "phone", "name", "item", "contact", "backup", "spec", "pickup", "substitute", "orig_time", "address", "for_whom",
-    "kids_detail", "visit_type", "staff_pref", "seating_pref", "checkin_out", "guests", "room_type", "duration", "reference_no", "pet_detail",
-    "pickup_place", "dropoff_place", "budget", "question",
+/// Every detail code the data may name, each with the words the script
+/// uses for it.
+pub const CODES: [(&str, &str); 32] = [
+    ("time", "the day and time"),
+    ("party", "how many people"),
+    ("phone", "a number to call back"),
+    ("name", "the name it goes under"),
+    ("item", "what it is for"),
+    ("contact", "a name and a number"),
+    ("backup", "other times that would work"),
+    ("spec", "what and how many"),
+    ("pickup", "when to pick it up"),
+    ("substitute", "what to take if it is sold out"),
+    ("orig_time", "the time of the original booking"),
+    ("address", "the address"),
+    ("for_whom", "who it is for"),
+    ("kids_detail", "children's ages and a high chair"),
+    ("visit_type", "a first or a return visit"),
+    ("staff_pref", "a preferred staff member"),
+    ("seating_pref", "where to sit"),
+    ("checkin_out", "the check-in and check-out dates"),
+    ("guests", "how many guests"),
+    ("room_type", "the kind of room"),
+    ("duration", "how long"),
+    ("reference_no", "a booking, order or tracking number"),
+    ("pet_detail", "the pet's kind, breed and size"),
+    ("pickup_place", "where to be picked up"),
+    ("dropoff_place", "where to go"),
+    ("budget", "the budget"),
+    ("question", "the question"),
+    ("vehicle_plate", "the licence plate"),
+    ("floor_elevator", "the floor and whether there is a lift"),
+    ("customization", "sweetness, ice or spice"),
+    ("name_kana", "how the name reads in kana"),
+    ("allergy", "allergies or foods to avoid"),
 ];
 
 /// The most characters of the script's block.
-pub const CALL_BLOCK_MAX: usize = 900;
+pub const CALL_BLOCK_MAX: usize = 1600;
 /// The most characters of one thing they ask or one situation in the block.
-const ITEM_MAX_CHARS: usize = 90;
+const ITEM_MAX_CHARS: usize = 80;
 /// The most characters of one local habit (names, phone numbers, times) in the block.
 const TIP_MAX_CHARS: usize = 140;
+/// The most characters of how far English goes there, in the block.
+const ENGLISH_MAX_CHARS: usize = 90;
 /// The most characters of a kind's note before dialing, for the pre-dial model.
-const BEFORE_MAX_CHARS: usize = 70;
+const BEFORE_MAX_CHARS: usize = 200;
 /// The most things they usually ask, in the block.
 const ASKED_MAX: usize = 5;
+/// The most situations of one way of handling them, in the block.
+const HANDLED_MAX: usize = 3;
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
@@ -57,15 +94,28 @@ pub struct Region {
     pub countries: Vec<String>,
     /// Its name in English, for the script.
     pub region_name: String,
+    /// Which language to speak there.
+    pub ai_language_tip: String,
+    /// How far English goes there (`often; ...`).
+    pub english_ok: String,
     pub politeness: String,
     pub name_tip: String,
     pub phone_tip: String,
     pub time_tip: String,
     pub number_tip: String,
+    /// The busy hours not to call in.
+    pub avoid_calling: String,
+    /// The days places there are closed.
+    pub closed_days: String,
     pub booking_channels: String,
+    /// Which places answer with a voice menu.
+    pub voice_menu: String,
+    /// How places there confirm a booking (a text, a message, a call the day before).
     pub callback_habits: String,
     /// By kind of call ([TYPES]).
     pub types: BTreeMap<String, Place>,
+    /// By language: how owners write the details of a call there.
+    pub how_owners_write: BTreeMap<String, Writing>,
 }
 
 /// What one kind of call is like in a region.
@@ -80,6 +130,8 @@ pub struct Place {
     pub for_whom_matters: bool,
     /// The details this kind of call needs before it dials ([CODES]).
     pub must_have: Vec<String>,
+    /// The details they may also ask about ([CODES]): the owner may add them.
+    pub nice_to_have: Vec<String>,
     /// What the other side usually asks, in English.
     pub usually_asked: Vec<String>,
     pub may_come_up: Vec<Situation>,
@@ -93,6 +145,25 @@ pub struct Situation {
     pub what: String,
     /// `ai_can_answer`, `ask_owner`, `owner_only` or `decline`.
     pub handle: String,
+}
+
+/// How owners write the details of a call in one language: examples, each
+/// maybe with a note in brackets after it.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct Writing {
+    pub party: Vec<String>,
+    pub time: Vec<String>,
+    pub date: Vec<String>,
+    pub name: Vec<String>,
+    pub phone: Vec<String>,
+    pub booking_words: Vec<String>,
+    pub appointment_words: Vec<String>,
+    pub order_words: Vec<String>,
+    pub change_words: Vec<String>,
+    pub inquiry_words: Vec<String>,
+    /// Look-alikes: a number that is no party, time or date ("4樓", "for 2 hours").
+    pub false_friends: Vec<String>,
 }
 
 /// All regions of the data (the tests make sure it reads).
@@ -128,13 +199,23 @@ pub fn clean_type(s: &str) -> String {
 }
 
 fn code(s: &str) -> Option<&'static str> {
-    CODES.iter().copied().find(|c| *c == s.trim())
+    CODES.iter().map(|(c, _)| *c).find(|c| *c == s.trim())
+}
+
+/// The script's words for a detail code ("" for an unknown one).
+pub fn code_words(c: &str) -> &'static str {
+    CODES.iter().find(|(k, _)| *k == c).map(|(_, w)| *w).unwrap_or("")
+}
+
+/// What a kind of call is like there.
+pub fn place<'a>(region: Option<&'a Region>, kind: &str) -> Option<&'a Place> {
+    region.and_then(|r| r.types.get(kind))
 }
 
 /// The details a kind of call needs before it dials: the region's, or with
 /// no region the ones most regions name.
 pub fn must_have(region: Option<&Region>, kind: &str) -> Vec<&'static str> {
-    if let Some(p) = region.and_then(|r| r.types.get(kind)) {
+    if let Some(p) = place(region, kind) {
         return p.must_have.iter().filter_map(|c| code(c)).collect();
     }
     let all = regions();
@@ -151,6 +232,15 @@ pub fn must_have(region: Option<&Region>, kind: &str) -> Vec<&'static str> {
     out
 }
 
+/// What the other side may also ask about on this kind of call there, beyond
+/// what it needs ([must_have]); none without a region.
+pub fn nice_to_have(region: Option<&Region>, kind: &str) -> Vec<&'static str> {
+    let Some(p) = place(region, kind) else {
+        return Vec::new();
+    };
+    p.nice_to_have.iter().filter_map(|c| code(c)).filter(|c| !p.must_have.iter().any(|m| m == c)).collect()
+}
+
 /// Whose matter it is counts for this kind of call there (with no region:
 /// in most regions).
 pub fn for_whom_matters(region: Option<&Region>, kind: &str) -> bool {
@@ -163,12 +253,52 @@ pub fn for_whom_matters(region: Option<&Region>, kind: &str) -> bool {
     }
 }
 
-/// Such places there seldom or never get this done by phone (`rarely`, `no`):
-/// only then is a note worth showing the owner before dialing. No region: never.
+/// Such places there seldom or never get this done by phone (`rarely`, `no`).
+/// No region: never.
 pub fn hard_by_phone(region: Option<&Region>, kind: &str) -> bool {
-    region
-        .and_then(|r| r.types.get(kind))
-        .is_some_and(|p| matches!(p.phone_booking.trim().to_ascii_lowercase().as_str(), "rarely" | "no"))
+    place(region, kind).is_some_and(|p| matches!(p.phone_booking.trim().to_ascii_lowercase().as_str(), "rarely" | "no"))
+}
+
+/// Words of the owner's own identity papers in the data (its English and the
+/// local words in brackets): an ID, passport or residence number, a date of
+/// birth, a health insurance card, a social security number. Not a card
+/// number, a deposit, a password, a door or verification code, a driving
+/// licence (car hire) or a tax number (CPF, NIF): the AI handles those on the call.
+const OWNER_ID_WORDS: &[&str] = &[
+    "national id", "id number", "id card", "citizen id", "resident id", "resident registration", "registration number", "national insurance",
+    "passport", "passaport", "residence card", "residence permit", "arc", "birth date", "date of birth", "dob", "birth certificate", "ssn",
+    "social security", "social insurance", "health card", "health insurance", "insurance card", "insurance member", "medical insurance", "medicare",
+    "nhi", "nhs", "pps", "carte vitale", "sécurité sociale", "sv-nummer", "e-card", "versichertennummer", "krankenkassenkarte", "veka", "ahv",
+    "ausweis", "ausweisnummer", "ausländerausweis", "geburtsdatum", "matricule", "cns", "rijksregisternummer", "registre national", "numéro national", "nric", "hkid",
+    "bir number", "home return permit", "dni", "nie", "cédula", "rut", "curp", "cartão de cidadão", "utente", "niss", "segurança social",
+    "carteirinha", "obra social", "prepaga", "my number", "身分證", "身份證", "身份证", "身分证", "居留證", "居留证", "護照", "护照", "通行证", "回鄉證",
+    "生日", "出生", "健保卡", "醫療卡", "医保卡", "社保", "マイナンバー", "在留カード", "保険証番号", "生年月日", "パスポート", "身分証", "주민등록",
+    "외국인등록", "여권", "생년월일",
+];
+
+/// A thing asked that is part of the owner's identity papers ([OWNER_ID_WORDS]).
+pub fn names_owner_id(what: &str) -> bool {
+    let low = what.to_lowercase();
+    OWNER_ID_WORDS.iter().any(|w| crate::preflight::has_word(&low, w))
+}
+
+/// Such places there usually ask for the owner's identity papers (an ID
+/// number, a passport, a date of birth, a health insurance card), which the
+/// AI will not give. No region: never.
+pub fn asks_owner_id(region: Option<&Region>, kind: &str) -> bool {
+    place(region, kind).is_some_and(|p| p.sensitive_asked.iter().any(|s| s.handle == "owner_only" && names_owner_id(&s.what)))
+}
+
+/// Worth a word to the owner before dialing even when nothing is missing:
+/// such places seldom do it by phone, or ask for the owner's identity papers.
+pub fn worth_a_reminder(region: Option<&Region>, kind: &str) -> bool {
+    hard_by_phone(region, kind) || asks_owner_id(region, kind)
+}
+
+/// What the owner should know before dialing this kind of call there, in
+/// Chinese, on one line ("" when the data has none).
+pub fn before_dialing(region: Option<&Region>, kind: &str) -> String {
+    place(region, kind).map(|p| one_line(&p.before_dialing_zh)).unwrap_or_default()
 }
 
 /// For the pre-dial model: per kind of call, what it needs before dialing
@@ -180,7 +310,7 @@ pub fn model_brief(region: Option<&Region>) -> String {
         if for_whom_matters(region, kind) {
             line.push_str("; who it is for matters");
         }
-        if let Some(p) = region.and_then(|r| r.types.get(kind)) {
+        if let Some(p) = place(region, kind) {
             if !p.phone_booking.trim().is_empty() {
                 line.push_str(&format!("; phone bookings: {}", one_line(&p.phone_booking)));
             }
@@ -192,6 +322,63 @@ pub fn model_brief(region: Option<&Region>) -> String {
         lines.push(line);
     }
     lines.join("\n")
+}
+
+/// The words owners use for the purpose of a call, in every region and
+/// language of the data, lower case, one phrase each.
+#[derive(Debug, Default)]
+pub struct Lexicon {
+    pub booking: Vec<String>,
+    pub appointment: Vec<String>,
+    pub order: Vec<String>,
+    pub change: Vec<String>,
+    pub inquiry: Vec<String>,
+}
+
+/// [Lexicon], read once.
+pub fn lexicon() -> &'static Lexicon {
+    static L: OnceLock<Lexicon> = OnceLock::new();
+    L.get_or_init(|| {
+        let mut l = Lexicon::default();
+        for w in regions().iter().flat_map(|r| r.how_owners_write.values()) {
+            for (to, from) in [
+                (&mut l.booking, &w.booking_words),
+                (&mut l.appointment, &w.appointment_words),
+                (&mut l.order, &w.order_words),
+                (&mut l.change, &w.change_words),
+                (&mut l.inquiry, &w.inquiry_words),
+            ] {
+                for p in from.iter().flat_map(|s| phrases(s)) {
+                    if !to.contains(&p) {
+                        to.push(p);
+                    }
+                }
+            }
+        }
+        l
+    })
+}
+
+/// A written example without the note in brackets after it ("兩個小時（時長非人數）",
+/// "4/F (floor)"; an area code in brackets stays: "(11) 91234-5678").
+pub fn without_note(s: &str) -> &str {
+    let cut = s
+        .find('（')
+        .into_iter()
+        .chain(s.match_indices(" (").map(|(i, _)| i).filter(|i| !s[i + 2..].starts_with(|c: char| c.is_ascii_digit())))
+        .min()
+        .unwrap_or(s.len());
+    s[..cut].trim()
+}
+
+/// A written example without its note ([without_note]), its alternatives
+/// apart ("para levar / para fora"), lower case, with no question mark around it.
+pub fn phrases(s: &str) -> Vec<String> {
+    without_note(s)
+        .split(" / ")
+        .map(|p| p.to_lowercase().replace('\u{307}', "").trim_matches(|c: char| c.is_whitespace() || matches!(c, '?' | '¿' | '？')).to_string())
+        .filter(|p| !p.is_empty())
+        .collect()
 }
 
 fn one_line(s: &str) -> String {
@@ -230,9 +417,14 @@ fn plain(s: &str, max: usize) -> String {
 
 /// `lead` and as many of `items` as fit in the block, as one more line.
 fn push_list(out: &mut String, lead: &str, items: &[String]) {
+    push_within(out, lead, items, CALL_BLOCK_MAX);
+}
+
+/// [push_list] within `max` characters of the block.
+fn push_within(out: &mut String, lead: &str, items: &[String], max: usize) {
     for n in (1..=items.len()).rev() {
         let line = format!("- {lead}: {}.", items[..n].join("; "));
-        if out.chars().count() + 1 + line.chars().count() <= CALL_BLOCK_MAX {
+        if out.chars().count() + 1 + line.chars().count() <= max {
             out.push('\n');
             out.push_str(&line);
             return;
@@ -241,10 +433,14 @@ fn push_list(out: &mut String, lead: &str, items: &[String]) {
 }
 
 /// The script's block for a call to region `r` of kind `kind` ([TYPES]; another
-/// kind gets only the region's habits, `contact` none): what the other side usually
-/// asks, how to handle what may come up, and how names, numbers and times go
-/// there. A direction in English, at most [CALL_BLOCK_MAX] characters; the
-/// most important parts first.
+/// kind gets only the region's habits, `contact` none). In this order, as far
+/// as it fits: what the other side usually asks; what not to give, what to
+/// decline, what to check with the owner and what the AI may settle; which
+/// language to speak; voice menus; what else they may ask about; how names,
+/// numbers and times go there; manners; how bookings and confirmations go.
+/// The language, the voice menus and the first things they may also ask
+/// always fit: what they ask and how to handle it leave room for them. A
+/// direction in English, at most [CALL_BLOCK_MAX] characters.
 pub fn call_block(r: &Region, kind: &str) -> String {
     if kind == "contact" || r.region_name.trim().is_empty() {
         return String::new();
@@ -261,9 +457,27 @@ pub fn call_block(r: &Region, kind: &str) -> String {
             r.region_name
         ),
     };
+    let language = plain(&r.ai_language_tip, TIP_MAX_CHARS);
+    let english = plain(&r.english_ok, ENGLISH_MAX_CHARS);
+    let menu = plain(&r.voice_menu, TIP_MAX_CHARS);
+    const LANGUAGE: &str = "Language there (the fixed language rule below still decides)";
+    const MENU: &str = "Voice menus there; you cannot press keys, so say nothing to a menu and wait for a person";
+    const EXTRA: &str = "They may also ask about these; if the matter says nothing on one, say there is no special request, or use ask_owner if it matters";
+    let extra: Vec<String> = place
+        .map(|p| {
+            p.nice_to_have
+                .iter()
+                .filter(|c| c.as_str() != "question" && !p.must_have.contains(c))
+                .map(|c| code_words(c).to_string())
+                .filter(|w| !w.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    let line = |lead: &str, tip: &str| if tip.is_empty() { 0 } else { lead.chars().count() + tip.chars().count() + 6 };
+    let room = CALL_BLOCK_MAX - line(LANGUAGE, &language) - line(MENU, &menu) - line(EXTRA, &extra.iter().take(2).cloned().collect::<Vec<_>>().join("; "));
     if let Some(p) = place {
         let asked: Vec<String> = p.usually_asked.iter().map(|a| plain(a, ITEM_MAX_CHARS)).filter(|a| !a.is_empty()).take(ASKED_MAX).collect();
-        push_list(&mut out, "They usually ask about", &asked);
+        push_within(&mut out, "They usually ask about", &asked, room);
         let handled = |h: &str| -> Vec<String> {
             p.sensitive_asked
                 .iter()
@@ -271,12 +485,23 @@ pub fn call_block(r: &Region, kind: &str) -> String {
                 .filter(|s| s.handle == h)
                 .map(|s| plain(&s.what, ITEM_MAX_CHARS))
                 .filter(|s| !s.is_empty())
+                .take(HANDLED_MAX)
                 .collect()
         };
-        push_list(&mut out, "If they ask for these, do not give them; say the person you call for will provide them", &handled("owner_only"));
-        push_list(&mut out, "Politely decline", &handled("decline"));
-        push_list(&mut out, "Check through ask_owner before you agree to", &handled("ask_owner"));
-        push_list(&mut out, "You may settle these yourself within the matter", &handled("ai_can_answer"));
+        push_within(&mut out, "Do not give these; say the person you call for will provide them", &handled("owner_only"), room);
+        push_within(&mut out, "Politely decline", &handled("decline"), room);
+        push_within(&mut out, "Check through ask_owner before you agree to", &handled("ask_owner"), room);
+        push_within(&mut out, "You may settle these yourself within the matter", &handled("ai_can_answer"), room);
+    }
+    if !language.is_empty() {
+        push_list(&mut out, LANGUAGE, &[language]);
+    }
+    if !menu.is_empty() {
+        push_list(&mut out, MENU, &[menu]);
+    }
+    push_list(&mut out, EXTRA, &extra);
+    if !english.is_empty() {
+        push_list(&mut out, "English there", &[english]);
     }
     for (lead, tip) in [
         ("Names there", &r.name_tip),
@@ -295,6 +520,12 @@ pub fn call_block(r: &Region, kind: &str) -> String {
     out
 }
 
+/// For the result of an errand to region `r`: how places there usually confirm
+/// a booking, one line ("" when the data has none).
+pub fn confirm_habits(r: &Region) -> String {
+    plain(&r.callback_habits, TIP_MAX_CHARS)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -306,8 +537,40 @@ mod tests {
 
     /// An example without the note in brackets after it ("兩個小時（時長非人數）").
     fn example(s: &str) -> String {
-        let cut = s.find('（').or_else(|| s.find(" (")).unwrap_or(s.len());
-        s[..cut].trim().to_string()
+        without_note(s).to_string()
+    }
+
+    /// Every example of one field of how_owners_write: (region, language, example).
+    fn written(field: &str) -> Vec<(String, String, String)> {
+        let mut out = Vec::new();
+        for r in regions() {
+            for (lang, w) in &r.how_owners_write {
+                let list = match field {
+                    "time" => &w.time,
+                    "date" => &w.date,
+                    "name" => &w.name,
+                    "phone" => &w.phone,
+                    "false_friends" => &w.false_friends,
+                    _ => unreachable!("{field}"),
+                };
+                for s in list {
+                    out.push((r.region.clone(), lang.clone(), example(s)));
+                }
+            }
+        }
+        out
+    }
+
+    /// The examples a rule does not read, leaving out the exceptions (they
+    /// must still be examples, and still not be read).
+    fn misread(field: &str, reads: impl Fn(&str) -> bool, exceptions: &[&str]) -> (Vec<String>, usize) {
+        let all = written(field);
+        let wrong: Vec<String> = all.iter().filter(|(_, _, s)| !reads(s) && !exceptions.contains(&s.as_str())).map(|(r, l, s)| format!("{r} {l}: {s}")).collect();
+        for e in exceptions {
+            assert!(all.iter().any(|(_, _, s)| s == e), "{field}: exception {e} is no example any more");
+            assert!(!reads(e), "{field}: exception {e} is read now; take it off the list");
+        }
+        (wrong, all.len())
     }
 
     /// Words that hand the AI a fixed line to recite (as in stall_script).
@@ -329,6 +592,16 @@ mod tests {
         let mut countries: Vec<&str> = Vec::new();
         for r in regs {
             assert!(!r.region_name.is_empty(), "{}", r.region);
+            for field in [&r.ai_language_tip, &r.english_ok, &r.voice_menu, &r.avoid_calling, &r.closed_days, &r.callback_habits] {
+                assert!(!field.trim().is_empty(), "{}", r.region);
+            }
+            assert!(!r.how_owners_write.is_empty(), "{}", r.region);
+            for (lang, w) in &r.how_owners_write {
+                // (Languages only read, like written Cantonese, may lack names and numbers.)
+                for (field, list) in [("party", &w.party), ("time", &w.time), ("false_friends", &w.false_friends)] {
+                    assert!(!list.is_empty(), "{} {lang} {field}", r.region);
+                }
+            }
             for c in &r.countries {
                 assert!(c.len() == 2 && c.chars().all(|x| x.is_ascii_lowercase()), "{c}");
                 assert!(!countries.contains(&c.as_str()), "{c} in two regions");
@@ -341,6 +614,12 @@ mod tests {
                 for c in &p.must_have {
                     assert!(crate::preflight::KEYS.contains(&c.as_str()), "{} {kind} {c}", r.region);
                 }
+                // And every one it may also ask about has a question in every language.
+                for c in &p.nice_to_have {
+                    for lang in crate::locale::ALL {
+                        assert!(!crate::preflight::question_for(lang, c, kind).is_empty(), "{} {kind} {c} {lang:?}", r.region);
+                    }
+                }
                 for s in p.may_come_up.iter().chain(&p.sensitive_asked) {
                     assert!(["ai_can_answer", "ask_owner", "owner_only", "decline"].contains(&s.handle.as_str()), "{}", s.handle);
                 }
@@ -351,14 +630,25 @@ mod tests {
             for (kind, p) in r["types"].as_object().unwrap() {
                 for field in ["must_have", "nice_to_have"] {
                     for c in p[field].as_array().unwrap() {
-                        assert!(CODES.contains(&c.as_str().unwrap()), "{kind} {field} {c}");
+                        assert!(code(c.as_str().unwrap()).is_some(), "{kind} {field} {c}");
                     }
                 }
                 // Owners call local places from local numbers: no advice to dial from another country's.
                 let before = p["before_dialing_zh"].as_str().unwrap();
                 assert!(!before.contains("門號撥打") && !before.contains("門號聯絡"), "{before}");
             }
+            // What the research had and the code does not use stays out.
+            for field in ["caller_id_trust", "ai_call_rules", "notes_zh", "uncertain", "sources"] {
+                assert!(r.get(field).is_none(), "{} {field}", r["region"]);
+            }
         }
+        // The new details sit where they are asked.
+        assert!(nice_to_have(for_country("us"), "repair").contains(&"vehicle_plate"));
+        assert!(nice_to_have(for_country("de"), "home_service").contains(&"floor_elevator"));
+        assert!(nice_to_have(for_country("tw"), "takeout").contains(&"customization"));
+        assert!(nice_to_have(for_country("jp"), "restaurant").contains(&"name_kana"));
+        assert!(!nice_to_have(for_country("us"), "restaurant").contains(&"name_kana"));
+        assert!(nice_to_have(None, "restaurant").is_empty());
     }
 
     #[test]
@@ -378,6 +668,112 @@ mod tests {
             }
         }
         assert!(seen >= 50, "{seen}");
+    }
+
+    /// Times and dates the look cannot read, and why.
+    const WHEN_EXCEPTIONS: [&str; 1] = [
+        // Basque number words ("half past nine at night"): Basque is no language of the console.
+        "gaueko bederatziak eta erdietan",
+    ];
+    /// Look-alikes that do read as a time, and why.
+    const LOOK_ALIKE_TIMES: [&str; 1] = [
+        // It is a time (12:15), listed for how to read its minutes, not as a non-time.
+        "12點3",
+    ];
+
+    #[test]
+    fn every_way_owners_write_a_time_or_a_date_there_is_read_and_look_alikes_are_not() {
+        // A time example names a time of day; a date example names a day.
+        let (wrong, n) = misread("time", crate::preflight::names_clock, &WHEN_EXCEPTIONS);
+        let (wrong_dates, m) = misread("date", crate::preflight::names_date, &[]);
+        assert!(wrong.is_empty() && wrong_dates.is_empty(), "times {wrong:#?}\ndates {wrong_dates:#?}");
+        assert!(n + m >= 300, "{n} {m}");
+        let reads = |f: &str| crate::preflight::names_clock(f) || crate::preflight::names_date(f);
+        let read_wrongly: Vec<String> = written("false_friends")
+            .into_iter()
+            .filter(|(_, _, f)| reads(f) && !LOOK_ALIKE_TIMES.contains(&f.as_str()))
+            .map(|(r, l, f)| format!("{r} {l}: {f}"))
+            .collect();
+        assert!(read_wrongly.is_empty(), "{read_wrongly:#?}");
+        for f in LOOK_ALIKE_TIMES {
+            assert!(written("false_friends").iter().any(|(_, _, x)| x == f), "{f}");
+        }
+    }
+
+    /// Phone numbers the look cannot read, and why.
+    const PHONE_EXCEPTIONS: [&str; 3] = [
+        // "My Taiwan mobile": no number written; the AI cannot know it.
+        "留我台灣那支手機",
+        "留我台灣彼支手機仔",
+        // Six digits: part of a number, too short to tell from a price or a code.
+        "312 345",
+    ];
+
+    #[test]
+    fn every_phone_number_owners_write_there_is_read() {
+        let (wrong, n) = misread("phone", crate::preflight::names_phone, &PHONE_EXCEPTIONS);
+        assert!(wrong.is_empty(), "{wrong:#?}");
+        assert!(n >= 90, "{n}");
+    }
+
+    /// Names the look cannot read, and why.
+    const NAME_EXCEPTIONS: [&str; 1] = [
+        // One given name alone: any capitalized word could be one.
+        "Ahmad",
+    ];
+
+    #[test]
+    fn every_name_owners_write_there_is_read_as_the_name_to_book_under() {
+        let (wrong, n) = misread("name", crate::preflight::names_name, &NAME_EXCEPTIONS);
+        assert!(wrong.is_empty(), "{wrong:#?}");
+        assert!(n >= 100, "{n}");
+    }
+
+    #[test]
+    fn every_word_owners_use_for_a_business_call_is_read_as_one_in_every_language() {
+        let mut wrong: Vec<String> = Vec::new();
+        let mut n = 0;
+        for r in regions() {
+            for (lang, w) in &r.how_owners_write {
+                for (what, list) in [
+                    ("booking", &w.booking_words),
+                    ("appointment", &w.appointment_words),
+                    ("order", &w.order_words),
+                    ("change", &w.change_words),
+                    ("inquiry", &w.inquiry_words),
+                ] {
+                    for word in list.iter().flat_map(|s| phrases(s)) {
+                        n += 1;
+                        // A business call, or one the model is asked about: never a call to a friend that skips the check.
+                        let l = crate::preflight::local(&word);
+                        if l.place == "contact" && !l.unsure {
+                            wrong.push(format!("{} {lang} {what}: {word}", r.region));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+        assert!(n >= 500, "{n}");
+        // A room is a hotel's and a court an activity's, not a table.
+        for (word, place) in [
+            ("訂房", "hotel"),
+            ("book a room", "hotel"),
+            ("reservar habitación", "hotel"),
+            ("réserver une chambre", "hotel"),
+            ("Zimmer buchen", "hotel"),
+            ("reservar quarto", "hotel"),
+            ("宿泊予約", "hotel"),
+            ("숙소 예약", "hotel"),
+            ("tee time", "activity"),
+            ("reservar cancha", "activity"),
+            ("Court buchen", "activity"),
+            ("訂位", "restaurant"),
+            ("訂包廂", "restaurant"),
+            ("réserver une table", "restaurant"),
+        ] {
+            assert_eq!(crate::preflight::place_type_of(word), place, "{word}");
+        }
     }
 
     #[test]
@@ -415,6 +811,51 @@ mod tests {
     }
 
     #[test]
+    fn what_is_worth_a_word_before_dialing() {
+        let tw = for_country("tw");
+        // A clinic there asks for an ID number the AI will not give.
+        assert!(asks_owner_id(tw, "clinic") && worth_a_reminder(tw, "clinic"));
+        assert!(before_dialing(tw, "clinic").contains("身分證"));
+        // Customer service seldom works by phone anywhere.
+        assert!(hard_by_phone(for_country("de"), "customer_service"));
+        // A hotel there seldom books by phone.
+        assert!(hard_by_phone(for_country("us"), "hotel") && worth_a_reminder(for_country("us"), "hotel"));
+        // A card for a deposit, a pet's insurance policy, a driving licence or a tax
+        // number is no identity paper: no reminder on its own.
+        for (r, kind) in [("fr", "restaurant"), ("es", "restaurant"), ("br", "restaurant"), ("jp", "pet"), ("kr", "takeout"), ("de", "transport")] {
+            assert!(!worth_a_reminder(for_country(r), kind), "{r} {kind}");
+        }
+        for what in [
+            "National ID number, ARC/passport number, or birth date (身分證字號、居留證號、生日)",
+            "NHI IC card number (健保卡號)",
+            "Asks Resident Registration Number (주민등록번호) or full birth date (생년월일)",
+            "Asks DNI/NIE number over phone before viewing",
+            "Patient date of birth, insurance member/group ID, or SSN",
+            "Arztpraxis asks Geburtsdatum (birth date) to verify identity",
+            "Health insurance card number or My Number over phone (保険証番号・マイナンバー)",
+        ] {
+            assert!(names_owner_id(what), "{what}");
+        }
+        for what in [
+            "Requests credit card digits over phone",
+            "Credit card number, expiration date, CVV, and billing zip code",
+            "Requests card details over phone for deposit",
+            "Apartment auto-lock PIN code for delivery entry (オートロック暗証番号)",
+            "One-time SMS or email verification code (2FA passcode)",
+            "Phone screen unlock passcode or Apple/Google password (螢幕解鎖密碼、帳號密碼)",
+            "Asks CPF number for reservation list",
+            "Pet insurance policy number over phone (ペット保険証券番号)",
+            "Car rental asks Führerschein or credit card number over phone",
+            "Asks NIF for fatura over phone",
+        ] {
+            assert!(!names_owner_id(what), "{what}");
+        }
+        // No region, no reminder.
+        assert!(!worth_a_reminder(None, "clinic") && before_dialing(None, "clinic").is_empty());
+        assert!(!confirm_habits(for_country("us").unwrap()).is_empty());
+    }
+
+    #[test]
     fn the_model_brief_names_every_kind_and_the_local_notes() {
         let tw = model_brief(for_country("tw"));
         assert_eq!(tw.lines().count(), TYPES.len());
@@ -435,14 +876,22 @@ mod tests {
                     assert!(!low.contains(bad), "{bad}: {b}");
                 }
                 assert!(!b.contains('（') && !b[1..].contains('['), "{b}");
+                // The most important parts come first and always fit.
+                if TYPES.contains(&kind) {
+                assert!(b.contains("- They usually ask about: "), "{} {kind}: {b}", r.region);
+                    assert!(b.contains("- Language there"), "{} {kind}: {b}", r.region);
+                    assert!(b.contains("you cannot press keys"), "{} {kind}: {b}", r.region);
+                }
             }
             assert_eq!(call_block(r, "contact"), "");
         }
         let us = call_block(for_country("us").unwrap(), "restaurant");
         assert!(us.contains("the United States; this is a restaurant call"), "{us}");
-        assert!(us.contains("- They usually ask about: "), "{us}");
-        assert!(us.contains("do not give them"), "{us}");
-        assert!(us.len() > 400, "{us}");
+        assert!(us.contains("- Do not give these"), "{us}");
+        assert!(us.contains("- They may also ask about these") && us.contains("allergies"), "{us}");
+        assert!(us.find("- Language there").unwrap() < us.find("- They may also ask").unwrap(), "{us}");
+        assert!(us.len() > 900, "{us}");
+        let jp = call_block(for_country("jp").unwrap(), "clinic");
+        assert!(jp.contains("how the name reads in kana"), "{jp}");
     }
 }
-

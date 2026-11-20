@@ -2813,17 +2813,28 @@ Answer with one JSON object and nothing else:\n\
 - unconfirmed: every time, date, weekday, quantity, price, address, phone number or booking name in details or event that the other side did not clearly confirm: the AI never read it back to them as a question, they gave no clear yes to the read-back, or what the AI read back differs from what they said. One short item each, as it stands in details (\"pick-up at 4:30 pm\"); [] when every such detail was confirmed or there are none.\n\
 - The transcript comes from speech recognition and can garble fast speech (\"4:30\" heard as \"4\" or as nonsense). Where the AI's words and the other side's differ (the AI said 4:00, they said 4:30), the other side's latest words count, in summary, details and event alike, and the item is unconfirmed unless they then said yes to it read back. A detail heard only in a garbled line is unconfirmed.\n\
 - A choice the AI made within the room the errand leaves (it says \"7:30 to 8 is fine too\" and 7:30 was booked) is {owner}'s own: that is \"done\". Only what the input marks as not answered by {owner} is not.\n\
+- When the input says how places there usually confirm a booking and the call ended with something booked or agreed for a day and time (outcome done, with an event), add to follow_up one short line on how {owner} will likely get that confirmation (a text, a message, a call the day before), in your own words.\n\
 Write summary, details, follow_up, options, unconfirmed and the event title in {language}. Go by what the other side actually said and last confirmed; the errand and the AI's own words are no proof that it happened."
     )
 }
 
-fn result_input(e: &Errand, dialogue: &str) -> String {
+/// What the summary model reads: the errand, the questions to the owner, how
+/// places where the number is usually confirm (a business call only), and
+/// the transcript. home: the owner's country, for a number without its code.
+fn result_input(e: &Errand, dialogue: &str, home: &str) -> String {
     let mut s = format!(
         "The errand, in the owner's words:\n{}\n\nCalled: {} {}\n",
         clean_text(&e.task),
         one_line(&e.name, NAME_MAX_CHARS),
         e.number
     );
+    if let Some(region) = crate::place_habits::for_number(&e.number, home) {
+        let kind = if e.place_type.is_empty() { crate::preflight::place_type_of(&e.task).to_string() } else { e.place_type.clone() };
+        let habits = crate::place_habits::confirm_habits(region);
+        if kind != "contact" && !habits.is_empty() {
+            s.push_str(&format!("How places there usually confirm a booking: {habits}.\n"));
+        }
+    }
     if !e.questions.is_empty() {
         s.push_str("\nQuestions the AI asked the owner during the call:\n");
         for q in &e.questions {
@@ -2980,7 +2991,9 @@ pub async fn read_result(http: &Client, settings: &Settings, e: &Errand, dialogu
     if let Some(endpoint) = crate::summary::summary_endpoint(settings) {
         let owner = crate::prompts::owner_label(lang, &locale::active().owner);
         let system = result_prompt(&owner, lang, chrono::Local::now());
-        let user = result_input(e, dialogue);
+        // The country the call went out from reads the number as it was dialed.
+        let home = if e.sim_country.trim().is_empty() { home_region(&RuntimeSettings::from_base(settings)) } else { e.sim_country.clone() };
+        let user = result_input(e, dialogue, &home);
         for model in &endpoint.models {
             match crate::summary::chat_at(http, &endpoint, model, &system, &user, 1500).await {
                 Ok(reply) => match parse_result(&reply) {
@@ -3933,8 +3946,13 @@ async fn preflight_errand(State(state): State<CallsState>, headers: HeaderMap, Q
     };
     let v = crate::preflight::check(&state.http, crate::preflight::GEMINI_BASE, rt.gemini_api_key.trim(), &task, &known, lang, crate::preflight::MODEL_TIMEOUT).await;
     let missing: Vec<Value> = v.missing.iter().map(|k| json!({"key": k, "question": crate::preflight::question_for(lang, k, &v.place)})).collect();
+    let optional: Vec<Value> = v.optional.iter().map(|k| json!({"key": k, "question": crate::preflight::question_for(lang, k, &v.place)})).collect();
     let region = known.region.map(|r| r.region.as_str()).unwrap_or("");
-    Json(json!({"ok": true, "kind": v.kind.as_str(), "type": v.place, "missing": missing, "note": v.note, "region": region, "ladder": v.ladder, "source": v.source, "ms": v.ms})).into_response()
+    Json(json!({
+        "ok": true, "kind": v.kind.as_str(), "type": v.place, "missing": missing, "note": v.note, "remind": v.remind, "optional": optional,
+        "region": region, "ladder": v.ladder, "source": v.source, "ms": v.ms,
+    }))
+    .into_response()
 }
 
 /// The errands API, merged into the console's router (`/calls`).
@@ -5420,7 +5438,7 @@ mod tests {
         settle_unanswered(&mut r, &e, &w);
         assert_eq!(r.outcome, "need_owner");
         assert!(r.follow_up.starts_with(&locale::fill(w.unconfirmed, "7點沒位子，7點半可以嗎？")) && r.follow_up.ends_with("準時到"), "{}", r.follow_up);
-        let input = result_input(&e, "對方：7點半可以\n接聽：好，那就7點半");
+        let input = result_input(&e, "對方：7點半可以\n接聽：好，那就7點半", "tw");
         assert!(input.contains("7點沒位子，7點半可以嗎？ -> (NOT ANSWERED by the owner)") && input.contains("is not the owner's consent"), "{input}");
         // Only then: a call with every question answered (or none) is read as usual.
         assert!(result_prompt("王小明", Lang::ZhTw, chrono::Local::now()).contains("within the room the errand leaves"));
@@ -5431,7 +5449,7 @@ mod tests {
         let mut r = Outcome { outcome: "done".into(), ..Default::default() };
         settle_unanswered(&mut r, &ok, &w);
         assert_eq!((r.outcome.as_str(), r.follow_up.as_str()), ("done", ""));
-        assert!(!result_input(&ok, "").contains("not the owner's consent"));
+        assert!(!result_input(&ok, "", "tw").contains("not the owner's consent"));
         let mut r = Outcome { outcome: "not_done".into(), ..Default::default() };
         settle_unanswered(&mut r, &e, &w);
         assert_eq!(r.outcome, "not_done");
@@ -6060,5 +6078,10 @@ mod tests {
         // An errand saved before this field reads as before.
         let old: Errand = serde_json::from_str(r#"{"id":"e-old","task":"x"}"#).unwrap();
         assert_eq!(old.place_type, "");
+        // The result is told how places there confirm, for a business call only.
+        assert!(result_input(&e, "", "tw").contains("How places there usually confirm a booking: "), "{}", result_input(&e, "", "tw"));
+        assert!(!result_input(&Errand { task: "Ask Sam if he is coming to dinner".into(), ..e.clone() }, "", "tw").contains("usually confirm"));
+        assert!(!result_input(&Errand { number: "+390612345678".into(), ..e.clone() }, "", "tw").contains("usually confirm"));
+        assert!(result_prompt("Alex", Lang::En, chrono::Local::now()).contains("how places there usually confirm"));
     }
 }

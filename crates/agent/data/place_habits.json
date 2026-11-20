@@ -1,5 +1,5 @@
 {
-  "about": "What businesses in each region usually ask on the phone, read by place_habits.rs. To add a region, append an object with the same fields: countries are ISO 3166 alpha-2 codes, types lists all 17 kinds, and must_have/nice_to_have use the detail codes in place_habits.rs. Languages marked read_only are only for reading the owner's words; the AI does not speak them.",
+  "about": "What businesses in each region usually ask on the phone, read by place_habits.rs. To add a region, append an object with the same fields: countries are ISO 3166 alpha-2 codes, types lists all 17 kinds, and must_have/nice_to_have use the detail codes in place_habits.rs. Languages marked read_only are only for reading the owner's words; the AI does not speak them. Per language, how_owners_write lists how owners write a party, a time, a date, a name, a phone number and the purpose of a call (booking, appointment, order, change, inquiry words); the tests check that the pre-dial look reads them and not the false_friends.",
   "format": 1,
   "regions": [
     {
@@ -24,11 +24,14 @@
         }
       ],
       "ai_language_tip": "Speak Taiwan Mandarin. If staff speak Taiwanese Hokkien or Hakka, reply politely in Mandarin; almost everyone understands. Switch to English only at international hotels or expat-oriented Taipei venues.",
+      "english_ok": "rarely; mainly international hotels, upscale Taipei restaurants, airlines, and major hospital international desks handle English smoothly.",
       "politeness": "Warm, polite, concise. Open with greeting and purpose (你好，請問...), state assistant role only if helpful or asked, and close with brief thanks (謝謝，麻煩你了，掰掰).",
       "name_tip": "Restaurants, takeout, and taxis want surname plus title (王先生, 陳小姐). Clinics, hotels, schools, and couriers require full name (王小明) with character clarification (木子李, 三橫王).",
       "phone_tip": "Mobile 0912-345-678 (read 4-3-3), landline 02-2345-6789; digit 1 often spoken (么).",
       "time_tip": "12-hour clock with period prefix (早上9點, 中午12點, 下午2點, 晚上7點) is standard in speech. Confirm month, date, weekday, and time period together.",
       "number_tip": "4 (四) and 10 (十), 1 (一/么) and 7 (七) sound similar on phones. Use (兩位) for headcount two, and clarify (十四) versus (四十).",
+      "avoid_calling": "Avoid meal peaks (11:30-13:30, 17:30-19:30); many restaurants rest 14:00-17:00. Clinics break between morning, afternoon, and evening sessions; offices pause 12:00-13:30.",
+      "closed_days": "Independent eateries, salons, and clinics commonly close Mondays or Tuesdays; clinics often close Sunday and weekday afternoons. Major closures during Lunar New Year and typhoon days.",
       "booking_channels": "Chain and trendy restaurants prefer inline, EZTABLE, or LINE Official Accounts; salons use LINE or IG; clinics use web/LINE; famous street-food spots take walk-ins only.",
       "voice_menu": "Telecoms, banks, airlines, utilities, couriers, hospitals, department stores, KTV chains, and government switchboards use DTMF menus requiring keypresses before reaching staff.",
       "callback_habits": "Businesses confirm via SMS (inline) or LINE and sometimes call one day prior.",
@@ -44,6 +47,8 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
+            "allergy",
             "kids_detail",
             "seating_pref",
             "backup"
@@ -205,6 +210,8 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
+            "floor_elevator",
             "visit_type",
             "backup",
             "address",
@@ -261,6 +268,8 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
+            "floor_elevator",
             "substitute",
             "address"
           ],
@@ -446,6 +455,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "room_type",
             "kids_detail",
             "reference_no",
@@ -561,6 +571,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "budget",
             "backup"
           ],
@@ -755,6 +766,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "dropoff_place",
             "party",
             "spec",
@@ -913,6 +925,92 @@
             "兩位大人",
             "8~10人一桌"
           ],
+          "time": [
+            "晚上7點",
+            "明晚19:00",
+            "中午12點半",
+            "下午兩點",
+            "早上10:30",
+            "傍晚6點左右",
+            "六點半到七點之間",
+            "18:30",
+            "下午3點15分"
+          ],
+          "date": [
+            "明天",
+            "後天",
+            "這禮拜五",
+            "下週六",
+            "11/25",
+            "12月3號",
+            "大後天",
+            "這個週末"
+          ],
+          "name": [
+            "姓王，王先生",
+            "訂王小明",
+            "留陳小姐",
+            "名字寫林志明",
+            "張小姐（弓長張）",
+            "用我的名字訂"
+          ],
+          "phone": [
+            "電話留0912-345-678",
+            "0912345678",
+            "市話02-2345-6789",
+            "留我台灣那支手機",
+            "電話給04-2345-6789"
+          ],
+          "booking_words": [
+            "訂位",
+            "預約",
+            "訂桌",
+            "留位子",
+            "訂房",
+            "訂包廂",
+            "包場",
+            "排候補"
+          ],
+          "appointment_words": [
+            "掛號",
+            "約診",
+            "預約看診",
+            "約剪頭髮",
+            "約洗牙",
+            "預約保養",
+            "約師傅來看"
+          ],
+          "order_words": [
+            "外帶",
+            "外送",
+            "自取",
+            "點餐",
+            "訂便當",
+            "預留",
+            "留貨",
+            "調貨",
+            "訂飲料"
+          ],
+          "change_words": [
+            "改期",
+            "改時間",
+            "延後",
+            "提早",
+            "取消",
+            "退訂",
+            "改人數",
+            "先取消掉"
+          ],
+          "inquiry_words": [
+            "問一下",
+            "請問",
+            "今天有開嗎",
+            "還有位子嗎",
+            "有沒有現貨",
+            "要排隊嗎",
+            "多少錢",
+            "能不能帶狗"
+          ],
           "false_friends": [
             "3號餐",
             "7個小時",
@@ -939,6 +1037,77 @@
             "總共六个人",
             "一個大人兩個細漢仔",
             "四大兩細"
+          ],
+          "time": [
+            "暗時七點",
+            "下晡兩點",
+            "透早九點",
+            "中晝十二點半",
+            "下暗六點半",
+            "盈暗七點",
+            "暗頭仔五點半",
+            "下晡三點十五分"
+          ],
+          "date": [
+            "明仔載",
+            "後日",
+            "這禮拜五",
+            "後禮拜六",
+            "今仔日",
+            "大後日",
+            "十一月二十五號"
+          ],
+          "name": [
+            "姓王，王先生",
+            "留陳小姐",
+            "訂王小明",
+            "寫林先生就好",
+            "用阮的名訂"
+          ],
+          "phone": [
+            "電話留0912-345-678",
+            "番號0912345678",
+            "留厝裡電話02-2345-6789",
+            "留我台灣彼支手機仔"
+          ],
+          "booking_words": [
+            "訂位",
+            "注文",
+            "留位",
+            "訂桌",
+            "訂房間",
+            "訂包廂"
+          ],
+          "appointment_words": [
+            "掛號",
+            "約看醫生",
+            "約剃頭",
+            "約洗喙齒",
+            "叫師傅來看"
+          ],
+          "order_words": [
+            "外帶",
+            "包便當",
+            "攢便",
+            "留貨",
+            "叫外送",
+            "訂涼的"
+          ],
+          "change_words": [
+            "改時間",
+            "退掉",
+            "取消",
+            "延後",
+            "改別工",
+            "莫訂矣"
+          ],
+          "inquiry_words": [
+            "問看覓",
+            "今仔日有開無",
+            "猶有位無",
+            "有現貨無",
+            "愛排隊無",
+            "偌濟錢"
           ],
           "false_friends": [
             "三號餐",
@@ -975,11 +1144,14 @@
         }
       ],
       "ai_language_tip": "Default to American English. Switch to Spanish if staff speak Spanish, or Mandarin at Chinese-run businesses. If staff speak Cantonese, Vietnamese, or Korean, use simple, slow English.",
+      "english_ok": "often; universal nationwide, except some immigrant-run restaurants, nail salons, or contractors where Spanish, Cantonese, Vietnamese, or Korean is primary and English may be basic.",
       "politeness": "Friendly, upbeat, direct. Open with brief greeting and request (Hi, I'm calling to...), mention calling as owner's assistant naturally, and close warmly (Thanks so much, have a great day).",
       "name_tip": "Casual dining and takeout take first name (Alex); clinics, hotels, and offices require first and last name (Alex Smith) spelled using everyday words (S as in Sam).",
       "phone_tip": "10-digit format (555) 010-0123 spoken in 3-3-4 groups; 0 often read (oh) in area codes or (zero) for clarity. Confirmations mostly use SMS text or email.",
       "time_tip": "12-hour clock with AM/PM is universal; 24-hour time confuses staff. Confirm weekday, month, date, AM/PM, and local time zone for cross-state hotels or travel.",
       "number_tip": "13-19 versus 30-90 (fifteen vs fifty) confuse easily on phones; stress (-teen) vs (-ty) or spell digits (one-five). Clarify homophones (two/to, four/for).",
+      "avoid_calling": "Avoid restaurant rushes (12:00-13:30, 18:00-20:00); some fine-dining lines open only after 14:00. Clinics and offices often break 12:00-13:00 and close strictly at 17:00.",
+      "closed_days": "Many independent restaurants close Mondays; clinics, banks, and government offices close weekends. Widespread closures on Thanksgiving, Christmas Day, New Year's Day, Easter, and July 4th.",
       "booking_channels": "Restaurants rely heavily on OpenTable, Resy, Tock, or Yelp Waitlist; salons use Vagaro, Booksy, or GlossGenius; clinics use Zocdoc or MyChart; casual spots take walk-ins only.",
       "voice_menu": "Pharmacies, clinics, airlines, banks, utilities, couriers, big-box stores, dealerships, and restaurants using Toast or automated hosts commonly play DTMF menus before live staff.",
       "callback_habits": "Businesses rely heavily on automated SMS texts (Reply C to confirm) and email links. When unanswered, leaving a concise voicemail with callback number is standard practice.",
@@ -995,6 +1167,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "kids_detail",
             "seating_pref",
             "backup"
@@ -1153,6 +1326,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "visit_type",
             "backup",
             "address",
@@ -1209,6 +1383,8 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
+            "customization",
             "substitute",
             "address"
           ],
@@ -1390,6 +1566,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "room_type",
             "kids_detail",
             "reference_no",
@@ -1448,6 +1625,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "duration",
             "seating_pref",
             "kids_detail",
@@ -1497,6 +1675,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "budget",
             "backup"
           ],
@@ -1857,6 +2036,80 @@
             "just 1",
             "group of 8"
           ],
+          "time": [
+            "7pm",
+            "7:30 PM",
+            "around 6:30",
+            "noon",
+            "12:15pm",
+            "quarter past 5",
+            "half past 6",
+            "between 6 and 7 pm",
+            "10 in the morning"
+          ],
+          "date": [
+            "tomorrow",
+            "this Friday",
+            "next Saturday",
+            "Nov 25",
+            "12/3",
+            "tonight",
+            "the day after tomorrow"
+          ],
+          "name": [
+            "under Alex Smith",
+            "name: Jordan Taylor",
+            "put it under Alex",
+            "book under Sam Miller",
+            "use my name"
+          ],
+          "phone": [
+            "(555) 010-0123",
+            "555-010-0123",
+            "cell is 5550199876",
+            "use my US number 555-014-5678"
+          ],
+          "booking_words": [
+            "book a table",
+            "make a reservation",
+            "reserve",
+            "grab a spot",
+            "book a room",
+            "tee time",
+            "get on the waitlist"
+          ],
+          "appointment_words": [
+            "schedule an appointment",
+            "book a haircut",
+            "make a dental appointment",
+            "set up a service visit",
+            "get an estimate"
+          ],
+          "order_words": [
+            "order takeout",
+            "pickup order",
+            "to-go order",
+            "carryout",
+            "delivery",
+            "put on hold",
+            "check if in stock"
+          ],
+          "change_words": [
+            "reschedule",
+            "push back",
+            "move my appointment",
+            "cancel",
+            "change party size",
+            "bump it to"
+          ],
+          "inquiry_words": [
+            "ask if they're open",
+            "check wait time",
+            "see if they have",
+            "how much is",
+            "are dogs allowed",
+            "do they take walk-ins"
+          ],
           "false_friends": [
             "combo #3",
             "for 2 hours",
@@ -1881,6 +2134,74 @@
             "para mí solo",
             "un grupo de 8",
             "3 adultos y 2 niños"
+          ],
+          "time": [
+            "a las 7 de la noche",
+            "7:30 pm",
+            "al mediodía",
+            "a las 2 de la tarde",
+            "como a las 6:30",
+            "a las 9 de la mañana",
+            "entre las 6 y las 7",
+            "a las cinco y media",
+            "1:15 de la tarde"
+          ],
+          "date": [
+            "mañana",
+            "este viernes",
+            "el próximo sábado",
+            "pasado mañana",
+            "el 25 de noviembre",
+            "esta noche",
+            "12/3"
+          ],
+          "name": [
+            "a nombre de Alex Smith",
+            "ponlo a nombre de María García",
+            "bajo Carlos López",
+            "usa mi nombre",
+            "nombre: Sofía Martínez"
+          ],
+          "phone": [
+            "(555) 010-0123",
+            "mi cel es 555-010-0123",
+            "teléfono 5550199876",
+            "deja el número 555-014-5678"
+          ],
+          "booking_words": [
+            "reservar",
+            "hacer una reservación",
+            "apartar una mesa",
+            "reservar habitación",
+            "anotarse en la lista de espera"
+          ],
+          "appointment_words": [
+            "hacer una cita",
+            "agendar cita",
+            "sacar cita con el dentista",
+            "pedir un estimado",
+            "programar servicio"
+          ],
+          "order_words": [
+            "pedir para llevar",
+            "ordenar comida",
+            "a domicilio",
+            "apartar",
+            "ver si tienen en existencia"
+          ],
+          "change_words": [
+            "cambiar la cita",
+            "reprogramar",
+            "posponer",
+            "cancelar",
+            "mover la reservación"
+          ],
+          "inquiry_words": [
+            "preguntar si están abiertos",
+            "cuánto tiempo de espera hay",
+            "cuánto cuesta",
+            "aceptan perros",
+            "tienen disponible"
           ],
           "false_friends": [
             "combo #3",
@@ -1917,11 +2238,14 @@
         }
       ],
       "ai_language_tip": "Cantonese is unsupported. In Hong Kong, use English for Western/upscale spots and private clinics, Mandarin for Chinese venues; in Macau, start with Mandarin, fallback English.",
+      "english_ok": "often — Hong Kong hotels, Western dining, Central/TST venues, and private clinics speak fluent English; Macau resorts do too, neighborhood shops less so.",
       "politeness": "Polite, brisk, and businesslike; skip lengthy pleasantries, address staff courteously, use Mr./Ms. or 先生/小姐, and confirm details quickly.",
       "name_tip": "Surname plus Mr./Ms. (Mr. Chan / 陳先生) works for dining and salons; private clinics require full English or Chinese name matching ID, often spelled out.",
       "phone_tip": "8-digit numbers without area codes: HK mobile 9123 0100, landline 2123 0100; Macau mobile 6612 0100, landline 2812 0100. Read 4-4; WhatsApp/SMS confirmations common.",
       "time_tip": "12-hour clock in speech, 24-hour in messages; clarify first or second dinner seating (頭輪/尾輪) and repeat date with weekday.",
       "number_tip": "In Hong Kong English, repeated digits use 'double/triple' (double eight); in Mandarin, use standard 一 rather than mainland yāo with HK staff.",
+      "avoid_calling": "Avoid peak lunch (12:30–14:00) and dinner (19:00–20:30); many private clinics close for lunch around 13:00–14:30.",
+      "closed_days": "Many clinics close Sunday afternoons and public holidays; Typhoon Signal No. 8+ (八號風球) or Black Rainstorm suspends most non-emergency businesses.",
       "booking_channels": "Restaurants use OpenRice, Bistrochat, SevenRooms, Chope, or WhatsApp; cha chaan teng are walk-in only; HK public clinics require HA Go app or keypad IVR.",
       "voice_menu": "HK Hospital Authority clinics, hospital groups, and corporate hotlines use keypad IVR; independent restaurants, private clinics, salons, and local shops answer live.",
       "callback_habits": "Restaurants, clinics, and salons confirm via WhatsApp or SMS and often reconfirm 24h ahead.",
@@ -1937,6 +2261,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "kids_detail",
             "seating_pref",
             "backup",
@@ -2073,6 +2398,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "address",
             "spec",
             "backup"
@@ -2115,6 +2441,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "address",
             "substitute"
           ],
@@ -2357,6 +2684,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget",
             "backup"
@@ -2668,6 +2996,62 @@
             "兩位",
             "10個人訂一桌"
           ],
+          "time": [
+            "晚上7點",
+            "明晚7點半",
+            "19:30",
+            "下午2點",
+            "中午12點15分",
+            "早上10點半"
+          ],
+          "date": [
+            "明天",
+            "後天",
+            "這週五",
+            "下星期六",
+            "11月25號",
+            "25/11"
+          ],
+          "name": [
+            "留陳大文",
+            "訂張小姐",
+            "留Mr. Wong",
+            "用林小明的名字"
+          ],
+          "phone": [
+            "電話9123 0100",
+            "WhatsApp 61230100",
+            "澳門電話6612 0100",
+            "+852 9123 0100"
+          ],
+          "booking_words": [
+            "訂位",
+            "訂座",
+            "留位",
+            "訂包廂",
+            "訂廳房"
+          ],
+          "appointment_words": [
+            "預約看診",
+            "預約洗牙",
+            "約剪頭髮",
+            "預約美甲",
+            "預約美容"
+          ],
+          "order_words": [
+            "叫外賣",
+            "外賣自取",
+            "預訂",
+            "留貨",
+            "問有沒有現貨"
+          ],
+          "change_words": [
+            "改期",
+            "改時間",
+            "延後半小時",
+            "取消訂位",
+            "取消預約"
+          ],
           "false_friends": [
             "兩個小時（時長非人數）",
             "A餐/3號餐（套餐編號）",
@@ -2684,6 +3068,65 @@
             "6位大人1個BB（要BB凳）",
             "2位",
             "十個人訂一圍"
+          ],
+          "time": [
+            "今晚7點",
+            "聽晚7點半",
+            "19:30",
+            "下晝2點",
+            "晏晝12點幾個字",
+            "朝早10點半"
+          ],
+          "date": [
+            "聽日",
+            "後日",
+            "呢個禮拜五",
+            "下星期六",
+            "11月25號",
+            "25/11"
+          ],
+          "name": [
+            "留陳大文",
+            "訂張小姐",
+            "留Mr. Wong",
+            "用林小明個名"
+          ],
+          "phone": [
+            "電話9123 0100",
+            "WhatsApp 61230100",
+            "澳門電話6612 0100",
+            "+852 9123 0100"
+          ],
+          "booking_words": [
+            "訂位",
+            "book位",
+            "留位",
+            "訂枱",
+            "訂房",
+            "book枱"
+          ],
+          "appointment_words": [
+            "約睇醫生",
+            "預約洗牙",
+            "book剪頭髮",
+            "約整甲",
+            "約做facial",
+            "約檢查"
+          ],
+          "order_words": [
+            "叫外賣",
+            "外賣自取",
+            "嗌外賣",
+            "留貨",
+            "問有無現貨",
+            "訂餅"
+          ],
+          "change_words": [
+            "改期",
+            "改時間",
+            "推遲半個鐘",
+            "取消訂位",
+            "cancel張枱"
           ],
           "false_friends": [
             "兩個鐘（時長非人數）",
@@ -2703,6 +3146,63 @@
             "4 pax",
             "6 ppl + 1 baby chair",
             "just 3 of us"
+          ],
+          "time": [
+            "7pm",
+            "7:30 pm",
+            "19:30",
+            "half past 7",
+            "12:15pm lunch",
+            "around 6:30 tonight"
+          ],
+          "date": [
+            "tomorrow",
+            "this Friday",
+            "next Sat",
+            "25 Nov",
+            "25/11",
+            "day after tmr"
+          ],
+          "name": [
+            "under Alex Wong",
+            "book for Ms. Chan",
+            "name Chris Smith",
+            "put it under Sam Lee"
+          ],
+          "phone": [
+            "9123 0100",
+            "+852 9123 0100",
+            "WhatsApp 6123-0100",
+            "+853 6612 0100"
+          ],
+          "booking_words": [
+            "book a table",
+            "reserve",
+            "table reservation",
+            "hold a table",
+            "private room"
+          ],
+          "appointment_words": [
+            "book an appointment",
+            "see the doctor",
+            "dental cleaning",
+            "haircut booking",
+            "facial appointment"
+          ],
+          "order_words": [
+            "takeaway",
+            "self-pickup",
+            "order food",
+            "hold in stock",
+            "check stock",
+            "pre-order"
+          ],
+          "change_words": [
+            "reschedule",
+            "move booking",
+            "push back",
+            "cancel reservation",
+            "change time"
           ],
           "false_friends": [
             "for 2 hours (duration)",
@@ -2732,11 +3232,14 @@
         }
       ],
       "ai_language_tip": "Speak standard Japanese (標準語). If heavy rural dialect is unclear, politely ask to repeat slowly in Japanese; try English only at international hotels or tourist desks.",
+      "english_ok": "rarely; international hotels, airport desks, and major tourist venues sometimes handle English, while local shops, clinics, and offices speak Japanese only.",
       "politeness": "Use polite Teineigo/Keigo (丁寧語); open with greeting, caller or proxy role (代理), and purpose; confirm details at end before standard closing (失礼いたします).",
       "name_tip": "Surname (苗字) suffices for casual dining and taxis; clinics, hotels, salons, and offices require full name plus Katakana reading (フリガナ), e.g., 山田太郎 (ヤマダタロウ).",
       "phone_tip": "Mobile 090-1234-5678, landline 03-1234-5678; group digits with particle no (の) at hyphens; confirmations use SMS (ショートメッセージ) or official LINE accounts.",
       "time_tip": "Both 12-hour (午後7時) and 24-hour (19時) used; confirm date with day-of-week (何月何日何曜日) and restate 24-hour time to prevent AM/PM errors.",
       "number_tip": "1 (いち) and 7 (しち) sound alike—say なな for 7 and よん for 4; watch irregular counters like 1人 (ひとり), 2人 (ふたり), 4人 (よにん).",
+      "avoid_calling": "Avoid restaurant peak meal hours (11:30–13:30, 18:00–21:00), clinic morning check-in rush (08:30–09:30), and calls outside posted reception hours.",
+      "closed_days": "Restaurants often close Mon/Tue or Wed; salons Tue; clinics Thu/Sun/afternoon; widespread closures during Obon (mid-Aug), New Year (Dec 29–Jan 3), and Golden Week.",
       "booking_channels": "Online dominates via Tabelog, Hot Pepper Beauty, EPARK, Jalan, Rakuten; casual ramen shops, chains, and popular eateries often reject phone bookings.",
       "voice_menu": "Support lines, couriers, utilities, big hospitals, city halls, and hotel chains use keypad IVR (自動音声ガイダンス); AI cannot press keys and may get stuck.",
       "callback_habits": "Small shops, repairers, and clinics call back missed or pending requests; salons, hotels, and upscale restaurants may call or SMS day before (前日確認).",
@@ -2752,6 +3255,8 @@
             "phone"
           ],
           "nice_to_have": [
+            "name_kana",
+            "allergy",
             "backup",
             "kids_detail",
             "seating_pref",
@@ -2807,6 +3312,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "name_kana",
             "backup",
             "staff_pref",
             "reference_no"
@@ -2855,6 +3361,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "name_kana",
             "staff_pref",
             "backup",
             "duration"
@@ -2902,6 +3409,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "address",
             "backup",
             "reference_no"
@@ -2949,6 +3457,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -3130,6 +3639,8 @@
             "phone"
           ],
           "nice_to_have": [
+            "name_kana",
+            "allergy",
             "kids_detail",
             "spec",
             "budget",
@@ -3228,6 +3739,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "backup",
             "spec",
             "budget"
@@ -3477,6 +3989,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "name_kana",
             "backup",
             "budget",
             "reference_no",
@@ -3524,6 +4037,8 @@
             "phone"
           ],
           "nice_to_have": [
+            "name_kana",
+            "allergy",
             "time",
             "kids_detail",
             "address",
@@ -3574,6 +4089,98 @@
             "大人4名＋ベビーカー1台",
             "計5名（うち小学生2名）"
           ],
+          "time": [
+            "19時",
+            "19:00",
+            "19時半",
+            "19:30",
+            "午後7時",
+            "夜7時",
+            "夕方6時ごろ",
+            "午前10時",
+            "朝9時半",
+            "お昼12時",
+            "18時〜18時半の間",
+            "今から30分後"
+          ],
+          "date": [
+            "明日",
+            "あさって",
+            "今日",
+            "今度の土曜",
+            "来週の金曜日",
+            "11月25日",
+            "11/25(水)",
+            "今月末",
+            "三連休の初日",
+            "明後日の夜"
+          ],
+          "name": [
+            "山田で",
+            "山田太郎でお願いします",
+            "名前：山田太郎（ヤマダタロウ）",
+            "予約名はヤマダ",
+            "山田花子名義で",
+            "代表者：山田太郎",
+            "カタカナでヤマダでOK"
+          ],
+          "phone": [
+            "090-1234-5678",
+            "09012345678",
+            "連絡先は090-1234-5678",
+            "電話：03-1234-5678",
+            "携帯 090の1234の5678",
+            "折り返し先 090-1234-5678"
+          ],
+          "booking_words": [
+            "予約",
+            "席だけ予約",
+            "お席の確保",
+            "コース予約",
+            "宿泊予約",
+            "部屋を押さえる",
+            "個室予約",
+            "貸切予約"
+          ],
+          "appointment_words": [
+            "診察予約",
+            "初診予約",
+            "受診予約",
+            "カット予約",
+            "施術予約",
+            "内見予約",
+            "園見学の申し込み",
+            "出張見積もり予約"
+          ],
+          "order_words": [
+            "テイクアウト",
+            "持ち帰り予約",
+            "出前",
+            "デリバリー",
+            "取り置き",
+            "取り寄せ",
+            "在庫確保",
+            "弁当の注文"
+          ],
+          "change_words": [
+            "予約変更",
+            "日時変更",
+            "リスケ",
+            "時間をずらす",
+            "人数変更",
+            "キャンセル",
+            "取り消し",
+            "予約を取り消す"
+          ],
+          "inquiry_words": [
+            "空き状況確認",
+            "今日空いてるか聞く",
+            "在庫確認",
+            "営業時間を確認",
+            "問い合わせ",
+            "待ち時間を聞く",
+            "ペット同伴できるか確認"
+          ],
           "false_friends": [
             "2時間飲み放題コース",
             "もみほぐし60分",
@@ -3607,11 +4214,14 @@
         }
       ],
       "ai_language_tip": "Speak Mandarin (cmn) by default; if staff speaks Cantonese or local dialect, politely ask for Putonghua; use English only at international hotel chains.",
+      "english_ok": "rarely — Only international hotels and upscale expat venues in Tier-1 cities handle English calls.",
       "politeness": "Polite neutral greeting (您好) stating assistant role or owner surname; avoid overly stiff honorifics; close briefly with thanks (谢谢，再见).",
       "name_tip": "Restaurants and salons take surname plus title (王先生/李女士); clinics and hotels need full name, clarifying characters via radicals (木子李、弓长张).",
       "phone_tip": "11-digit mobile 138-0013-8000 read 3-4-4, landline 010-1234-5678; digit 1 spoken as yao (幺); confirmations via SMS or WeChat (加微信).",
       "time_tip": "Written 24-hour, spoken 12-hour with period prefix (晚上七点、下午两点半); clarify quarter-hours (一刻/三刻) and read back full date plus period.",
       "number_tip": "Digit 1 in phone or room numbers is yao (幺) to avoid qi (七); clarify si (四) vs shi (十) and liang位 (两位) vs er (二).",
+      "avoid_calling": "Avoid restaurant rush 11:30–13:15 and 18:00–19:30, clinic lunch break 12:00–13:30/14:00, and calls after 21:00 except nightlife venues.",
+      "closed_days": "Most shops and restaurants open daily; museums close Mondays; widespread closures or skeleton staffing during Lunar New Year (春节) and National Day.",
       "booking_channels": "WeChat Mini Programs (微信小程序), Dianping (大众点评), and Meituan (美团) dominate; trendy queued restaurants and public hospitals rarely book by voice.",
       "voice_menu": "Chain hotels, hospitals, couriers, telecoms, banks, and utilities use heavy keypad IVR; some small businesses use carrier AI call-screening.",
       "callback_habits": "Restaurants send SMS seat confirmations or ask to add WeChat; private clinics and private rooms (包厢) often call same morning to reconfirm.",
@@ -3627,6 +4237,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "seating_pref",
             "kids_detail",
             "backup"
@@ -3760,6 +4371,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "address"
           ],
@@ -3802,6 +4414,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -3950,6 +4563,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "budget",
             "question"
           ],
@@ -4032,6 +4646,8 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -4310,6 +4926,80 @@
             "6-8人",
             "四个人"
           ],
+          "time": [
+            "晚上7点",
+            "19:30",
+            "明天中午12点半",
+            "下午三点一刻",
+            "傍晚6点",
+            "明早9:00",
+            "夜里十点",
+            "下午2点左右"
+          ],
+          "date": [
+            "明天",
+            "后天",
+            "这周五",
+            "下礼拜三",
+            "11月25号",
+            "周六晚上",
+            "大后天"
+          ],
+          "name": [
+            "姓王，王先生",
+            "李娜",
+            "留张伟的名字",
+            "陈女士",
+            "王小明"
+          ],
+          "phone": [
+            "13800138000",
+            "电话留139-1234-5678",
+            "手机 138 1234 5678",
+            "就用打过去的这个号 13600001234"
+          ],
+          "booking_words": [
+            "订位",
+            "订座",
+            "留个位置",
+            "订包厢",
+            "订房",
+            "约个场",
+            "订桌"
+          ],
+          "appointment_words": [
+            "挂号",
+            "预约",
+            "约个洗牙",
+            "约剪头发",
+            "约技师",
+            "做保养"
+          ],
+          "order_words": [
+            "点餐",
+            "打包",
+            "自提",
+            "外带",
+            "订个蛋糕",
+            "留货",
+            "调货"
+          ],
+          "change_words": [
+            "改期",
+            "改时间",
+            "取消预约",
+            "退订",
+            "往后推半小时",
+            "不去了"
+          ],
+          "inquiry_words": [
+            "问一下",
+            "打听下",
+            "看看有没有位置",
+            "问问几点关门",
+            "确认下能不能带狗",
+            "查下还有没有货"
+          ],
           "false_friends": [
             "3号技师",
             "4楼",
@@ -4328,6 +5018,14 @@
             "四大一細",
             "三位大人",
             "一個人"
+          ],
+          "time": [
+            "聽晚7點",
+            "下晝兩點半",
+            "今晚八點三個字",
+            "朝早十點",
+            "19:30",
+            "六點九"
           ],
           "false_friends": [
             "3樓",
@@ -4365,11 +5063,14 @@
         }
       ],
       "ai_language_tip": "Default to clear Singapore-friendly English (en); switch to Mandarin (cmn) at Chinese restaurants, TCM, or workshops if preferred; Malay/Tamil at community shops.",
+      "english_ok": "often — English is the working language across businesses, clinics, and public agencies.",
       "politeness": "Polite, brisk, and practical; open with 'Hi/Hello' and purpose directly; Singlish terms like 'pax' or 'dabao' may be heard; end with 'Thank you, bye'.",
       "name_tip": "Surname with Mr/Ms (Mr Tan, Ms Lim) or first name works for dining; clinics and hotels ask full official name and spelling.",
       "phone_tip": "8-digit numbers (mobile 8123 4567 or 9123 4567, landline 6123 4567) read 4-4; 0 as 'zero' or 'oh'; confirmations via WhatsApp or SMS.",
       "time_tip": "12-hour AM/PM in speech ('7 PM', '7:30 PM'), 24-hour in clinic/gov SMS; avoid UK 'half seven', always state exact 'seven thirty PM'.",
       "number_tip": "Fast Singlish cadence clips final consonants ('fif-teen' vs 'fif-ty'); repeated digits spoken as 'double eight' or 'triple two'.",
+      "avoid_calling": "Avoid F&B peak 12:00–13:30 and 18:30–20:00; clinic lunch closures 12:30/13:00–14:00; Muslim-owned shops during Friday prayers (12:30–14:00) and Ramadan iftar.",
+      "closed_days": "Many neighborhood clinics close Sunday and weekday afternoons; hawkers rest Mondays or Tuesdays; Chinese New Year sees multi-day closures at Chinese businesses.",
       "booking_channels": "Chope, SevenRooms, Oddle, and inline/Google Reserve dominate dining; HealthHub for public polyclinics; WhatsApp Business widely used by salons and trades.",
       "voice_menu": "Public hospitals, polyclinics, banks, telcos (Singtel/StarHub), Town Councils, and airlines use keypad IVR and Singpass verification.",
       "callback_habits": "Automated SMS or WhatsApp confirmation links are standard; upscale restaurants send Chope/SevenRooms reconfirmation or deposit links.",
@@ -4385,6 +5086,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "kids_detail",
             "seating_pref",
             "backup"
@@ -4514,6 +5216,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "question"
           ],
@@ -4556,6 +5259,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute"
           ],
           "usually_asked": [
@@ -4778,6 +5482,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -5056,6 +5761,76 @@
             "solo",
             "party of 5"
           ],
+          "time": [
+            "7pm",
+            "19:30",
+            "tmr 12:30pm",
+            "6.30pm",
+            "around 8pm tonight",
+            "sat 11am",
+            "2:15 pm",
+            "lunch 1pm"
+          ],
+          "date": [
+            "tmr",
+            "this Fri",
+            "next Tue",
+            "25 Nov",
+            "25/11",
+            "this weekend Sat",
+            "tonight"
+          ],
+          "name": [
+            "Mr Tan",
+            "under Lim Wei Ming",
+            "booking name Rachel Koh",
+            "Ahmad",
+            "Ms Wong"
+          ],
+          "phone": [
+            "9123 4567",
+            "81234567",
+            "call back 9876-5432",
+            "use my number 8000 1234"
+          ],
+          "booking_words": [
+            "chope table",
+            "book a table",
+            "reserve",
+            "room booking",
+            "book court",
+            "hold a table"
+          ],
+          "appointment_words": [
+            "book appt",
+            "dental scaling appt",
+            "see GP",
+            "book haircut",
+            "aircon servicing"
+          ],
+          "order_words": [
+            "dabao",
+            "takeaway",
+            "self collect",
+            "pre-order",
+            "reserve stock",
+            "hold 1 piece"
+          ],
+          "change_words": [
+            "push back 30 mins",
+            "reschedule",
+            "cancel booking",
+            "change to 8pm",
+            "postpone"
+          ],
+          "inquiry_words": [
+            "check got table anot",
+            "ask opening hours",
+            "check stock",
+            "got parking?",
+            "pet friendly or not",
+            "ask price"
+          ],
           "false_friends": [
             "Blk 412",
             "#02-15",
@@ -5074,6 +5849,14 @@
             "两位大人加一张BB椅",
             "五个人"
           ],
+          "time": [
+            "晚上7点",
+            "明天中午12点半",
+            "19:30",
+            "下午三点",
+            "傍晚6点半",
+            "礼拜六早上10点"
+          ],
           "false_friends": [
             "大牌302",
             "二楼",
@@ -5090,6 +5873,14 @@
             "seorang",
             "6 dewasa"
           ],
+          "time": [
+            "pukul 8 malam",
+            "7:30 malam",
+            "tengah hari pukul 12:30",
+            "3 petang",
+            "10 pagi esok",
+            "jam 19:00"
+          ],
           "false_friends": [
             "Blok 205",
             "tingkat 3",
@@ -5105,6 +5896,14 @@
             "5 pax",
             "இருவர்",
             "6 பேர்"
+          ],
+          "time": [
+            "இரவு 7 மணி",
+            "மதியம் 12:30",
+            "மாலை 6:30 மணி",
+            "காலை 10 மணி",
+            "19:30",
+            "பிற்பகல் 3 மணி"
           ],
           "false_friends": [
             "பிளாக் 120",
@@ -5129,11 +5928,14 @@
         }
       ],
       "ai_language_tip": "Speak polite standard Korean (ko); regional dialects (Busan/Jeju) understand standard Korean; use English only at major Seoul hotels or foreign clinics.",
+      "english_ok": "rarely — Outside international hotels and Itaewon/Gangnam tourist clinics, local shops rarely handle English phone calls.",
       "politeness": "Use polite formal -요/-습니다 speech; open with greeting (안녕하세요) and state calling on behalf of owner (OO님 대신 연락드렸습니다); close with 수고하세요/감사합니다.",
       "name_tip": "Full 3-syllable Korean name (e.g. 김철수) is standard everywhere rather than surname alone; spell rare characters by syllable example if misheard.",
       "phone_tip": "Mobile 010-1234-5678, Seoul landline 02-1234-5678; read Sino-Korean in 3-4-4 blocks pausing at hyphen (에); confirmations via KakaoTalk (알림톡) or SMS (문자).",
       "time_tip": "12-hour spoken with 오전/오후/저녁 plus Native Korean hours and Sino-Korean minutes (저녁 일곱 시 반); watch 한 시 (1) vs 열한 시 (11).",
       "number_tip": "Party size uses Native Korean (한 명, 두 명, 세 명, 네 명); in phone digits, 일 (1) and 이 (2) confuse easily—enunciate clearly.",
+      "avoid_calling": "Avoid lunch peak 11:45–13:00, clinic lunch break (점심시간 13:00–14:00), restaurant break time (브레이크타임 15:00–17:00), and calls after 21:00.",
+      "closed_days": "Many independent restaurants/salons close Mondays or Tuesdays (정기휴무); clinics close Sundays, public holidays, and Saturday afternoons; major closures on Seollal/Chuseok.",
       "booking_channels": "Naver Booking (네이버 예약) and CatchTable (캐치테이블) dominate dining/salons/clinics; Kakao Hairshop for hair; Baemin/Coupang Eats for delivery.",
       "voice_menu": "Hospitals, franchises, couriers, banks, telecoms (SKT/KT/LGU+), and government offices (120/110) use ARS keypad menus heavily.",
       "callback_habits": "Automated KakaoTalk AlimTalk (알림톡) or SMS confirmations are extremely common; clinics and salons send day-before reminder texts.",
@@ -5149,6 +5951,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "kids_detail",
             "seating_pref",
             "spec"
@@ -5274,6 +6077,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "question"
           ],
@@ -5316,6 +6120,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -5543,6 +6348,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -5817,6 +6623,73 @@
             "네 명 + 아기의자 1개",
             "단체 8명"
           ],
+          "time": [
+            "저녁 7시",
+            "19:30",
+            "오후 2시 반",
+            "낮 12시",
+            "내일 아침 10시",
+            "7시 30분",
+            "오후 세 시",
+            "밤 9시쯤"
+          ],
+          "date": [
+            "내일",
+            "모레",
+            "이번 주 금요일",
+            "다음 주 수요일",
+            "11월 25일",
+            "토요일 저녁"
+          ],
+          "name": [
+            "김철수",
+            "예약자 이영희",
+            "박지훈 이름으로",
+            "홍길동",
+            "최민수요"
+          ],
+          "phone": [
+            "010-1234-5678",
+            "01012345678",
+            "연락처 010 9876 5432",
+            "내 번호 010-0000-1234로"
+          ],
+          "booking_words": [
+            "예약",
+            "자리 예약",
+            "테이블 잡아줘",
+            "룸 예약",
+            "숙소 예약",
+            "대관"
+          ],
+          "appointment_words": [
+            "진료 예약",
+            "스케일링 예약",
+            "미용실 예약",
+            "커트 예약",
+            "정비 예약"
+          ],
+          "order_words": [
+            "포장 주문",
+            "픽업 주문",
+            "미리 주문",
+            "재고 빼놔줘",
+            "케이크 예약"
+          ],
+          "change_words": [
+            "예약 변경",
+            "시간 미뤄줘",
+            "예약 취소",
+            "30분 늦춰줘",
+            "날짜 바꿔줘"
+          ],
+          "inquiry_words": [
+            "영업하는지 물어봐줘",
+            "웨이팅 있는지 확인",
+            "주차 되는지 물어봐",
+            "재고 문의",
+            "애견 동반 가능한지"
+          ],
           "false_friends": [
             "2호점",
             "3층",
@@ -5846,11 +6719,14 @@
         }
       ],
       "ai_language_tip": "Speak natural, polite British/Irish-friendly English (en); public bodies in Wales or Irish Gaeltacht may greet bilingually before continuing in English.",
+      "english_ok": "often — Native English throughout the UK, Ireland, Isle of Man, Jersey, and Guernsey.",
       "politeness": "Warm, courteous, slightly understated ('Hello, calling on behalf of...', 'please', 'lovely, thank you, bye'); avoid abrupt commands.",
       "name_tip": "First and surname (e.g. John Smith, Aoife Murphy); spell tricky surnames clearly ('M for Mike' or everyday words); surname held on bookings.",
       "phone_tip": "UK mobile 07700 900123 (5-6), London 020 7946 0123; IE mobile 087 123 4567, Dublin 01 234 5678; '0' spoken 'oh'; SMS/email confirmations.",
       "time_tip": "'Half seven' ALWAYS means 7:30 (half past seven), never 6:30! 'Quarter to eight' = 7:45; always read back explicit '7:30 PM'.",
       "number_tip": "0 spoken as 'oh'; repeated digits as 'double seven' or 'treble three'; clarify 'fifteen' vs 'fifty' and regional vowel shifts.",
+      "avoid_calling": "Avoid pub/restaurant service 12:30–14:00 and 18:30–20:30, NHS GP 08:00 urgent rush for routine queries, and evening calls after 20:30.",
+      "closed_days": "Smaller salons/gastropubs often close Mondays; Sunday trading hours 10:00/11:00–16:00/17:00 in England/Wales; Bank Holidays vary between England, Scotland, NI, and Ireland.",
       "booking_channels": "OpenTable, SevenRooms, ResDiary for dining; Treatwell and Fresha for beauty; NHS App/eConsult (UK) for GPs; tradespeople prefer phone or WhatsApp.",
       "voice_menu": "NHS GP surgeries, dental groups, councils, HMRC/Revenue, banks, utilities, couriers, and hotel chains use extensive keypad IVR.",
       "callback_habits": "Restaurants send ResDiary/SevenRooms SMS links; salons send Fresha/Treatwell reminders 24–48h ahead; tradespeople text or WhatsApp back.",
@@ -5866,6 +6742,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "kids_detail",
             "seating_pref",
             "backup"
@@ -5998,6 +6875,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "question"
           ],
@@ -6043,6 +6921,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -6262,6 +7141,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -6532,6 +7412,74 @@
             "solo",
             "4 covers"
           ],
+          "time": [
+            "half seven",
+            "7:30pm",
+            "quarter past 6",
+            "quarter to 8",
+            "19:00",
+            "1pm lunch",
+            "around 5ish",
+            "10.30am"
+          ],
+          "date": [
+            "tomorrow",
+            "this Friday",
+            "next Weds",
+            "25th Nov",
+            "25/11",
+            "Bank Holiday Monday",
+            "Sat night"
+          ],
+          "name": [
+            "John Smith",
+            "under Murphy",
+            "Aoife Kelly",
+            "book under David Jones",
+            "Sarah Taylor"
+          ],
+          "phone": [
+            "07700 900123",
+            "087 123 4567",
+            "ring me on 07700900456",
+            "020 7946 0199"
+          ],
+          "booking_words": [
+            "book a table",
+            "reserve",
+            "table booking",
+            "book a lane",
+            "hire a pitch",
+            "book a room"
+          ],
+          "appointment_words": [
+            "book an appointment",
+            "MOT & service",
+            "cut and blow-dry",
+            "check-up and scale",
+            "boiler service"
+          ],
+          "order_words": [
+            "order for collection",
+            "takeaway pickup",
+            "put one aside",
+            "reserve in store",
+            "pre-order"
+          ],
+          "change_words": [
+            "move it back half an hour",
+            "reschedule",
+            "cancel my booking",
+            "push to 8pm",
+            "rearrange"
+          ],
+          "inquiry_words": [
+            "ask what time kitchen closes",
+            "check if dog friendly",
+            "see if in stock",
+            "ask about parking",
+            "check Sunday hours"
+          ],
           "false_friends": [
             "Flat 4",
             "2 hour slot",
@@ -6561,11 +7509,14 @@
         }
       ],
       "ai_language_tip": "Use English (en) across English-speaking provinces; use French (fr) first in Quebec (Montreal often greets 'Bonjour-Hi' and switches smoothly).",
+      "english_ok": "often — Nationwide outside non-metropolitan Quebec, where French is required or strongly expected.",
       "politeness": "Polite, friendly, apologetic-warm ('Hi there, calling on behalf of...', 'please', 'thanks so much'); in French always use 'Bonjour' and 'vous'.",
       "name_tip": "First and last name (e.g. Alex Taylor, Jean Tremblay); spell surnames clearly; restaurants hold under first + last name.",
       "phone_tip": "10-digit NANPA format 416-555-0123 or 514-555-0199 read 3-3-4 (area code always required); confirmations via SMS or email.",
       "time_tip": "12-hour AM/PM in English ('7:30 PM'), 24-hour common in Quebec French ('19 h 30'); confirm time zone only for national lines.",
       "number_tip": "In English '0' is 'oh' or 'zero'; in Quebec French 70/80/90 are standard soixante-dix, quatre-vingts, quatre-vingt-dix; watch 15 vs 50.",
+      "avoid_calling": "Avoid restaurant rush 12:00–13:30 and 18:00–20:00, clinic lunch 12:00–13:00, and calls after 20:30.",
+      "closed_days": "Many salons and independent bistros close Mondays (and Sundays/Mondays in Quebec); statutory holidays vary by province.",
       "booking_channels": "OpenTable, Resy, and Tock for dining; Jane App widely used by physio/RMT/chiro/clinics; Bonjour-santé/RVSQ in Quebec and Medimap for walk-in clinics.",
       "voice_menu": "Medical clinics, dental groups, pharmacies, banks, telcos (Rogers/Bell/Telus), CRA/Service Canada, and dealerships use heavy keypad IVR.",
       "callback_habits": "OpenTable/Resy and Jane App send automated SMS/email confirmations and 24h reminders; trades and garages call back from voicemails.",
@@ -6581,6 +7532,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "kids_detail",
             "seating_pref",
             "backup"
@@ -6714,6 +7666,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "question"
           ],
@@ -6756,6 +7709,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -6971,6 +7925,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -7236,6 +8191,74 @@
             "solo",
             "group of 6"
           ],
+          "time": [
+            "7pm",
+            "7:30 PM",
+            "19:00",
+            "noon",
+            "quarter after 6",
+            "around 5:30pm",
+            "10:15am",
+            "lunch at 12:30"
+          ],
+          "date": [
+            "tomorrow",
+            "this Fri",
+            "next Tuesday",
+            "Nov 25",
+            "11/25",
+            "Victoria Day Monday",
+            "Sat evening"
+          ],
+          "name": [
+            "Alex Taylor",
+            "under Jordan Lee",
+            "Sam Patel",
+            "Megan Roy",
+            "Chris Martin"
+          ],
+          "phone": [
+            "416-555-0123",
+            "(604) 555-0188",
+            "514 555 0142",
+            "text/call 4035550199"
+          ],
+          "booking_words": [
+            "book a table",
+            "reso for 4",
+            "reserve",
+            "book a room",
+            "tee time",
+            "book a lane"
+          ],
+          "appointment_words": [
+            "book an appointment",
+            "RMT massage",
+            "dental cleaning",
+            "winter tire swap",
+            "oil change"
+          ],
+          "order_words": [
+            "order for pickup",
+            "take-out order",
+            "put on hold",
+            "check stock and hold",
+            "pre-order"
+          ],
+          "change_words": [
+            "push back 30 mins",
+            "reschedule",
+            "cancel reso",
+            "move to Friday",
+            "change time"
+          ],
+          "inquiry_words": [
+            "check holiday hours",
+            "ask if patio is open",
+            "see if in stock",
+            "check wait time",
+            "dog friendly patio?"
+          ],
           "false_friends": [
             "Unit 402",
             "60 min RMT",
@@ -7253,6 +8276,14 @@
             "pour 2 personnes",
             "5 pers.",
             "6 adultes + chaise haute"
+          ],
+          "time": [
+            "19h30",
+            "19 h",
+            "midi et demi",
+            "7h30 ce soir",
+            "14h15",
+            "vers 18h"
           ],
           "false_friends": [
             "appartement 4",
@@ -7278,11 +8309,14 @@
         }
       ],
       "ai_language_tip": "Speak warm, relaxed Australian/New Zealand-friendly English (en); understand local terms like 'arvo', 'rego', 'ute', and NZ 'kia ora'.",
+      "english_ok": "often — Native English across Australia and New Zealand.",
       "politeness": "Friendly, upbeat, informal-polite ('Hi there / Good morning, calling for...', 'please', 'thanks heaps / cheers'); avoid stiff hierarchy.",
       "name_tip": "First name and surname (e.g. Jack Taylor, Aroha Williams); casual venues often use first name + initial, clinics/hotels use full name.",
       "phone_tip": "AU mobile 0491 570 156 (4-3-3), landline 02 5550 1234; NZ mobile 021 123 4567 or 027 123 4567; '0' spoken 'oh' or 'zero'; SMS confirmation standard.",
       "time_tip": "12-hour AM/PM spoken ('7 PM', 'half past six'); 'arvo' = afternoon; avoid 'half seven' ambiguity by always saying 'seven thirty PM'.",
       "number_tip": "'0' as 'oh', repeated digits as 'double four' / 'triple zero'; watch NZ short-i vowel shift ('six' vs 'sex', 'ten' vs 'tin').",
+      "avoid_calling": "Avoid cafe brunch rush 08:30–11:00, dinner rush 18:00–19:30, and evening calls after 20:00 (Aussie/Kiwi businesses close earlier than Asia/Europe).",
+      "closed_days": "Retail closes early (~17:00–17:30) except Thu/Fri late-night shopping; many salons/bistros close Sun–Mon; state Public Holidays and Xmas–Jan shutdowns.",
       "booking_channels": "OpenTable, SevenRooms, Now Book It, First Table for dining; HotDoc and HealthEngine (AU) or ManageMyHealth (NZ) for GPs; Fresha/Timely for salons.",
       "voice_menu": "Medical centers, pathology/radiology, councils, Centrelink/IRD, banks, telcos (Telstra/Spark), and insurers use heavy keypad IVR.",
       "callback_habits": "Automated SMS ('Reply Y to confirm') from HotDoc, Timely, Fresha, and SevenRooms is universal 24h before appointments.",
@@ -7298,6 +8332,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "kids_detail",
             "seating_pref",
             "backup"
@@ -7426,6 +8461,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "question"
           ],
@@ -7467,6 +8503,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -7682,6 +8719,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -7942,6 +8980,74 @@
             "solo",
             "8 ppl"
           ],
+          "time": [
+            "7pm",
+            "6:30pm",
+            "19:00",
+            "this arvo around 3pm",
+            "12:30 lunch",
+            "quarter past 6",
+            "10am sharp",
+            "8.15pm"
+          ],
+          "date": [
+            "tmr",
+            "this Fri",
+            "next Tues",
+            "25 Nov",
+            "25/11",
+            "Cup Day Tuesday",
+            "Sat arvo"
+          ],
+          "name": [
+            "Jack Taylor",
+            "under Chloe Nguyen",
+            "Liam Wilson",
+            "Aroha Smith",
+            "Sam Jones"
+          ],
+          "phone": [
+            "0491 570 156",
+            "021 123 4567",
+            "0412 345 678",
+            "flick a text to 027 555 0199"
+          ],
+          "booking_words": [
+            "book a table",
+            "snag a table",
+            "reserve",
+            "tee time",
+            "barefoot bowls booking",
+            "book a cabin"
+          ],
+          "appointment_words": [
+            "GP appointment",
+            "logbook service",
+            "WoF check",
+            "cut and foils",
+            "dental check and clean"
+          ],
+          "order_words": [
+            "order for pickup",
+            "takeaway",
+            "put one aside",
+            "hold in store",
+            "pre-order"
+          ],
+          "change_words": [
+            "push back half an hour",
+            "reschedule",
+            "cancel booking",
+            "move to 7:30",
+            "change day"
+          ],
+          "inquiry_words": [
+            "ask if BYO wine",
+            "check public holiday surcharge",
+            "dog friendly courtyard?",
+            "check stock",
+            "what time kitchen closes"
+          ],
           "false_friends": [
             "Unit 3",
             "2 hour session",
@@ -7980,11 +9086,14 @@
         }
       ],
       "ai_language_tip": "Use Spanish (es) across Spain; use Catalan (ca) first in Andorra and match ca/gl/eu if staff greets in regional language; English only in tourist hubs.",
+      "english_ok": "sometimes — Common in Madrid/Barcelona, coastal resorts, and Andorra ski hotels, but scarce in neighborhood clinics and trades.",
       "politeness": "Open with Buenos días/Buenas tardes; friendly-direct tone (tú in casual dining, usted for clinics/older callers); close with muchas gracias, hasta luego.",
       "name_tip": "First name suffices for casual dining; clinics, hotels, and official bookings require given name plus two surnames (e.g. Juan García López).",
       "phone_tip": "Spain 9 digits (mobile 612 34 56 78 or 7xx, landline 912 34 56 78) read in pairs (6-12-34-56-78); Andorra 6 digits (312 345); WhatsApp/SMS confirms.",
       "time_tip": "24-hour written, 12-hour spoken (las nueve de la noche = 21:00, menos cuarto = :45); lunch is 13:30–16:00 and dinner 20:30–23:00!",
       "number_tip": "Clarify seis (6) vs siete (7) and sesenta (60) vs setenta (70); reading 9 digits as 3-2-2-2 prevents dropped digits.",
+      "avoid_calling": "Avoid afternoon break/siesta (horario partido ~14:00–17:00) for small shops/workshops, restaurant rush 14:00–15:30 and 21:00–22:30, and calls after 21:30.",
+      "closed_days": "Retail closes Sundays (except tourist zones); many restaurants close Sunday night or Monday; widespread multi-week closures in August (vacaciones de agosto).",
       "booking_channels": "TheFork (ElTenedor) and CoverManager for dining; Doctoralia for private doctors; Booksy and Treatwell for salons; WhatsApp Business very popular.",
       "voice_menu": "Public health (Salud Responde/CatSalut), private hospital groups (Quirónsalud), banks, telcos, couriers, and ITV centers use keypad/bot IVR.",
       "callback_habits": "CoverManager/TheFork sends SMS or WhatsApp reconfirmation links; neighborhood salons and dentists confirm via WhatsApp day before.",
@@ -8000,6 +9109,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "seating_pref",
             "kids_detail",
             "backup"
@@ -8120,6 +9230,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "question"
           ],
@@ -8162,6 +9273,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -8373,6 +9485,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -8634,6 +9747,73 @@
             "1 persona",
             "grupo de 8"
           ],
+          "time": [
+            "a las 21:30",
+            "9 y media de la noche",
+            "para comer a las 14:30",
+            "a las 8 menos cuarto",
+            "17:00",
+            "a mediodía (14h)",
+            "sobre las 22h",
+            "mañana a las 10"
+          ],
+          "date": [
+            "mañana",
+            "pasado mañana",
+            "este viernes",
+            "el martes que viene",
+            "25 de noviembre",
+            "25/11",
+            "el sábado por la noche"
+          ],
+          "name": [
+            "a nombre de Juan García",
+            "María López",
+            "Carlos Martínez",
+            "Laura Sánchez",
+            "familia Gómez"
+          ],
+          "phone": [
+            "612 34 56 78",
+            "612345678",
+            "mi móvil 699 12 34 56",
+            "312 345"
+          ],
+          "booking_words": [
+            "reservar mesa",
+            "hacer una reserva",
+            "guardar mesa",
+            "reservar habitación",
+            "pista de pádel"
+          ],
+          "appointment_words": [
+            "pedir cita",
+            "cita en el dentista",
+            "coger hora",
+            "revisión taller",
+            "cortar el pelo"
+          ],
+          "order_words": [
+            "encargar para recoger",
+            "comida para llevar",
+            "guardar uno",
+            "encargar paella",
+            "reservar producto"
+          ],
+          "change_words": [
+            "cambiar la hora",
+            "retrasar media hora",
+            "anular la reserva",
+            "cancelar cita",
+            "mover al viernes"
+          ],
+          "inquiry_words": [
+            "preguntar si abren en agosto",
+            "ver si admiten perros",
+            "consultar stock",
+            "a qué hora cierra cocina",
+            "preguntar precio"
+          ],
           "false_friends": [
             "piso 3º 2ª",
             "menú para 2",
@@ -8652,6 +9832,14 @@
             "5 persones + trona",
             "grup de 6"
           ],
+          "time": [
+            "a les 21:30",
+            "dos quarts de nou del vespre",
+            "per dinar a les 14h",
+            "a les 19:00",
+            "un quart de vuit",
+            "demà a les 10"
+          ],
           "false_friends": [
             "3r 2a",
             "menú per a 2",
@@ -8668,6 +9856,14 @@
             "5 persoas",
             "grupo de 6"
           ],
+          "time": [
+            "ás 21:30",
+            "ás nove e media da noite",
+            "para xantar ás 14:30",
+            "ás 17:00",
+            "mañá ás 10",
+            "sobre as 22h"
+          ],
           "false_friends": [
             "3º andar",
             "menú para 2",
@@ -8683,6 +9879,14 @@
             "bi pertsonentzat",
             "5 lagun",
             "6ko taldea"
+          ],
+          "time": [
+            "21:30ean",
+            "gaueko bederatziak eta erdietan",
+            "14:30ean bazkaltzeko",
+            "arratsaldeko 5etan",
+            "bihar 10:00etan",
+            "20:00ak aldera"
           ],
           "false_friends": [
             "3. solairua",
@@ -8707,11 +9911,14 @@
         }
       ],
       "ai_language_tip": "Speak warm, courteous Mexican Spanish (es); switch to English only at resorts (Cancún/Los Cabos) or upscale CDMX Polanco/Roma hotels.",
+      "english_ok": "sometimes — Spoken in tourist resorts, international hotels, and border/expat zones, rarely at local shops or workshops.",
       "politeness": "Very polite and warm; open with Buenos días/Buenas tardes, señorita/joven, use formal usted, say por favor often, close with muchas gracias, buen día.",
       "name_tip": "Given name plus paternal surname (e.g. Juan Hernández) for restaurants/salons; full name with two apellidos for clinics, hotels, and official matters.",
       "phone_tip": "10-digit national numbers (CDMX 55 1234 5678, GDL 33, MTY 81) read 2-4-4 or in pairs; WhatsApp is the universal confirmation channel.",
       "time_tip": "12-hour spoken with de la mañana/tarde/noche (comida 14:00–16:30, cena 20:00–22:30); if staff says 'ahorita', ask exact clock minutes!",
       "number_tip": "Clarify sesenta (60) vs setenta (70) and dos (2) vs doce (12); read 10-digit phone numbers in two-digit pairs slowly.",
+      "avoid_calling": "Avoid main lunch rush (hora de la comida 14:00–16:00) for offices/clinics and busy restaurants, and calls after 21:00.",
+      "closed_days": "Many workshops close Sundays and Saturday afternoons; museums close Mondays; major slowdowns during Semana Santa, Día de Muertos, and Guadalupe–Reyes (Dec 12–Jan 6).",
       "booking_channels": "WhatsApp dominates almost every business category; OpenTable in major cities for dining; Doctoralia for private doctors; Uber Eats/Rappi/DiDi Food for delivery.",
       "voice_menu": "IMSS/ISSSTE public clinics, hospital chains, banks, Telcel/Telmex, CFE, Aeroméxico, and couriers use heavy keypad IVR.",
       "callback_habits": "Almost all businesses send a WhatsApp message asking the client to reply 'Confirmado'; many restaurants cancel unconfirmed tables 2h prior.",
@@ -8727,6 +9934,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "seating_pref",
             "kids_detail",
             "backup"
@@ -8847,6 +10055,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "question"
           ],
@@ -8888,6 +10097,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -9095,6 +10305,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -9348,6 +10559,72 @@
             "1 persona",
             "5 adultos"
           ],
+          "time": [
+            "a las 2pm",
+            "8:30 de la noche",
+            "20:30",
+            "a la 1 y media",
+            "cuarto para las 7",
+            "mañana a las 10am",
+            "como a las 3 de la tarde",
+            "19:00 hrs"
+          ],
+          "date": [
+            "mañana",
+            "pasado mañana",
+            "este viernes",
+            "el próximo martes",
+            "25 de noviembre",
+            "el sábado en la noche"
+          ],
+          "name": [
+            "Juan Hernández",
+            "a nombre de Sofía Ramírez",
+            "Carlos López",
+            "Mariana Torres",
+            "familia García"
+          ],
+          "phone": [
+            "55 1234 5678",
+            "5512345678",
+            "mi cel 33 1234 5678",
+            "WhatsApp 81 9876 5432"
+          ],
+          "booking_words": [
+            "reservar mesa",
+            "hacer reservación",
+            "apartar lugar",
+            "reservar cuarto",
+            "rentar cancha"
+          ],
+          "appointment_words": [
+            "agendar cita",
+            "sacar cita con el dentista",
+            "cita para corte",
+            "servicio del coche",
+            "revisión"
+          ],
+          "order_words": [
+            "pedir para llevar",
+            "paso a recoger",
+            "apartar producto",
+            "encargar pastel",
+            "pedido a domicilio"
+          ],
+          "change_words": [
+            "cambiar mi cita",
+            "recorrer media hora",
+            "cancelar reservación",
+            "mover para el jueves",
+            "posponer"
+          ],
+          "inquiry_words": [
+            "preguntar hasta qué hora abren",
+            "ver si tienen valet parking",
+            "checar si hay en existencia",
+            "es pet friendly?",
+            "pedir informes"
+          ],
           "false_friends": [
             "depto 402",
             "paquete para 2",
@@ -9388,11 +10665,14 @@
         }
       ],
       "ai_language_tip": "Use neutral, polite Latin American Spanish (es) with formal 'usted'; in Puerto Rico (pr) or Panama/Costa Rica tourism, switch to English smoothly if staff leads.",
+      "english_ok": "sometimes — Widely spoken in Puerto Rico, Panama City, and Costa Rica tourist hubs; limited elsewhere outside upscale hotels.",
       "politeness": "Courteous 'Buenos días/Buenas tardes', 'por favor', and 'usted' (essential in Colombia, Costa Rica, and Andes; universally polite in Caribbean/Chile).",
       "name_tip": "Given name and first surname (e.g. Andrés Gómez, Camila Rojas); hotels and clinics ask two surnames; avoid national ID requests.",
       "phone_tip": "Formats vary (CO 300 123 4567, CL 9 1234 5678, PE 912 345 678, CR 8123-4567, PR 787-555-0123); read in pairs/triplets; WhatsApp rules everywhere.",
       "time_tip": "12-hour AM/PM spoken everywhere (7 de la noche, 12:30 del mediodía); 'faltan quince para las ocho' = 7:45; confirm AM/PM explicitly.",
       "number_tip": "Caribbean/Chilean Spanish drops syllable-final 's' ('do' for dos, 'tre' for tres); confirm party count and digits carefully.",
+      "avoid_calling": "Avoid lunch peak 12:30–14:30 (small-town clinics/shops may close 12:30–14:00) and calls after 20:30–21:00.",
+      "closed_days": "Many clinics/workshops close Sundays and Saturday afternoons; Holy Week (Semana Santa), Christmas–New Year, and Carnaval cause multi-day closures.",
       "booking_channels": "WhatsApp Business is the primary channel across all 16 countries; Mesa 24/7 (PE/CL) and OpenTable for upscale dining; Doctoralia in CO/CL/PE.",
       "voice_menu": "EPS/Isapre health networks, banks, Claro/Movistar/Tigo, airlines (Avianca/LATAM/Copa), and utilities use heavy keypad IVR.",
       "callback_habits": "WhatsApp confirmation message or location pin request is standard; clinics and salons message 24h ahead to reconfirm.",
@@ -9408,6 +10688,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "seating_pref",
             "kids_detail",
             "backup"
@@ -9524,6 +10805,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "question"
           ],
@@ -9565,6 +10847,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -9780,6 +11063,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -10029,6 +11313,73 @@
             "1 persona",
             "5 adultos"
           ],
+          "time": [
+            "a las 7pm",
+            "12:30 del mediodía",
+            "8 de la noche",
+            "20:00",
+            "faltan 15 para las 7",
+            "mañana a las 10am",
+            "tipo 2 de la tarde",
+            "6:30 pm"
+          ],
+          "date": [
+            "mañana",
+            "pasado mañana",
+            "este viernes",
+            "el otro martes",
+            "25 de noviembre",
+            "el sábado en la noche"
+          ],
+          "name": [
+            "Andrés Gómez",
+            "a nombre de Camila Rojas",
+            "Luis Pérez",
+            "Valeria Castro",
+            "familia Morales"
+          ],
+          "phone": [
+            "300 123 4567",
+            "912 345 678",
+            "9 1234 5678",
+            "787-555-0123",
+            "8123-4567"
+          ],
+          "booking_words": [
+            "reservar mesa",
+            "separar mesa",
+            "apartar cupo",
+            "reservar cancha",
+            "reservar habitación"
+          ],
+          "appointment_words": [
+            "sacar cita",
+            "pedir hora médica",
+            "agendar cita",
+            "cita odontología",
+            "cupo peluquería"
+          ],
+          "order_words": [
+            "pedir para recoger",
+            "para llevar",
+            "separar producto",
+            "delivery",
+            "pedido a domicilio"
+          ],
+          "change_words": [
+            "reprogramar cita",
+            "correr media hora",
+            "cancelar reserva",
+            "cambiar de hora",
+            "anular hora"
+          ],
+          "inquiry_words": [
+            "averiguar horario",
+            "preguntar si tienen parqueadero",
+            "consultar stock",
+            "aceptan mascotas?",
+            "preguntar cuánto cuesta"
+          ],
           "false_friends": [
             "apto 302",
             "Carrera 15 #85-20",
@@ -10055,11 +11406,14 @@
         }
       ],
       "ai_language_tip": "Speak natural Rioplatense-aware or neutral polite Spanish (es); understand voseo ('tenés/querés') and local terms ('turno', 'seña', 'remís'); English in BA Palermo/Punta del Este hotels.",
+      "english_ok": "sometimes — Understood at upscale Buenos Aires, Mendoza winery, and Montevideo/Punta del Este venues, rarely at neighborhood shops.",
       "politeness": "Warm, conversational 'Hola, buen día / buenas tardes'; respectful usted or polite Rioplatense tone; close with 'muchas gracias, hasta luego'.",
       "name_tip": "First name and surname (e.g. Martín González); spell Italian/Basque/Eastern-European surnames clearly using city/common words.",
       "phone_tip": "AR 10-digit mobile 11 1234-5678 (locals sometimes still mention legacy '15'), UY mobile 099 123 456; read in pairs/blocks; WhatsApp dominates.",
       "time_tip": "24-hour and 12-hour mixed ('21 hs' or 'nueve de la noche'); dinner is very late (21:00–23:30 — 20:00 is early!); 'menos cuarto' = :45.",
       "number_tip": "Aspirated 's' in Rioplatense makes dos/tres/seis softer; read phone blocks clearly (once, doce treinta y cuatro...).",
+      "avoid_calling": "Avoid provincial siesta closure (~13:00–16:30 outside CABA/Montevideo center), late dinner rush 21:00–22:45, and calls before 09:00.",
+      "closed_days": "Many restaurants/parrillas close Mondays (or Sunday nights); summer holiday migration in January slows Buenos Aires and peaks Punta del Este/Mar del Plata.",
       "booking_channels": "WhatsApp is king; Meitre, Woki, and TheFork for upscale dining; Docturno/DrApp and clinic WhatsApp bots for medical 'turnos'; PedidosYa for delivery.",
       "voice_menu": "Prepagas/Obras Sociales (OSDE, Swiss Medical, Mutualistas in UY), banks, ANSES/AFIP, telecoms, and couriers use heavy keypad IVR.",
       "callback_habits": "WhatsApp reconfirmation message day before or afternoon of booking is standard across restaurants, clinics, and salons.",
@@ -10075,6 +11429,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "seating_pref",
             "kids_detail",
             "backup"
@@ -10191,6 +11546,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "question"
           ],
@@ -10232,6 +11588,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -10435,6 +11792,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -10675,6 +12033,72 @@
             "1 persona",
             "5 cubiertos"
           ],
+          "time": [
+            "a las 21:30",
+            "21 hs",
+            "nueve y media de la noche",
+            "al mediodía 13 hs",
+            "ocho menos cuarto",
+            "mañana a las 10",
+            "tipo 22 hs",
+            "17:30"
+          ],
+          "date": [
+            "mañana",
+            "pasado mañana",
+            "este viernes",
+            "el martes que viene",
+            "25 de noviembre",
+            "el sábado a la noche"
+          ],
+          "name": [
+            "Martín González",
+            "a nombre de Lucía Rodríguez",
+            "Facundo Pérez",
+            "Valentina Silva",
+            "familia Fernández"
+          ],
+          "phone": [
+            "11 1234-5678",
+            "15-1234-5678",
+            "099 123 456",
+            "mi celu 11 9876 5432"
+          ],
+          "booking_words": [
+            "reservar mesa",
+            "hacer una reserva",
+            "reservar cancha de 5",
+            "guardar lugar",
+            "reservar cabaña"
+          ],
+          "appointment_words": [
+            "sacar turno",
+            "pedir turno médico",
+            "turno odontólogo",
+            "turno peluquería",
+            "service del auto"
+          ],
+          "order_words": [
+            "pedir para retirar",
+            "retiro por el local",
+            "delivery",
+            "encargar una docena",
+            "separar stock"
+          ],
+          "change_words": [
+            "reprogramar el turno",
+            "pasar media hora más tarde",
+            "cancelar la reserva",
+            "cambiar el turno",
+            "dar de baja el turno"
+          ],
+          "inquiry_words": [
+            "preguntar si abren el feriado",
+            "tienen descuento en efectivo?",
+            "hay cochera?",
+            "son pet friendly?",
+            "consultar stock"
+          ],
           "false_friends": [
             "piso 4 B",
             "al 3200",
@@ -10701,11 +12125,14 @@
         }
       ],
       "ai_language_tip": "Always speak polite French (fr); Monaco (mc) businesses also speak French by default and English widely; in France switch to English only if staff offers.",
+      "english_ok": "sometimes — Common in Monaco, Paris tourist districts, and Riviera hotels, but local clinics, artisans, and offices expect French.",
       "politeness": "ALWAYS open with 'Bonjour Madame / Monsieur' before any request, use strict 'vous', soften with conditional ('je souhaiterais'), close with 'Merci, bonne journée, au revoir'.",
       "name_tip": "Title + surname (Monsieur/Madame Dupont) is standard; spell surnames carefully with French first names ('D comme Denis, U comme Ursule').",
       "phone_tip": "France 10 digits (06 12 34 56 78 or 07..., Paris 01 23 45 67 89) read in two-digit pairs; Monaco 8 digits (99 12 34 56); SMS confirmation common.",
       "time_tip": "24-hour standard ('19h30' / 'dix-neuf heures trente'); lunch 12:00–14:00, dinner 19:30–21:30 (most non-brasserie kitchens close between!).",
       "number_tip": "Watch vigesimal numbers: soixante (60) vs soixante-dix (70) and quatre-vingts (80) vs quatre-vingt-dix (90); repeat pairs slowly.",
+      "avoid_calling": "Avoid restaurant coup de feu 12:15–14:00 and 19:30–21:15, shop lunch break 12:30–14:00 in provinces, and calls after 20:00.",
+      "closed_days": "Many restaurants/bistros close Sunday–Monday; salons close Sundays and Mondays; shops close Sundays; heavy August closures (fermeture annuelle en août).",
       "booking_channels": "Doctolib dominates medical/dental completely; Planity and Treatwell for hair/beauty; TheFork and Zenchef for restaurants.",
       "voice_menu": "Medical tele-secretariats, hospitals, administrations (CAF/CPAM/Impôts), banks, telecoms, SNCF, and couriers use heavy keypad IVR.",
       "callback_habits": "Zenchef/TheFork and Planity/Doctolib send automated SMS confirmations; fine dining requires clicking 'Confirmer ma présence' 24h ahead.",
@@ -10721,6 +12148,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "seating_pref",
             "kids_detail",
             "backup"
@@ -10845,6 +12273,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "question"
           ],
@@ -10887,6 +12316,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -11098,6 +12528,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -11351,6 +12782,73 @@
             "1 personne",
             "groupe de 8"
           ],
+          "time": [
+            "19h30",
+            "20h",
+            "midi et demi",
+            "sept heures et demie du soir",
+            "14h15",
+            "vers 20h30",
+            "huit heures moins le quart",
+            "demain à 10h"
+          ],
+          "date": [
+            "demain",
+            "après-demain",
+            "ce vendredi",
+            "mardi prochain",
+            "le 25 novembre",
+            "25/11",
+            "samedi soir"
+          ],
+          "name": [
+            "au nom de Dupont",
+            "M. Jean Martin",
+            "Mme Claire Bernard",
+            "Camille Laurent",
+            "famille Moreau"
+          ],
+          "phone": [
+            "06 12 34 56 78",
+            "0612345678",
+            "mon portable 07 98 76 54 32",
+            "99 12 34 56"
+          ],
+          "booking_words": [
+            "réserver une table",
+            "réservation",
+            "garder une table",
+            "réserver une chambre",
+            "terrain de padel"
+          ],
+          "appointment_words": [
+            "prendre rendez-vous",
+            "prendre RDV dentiste",
+            "coupe brushing",
+            "contrôle technique",
+            "révision voiture"
+          ],
+          "order_words": [
+            "commander à emporter",
+            "mettre de côté",
+            "garder en rayon",
+            "précommander",
+            "commande traiteur"
+          ],
+          "change_words": [
+            "décaler de 30 min",
+            "reporter le RDV",
+            "annuler ma réservation",
+            "changer l'heure",
+            "déplacer à vendredi"
+          ],
+          "inquiry_words": [
+            "demander s'ils font service continu",
+            "vérifier s'ils sont ouverts en août",
+            "chiens acceptés?",
+            "demander le stock",
+            "se renseigner"
+          ],
           "false_friends": [
             "bâtiment 2",
             "3e étage",
@@ -11384,11 +12882,14 @@
         }
       ],
       "ai_language_tip": "Match municipality language strictly: Flemish Dutch (nl) in Flanders, French (fr) in Wallonia, match greeting (often fr/nl/en) in Brussels, German (de) in Ostbelgien.",
+      "english_ok": "often — Widely spoken in Flanders and Brussels service sectors; moderate in smaller Walloon towns.",
       "politeness": "Polite and measured: open with 'Goedendag' (nl, using u) or 'Bonjour Madame/Monsieur' (fr, using vous); close warmly ('Dank u wel, dag' / 'Bonne journée').",
       "name_tip": "First and surname (e.g. Jan Peeters, Marie Dubois); spell multi-word Flemish surnames ('Van den Berg') clearly indicating spaces.",
       "phone_tip": "10-digit mobile 0470 12 34 56 (read 4-2-2-2), landline 02 123 45 67 (9 digits); confirmations via SMS or email.",
       "time_tip": "CRITICAL: In Dutch 'half acht' = 7:30 (NOT 8:30!), while French uses 19h30; Belgian French uses 'septante' (70) and 'nonante' (90)! Always confirm 24h.",
       "number_tip": "Belgian French says septante (70) and nonante (90), NOT soixante-dix/quatre-vingt-dix (80 is still quatre-vingts); Dutch swaps tens-units ('vierentwintig' = 24).",
+      "avoid_calling": "Avoid lunch rush 12:00–13:45, dinner rush 18:30–20:30, and calls after 20:00.",
+      "closed_days": "Many Belgian restaurants close Mondays AND Tuesdays (or Tue–Wed); retail closes Sundays (~18:00 weekdays); regional holidays differ slightly.",
       "booking_channels": "Resengo, Tablebooker, Zenchef, and TheFork for restaurants; Doctena and Rosa for medical; Salonkee for hair/beauty.",
       "voice_menu": "Hospitals, mutualités/ziekenfondsen, Proximus/Telenet, banks, Bpost, and municipal halls use bilingual/keypad IVR.",
       "callback_habits": "Resengo, Tablebooker, Rosa, Doctena, and Salonkee send automated SMS/email confirmations and 24h cancellation-link reminders.",
@@ -11404,6 +12905,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "kids_detail",
             "seating_pref",
             "backup"
@@ -11520,6 +13022,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "question"
           ],
@@ -11562,6 +13065,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -11757,6 +13261,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -12001,6 +13506,73 @@
             "1 persoon",
             "groep van 8"
           ],
+          "time": [
+            "om half acht 's avonds",
+            "19u30",
+            "kwart voor zeven",
+            "kwart over twaalf",
+            "'s middags om 12u30",
+            "rond 20u",
+            "morgenochtend 10u",
+            "18:00"
+          ],
+          "date": [
+            "morgen",
+            "overmorgen",
+            "deze vrijdag",
+            "volgende dinsdag",
+            "25 november",
+            "25/11",
+            "zaterdagavond"
+          ],
+          "name": [
+            "op naam van Jan Peeters",
+            "Mieke Janssens",
+            "Wouter Maes",
+            "Sofie Van den Berg",
+            "familie Jacobs"
+          ],
+          "phone": [
+            "0470 12 34 56",
+            "0470123456",
+            "mijn gsm 0486 98 76 54",
+            "02 123 45 67"
+          ],
+          "booking_words": [
+            "tafel reserveren",
+            "boeken",
+            "plaats vrijhouden",
+            "kamer boeken",
+            "padelplein reserveren"
+          ],
+          "appointment_words": [
+            "afspraak maken",
+            "tandarts afspraak",
+            "kapper boeken",
+            "onderhoud auto",
+            "ketelonderhoud"
+          ],
+          "order_words": [
+            "bestellen om af te halen",
+            "afhaal",
+            "opzij leggen",
+            "op voorraad houden",
+            "voorbestellen"
+          ],
+          "change_words": [
+            "afspraak verzetten",
+            "een halfuur later",
+            "reservatie annuleren",
+            "uur wijzigen",
+            "afzeggen"
+          ],
+          "inquiry_words": [
+            "vragen of ze open zijn",
+            "betalen met kredietkaart mogelijk?",
+            "honden toegelaten?",
+            "voorraad checken",
+            "prijs vragen"
+          ],
           "false_friends": [
             "bus 4",
             "2e verdieping",
@@ -12019,6 +13591,14 @@
             "5 pers. + chaise haute",
             "groupe de 6"
           ],
+          "time": [
+            "19h30",
+            "midi et demi",
+            "sept heures et demie",
+            "20h",
+            "quatre heures moins quart",
+            "demain à 10h"
+          ],
           "false_friends": [
             "boîte 3",
             "2e étage",
@@ -12034,6 +13614,14 @@
             "für 2 Personen",
             "5 Personen",
             "6er Gruppe"
+          ],
+          "time": [
+            "halb acht abends",
+            "19:30 Uhr",
+            "12:30 Uhr",
+            "viertel nach sechs",
+            "20 Uhr",
+            "morgen um 10"
           ],
           "false_friends": [
             "2. Stock",
@@ -12066,11 +13654,14 @@
         }
       ],
       "ai_language_tip": "Match how staff answers: 'Moien' invites lb/de/fr, 'Bonjour' invites French (fr — dominant in restaurants/shops/salons!); English (en) works widely in Luxembourg City.",
+      "english_ok": "often — Widely understood in Luxembourg City clinics, restaurants, hotels, and offices; French dominates cross-border service staff.",
       "politeness": "Open with 'Moien' (lb) or 'Bonjour Madame/Monsieur' (fr), use formal 'Dir' (lb) / 'vous' (fr) / 'Sie' (de); close with 'Merci, äddi' or 'Bonne journée, au revoir'.",
       "name_tip": "Surname and first name (e.g. Marc Schmit, Anne Weber); spell clearly since staff and callers span French, German, Portuguese, and English backgrounds.",
       "phone_tip": "Mobile 9 digits (621 123 456, 661..., 691...) read 3-3-3 or 3-2-2-2; landlines 8 digits (27 12 34 56) or shorter legacy numbers; SMS confirmation standard.",
       "time_tip": "24-hour standard ('19h30' / '19:30 Auer'); watch Luxembourgish/German 'halwer aacht' = 7:30 vs French 'sept heures et demie' = 7:30! Always confirm 24h.",
       "number_tip": "In French, both standard soixante-dix/quatre-vingt-dix and Belgian septante/nonante are heard from cross-border staff—confirm digits cleanly.",
+      "avoid_calling": "Avoid lunch rush 12:00–14:00, clinic lunch break 12:00–14:00, dinner rush 19:00–20:45, and calls after 20:00.",
+      "closed_days": "Retail closes Sundays (except select Knauf/border malls); many restaurants close Sunday night and Monday; August collective construction leave (congé collectif).",
       "booking_channels": "Doctena (doctena.lu) dominates medical/dental; Salonkee (salonkee.lu) dominates hair/beauty; Zenchef/Resengo/TheFork for dining.",
       "voice_menu": "Hospitals (CHL/Hôpitaux Robert Schuman), CNS/CCSS, banks, POST/Tango, Luxair, and communes use multilingual keypad IVR.",
       "callback_habits": "Doctena, Salonkee, and Zenchef send automated SMS reminders 24h prior.",
@@ -12086,6 +13677,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "seating_pref",
             "kids_detail",
             "backup"
@@ -12202,6 +13794,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "question"
           ],
@@ -12244,6 +13837,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -12439,6 +14033,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -12687,6 +14282,72 @@
             "eleng",
             "Grupp vun 8"
           ],
+          "time": [
+            "ëm halwer aacht owes",
+            "19:30 Auer",
+            "mëttes ëm 12:30",
+            "véierel op siwen",
+            "véierel vir aacht",
+            "muer um 10 Auer",
+            "géint 20 Auer",
+            "18:00"
+          ],
+          "date": [
+            "muer",
+            "iwermuer",
+            "dëse Freideg",
+            "nächsten Dënschdeg",
+            "de 25. November",
+            "e Samschdeg den Owend"
+          ],
+          "name": [
+            "op den Numm Marc Schmit",
+            "Anne Weber",
+            "Luc Muller",
+            "Sarah Hoffmann",
+            "Famill Kieffer"
+          ],
+          "phone": [
+            "621 123 456",
+            "691123456",
+            "meng Nummer 661 987 654",
+            "27 12 34 56"
+          ],
+          "booking_words": [
+            "en Dësch reservéieren",
+            "Reservatioun maachen",
+            "Zëmmer buchen",
+            "Terrain reservéieren",
+            "Plaz halen"
+          ],
+          "appointment_words": [
+            "Rendez-vous huelen",
+            "Zänndokter RDV",
+            "Coiffeur buchen",
+            "Auto Revisioun",
+            "Termin maachen"
+          ],
+          "order_words": [
+            "fir matzehuelen bestellen",
+            "op d'Säit leeën",
+            "virbestellen",
+            "reservéieren am Buttek",
+            "ofhuelen"
+          ],
+          "change_words": [
+            "Rendez-vous verréckelen",
+            "eng hallef Stonn méi spéit",
+            "Reservatioun annuléieren",
+            "Zäit änneren",
+            "ofsoen"
+          ],
+          "inquiry_words": [
+            "nofroen ob se op hunn",
+            "froen ob Hënn erlaabt sinn",
+            "Stock nofroen",
+            "wéi laang ass d'Kichen op",
+            "Präis froen"
+          ],
           "false_friends": [
             "2. Stack",
             "Menü fir 2",
@@ -12705,6 +14366,14 @@
             "pour 2 personnes",
             "6 personnes"
           ],
+          "time": [
+            "19h30",
+            "midi et demi",
+            "20h00",
+            "sept heures et demie",
+            "14h15",
+            "demain à 10h"
+          ],
           "false_friends": [
             "2e étage",
             "menu pour 2",
@@ -12720,6 +14389,14 @@
             "für 2 Personen",
             "5 Personen",
             "Gruppe von 6"
+          ],
+          "time": [
+            "halb acht abends",
+            "19:30 Uhr",
+            "12:30 Uhr",
+            "viertel nach sechs",
+            "20 Uhr",
+            "morgen um 10"
           ],
           "false_friends": [
             "2. Etage",
@@ -12744,11 +14421,14 @@
         }
       ],
       "ai_language_tip": "Speak clear, polite Standard German (de); dialects (Bavarian/Swabian/Kölsch) understand Hochdeutsch; switch to English only in central Berlin/Munich/Frankfurt if staff offers.",
+      "english_ok": "sometimes — Common in central Berlin, Munich, Frankfurt, and international hotels, but scarce at doctor offices, trades, and authorities.",
       "politeness": "Direct, structured, formal 'Sie'; open with 'Guten Tag' + caller/assistant role ('im Auftrag von Herrn/Frau...'); close with 'Vielen Dank, auf Wiederhören'.",
       "name_tip": "Title + surname ('auf den Namen Mustermann') is primary; spell difficult surnames clearly or using German spelling names ('M wie Martha').",
       "phone_tip": "Mobile 0151 12345678 or 017x (11–12 digits), landline 030 12345678 (variable length!); say 'zwo' for 2; SMS/email confirmations.",
       "time_tip": "CRITICAL: 'halb acht' = 7:30! East/South DE also uses 'viertel acht' = 7:15 and 'dreiviertel acht' = 7:45! Always read back 24-hour ('19 Uhr 30').",
       "number_tip": "Say 'zwo' for 2 on phone so 'zwei' isn't heard as 'drei'; note German inverted tens ('vierundzwanzig' = 24).",
+      "avoid_calling": "Avoid Mittagsruhe 12:30–14:00 at doctors/small offices, restaurant peak 18:30–20:15, calls after 20:00, and Sunday calls for non-hospitality.",
+      "closed_days": "Strict Sunday retail closure (Sonntagsruhe); many restaurants close Monday or Tuesday (Ruhetag); doctor offices close Wednesday and Friday afternoons; state holidays vary.",
       "booking_channels": "Doctolib and Jameda for doctors; OpenTable, TheFork, and Dish/Quandoo for dining; Treatwell for salons; phone still dominant for craftsmen and garages.",
       "voice_menu": "Doctor practices increasingly use AI voice assistants (Aaron.ai/Doctolib) or keypad IVR; banks, Telekom, DHL, DB, and Bürgerämter use heavy IVR.",
       "callback_habits": "Doctolib and OpenTable send SMS/email reminders; craftsmen and medical AI receptionists (Telefonassistent) take details and call/SMS back.",
@@ -12764,6 +14444,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "seating_pref",
             "kids_detail",
             "backup"
@@ -12884,6 +14565,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "question"
           ],
@@ -12926,6 +14608,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -13129,6 +14812,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -13374,6 +15058,73 @@
             "alleine",
             "Gruppe mit 8 Leuten"
           ],
+          "time": [
+            "um halb acht abends",
+            "19:30 Uhr",
+            "viertel nach sechs",
+            "viertel vor acht",
+            "mittags 12:30",
+            "dreiviertel acht",
+            "morgen früh um 9",
+            "gegen 20 Uhr"
+          ],
+          "date": [
+            "morgen",
+            "übermorgen",
+            "diesen Freitag",
+            "nächsten Dienstag",
+            "am 25.11.",
+            "25. November",
+            "Samstagabend"
+          ],
+          "name": [
+            "auf den Namen Mustermann",
+            "Max Müller",
+            "Erika Schmidt",
+            "Familie Weber",
+            "Herr Schneider"
+          ],
+          "phone": [
+            "0151 12345678",
+            "017612345678",
+            "Rückruf unter 0160 9876543",
+            "030 12345678"
+          ],
+          "booking_words": [
+            "Tisch reservieren",
+            "Reservierung",
+            "Platz freihalten",
+            "Zimmer buchen",
+            "Bahn reservieren"
+          ],
+          "appointment_words": [
+            "Termin vereinbaren",
+            "Arzttermin machen",
+            "Friseurtermin",
+            "TÜV und Inspektion",
+            "Zahnreinigung"
+          ],
+          "order_words": [
+            "zum Mitnehmen bestellen",
+            "zur Abholung",
+            "zurücklegen lassen",
+            "vorbestellen",
+            "in der Apotheke bestellen"
+          ],
+          "change_words": [
+            "Termin verschieben",
+            "eine halbe Stunde später",
+            "Reservierung stornieren",
+            "Termin absagen",
+            "auf Freitag verlegen"
+          ],
+          "inquiry_words": [
+            "fragen wie lange warme Küche ist",
+            "Kartenzahlung möglich?",
+            "sind Hunde erlaubt?",
+            "Vorrätigkeit prüfen",
+            "Öffnungszeiten fragen"
+          ],
           "false_friends": [
             "3. OG",
             "Hinterhof Aufgang 2",
@@ -13399,11 +15150,14 @@
         }
       ],
       "ai_language_tip": "Speak polite Austrian-aware Standard German (de); understand 'Jänner', 'heuer', 'Ordination', 'Schanigarten'; English works in central Vienna/Salzburg/ski resorts.",
+      "english_ok": "sometimes — Good in Vienna tourist areas and Alpine ski resorts, limited at local Ordinationen, workshops, and authorities.",
       "politeness": "Warm-formal 'Sie'; open with 'Grüß Gott' (or 'Guten Tag' in Vienna) + assistant role; academic titles (Herr/Frau Dr., Mag., DI) respected; close with 'Auf Wiederhören'.",
       "name_tip": "Surname (plus academic title if owner included it) is standard; spell Slavic/Hungarian/German surnames clearly.",
       "phone_tip": "Variable-length numbers! Mobile 0664 1234567 or 0676... (10–13 digits), Vienna landline 01 2345678; say 'zwo' for 2; SMS/email confirms.",
       "time_tip": "CRITICAL: In Vienna/Eastern AT, 'viertel acht' = 7:15, 'halb acht' = 7:30, 'dreiviertel acht' = 7:45! Always confirm 24-hour ('19 Uhr 15')!",
       "number_tip": "Subscriber numbers have no fixed digit count in Austria—read groups slowly without assuming missing digits; 'Jänner' = January.",
+      "avoid_calling": "Avoid Ordination off-hours (each doctor has specific Ordinationszeiten!), lunch 12:00–13:30 at small trades, dinner rush 18:30–20:00, and calls after 20:00.",
+      "closed_days": "Strict Sunday retail closure (Saturday shops close ~18:00, rural 12:00!); Gasthäuser have 1–2 Ruhetage; Catholic public holidays observed strictly.",
       "booking_channels": "Phone remains very strong in Austria alongside TheFork/OpenTable/GastroNews for dining, DocFinder/Latido for doctors, and Treatwell/Salonkee for beauty.",
       "voice_menu": "ÖGK health fund, hospitals, banks, A1/Magenta, ÖBB, Austrian Airlines, and Magistrat Vienna use keypad IVR.",
       "callback_habits": "Doctors (Wahlarzt) and craftsmen reliably call back missed local mobile numbers; restaurants send SMS/email confirmations.",
@@ -13419,6 +15173,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "seating_pref",
             "kids_detail",
             "backup"
@@ -13527,6 +15282,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "question"
           ],
@@ -13565,6 +15321,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -13768,6 +15525,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -14013,6 +15771,73 @@
             "allein",
             "Partie mit 8 Personen"
           ],
+          "time": [
+            "um halb acht am Abend",
+            "viertel acht (19:15)",
+            "dreiviertel acht (19:45)",
+            "19:30 Uhr",
+            "mittags 12:30",
+            "morgen in der Früh um 9",
+            "gegen 18 Uhr",
+            "14:15"
+          ],
+          "date": [
+            "morgen",
+            "übermorgen",
+            "diesen Freitag",
+            "nächsten Dienstag",
+            "am 25. Jänner",
+            "25.11.",
+            "Samstagabend"
+          ],
+          "name": [
+            "auf den Namen Gruber",
+            "Hans Huber",
+            "Mag. Anna Steiner",
+            "Familie Bauer",
+            "Lukas Wagner"
+          ],
+          "phone": [
+            "0664 1234567",
+            "0676 12345678",
+            "meine Nummer 0660 9876543",
+            "01 2345678"
+          ],
+          "booking_words": [
+            "Tisch reservieren",
+            "Reservierung im Schanigarten",
+            "Zimmer buchen",
+            "Platz reservieren",
+            "Kegelbahn reservieren"
+          ],
+          "appointment_words": [
+            "Termin in der Ordination",
+            "Zahnarzttermin",
+            "Pickerl und Service",
+            "Thermenwartung",
+            "Friseurtermin"
+          ],
+          "order_words": [
+            "zum Abholen bestellen",
+            "Gassenverkauf",
+            "weglegen lassen",
+            "vorbestellen",
+            "in der Apotheke bestellen"
+          ],
+          "change_words": [
+            "Termin verschieben",
+            "eine halbe Stunde später",
+            "stornieren",
+            "Termin absagen",
+            "auf Freitag verlegen"
+          ],
+          "inquiry_words": [
+            "fragen wie lange Küche ist",
+            "geht Bankomat?",
+            "sind Hunde erlaubt?",
+            "lagernd?",
+            "Öffnungszeiten am Feiertag"
+          ],
           "false_friends": [
             "Stiege 2 Tür 14",
             "3. Stock",
@@ -14051,11 +15876,14 @@
         }
       ],
       "ai_language_tip": "Match canton/principality: speak polite Swiss High German (de) in German CH & Liechtenstein (even when staff replies in Swiss German Mundart!), French (fr) in Romandy, Italian (it) in Ticino.",
+      "english_ok": "often — Widely spoken in Zurich, Geneva, Basel, Zug, Vaduz, and Alpine resorts, though local craftsmen and communes prefer local language.",
       "politeness": "Courteous, calm, understated; open with 'Grüezi' (de), 'Bonjour' (fr), or 'Buongiorno' (it), use formal Sie/vous/Lei; close with 'Besten Dank, uf Wiederluege / auf Wiederhören'.",
       "name_tip": "Surname and first name (e.g. Thomas Meier, Céline Rochat); spell carefully; Swiss orthography writes 'ss' instead of 'ß'.",
       "phone_tip": "CH 10 digits (mobile 079 123 45 67, landline 044 123 45 67) read 3-3-2-2; Liechtenstein 7 digits (+423 791 23 45); SMS/email confirms.",
       "time_tip": "24-hour standard; in Swiss German 'viertel ab sibe' = 7:15, 'halbi achti' = 7:30! Swiss French says septante (70), huitante (80 in VD/VS/FR), nonante (90)!",
       "number_tip": "Romandy French uses 'huitante' or 'octante' for 80 alongside 'quatre-vingts' in Geneva; read CH numbers strictly in 3-3-2-2 rhythm.",
+      "avoid_calling": "Respect strict Swiss lunch quiet hours (Mittagsruhe 12:00–13:30) for offices/doctors/neighbors, dinner service 18:30–20:00, and never call after 20:00.",
+      "closed_days": "Strict Sunday closure; shops close early Saturdays (16:00–17:00); cantonal public holidays vary completely canton by canton!",
       "booking_channels": "Foratable, Aleno, TheFork, and OpenTable for dining; OneDoc for medical/dental; Salonkee and Treatwell for salons; local businesses answer phones reliably.",
       "voice_menu": "Hospital networks, health insurers (CSS/Helsana/Swica), SBB, Swisscom, Post, banks, and cantonal offices use multilingual keypad IVR.",
       "callback_habits": "Punctual SMS/email confirmations via OneDoc, Aleno, Foratable, and Salonkee; strict 24-hour cancellation enforcement everywhere.",
@@ -14071,6 +15899,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "seating_pref",
             "kids_detail",
             "backup"
@@ -14191,6 +16020,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "question"
           ],
@@ -14233,6 +16063,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -14428,6 +16259,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -14677,6 +16509,73 @@
             "alleine",
             "Gruppe von 8"
           ],
+          "time": [
+            "um halb acht abends",
+            "19:30 Uhr",
+            "viertel ab sieben",
+            "viertel vor acht",
+            "mittags 12:15",
+            "morgen um 9 Uhr",
+            "gegen 19 Uhr",
+            "18:30"
+          ],
+          "date": [
+            "morgen",
+            "übermorgen",
+            "diesen Freitag",
+            "nächsten Dienstag",
+            "am 25.11.",
+            "25. November",
+            "Samstagabend"
+          ],
+          "name": [
+            "auf den Namen Meier",
+            "Thomas Keller",
+            "Sandra Schmid",
+            "Familie Zürcher",
+            "Reto Brunner"
+          ],
+          "phone": [
+            "079 123 45 67",
+            "0781234567",
+            "Natel 076 987 65 43",
+            "044 123 45 67"
+          ],
+          "booking_words": [
+            "Tisch reservieren",
+            "Reservation",
+            "Zimmer buchen",
+            "Platz reservieren",
+            "Court buchen"
+          ],
+          "appointment_words": [
+            "Termin vereinbaren",
+            "Dentalhygiene Termin",
+            "Coiffeur Termin",
+            "Pneuwechsel",
+            "Arzttermin"
+          ],
+          "order_words": [
+            "Take-away bestellen",
+            "zum Abholen",
+            "auf die Seite legen",
+            "vorbestellen",
+            "Fondue-Mischung bestellen"
+          ],
+          "change_words": [
+            "Termin verschieben",
+            "eine halbe Stunde später",
+            "Reservation annullieren",
+            "Termin abmelden",
+            "auf Freitag verschieben"
+          ],
+          "inquiry_words": [
+            "fragen ob offen ist",
+            "warme Küche bis wann?",
+            "Hunde erlaubt?",
+            "an Lager?",
+            "Öffnungszeiten am Feiertag"
+          ],
           "false_friends": [
             "3. Stock",
             "Menü für 2",
@@ -14695,6 +16594,14 @@
             "5 pers. + chaise haute",
             "groupe de 6"
           ],
+          "time": [
+            "19h30",
+            "midi et demi",
+            "sept heures et demie",
+            "20h",
+            "14h15",
+            "demain à 10h"
+          ],
           "false_friends": [
             "3e étage",
             "menu pour 2",
@@ -14711,6 +16618,14 @@
             "5 persone + seggiolone",
             "gruppo di 6"
           ],
+          "time": [
+            "alle 19:30",
+            "alle sette e mezza di sera",
+            "a mezzogiorno e mezza",
+            "alle 20:00",
+            "domani alle 10",
+            "verso le 19"
+          ],
           "false_friends": [
             "3° piano",
             "menu per 2",
@@ -14726,6 +16641,14 @@
             "für zwei",
             "5 Lüüt + Chinderstuehl",
             "6 Persone"
+          ],
+          "time": [
+            "am halbi achti am Abig",
+            "viertel ab sibe",
+            "am Zmittag 12i",
+            "morn am 9i",
+            "Nami um 3",
+            "19:30"
           ],
           "false_friends": [
             "3. Stock",
@@ -14750,11 +16673,14 @@
         }
       ],
       "ai_language_tip": "Speak warm, natural Brazilian Portuguese (pt-BR); English is rarely spoken outside international hotels in São Paulo or Rio Zona Sul.",
+      "english_ok": "rarely — Only upscale international hotels and select São Paulo/Rio corporate venues handle English phone calls.",
       "politeness": "Warm and friendly; open with 'Oi, bom dia / boa tarde, tudo bem?' before stating request, use 'por favor' and 'você' or polite 'o senhor/a senhora'; close with 'obrigado(a)'.",
       "name_tip": "First name (or first + surname, e.g. João Silva, Ana Oliveira) is primary everywhere—Brazilians address everyone by first name!",
       "phone_tip": "2-digit DDD area code + 9-digit mobile (11) 91234-5678, landline (11) 3123-4567; digit 6 spoken as 'meia'; WhatsApp is universal!",
       "time_tip": "12-hour spoken ('sete e meia da noite', 'meio-dia e meia'), 'quinze pras oito' = 7:45; confirm 'da manhã/da tarde/da noite'.",
       "number_tip": "Digit 6 is almost always spoken as 'meia' (half-dozen) to avoid confusing 'seis' with 'três' or 'sete'!",
+      "avoid_calling": "Avoid lunch peak 12:00–13:30 for small clinics/offices, restaurant rush 12:00–14:00 and 20:00–21:30, and calls after 20:30.",
+      "closed_days": "Many salons and bistros close Mondays; workshops close Sundays and Saturday afternoons; Carnaval and Christmas–New Year bring multi-day slowdowns.",
       "booking_channels": "WhatsApp dominates every single sector in Brazil; Tagme, Get In, and TheFork for restaurants; Doctoralia for doctors; Trinks/avec for salons; iFood for delivery.",
       "voice_menu": "Health plans (Unimed/Bradesco/Amil), diagnostic labs (Fleury/Dasa), banks, Vivo/Claro/TIM, airlines (Azul/GOL/LATAM), and utilities use heavy keypad URA.",
       "callback_habits": "Businesses immediately message the caller's number on WhatsApp ('Posso confirmar pelo Whats?') and reconfirm 24h before.",
@@ -14770,6 +16696,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "seating_pref",
             "kids_detail",
             "backup"
@@ -14890,6 +16817,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "question"
           ],
@@ -14932,6 +16860,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -15144,6 +17073,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -15401,6 +17331,73 @@
             "1 pessoa",
             "grupo de 8"
           ],
+          "time": [
+            "às 19h30",
+            "sete e meia da noite",
+            "meio-dia e meia",
+            "20h",
+            "quinze pras oito",
+            "amanhã às 10h da manhã",
+            "lá pelas 14h",
+            "18:30"
+          ],
+          "date": [
+            "amanhã",
+            "depois de amanhã",
+            "nessa sexta",
+            "terça que vem",
+            "dia 25/11",
+            "25 de novembro",
+            "sábado à noite"
+          ],
+          "name": [
+            "em nome de João Silva",
+            "Ana Oliveira",
+            "Pedro Santos",
+            "Mariana Costa",
+            "Lucas Ferreira"
+          ],
+          "phone": [
+            "(11) 91234-5678",
+            "11 98765-4321",
+            "meu zap (21) 99876-5432",
+            "11912345678"
+          ],
+          "booking_words": [
+            "reservar mesa",
+            "fazer reserva",
+            "reservar quadra",
+            "reservar pousada",
+            "guardar mesa"
+          ],
+          "appointment_words": [
+            "marcar consulta",
+            "agendar dentista",
+            "marcar corte e escova",
+            "agendar banho e tosa",
+            "revisão do carro"
+          ],
+          "order_words": [
+            "pedir pra viagem",
+            "retirada no balcão",
+            "separar no estoque",
+            "encomendar bolo",
+            "delivery"
+          ],
+          "change_words": [
+            "remarcar consulta",
+            "atrasar meia hora",
+            "desmarcar",
+            "cancelar reserva",
+            "mudar o horário"
+          ],
+          "inquiry_words": [
+            "perguntar se abre no feriado",
+            "quanto é a rolha?",
+            "tem estacionamento?",
+            "aceita pet?",
+            "ver se tem em estoque"
+          ],
           "false_friends": [
             "apto 42 bloco 2",
             "combo p/ 2",
@@ -15426,11 +17423,14 @@
         }
       ],
       "ai_language_tip": "Use polite European Portuguese (pt-PT) vocabulary ('telemóvel', 'marcação', 'pequeno-almoço'); avoid blunt 'você'—use 'o senhor / a senhora'; English widely understood in Lisbon/Porto/Algarve.",
+      "english_ok": "often — High English proficiency across Lisbon, Porto, Cascais, Madeira, and the Algarve; less common in rural interior towns.",
       "politeness": "Polite, respectful European Portuguese; open with 'Bom dia / Boa tarde' and 3rd-person indirect ('queria fazer uma marcação para o Sr./a Sra....'); close with 'muito obrigado(a), resto de bom dia'.",
       "name_tip": "First and last name (e.g. Tiago Ferreira, Inês Rodrigues); clinics and public services use full multi-part Portuguese name.",
       "phone_tip": "9-digit numbers with NO area prefix: mobile 912 345 678 (91/92/93/96), Lisbon landline 21 123 4567; read 3-3-3; SMS/WhatsApp confirms.",
       "time_tip": "24-hour common ('20h30'), spoken 'oito e meia da noite', 'um quarto para as oito' = 19:45; dinner typically 20:00–22:00.",
       "number_tip": "In Portugal digit 6 is ALWAYS 'seis' (NEVER 'meia' like Brazil!); 16/17/19 use European pronunciation ('dezasseis', 'dezassete', 'dezanove').",
+      "avoid_calling": "Avoid restaurant rush 12:30–14:30 and 20:00–21:30, small-office lunch break 13:00–14:30, and calls after 21:00.",
+      "closed_days": "Traditional restaurants close Sunday night or Monday; municipal holidays (Santos Populares: June 13 Lisbon / June 24 Porto) and August vacations.",
       "booking_channels": "TheFork and UMAI/Zenchef for restaurants; My CUF / MY LUZ / Lusíadas apps and Doctoralia for private health; Booksy and Treatwell for salons.",
       "voice_menu": "Private hospital groups (CUF, Luz Saúde, Lusíadas), SNS 24, banks, MEO/NOS/Vodafone, EDP, CTT, and TAP use keypad IVR.",
       "callback_habits": "SMS confirmations are standard across restaurants, private clinics, and salons; tradespeople often follow up by phone or WhatsApp.",
@@ -15446,6 +17446,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "allergy",
             "seating_pref",
             "kids_detail",
             "backup"
@@ -15558,6 +17559,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "vehicle_plate",
             "spec",
             "question"
           ],
@@ -15595,6 +17597,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "customization",
             "substitute",
             "address"
           ],
@@ -15806,6 +17809,7 @@
             "phone"
           ],
           "nice_to_have": [
+            "floor_elevator",
             "spec",
             "budget"
           ],
@@ -16053,6 +18057,73 @@
             "5 adultos + cadeira de bebé",
             "1 pessoa",
             "grupo de 8"
+          ],
+          "time": [
+            "às 20h30",
+            "oito e meia da noite",
+            "ao almoço às 13h",
+            "um quarto para as oito",
+            "19:30",
+            "amanhã às 10h",
+            "por volta das 21h",
+            "12h30"
+          ],
+          "date": [
+            "amanhã",
+            "depois de amanhã",
+            "esta sexta-feira",
+            "na próxima terça",
+            "25 de novembro",
+            "25/11",
+            "sábado à noite"
+          ],
+          "name": [
+            "em nome de Tiago Ferreira",
+            "Inês Rodrigues",
+            "João Martins",
+            "Sofia Sousa",
+            "família Pereira"
+          ],
+          "phone": [
+            "912 345 678",
+            "912345678",
+            "o meu telemóvel 961 234 567",
+            "21 123 4567"
+          ],
+          "booking_words": [
+            "reservar mesa",
+            "fazer uma reserva",
+            "marcar mesa na esplanada",
+            "reservar quarto",
+            "marcar campo de padel"
+          ],
+          "appointment_words": [
+            "fazer uma marcação",
+            "marcar consulta",
+            "marcar cabeleireiro",
+            "inspeção do carro",
+            "revisão na oficina"
+          ],
+          "order_words": [
+            "encomendar para take-away",
+            "para levar / para fora",
+            "reservar em loja",
+            "meia dose para levantar",
+            "guardar um"
+          ],
+          "change_words": [
+            "adiar a marcação",
+            "passar para meia hora mais tarde",
+            "cancelar a reserva",
+            "desmarcar consulta",
+            "alterar a hora"
+          ],
+          "inquiry_words": [
+            "perguntar se aceitam cartão estrangeiro",
+            "estão abertos no feriado?",
+            "aceitam cães na esplanada?",
+            "confirmar stock",
+            "saber o preço"
           ],
           "false_friends": [
             "3.º Esq.",

@@ -31,11 +31,15 @@ pub const BLOCK_MAX_CHARS: usize = 300;
 /// The most questions asked.
 pub const MISSING_MAX: usize = 3;
 /// Every known key and the note: the owner may answer all the questions.
-const ANSWERS_MAX: usize = KEYS.len() + 1;
+const ANSWERS_MAX: usize = KEYS.len() + OPTIONAL_KEYS.len() + 1;
 const ANSWER_MAX_CHARS: usize = 80;
 const NOTE_MAX_CHARS: usize = 120;
+/// The most characters of the local note the model words for the owner.
+const LOCAL_NOTE_MAX_CHARS: usize = 240;
 const LADDER_MAX: usize = 4;
 const TASK_FOR_MODEL_CHARS: usize = 600;
+/// The most details offered to add though the call goes without them.
+pub const OPTIONAL_MAX: usize = 4;
 
 /// The details a question can be about (also the keys of an errand's answers).
 /// Every detail a kind of call needs in [crate::place_habits] is one of them.
@@ -43,6 +47,12 @@ pub const KEYS: [&str; 23] = [
     "time", "party", "phone", "name", "item", "contact", "backup", "spec", "pickup", "substitute", "orig_time", "for_whom", "visit_type",
     "question", "checkin_out", "guests", "address", "pet_detail", "reference_no", "pickup_place", "dropoff_place", "room_type", "duration",
 ];
+
+/// Details the owner may add though the call never waits for them (what a
+/// kind of call may also ask, [crate::place_habits::nice_to_have]); they go
+/// into the script like the answers to [KEYS].
+pub const OPTIONAL_KEYS: [&str; 9] =
+    ["kids_detail", "seating_pref", "staff_pref", "budget", "vehicle_plate", "floor_elevator", "customization", "name_kana", "allergy"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -146,6 +156,29 @@ fn contains_any(low: &str, words: &[&str]) -> bool {
     words.iter().any(|w| low.contains(w))
 }
 
+/// A letter or digit of a script that writes spaces between words.
+fn latin(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || (ch.is_alphabetic() && (ch as u32) < 0x2E80)
+}
+
+/// `w` in `low` as words of their own where it begins or ends with a letter of
+/// such a script ("cab" is no word in "cabin"); Chinese, Japanese and Korean
+/// words are found anywhere.
+pub(crate) fn has_word(low: &str, w: &str) -> bool {
+    let (Some(first), Some(last)) = (w.chars().next(), w.chars().last()) else {
+        return false;
+    };
+    low.match_indices(w).any(|(i, _)| {
+        let before = low[..i].chars().next_back();
+        let after = low[i + w.len()..].chars().next();
+        !(latin(first) && before.is_some_and(latin)) && !(latin(last) && after.is_some_and(latin))
+    })
+}
+
+fn has_any_word(low: &str, words: &[&str]) -> bool {
+    words.iter().any(|w| has_word(low, w))
+}
+
 /// A request lower case for reading: Turkish İ comes out as "i" plus U+0307,
 /// and the dot goes ("İptal" reads as "iptal").
 fn fold(text: &str) -> String {
@@ -164,6 +197,15 @@ enum Marker {
 
 fn is_hour_char(c: char) -> bool {
     matches!(c, '點' | '点' | '時' | '时' | '시')
+}
+
+/// "2時間", "2시간", "兩點鐘久": hours as a length of time, not a time of day.
+fn hours_long(c: &[char], hour: usize) -> bool {
+    match (c.get(hour), c.get(hour + 1)) {
+        (Some('時' | '时'), Some('間' | '间')) | (Some('시'), Some('간')) => true,
+        (Some('點' | '点'), Some('鐘' | '钟')) => matches!(c.get(hour + 2), Some('久' | '頭' | '头')),
+        _ => false,
+    }
 }
 
 fn skip_spaces(c: &[char], mut i: usize) -> usize {
@@ -224,9 +266,11 @@ fn it_marker_before(c: &[char], i: usize) -> Option<Marker> {
 fn marker_after(c: &[char], at: usize) -> Option<Marker> {
     const PM: &[&str] = &[
         "de la tarde", "de la noche", "du soir", "de l'après-midi", "de l'apres-midi", "nachmittags", "abends", "da tarde", "da noite", "della sera",
-        "di sera", "di pomeriggio", "tối", "chiều", "malam", "sore",
+        "di sera", "di pomeriggio", "tối", "chiều", "malam", "sore", "petang", "in the evening", "in the afternoon", "at night", "tonight", "ce soir",
+        "del vespre", "da nit", "am abend", "am abig", "owes", "'s avonds", "'s middags",
     ];
-    const MORNING: &[&str] = &["de la mañana", "du matin", "morgens", "vormittags", "da manhã", "da manha", "di mattina", "sáng", "pagi"];
+    const MORNING: &[&str] =
+        &["de la mañana", "du matin", "morgens", "vormittags", "da manhã", "da manha", "di mattina", "sáng", "pagi", "in the morning", "'s ochtends", "moies"];
     let j = skip_spaces(c, at);
     let word: String = c[j.min(c.len())..].iter().take(16).collect();
     if PM.iter().any(|p| word.starts_with(p)) {
@@ -238,11 +282,12 @@ fn marker_after(c: &[char], at: usize) -> Option<Marker> {
     }
 }
 
-/// Where the hour's unit ends when a number at `after` is followed by "h", "Uhr"
-/// or "giờ" ("19h30", "20 Uhr 30"); not "2 hours".
+/// Where the hour's unit ends when a number at `after` is followed by "h", "Uhr",
+/// "giờ" and the like ("19h30", "20 Uhr 30", "19u30", "21 hs", "7 மணி", "5etan");
+/// not "2 hours".
 fn hour_unit_end(c: &[char], after: usize) -> Option<usize> {
     let j = skip_spaces(c, after);
-    for unit in ["uhr", "giờ", "h"] {
+    for unit in ["uhr", "auer", "uur", "giờ", "hs", "h", "u", "மணி", "etan"] {
         let n = unit.chars().count();
         let word: String = c[j.min(c.len())..].iter().take(n).collect();
         if word == unit && !c.get(j + n).is_some_and(|x| x.is_alphabetic()) {
@@ -252,11 +297,18 @@ fn hour_unit_end(c: &[char], after: usize) -> Option<usize> {
     None
 }
 
-/// A number written after the word for "at" in Italian, Spanish, Portuguese,
-/// Indonesian and Turkish ("alle 20", "a las 8", "pukul 19.30", "saat 20.30").
+/// The words for "at" (and "around") before a time, in the languages that
+/// write one ("alle 20", "a las 8", "pukul 19.30", "saat 20.30", "um 9", "at 7").
+const AT_WORDS: [&str; 30] = [
+    "alle ", "ore ", "pukul ", "jam ", "a las ", "a la ", "às ", "ás ", "saat ", "a les ", "entre las ", "y las ", "para las ", "verso le ", "at ",
+    "um ", "ëm ", "am ", "gegen ", "géint ", "rond ", "vers ", "around ", "sobre las ", "sobre as ", "tipo ", "por volta das ", "lá pelas ", "until ",
+    "by ",
+];
+
+/// A number written after the word for "at" ([AT_WORDS]).
 fn after_at_word(c: &[char], i: usize) -> bool {
-    let pre: Vec<char> = c[i.saturating_sub(8)..i].iter().copied().collect();
-    ["alle ", "ore ", "pukul ", "jam ", "a las ", "a la ", "às ", "saat "].iter().any(|w| {
+    let pre: Vec<char> = c[i.saturating_sub(16)..i].to_vec();
+    AT_WORDS.iter().any(|w| {
         let w: Vec<char> = w.chars().collect();
         pre.ends_with(&w) && !(pre.len() > w.len() && pre[pre.len() - w.len() - 1].is_alphabetic())
     })
@@ -330,7 +382,7 @@ fn clocks_of(c: &[char], kind: Kind) -> Vec<(u32, u32)> {
                     found = Some((m, end, suffix));
                 }
             }
-        } else if a2 < c.len() && is_hour_char(c[a2]) && h <= 24 && c.get(a2 + 1) != Some(&c[a2]) {
+        } else if a2 < c.len() && is_hour_char(c[a2]) && h <= 24 && c.get(a2 + 1) != Some(&c[a2]) && !hours_long(c, a2) {
             let mut j = a2 + 1;
             let mut m = 0;
             let half = skip_spaces(c, j);
@@ -369,13 +421,27 @@ fn clocks_of(c: &[char], kind: Kind) -> Vec<(u32, u32)> {
             let mut m = 0;
             let mut j = after;
             if let (true, Some(d1), Some(d2)) = (matches!(c.get(after), Some('.')), d1, d2) {
-                if c.get(after + 3).and_then(|x| digit_of(*x)).is_none() && d1 * 10 + d2 < 60 {
+                // Not a date written after it ("am 5.12.").
+                if c.get(after + 3).and_then(|x| digit_of(*x)).is_none() && c.get(after + 3) != Some(&'.') && d1 * 10 + d2 < 60 {
                     m = d1 * 10 + d2;
                     j = after + 3;
                 }
             }
             let (suffix, end) = ampm_after(c, j);
             found = Some((m, end, suffix));
+        } else if ascii && len <= 2 && (1..=12).contains(&h) && c.get(after) == Some(&'.') {
+            // 6.30pm, 10.30am: the am or pm must be written, or it is a price.
+            let d1 = c.get(after + 1).and_then(|x| digit_of(*x));
+            let d2 = c.get(after + 2).and_then(|x| digit_of(*x));
+            if let (Some(d1), Some(d2)) = (d1, d2) {
+                let (suffix, end) = ampm_after(c, after + 3);
+                if matches!(suffix, Some(Marker::Am | Marker::Pm)) && d1 * 10 + d2 < 60 && c.get(after + 3).and_then(|x| digit_of(*x)).is_none() {
+                    found = Some((d1 * 10 + d2, end, suffix));
+                }
+            }
+        } else if ascii && len <= 2 && (1..=24).contains(&h) && marker_after(c, after).is_some() {
+            // 10 in the morning, 8 de la noche, 3 petang
+            found = Some((0, after, None));
         } else if ascii && len <= 2 && (1..=12).contains(&h) {
             let (suffix, end) = ampm_after(c, after);
             if end > after {
@@ -415,13 +481,14 @@ fn ampm_after(c: &[char], at: usize) -> (Option<Marker>, usize) {
     match word.trim_end_matches('.') {
         "am" | "a.m" => (Some(Marker::Am), end),
         "pm" | "p.m" => (Some(Marker::Pm), end),
-        "o'clock" => (None, end),
+        // "5ish": about five.
+        "o'clock" | "ish" => (None, end),
         _ => (None, at),
     }
 }
 
 /// The longest stretch of the words that reads as a phone number (8 to 15
-/// digits, joined by spaces, dashes or brackets; not a written date).
+/// digits, joined by spaces, dashes, brackets or the Japanese の; not a written date).
 fn has_phone(c: &[char]) -> bool {
     let mut i = 0;
     while i < c.len() {
@@ -432,7 +499,7 @@ fn has_phone(c: &[char]) -> bool {
         let mut j = i;
         let mut groups: Vec<usize> = Vec::new();
         let mut cur = 0;
-        while j < c.len() && (digit_of(c[j]).is_some() || matches!(c[j], '-' | ' ' | '(' | ')' | '+' | '－')) {
+        while j < c.len() && (digit_of(c[j]).is_some() || matches!(c[j], '-' | ' ' | '(' | ')' | '+' | '－' | 'の')) {
             if digit_of(c[j]).is_some() {
                 cur += 1;
             } else if cur > 0 {
@@ -672,23 +739,58 @@ pub fn names_party(text: &str) -> bool {
     has_party(&low, &c)
 }
 
+/// The words name a day: a day in words (tomorrow, a weekday, a month) or in
+/// numbers ("11月25號", "25/11", "am 25.11.").
 fn has_date(low: &str, c: &[char]) -> bool {
-    if contains_any(
-        low,
-        &[
-            "明天", "後天", "后天", "今天", "今晚", "明晚", "週", "周", "星期", "禮拜", "礼拜", "tomorrow", "tonight", "today", "monday", "tuesday",
-            "wednesday", "thursday", "friday", "saturday", "sunday", "明日", "今日", "今夜", "来週", "来周", "내일", "오늘", "mañana", "hoy",
-            "demain", "aujourd", "morgen", "heute", "amanhã", "hoje",
-        ],
-    ) {
+    if contains_any(low, DAY_WORDS) || contains_any(low, &["hoy", "demà", "avui"]) || has_any_word(low, &["muer", "tmr", "tmrw", "gaur"]) {
         return true;
+    }
+    let words: Vec<&str> = low.split(|ch: char| !ch.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    let digits = |w: Option<&&str>| w.is_some_and(|w| w.starts_with(|ch: char| ch.is_ascii_digit()));
+    for (i, w) in words.iter().enumerate() {
+        // Short weekdays: the ones no other word is; "sat" and "sun" only next to a word of the week.
+        if ["mon", "tue", "tues", "wed", "weds", "thu", "thur", "thurs", "fri"].contains(w) {
+            return true;
+        }
+        if ["sat", "sun"].contains(w)
+            && (i > 0 && ["this", "next", "on", "coming", "last"].contains(&words[i - 1])
+                || words.get(i + 1).is_some_and(|n| ["night", "evening", "morning", "afternoon", "arvo", "lunch", "dinner"].contains(n)))
+        {
+            return true;
+        }
+        // Short months: only next to a number ("Nov 25", "25th Nov", "2 mai").
+        if SHORT_MONTHS.contains(w) && (digits(words.get(i + 1)) || (i > 0 && digits(words.get(i - 1)))) {
+            return true;
+        }
     }
     let mut i = 0;
     while i < c.len() {
         match read_number(c, i) {
-            Some((_, len)) => {
-                if matches!(c.get(i + len), Some('月') | Some('日') | Some('號') | Some('号') | Some('월') | Some('일')) {
-                    return true;
+            Some((n, len)) => {
+                let after = c.get(i + len).copied();
+                let next = c.get(i + len + 1).copied();
+                match after {
+                    Some('月') | Some('월') | Some('일') => return true,
+                    // Not the days of "1泊2日" (one night, two days).
+                    Some('日') if i == 0 || c[i - 1] != '泊' => return true,
+                    // A day ("3號", "3號晚上"), not a numbered thing ("3號餐", "4号门").
+                    Some('號') | Some('号') if next.is_none_or(|x| !x.is_alphanumeric() || "晚早中下上前後后的星週周禮礼當当那這这".contains(x)) => {
+                        return true;
+                    }
+                    _ => {}
+                }
+                let ascii = digit_of(c[i]).is_some() && len <= 2 && (i == 0 || digit_of(c[i - 1]).is_none());
+                if ascii && matches!(after, Some('/') | Some('.')) {
+                    if let Some((m, l2)) = read_number(c, i + len + 1).filter(|_| next.and_then(digit_of).is_some()) {
+                        let end = i + len + 1 + l2;
+                        let more = c.get(end).and_then(|x| digit_of(*x)).is_some();
+                        let slash = after == Some('/') && n <= 31 && m <= 31 && (n <= 12 || m <= 12) && (n, m) != (24, 7) && l2 <= 2 && !more;
+                        // 25.11. or 25.11.2026: a dot after the month too.
+                        let dots = after == Some('.') && n <= 31 && (1..=12).contains(&m) && l2 <= 2 && c.get(end) == Some(&'.');
+                        if slash || dots {
+                            return true;
+                        }
+                    }
                 }
                 i += len;
             }
@@ -696,6 +798,223 @@ fn has_date(low: &str, c: &[char]) -> bool {
         }
     }
     false
+}
+
+/// Days and months in words, in the languages owners write ([has_date]).
+const DAY_WORDS: &[&str] = &[
+    "明天", "後天", "后天", "今天", "今晚", "明晚", "明早", "週", "周", "星期", "禮拜", "礼拜", "明仔載", "今仔日", "後日", "聽日", "听日", "明日", "今日",
+    "今夜", "あさって", "来週", "来周", "今週", "今月", "来月", "月末", "連休", "曜", "내일", "오늘", "모레", "요일", "주말", "tomorrow", "tonight",
+    "today", "weekend", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "mañana", "esta noche", "fin de semana", "lunes",
+    "martes", "miércoles", "jueves", "viernes", "sábado", "domingo", "demain", "aujourd", "ce soir", "week-end", "lundi", "mardi", "mercredi", "jeudi",
+    "vendredi", "samedi", "dimanche", "morgen", "heute", "wochenende", "montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag",
+    "sonntag", "vandaag", "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag", "iwermuer", "méindeg", "dënschdeg",
+    "mëttwoch", "donneschdeg", "freideg", "samschdeg", "sonndeg", "amanhã", "hoje", "fim de semana", "segunda", "terça", "quarta-feira",
+    "quinta-feira", "sexta", "domani", "oggi", "stasera", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica", "dilluns",
+    "dimarts", "dimecres", "dijous", "divendres", "dissabte", "diumenge", "mañá", "bihar", "january", "february", "september", "october", "november",
+    "december", "enero", "febrero", "marzo", "abril", "junio", "julio", "agosto", "septiembre", "octubre",
+    "noviembre", "diciembre", "janvier", "février", "avril", "juillet", "août", "septembre", "octobre", "novembre", "décembre", "januar", "jänner",
+    "februar", "märz", "oktober", "dezember", "janeiro", "fevereiro", "março", "maio", "junho", "julho", "setembro", "outubro",
+    "novembro", "dezembro", "januari", "februari", "maart", "augustus",
+];
+/// Months that are also other words or names ("may", "mai", "June", "Julia"): only next to a number.
+const SHORT_MONTHS: &[&str] = &[
+    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec", "mayo", "mai", "mei", "mars", "juin", "dic", "dez",
+    "april", "june", "july", "august", "juni", "juli",
+];
+
+/// Hours written in words, 1 to 12, in the languages owners write ("half
+/// seven", "a las cinco", "sieben Uhr", "sete e meia").
+const CLOCK_NUMBERS: &[&str] = &[
+    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "una", "uno", "dos", "tres", "cuatro", "cinco",
+    "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "dues", "quatre", "cinc", "sis", "set", "vuit", "nou", "deu", "onze", "dotze", "unha",
+    "dúas", "catro", "sete", "oito", "nove", "dez", "une", "un", "deux", "trois", "cinq", "sept", "huit", "neuf", "dix", "douze", "eins", "ein",
+    "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun", "zehn", "elf", "zwölf", "een", "twee", "drie", "zes", "zeven", "negen",
+    "tien", "twaalf", "eent", "zwee", "dräi", "véier", "fënnef", "siwen", "aacht", "néng", "zéng", "eelef", "zwielef", "eis", "drü", "vieri",
+    "föifi", "sächsi", "sibe", "achti", "nüni", "zäni", "elfi", "zwölfi", "um", "uma", "duas", "dois", "três", "quatro", "doze", "due", "tre",
+    "quattro", "cinque", "sei", "sette", "otto", "dieci", "undici", "dodici",
+];
+/// The parts of an hour that make a number next to them a time ("quarter past
+/// 5", "nueve y media", "viertel nach sechs").
+const CLOCK_PARTS: &[&str] = &[
+    "half past", "quarter past", "quarter to", "quarter after", "y media", "y cuarto", "menos cuarto", "cuarto para", "et demie", "et demi", "et quart",
+    "moins le quart", "moins quart", "viertel", "e meia", "e media", "e mezza", "pras", "para as", "quarts de", "quart de", "kwart", "véierel",
+];
+/// Parts that make a time only with the hour right after them ("half seven"; not "half price for 2").
+const CLOCK_PARTS_BEFORE: &[&str] = &["half", "halb", "halwer", "halbi", "dreiviertel"];
+/// Noon and midnight in words.
+const NOON_WORDS: &[&str] = &[
+    "noon", "midday", "midnight", "lunchtime", "mediodía", "medio día", "midi", "minuit", "mittag", "mittags", "mezzogiorno", "mezzanotte", "meio-dia",
+    "meia-noite", "zmittag",
+];
+/// Korean hours in native numbers ("세 시"; not "세 시간", hours long).
+const KO_HOURS: &[&str] = &["한", "두", "세", "네", "다섯", "여섯", "일곱", "여덟", "아홉", "열", "열한", "열두"];
+
+/// A time written in words ([CLOCK_NUMBERS], [CLOCK_PARTS]).
+fn worded_clock(low: &str) -> bool {
+    let words: Vec<&str> = low.split(|ch: char| !(ch.is_alphanumeric() || ch == '\'')).filter(|w| !w.is_empty()).collect();
+    let number = |w: &str| CLOCK_NUMBERS.contains(&w) || (w.len() <= 2 && w.parse::<u32>().is_ok_and(|n| (1..=24).contains(&n)));
+    let at = |i: usize, phrase: &str| {
+        let p: Vec<&str> = phrase.split(' ').collect();
+        words.len() >= i + p.len() && words[i..i + p.len()] == p[..]
+    };
+    for i in 0..words.len() {
+        for part in CLOCK_PARTS {
+            if at(i, part) {
+                let n = part.split(' ').count();
+                let near = words[i.saturating_sub(2)..i].iter().chain(&words[i + n..(i + n + 2).min(words.len())]).any(|w| number(w));
+                if near {
+                    return true;
+                }
+            }
+        }
+        if CLOCK_PARTS_BEFORE.contains(&words[i]) && words.get(i + 1).is_some_and(|w| number(w)) {
+            return true;
+        }
+        if CLOCK_NUMBERS.contains(&words[i]) {
+            // "seven o'clock", "sieben Uhr"; "a las cinco", "alle sette", "at seven"
+            if words.get(i + 1).is_some_and(|w| ["o'clock", "uhr", "auer", "uur"].contains(w)) {
+                return true;
+            }
+            if AT_WORDS.iter().any(|a| {
+                let n = a.trim_end().split(' ').count();
+                i >= n && at(i - n, a.trim_end())
+            }) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// The words name a time of day, in any way owners write one ("19:30",
+/// "7 pm", "noon", "half seven", "세 시", "今から30分後"). A day alone
+/// ("明天", "samedi") is no time of day ([has_date]).
+fn clock_in(low: &str, c: &[char]) -> bool {
+    if !clocks_of(c, Kind::Contact).is_empty() || worded_clock(low) || has_any_word(low, NOON_WORDS) {
+        return true;
+    }
+    // 세 시, 세시: not 세 시간.
+    for h in KO_HOURS {
+        for form in [format!("{h} 시"), format!("{h}시")] {
+            if low.match_indices(&form).any(|(i, _)| !low[i + form.len()..].starts_with('간') && !low[..i].ends_with(|ch: char| ('\u{AC00}'..='\u{D7A3}').contains(&ch))) {
+                return true;
+            }
+        }
+    }
+    // 30分後: in thirty minutes.
+    let mut i = 0;
+    while i < c.len() {
+        match read_number(c, i) {
+            Some((_, len)) if c.get(i + len) == Some(&'分') && c.get(i + len + 1) == Some(&'後') => return true,
+            Some((_, len)) => i += len,
+            None => i += 1,
+        }
+    }
+    false
+}
+
+/// The words name a time of day ([clock_in]): what the time of a call needs.
+pub fn names_clock(text: &str) -> bool {
+    let low = fold(text);
+    let c: Vec<char> = low.chars().collect();
+    clock_in(&low, &c)
+}
+
+/// The words name a day ([has_date]): what an original booking or a stay needs.
+pub fn names_date(text: &str) -> bool {
+    let low = fold(text);
+    let c: Vec<char> = low.chars().collect();
+    has_date(&low, &c)
+}
+
+/// The words hold a phone number.
+pub fn names_phone(text: &str) -> bool {
+    has_phone(&fold(text).chars().collect::<Vec<char>>())
+}
+
+/// Titles and family words before a name ("Mr Tan", "Mme Bernard", "familia Gómez").
+const NAME_TITLES: &[&str] = &[
+    "mr", "mr.", "mrs", "mrs.", "ms", "ms.", "miss", "m.", "mme", "mlle", "herr", "frau", "mag.", "dr.", "sr.", "sra.", "señor", "señora", "senhor",
+    "senhora", "family", "familia", "família", "famille", "familie", "famill",
+];
+/// Common Chinese family names that start few other words.
+const SURNAMES: &str = "王李張张劉刘陳陈楊杨黃黄趙赵吳吴徐孫孙朱胡郭林羅罗鄭郑梁謝谢宋唐韓韩馮冯鄧邓曹彭曾蕭萧董袁潘蔣蒋蔡杜葉叶蘇苏魏呂吕丁沈姚盧卢姜崔鍾钟譚谭陸陆汪范廖賈贾韋韦鄒邹孟熊秦邱尹薛侯陶賀贺顧顾郝龔龚邵錢钱嚴严戴湯汤";
+/// Common Korean family names that start few other words.
+const KO_SURNAMES: &str = "김박최홍윤황송류권배허곽백";
+/// Japanese words that come before で and are no name ("電話で", "現金で").
+const NOT_NAMES_JA: &[&str] =
+    &["電話", "現金", "予約", "個室", "店内", "全員", "今日", "明日", "当日", "本日", "窓側", "禁煙", "喫煙", "大人", "子供", "一人", "二人", "家族"];
+/// Capitalized words that are no name ("Book", "Friday", "Hotel").
+const NOT_NAMES: &[&str] = &[
+    "book", "call", "please", "reserve", "reservation", "table", "hotel", "taxi", "restaurant", "the", "my", "new", "york", "tisch", "termin", "uhr",
+    "reservierung", "zimmer", "mesa", "reserva", "reservar", "réserver", "réservation", "bitte", "hallo", "hi", "hello", "bonjour", "hola", "olá", "oi",
+    "ask", "tell", "order", "get", "make", "can", "could", "would", "dear", "thanks", "thank", "airport", "station", "street", "road", "main", "bank",
+    "holiday", "day", "good", "dinner", "lunch", "pizza", "café", "cafe", "bar", "grill",
+];
+/// Words before a place's name, not a person's ("at Luigi's Pizza").
+const PLACE_LEADS: &[&str] =
+    &["at", "to", "from", "in", "near", "call", "llama", "llame", "en", "à", "au", "chez", "bei", "im", "no", "na", "em", "ao", "zum", "zur"];
+
+fn han(ch: char) -> bool {
+    ('\u{4E00}'..='\u{9FFF}').contains(&ch)
+}
+
+fn name_gap(ch: char) -> bool {
+    ch.is_whitespace() || matches!(ch, ',' | '，' | '、' | '。' | ';' | '；' | ':' | '：' | '(' | ')' | '（' | '）' | '!' | '！' | '?' | '？')
+}
+
+/// A Chinese name on its own ("王小明", "訂王小明", "李娜").
+fn chinese_name(t: &str) -> bool {
+    let cs: Vec<char> = t.trim_start_matches(['留', '訂', '订', '寫', '写', '叫']).chars().collect();
+    (2..=3).contains(&cs.len()) && cs.iter().all(|c| han(*c)) && SURNAMES.contains(cs[0])
+}
+
+/// A Korean name on its own ("김철수", "최민수요").
+fn korean_name(t: &str) -> bool {
+    let cs: Vec<char> = t.trim_end_matches(['요', '씨', '님']).chars().collect();
+    cs.len() == 3 && cs.iter().all(|c| ('\u{AC00}'..='\u{D7A3}').contains(c)) && KO_SURNAMES.contains(cs[0])
+}
+
+/// A Japanese name to book under ("山田で", "山田太郎でお願いします").
+fn japanese_name(t: &str) -> bool {
+    let cs: Vec<char> = t.chars().collect();
+    let run = cs.iter().take_while(|c| han(**c)).count();
+    let word: String = cs[..run].iter().collect();
+    (2..=4).contains(&run) && cs.get(run) == Some(&'で') && !NOT_NAMES_JA.contains(&word.as_str())
+}
+
+/// A capitalized word that may be part of a name ("García", "O'Brien").
+fn titled(w: &str) -> bool {
+    let mut cs = w.chars();
+    let Some(first) = cs.next() else {
+        return false;
+    };
+    let rest: Vec<char> = cs.collect();
+    first.is_uppercase()
+        && latin(first)
+        && rest.iter().all(|c| c.is_alphabetic() || matches!(c, '\'' | '-'))
+        && rest.iter().any(|c| c.is_lowercase())
+        && !NOT_NAMES.contains(&w.to_lowercase().as_str())
+        && !DAY_WORDS.contains(&w.to_lowercase().as_str())
+}
+
+/// A first and last name written in Latin letters ("Alex Taylor", "Sofie Van den Berg").
+fn latin_name(text: &str) -> bool {
+    let words: Vec<&str> = text.split(name_gap).filter(|w| !w.is_empty()).collect();
+    words.windows(2).enumerate().any(|(i, p)| titled(p[0]) && titled(p[1]) && !(i > 0 && PLACE_LEADS.contains(&words[i - 1].to_lowercase().as_str())))
+}
+
+/// The words give a name to book under, in any way owners write one.
+fn name_in(text: &str, low: &str) -> bool {
+    contains_any(low, NAME_WORDS)
+        || has_any_word(low, NAME_TITLES)
+        || text.split(name_gap).any(|t| chinese_name(t) || korean_name(t) || japanese_name(t))
+        || latin_name(text)
+}
+
+/// The words give a name to book under ([name_in]).
+pub fn names_name(text: &str) -> bool {
+    name_in(text, &fold(text))
 }
 
 fn has_qty(low: &str, c: &[char]) -> bool {
@@ -726,7 +1045,12 @@ fn has_qty(low: &str, c: &[char]) -> bool {
     const WORDS: [&str; 18] = [
         "one", "two", "three", "four", "five", "six", "dozen", "uno", "dos", "tres", "un", "une", "deux", "trois", "ein", "eine", "zwei", "drei",
     ];
-    low.split(|ch: char| !ch.is_alphabetic()).any(|w| WORDS.contains(&w)) || contains_any(low, &["porciones", "unidades", "pièces", "stück", "porções"])
+    // Korean counts in native numbers ("치킨 두 마리", "커피 세 잔").
+    const KO_UNITS: [&str; 10] = ["마리", "개", "잔", "판", "병", "인분", "박스", "세트", "그릇", "봉지"];
+    let korean = KO_HOURS.iter().any(|n| KO_UNITS.iter().any(|u| low.contains(&format!("{n} {u}")) || low.contains(&format!("{n}{u}"))));
+    korean
+        || low.split(|ch: char| !ch.is_alphabetic()).any(|w| WORDS.contains(&w))
+        || contains_any(low, &["porciones", "unidades", "pièces", "stück", "porções"])
 }
 
 fn foreign_script(low: &str) -> bool {
@@ -792,7 +1116,7 @@ const SERVICE_WORDS: &[&str] = &[
 const NAME_WORDS: &[&str] = &[
     "姓", "名字", "稱呼", "称呼", "名義", "名义", "先生", "小姐", "太太", "女士", "under ", "name is", "my name", "name:", "under the name", " mr", " mrs",
     " ms ", "名前", "様", "で予約", "이름", "성함", "님", "으로 예약", "a nombre", "nombre", "au nom", "nom de", "sous le nom", "auf den namen", "unter dem namen",
-    "name ist", "em nome", "nome",
+    "name ist", "em nome", "nome", "予約名", "代表者", "예약자", "カタカナ", "的名", "個名", "name ", "booking name", "op naam", "op den numm",
 ];
 const ASKS_TIME_WORDS: &[&str] = &[
     "幾點", "几点", "什麼時候", "什么时候", "哪天", "哪一天", "when ", "what time", "which day", "いつ", "何時", "몇 시", "언제", "a qué hora", "cuándo",
@@ -827,9 +1151,9 @@ fn kind_of(low: &str) -> Kind {
     }
 }
 
-/// The kind of call: by its words, and a request that names a time and a
-/// number of people but no service is a table booking whatever the language.
-fn classify(low: &str, c: &[char]) -> Kind {
+/// The kind of call by the word lists above, and a request that names a time
+/// and a number of people but no service is a table booking whatever the language.
+fn classify_words(low: &str, c: &[char]) -> Kind {
     let kind = kind_of(low);
     if matches!(kind, Kind::Contact | Kind::Appointment)
         && !contains_any(low, SERVICE_WORDS)
@@ -839,6 +1163,128 @@ fn classify(low: &str, c: &[char]) -> Kind {
         return Kind::Restaurant;
     }
     kind
+}
+
+/// The kind of call ([read_type]).
+fn classify(low: &str, c: &[char]) -> Kind {
+    read_type(low, c).0
+}
+
+/// Words of the other kinds of business ([crate::place_habits::TYPES]), read
+/// before the words of a table, an order or an appointment: "Taxi bestellen"
+/// is a ride, "訂房" a room and "トリミング" the pet's.
+const PLACE_WORDS: [(&str, &[&str]); 9] = [
+    (
+        "tracking",
+        &[
+            "包裹", "快遞", "快递", "宅配", "物流", "貨運", "货运", "查件", "運單", "运单", "tracking", "parcel", "shipment", "courier", "my package",
+            "the package", "a package", "荷物", "再配達", "追跡", "宅急便", "택배", "배송", "paquetería", "mi paquete", "el paquete", "colis", "paket",
+            "sendung", "rastreio", "rastrear", "encomenda dos correios",
+        ],
+    ),
+    (
+        "customer_service",
+        &[
+            "客服", "退款", "退費", "退费", "帳單", "账单", "customer service", "support line", "refund", "billing", "カスタマーサポート", "カスタマーセンター",
+            "返金", "고객센터", "환불", "atención al cliente", "servicio al cliente", "reembolso", "service client", "service clients", "remboursement",
+            "kundenservice", "kundendienst", "rückerstattung", "atendimento ao cliente",
+        ],
+    ),
+    (
+        "transport",
+        &[
+            "叫車", "叫车", "計程車", "计程车", "出租車", "出租车", "的士", "包車", "包车", "接送", "taxi", "cab", "uber", "lyft", "shuttle", "airport transfer",
+            "limo", "タクシー", "送迎", "택시", "콜택시", "remis", "remís", "vtc", "chauffeur", "táxi",
+        ],
+    ),
+    (
+        "hotel",
+        &[
+            "飯店", "酒店", "旅館", "旅馆", "民宿", "訂房", "订房", "退房", "入住", "房型", "hotel", "motel", "hostel", "check-in", "checkin", "checkout",
+            "check-out", "late check", "early check", "a room", "room booking", "ホテル", "宿泊", "部屋", "チェックイン", "チェックアウト", "호텔", "숙소", "객실",
+            "체크인", "체크아웃", "펜션", "habitación", "hostal", "reservar cuarto", "hôtel", "chambre", "zimmer", "reservar quarto", "reservar um quarto",
+            "quarto duplo", "pousada", "hospedagem", "kamer", "zëmmer", "cabin", "cabaña",
+        ],
+    ),
+    (
+        "pet",
+        &[
+            "寵物美容", "宠物美容", "寵物店", "宠物店", "獸醫", "兽医", "動物醫院", "动物医院", "grooming", "groomer", "vet", "veterinarian", "pet shop",
+            "トリミング", "ペットサロン", "動物病院", "애견미용", "동물병원", "peluquería canina", "veterinario", "toilettage", "vétérinaire", "tierarzt",
+            "hundesalon", "banho e tosa", "veterinário",
+        ],
+    ),
+    (
+        "home_service",
+        &[
+            "水電", "水电", "清潔", "清洁", "打掃", "打扫", "搬家", "冷氣", "空调", "抓漏", "plumber", "electrician", "house cleaning", "cleaner",
+            "cleaners", "cleaning service", "movers", "moving company", "handyman", "exterminator", "pest control", "aircon", "hvac", "水道", "引越し",
+            "ハウスクリーニング", "エアコン", "청소", "이사", "에어컨", "plomero", "fontanero", "electricista", "mudanza", "plombier", "électricien", "ménage",
+            "déménagement", "klempner", "elektriker", "umzug", "encanador", "eletricista", "faxina", "mudança",
+        ],
+    ),
+    (
+        "property",
+        &[
+            "房東", "房东", "租屋", "看房", "租房", "物業", "物业", "landlord", "leasing office", "viewing", "property manager", "realtor", "不動産", "内見",
+            "管理会社", "부동산", "집주인", "inmobiliaria", "agence immobilière", "vermieter", "hausverwaltung", "besichtigung", "makler", "imobiliária",
+        ],
+    ),
+    (
+        "government_school",
+        &[
+            "區公所", "区公所", "戶政", "户政", "市政府", "監理", "监理", "學校", "学校", "幼兒園", "幼儿园", "city hall", "dmv", "school", "kindergarten",
+            "city office", "county office", "town office", "municipal office", "council office", "government office", "passport office",
+            "social security office", "courthouse", "oficina municipal", "registro civil",
+            "daycare", "town hall", "embassy", "consulate", "市役所", "区役所", "役所", "保育園", "幼稚園", "園見学", "주민센터", "구청", "학교", "유치원",
+            "ayuntamiento", "colegio", "escuela", "guardería", "mairie", "école", "crèche", "préfecture", "bürgeramt", "rathaus", "schule", "kita",
+            "prefeitura", "escola", "creche", "embaixada", "consulado",
+        ],
+    ),
+    (
+        "activity",
+        &[
+            "球場", "球场", "場地", "场地", "包場", "包场", "約個場", "约个场", "密室", "露營", "ktv", "golf", "tennis", "court", "lane", "pitch", "tee time",
+            "escape room", "bowling", "bowls", "karaoke", "padel", "pádel", "cancha", "pista", "terrain", "bahn", "kegelbahn", "quadra", "campo de padel",
+            "ゴルフ", "カラオケ", "体験", "볼링", "골프", "노래방", "체험", "대관", "padelplein",
+        ],
+    ),
+];
+/// A pet named (only when nothing else names the kind: "a table, pets welcome?" is a table).
+const PET_WORDS: &[&str] = &["寵物", "宠物", "pet", "pets", "ペット", "애견", "반려견", "펫", "mascota", "mascotas", "cachorro"];
+
+/// The kind of call, the kind of business, and whether only a word of
+/// asking named it (the model should look). In this order: a change, the
+/// kinds of [PLACE_WORDS], the word lists of a table, an order and an
+/// appointment, then the words owners use in every region of the data
+/// ([crate::place_habits::lexicon]). A room booked is a hotel's and a court
+/// an activity's: [PLACE_WORDS] read them first.
+fn read_type(low: &str, c: &[char]) -> (Kind, &'static str, bool) {
+    if contains_any(low, CHANGE_WORDS) {
+        return (Kind::Change, "change", false);
+    }
+    if let Some(&(place, _)) = PLACE_WORDS.iter().find(|(_, words)| has_any_word(low, words)) {
+        return (Kind::of_place(place), place, false);
+    }
+    let kind = classify_words(low, c);
+    if kind != Kind::Contact {
+        return (kind, place_of(low, kind), false);
+    }
+    let lx = crate::place_habits::lexicon();
+    let said = |words: &[String]| words.iter().any(|w| has_word(low, w));
+    if said(&lx.change) {
+        (Kind::Change, "change", false)
+    } else if said(&lx.booking) {
+        (Kind::Restaurant, "restaurant", false)
+    } else if said(&lx.appointment) {
+        (Kind::Appointment, place_of(low, Kind::Appointment), false)
+    } else if said(&lx.order) {
+        (Kind::Order, "takeout", false)
+    } else if has_any_word(low, PET_WORDS) {
+        (Kind::Appointment, "pet", false)
+    } else {
+        (Kind::Contact, "contact", said(&lx.inquiry))
+    }
 }
 
 /// Words of a doctor's, a hairdresser's and a repair appointment: which kind
@@ -876,7 +1322,7 @@ fn place_of(low: &str, kind: Kind) -> &'static str {
 pub fn place_type_of(task: &str) -> &'static str {
     let low = fold(task);
     let c: Vec<char> = low.chars().collect();
-    place_of(&low, classify(&low, &c))
+    read_type(&low, &c).1
 }
 
 /// What Bageo knows besides the owner's words.
@@ -909,19 +1355,24 @@ pub fn local(task: &str) -> Local {
 /// The local look: pure text work, microseconds. A simple call to someone the
 /// owner knows, and a request that already says what the call needs, have
 /// nothing missing. A table needs a phone number to leave, and a name unless
-/// the owner's name is set.
+/// the owner's name is set. The other kinds of business ([PLACE_WORDS]) need
+/// what they need where the number is ([crate::place_habits::must_have]): the
+/// details this look can read are asked here, and when it cannot read one
+/// (a check-in date, a pickup place) the model looks.
 pub fn local_with(task: &str, known: &Known) -> Local {
     let low = fold(task);
     let c: Vec<char> = low.chars().collect();
-    let kind = classify(&low, &c);
+    let (kind, place, vague) = read_type(&low, &c);
     let clocks = clocks_of(&c, kind);
     let asks_time = contains_any(&low, ASKS_TIME_WORDS);
-    let time_ok = !clocks.is_empty() || asks_time;
+    // A time needs a time of day; a day alone still asks it.
+    let time_ok = !clocks.is_empty() || asks_time || clock_in(&low, &c);
     let phone = has_phone(&c);
-    let name = contains_any(&low, NAME_WORDS);
+    let name = name_in(task, &low);
     let mut miss: Vec<&'static str> = Vec::new();
-    match kind {
-        Kind::Restaurant => {
+    let mut unread = false;
+    match place {
+        "restaurant" => {
             if !time_ok {
                 miss.push("time");
             }
@@ -936,7 +1387,7 @@ pub fn local_with(task: &str, known: &Known) -> Local {
                 miss.push("name");
             }
         }
-        Kind::Appointment => {
+        "clinic" | "beauty" | "repair" | "" => {
             if !time_ok {
                 miss.push("time");
             }
@@ -950,7 +1401,7 @@ pub fn local_with(task: &str, known: &Known) -> Local {
                 miss.push("backup");
             }
         }
-        Kind::Order => {
+        "takeout" => {
             if !has_qty(&low, &c) {
                 miss.push("spec");
             }
@@ -961,7 +1412,7 @@ pub fn local_with(task: &str, known: &Known) -> Local {
                 miss.push("substitute");
             }
         }
-        Kind::Change => {
+        "change" => {
             if !time_ok && !has_date(&low, &c) {
                 miss.push("orig_time");
             }
@@ -969,12 +1420,37 @@ pub fn local_with(task: &str, known: &Known) -> Local {
                 miss.push("contact");
             }
         }
-        Kind::Contact => {}
+        "contact" => {}
+        _ => {
+            let owner_name = known.owner_named && !crate::place_habits::for_whom_matters(known.region, place);
+            for code in crate::place_habits::must_have(known.region, place) {
+                let gap = match code {
+                    "time" => !time_ok,
+                    "party" | "guests" => !has_party(&low, &c),
+                    "phone" => !phone,
+                    "name" => !name && !owner_name,
+                    "contact" => !phone && !name,
+                    "spec" => !has_qty(&low, &c),
+                    "pickup" => !time_ok && !contains_any(&low, PICKUP_WORDS),
+                    "question" => false,
+                    _ => {
+                        unread = true;
+                        false
+                    }
+                };
+                if gap {
+                    if let Some(key) = KEYS.iter().copied().find(|k| *k == code) {
+                        miss.push(key);
+                    }
+                }
+            }
+        }
     }
     miss.truncate(MISSING_MAX);
     let has_digit = c.iter().any(|ch| digit_of(*ch).is_some());
-    let unsure = kind == Kind::Contact && (foreign_script(&low) || (has_digit && c.len() >= 24));
-    Local { kind, place: place_of(&low, kind), missing: miss, unsure }
+    let unsure = (kind == Kind::Contact && place == "contact" && (vague || foreign_script(&low) || (has_digit && c.len() >= 24)))
+        || (unread && miss.is_empty());
+    Local { kind, place, missing: miss, unsure }
 }
 
 /// The times the owner would accept, best first ("19:30", "20:30"); empty
@@ -997,11 +1473,20 @@ pub struct Verdict {
     pub place: String,
     pub missing: Vec<&'static str>,
     pub ladder: Vec<String>,
-    /// One line for the owner before dialing, in the owner's language (from the model only).
+    /// What the owner should know before dialing, in the owner's language:
+    /// the local note of that kind of call there ([crate::place_habits::before_dialing]),
+    /// shown with the questions or the reminder only; empty otherwise.
     pub note: String,
     /// `local`, `model` or `timeout` (the model did not answer in time: the local questions).
     pub source: &'static str,
     pub ms: f64,
+    /// Nothing is missing, yet the owner should see [Verdict::note] before
+    /// dialing: such places there seldom do it by phone, or ask for what only
+    /// the owner may give.
+    pub remind: bool,
+    /// What the owner may add though the call goes without it
+    /// ([crate::place_habits::nice_to_have]); only with questions or a reminder.
+    pub optional: Vec<&'static str>,
 }
 
 /// What the model answered.
@@ -1018,7 +1503,7 @@ type: restaurant, clinic, beauty, repair, takeout, shop_order, change (move or c
 Detail codes: time (day and time), party (how many people), name (name to give or book under), phone (callback number), for_whom (who it is for and their name), visit_type (first or return visit), item (the service, symptom, problem or thing), spec (what and how many), pickup (pickup or delivery time), orig_time (the original booking's time), question (what to ask), checkin_out (check-in and check-out dates), guests (how many guests), address (where), pet_detail (the pet's kind, breed and size), pickup_place (where to be picked up), dropoff_place (where to go), reference_no (order, booking or tracking number), room_type (kind of room), duration (how long).\n\
 A detail is given when the request mentions it at all, in any wording or language, even briefly or loosely: \"7個大人\", \"2大1小\", \"兩大一小\", \"party of 7\", \"7 adults\", \"7 adultos\", \"大人7名\" and \"어른 7명\" all give party; \"from the airport to the hotel\" gives pickup_place and dropoff_place; \"トリミング\" gives item; \"ask if they are open today\" gives question. It is also given when the request asks the other side to tell it, or when Bageo already knows it.\n\
 missing: only codes the chosen type needs there, the most important first, at most 3; empty when nothing is missing, and always empty for contact.\n\
-note: usually empty. Only when the local note of that type changes what the person should do before this very call (the place takes no phone bookings, wants a deposit or card, or will ask for something only they can give), one short sentence for them. The local notes are in Chinese: always write the note in the language named in the request, translated, never copied.\n\
+note: the local note of the chosen type, for the person, in one or two short sentences; empty when that type has no local note there. The local notes are in Chinese: always write the note in the language named in the request, translated, never copied.\n\
 Answer with JSON only.";
 
 pub fn request_body(task: &str, l: &Local, known: &Known, lang: Lang) -> Value {
@@ -1046,7 +1531,7 @@ pub fn request_body(task: &str, l: &Local, known: &Known, lang: Lang) -> Value {
         "contents": [{"role": "user", "parts": [{"text": user}]}],
         "generationConfig": {
             "temperature": 0,
-            "maxOutputTokens": 200,
+            "maxOutputTokens": 400,
             "responseMimeType": "application/json",
             "thinkingConfig": {"thinkingLevel": "minimal"},
             "responseSchema": {
@@ -1062,14 +1547,14 @@ pub fn request_body(task: &str, l: &Local, known: &Known, lang: Lang) -> Value {
     })
 }
 
-/// One clean line of at most [NOTE_MAX_CHARS] characters.
+/// One clean line of at most [LOCAL_NOTE_MAX_CHARS] characters.
 fn note_line(s: &str) -> String {
     let line: String = s.split_whitespace().collect::<Vec<_>>().join(" ").chars().filter(|c| !c.is_control()).collect();
-    if line.chars().count() <= NOTE_MAX_CHARS {
+    if line.chars().count() <= LOCAL_NOTE_MAX_CHARS {
         return line;
     }
     // Too long: cut at a word where there is one, never inside it, and say so.
-    let cut: String = line.chars().take(NOTE_MAX_CHARS - 1).collect();
+    let cut: String = line.chars().take(LOCAL_NOTE_MAX_CHARS - 1).collect();
     let cut = match cut.rfind(' ') {
         Some(i) if i > cut.len() / 2 => cut[..i].to_string(),
         _ => cut,
@@ -1110,12 +1595,8 @@ pub fn parse_answer(body: &str, known: &Known) -> Option<Answer> {
         }
     }
     missing.truncate(MISSING_MAX);
-    // A note stops the owner only where such places seldom get it done by phone.
-    let note = if crate::place_habits::hard_by_phone(known.region, place) {
-        note_line(answer.get("note").and_then(Value::as_str).unwrap_or(""))
-    } else {
-        String::new()
-    };
+    // Kept as the model wrote it; [check] shows it only with questions or a reminder.
+    let note = if known.region.is_some() { note_line(answer.get("note").and_then(Value::as_str).unwrap_or("")) } else { String::new() };
     Some(Answer { place, missing, note })
 }
 
@@ -1137,27 +1618,141 @@ fn since_ms(t0: Instant) -> f64 {
 /// something missing, or cannot read, asks the model, which has `limit` in
 /// all and knows where the number is and what Bageo knows: later than that
 /// (or any error) the local questions stand (none for words it cannot read).
-/// No key: the local look stands. lang: the owner's, for the note.
+/// A request with nothing missing to a kind of place worth a reminder asks
+/// the model too when the owner reads neither Chinese (the notes are written
+/// in Chinese): the model words the note. No key: the local look stands.
+/// lang: the owner's, for the note and the questions.
 pub async fn check(http: &Client, base: &str, key: &str, task: &str, known: &Known, lang: Lang, limit: Duration) -> Verdict {
     let t0 = Instant::now();
     let l = local_with(task, known);
     let ladder = ladder_of(task, l.kind);
     let settled = !l.unsure && l.missing.is_empty();
-    if settled || key.trim().is_empty() {
-        return Verdict { kind: l.kind, place: l.place.to_string(), missing: l.missing, ladder, note: String::new(), source: "local", ms: since_ms(t0) };
+    let words_wanted = settled && !matches!(lang, Lang::ZhTw | Lang::ZhCn) && crate::place_habits::worth_a_reminder(known.region, l.place);
+    if (settled && !words_wanted) || key.trim().is_empty() {
+        return verdict(task, known, lang, (l.kind, l.place, l.missing), ladder, "", "local", t0);
     }
     match tokio::time::timeout(limit, ask_model(http, base, key, task, &l, known, lang)).await {
         Ok(Some(a)) => {
             let kind = Kind::of_place(a.place);
             let ladder = if kind == l.kind { ladder } else { ladder_of(task, kind) };
-            Verdict { kind, place: a.place.to_string(), missing: a.missing, ladder, note: a.note, source: "model", ms: since_ms(t0) }
+            verdict(task, known, lang, (kind, a.place, a.missing), ladder, &a.note, "model", t0)
         }
         _ => {
             let missing = if l.unsure { Vec::new() } else { l.missing };
-            Verdict { kind: l.kind, place: l.place.to_string(), missing, ladder, note: String::new(), source: "timeout", ms: since_ms(t0) }
+            verdict(task, known, lang, (l.kind, l.place, missing), ladder, "", "timeout", t0)
         }
     }
 }
+
+/// The verdict on what was found: with questions, or with nothing missing at
+/// a kind of place worth a reminder, the local note and the details the owner
+/// may also add.
+#[allow(clippy::too_many_arguments)]
+fn verdict(
+    task: &str,
+    known: &Known,
+    lang: Lang,
+    (kind, place, missing): (Kind, &'static str, Vec<&'static str>),
+    ladder: Vec<String>,
+    model_note: &str,
+    source: &'static str,
+    t0: Instant,
+) -> Verdict {
+    let remind = missing.is_empty() && crate::place_habits::worth_a_reminder(known.region, place);
+    let card = remind || !missing.is_empty();
+    let note = if card { note_for(lang, known.region, place, model_note) } else { String::new() };
+    let optional = if card { optional_for(task, known, place, &missing, &ladder) } else { Vec::new() };
+    Verdict { kind, place: place.to_string(), missing, ladder, note, source, ms: since_ms(t0), remind, optional }
+}
+
+/// The local note of a kind of call there in the owner's language: the data's
+/// own words in Chinese, else the model's; without those, a general line on
+/// why it is worth a word (seldom by phone, details only the owner may give).
+fn note_for(lang: Lang, region: Option<&crate::place_habits::Region>, place: &str, model_note: &str) -> String {
+    let before = crate::place_habits::before_dialing(region, place);
+    match lang {
+        Lang::ZhTw if !before.is_empty() => return before,
+        Lang::ZhCn if !before.is_empty() => return crate::zh_convert::to_cn(&before),
+        Lang::ZhTw | Lang::ZhCn => {}
+        _ if !model_note.trim().is_empty() => return model_note.trim().to_string(),
+        _ => {}
+    }
+    let i = lang_index(lang);
+    let mut lines: Vec<&str> = Vec::new();
+    if crate::place_habits::hard_by_phone(region, place) {
+        lines.push(SELDOM_BY_PHONE[i]);
+    }
+    if crate::place_habits::asks_owner_id(region, place) {
+        lines.push(OWNER_ID[i]);
+    }
+    lines.join(" ")
+}
+
+/// What the owner may also add for this kind of call there: what it may ask
+/// beyond what it needs, minus what the questions ask and what the words
+/// already give.
+fn optional_for(task: &str, known: &Known, place: &str, missing: &[&str], ladder: &[String]) -> Vec<&'static str> {
+    let low = fold(task);
+    let c: Vec<char> = low.chars().collect();
+    let given = |k: &str| match k {
+        "time" => clock_in(&low, &c) || contains_any(&low, ASKS_TIME_WORDS),
+        "party" | "guests" => has_party(&low, &c),
+        "phone" => has_phone(&c),
+        "name" => name_in(task, &low),
+        "contact" => has_phone(&c) || name_in(task, &low),
+        "backup" => ladder.len() >= 2 || contains_any(&low, BACKUP_WORDS),
+        "spec" => has_qty(&low, &c),
+        "question" => true,
+        _ => false,
+    };
+    crate::place_habits::nice_to_have(known.region, place)
+        .into_iter()
+        .filter(|k| !missing.contains(k) && !given(k) && !question(Lang::En, k).is_empty())
+        .take(OPTIONAL_MAX)
+        .collect()
+}
+
+/// For a call from a chat, where the model is not asked: the local note (in
+/// the owner's language, [note_for]) with the head the console shows, when
+/// the card has questions or the kind of place is worth a reminder; else "".
+pub fn local_note(lang: Lang, task: &str, known: &Known) -> String {
+    let l = local_with(task, known);
+    if l.missing.is_empty() && !crate::place_habits::worth_a_reminder(known.region, l.place) {
+        return String::new();
+    }
+    let note = note_for(lang, known.region, l.place, "");
+    if note.is_empty() {
+        return note;
+    }
+    format!("{} {note}", NOTE_HEAD[lang_index(lang)])
+}
+
+/// The head of the local note, as the console shows it.
+const NOTE_HEAD: [&str; 9] = ["撥號前提醒：", "拨号前提醒：", "Good to know:", "発信前のメモ：", "전화 전 참고:", "Ten en cuenta:", "À savoir :", "Gut zu wissen:", "Bom saber:"];
+/// When the data's note cannot be shown in the owner's language: such places seldom do it by phone.
+const SELDOM_BY_PHONE: [&str; 9] = [
+    "這類店家多半不接電話預約，可能要改用網路或到現場辦。",
+    "这类店家大多不接电话预约，可能要改用网上或到现场办理。",
+    "Places like this seldom take bookings by phone; you may need to book online or in person.",
+    "この種の店は電話予約をあまり受け付けていません。ネットか店頭での手続きが必要かもしれません。",
+    "이런 곳은 전화 예약을 잘 받지 않아요. 온라인이나 직접 방문해서 해야 할 수 있어요.",
+    "Estos sitios casi nunca aceptan reservas por teléfono; quizá tengas que hacerlo en línea o en persona.",
+    "Ce type d'endroit prend rarement les réservations par téléphone ; il faudra peut-être passer par internet ou sur place.",
+    "Solche Orte nehmen selten telefonische Buchungen an; vielleicht musst du online oder vor Ort buchen.",
+    "Esse tipo de lugar quase não aceita reservas por telefone; talvez seja preciso fazer online ou pessoalmente.",
+];
+/// ... or they may ask for the owner's identity papers.
+const OWNER_ID: [&str; 9] = [
+    "對方可能要你本人的證件資料（例如身分證號碼、生日），AI 不會提供。",
+    "对方可能要你本人的证件资料（比如身份证号、生日），AI 不会提供。",
+    "They may ask for your ID details (like an ID number or date of birth); the AI won't give them.",
+    "本人確認の情報（身分証の番号や生年月日など）を聞かれることがあります。AI は答えません。",
+    "본인 신분 정보(신분증 번호, 생년월일 등)를 물어볼 수 있어요. AI는 알려 주지 않아요.",
+    "Pueden pedirte datos de identidad (como tu documento o fecha de nacimiento); la IA no los dará.",
+    "On peut vous demander des informations d'identité (pièce d'identité, date de naissance) ; l'IA ne les donnera pas.",
+    "Sie fragen vielleicht nach Ausweisdaten (Ausweisnummer, Geburtsdatum); die KI gibt sie nicht heraus.",
+    "Podem pedir seus dados de identidade (como documento ou data de nascimento); a IA não vai informar.",
+];
 
 // ---------------------------------------------------------------- the words of questions
 
@@ -1202,9 +1797,22 @@ const QUESTIONS: [(&str, [&str; 9]); 23] = [
     ("duration", ["要用多久？", "要用多久？", "For how long?", "利用時間はどのくらいですか？", "얼마 동안 이용하나요?", "¿Por cuánto tiempo?", "Pour combien de temps ?", "Wie lange?", "Por quanto tempo?"]),
 ];
 
+/// Per optional key ([OPTIONAL_KEYS]), the question in zh-TW, zh-CN, en, ja, ko, es, fr, de, pt.
+const OPTIONAL_QUESTIONS: [(&str, [&str; 9]); 9] = [
+    ("kids_detail", ["小孩幾歲？要兒童椅嗎？", "小孩几岁？要儿童椅吗？", "How old are the kids? Need a high chair?", "お子さまの年齢は？子ども用の椅子は要りますか？", "아이는 몇 살인가요? 아기 의자가 필요한가요?", "¿Qué edad tienen los niños? ¿Necesitan trona?", "Quel âge ont les enfants ? Besoin d'une chaise haute ?", "Wie alt sind die Kinder? Braucht ihr einen Hochstuhl?", "Qual a idade das crianças? Precisa de cadeirinha?"]),
+    ("seating_pref", ["座位有什麼偏好？", "座位有什么偏好？", "Any seating preference?", "席の希望はありますか？", "원하는 자리가 있나요?", "¿Alguna preferencia de sitio?", "Une préférence de place ?", "Ein Sitzwunsch?", "Alguma preferência de lugar?"]),
+    ("staff_pref", ["要指定哪位醫師、設計師或師傅嗎？", "要指定哪位医生、发型师或师傅吗？", "Want a particular doctor, stylist or technician?", "指名したい担当者はいますか？", "원하는 담당자가 있나요?", "¿Quieres a alguien en concreto (médico, peluquero, técnico)?", "Une personne en particulier (médecin, coiffeur, technicien) ?", "Eine bestimmte Person (Ärztin, Friseur, Techniker)?", "Quer alguém específico (médico, cabeleireiro, técnico)?"]),
+    ("budget", ["預算大概多少？", "预算大概多少？", "What's your budget?", "ご予算はどのくらいですか？", "예산은 어느 정도인가요?", "¿Cuál es tu presupuesto?", "Quel est votre budget ?", "Wie hoch ist dein Budget?", "Qual é o seu orçamento?"]),
+    ("vehicle_plate", ["車牌號碼是多少？", "车牌号是多少？", "What's the licence plate?", "車のナンバーは？", "차량 번호는요?", "¿Cuál es la matrícula?", "Quelle est l'immatriculation ?", "Wie lautet das Kennzeichen?", "Qual é a placa do carro?"]),
+    ("floor_elevator", ["住幾樓？有電梯嗎？", "住几楼？有电梯吗？", "Which floor? Is there a lift?", "何階ですか？エレベーターはありますか？", "몇 층인가요? 엘리베이터가 있나요?", "¿Qué piso? ¿Hay ascensor?", "Quel étage ? Y a-t-il un ascenseur ?", "Welches Stockwerk? Gibt es einen Aufzug?", "Qual andar? Tem elevador?"]),
+    ("customization", ["甜度、冰塊、辣度有要求嗎？", "甜度、冰量、辣度有要求吗？", "Any sweetness, ice or spice preference?", "甘さ・氷・辛さの希望は？", "당도, 얼음, 맵기 요청이 있나요?", "¿Alguna preferencia de azúcar, hielo o picante?", "Une préférence pour le sucre, la glace ou le piquant ?", "Wünsche zu Süße, Eis oder Schärfe?", "Alguma preferência de açúcar, gelo ou pimenta?"]),
+    ("name_kana", ["名字的日文讀音（片假名）？", "名字的日文读音（片假名）？", "How does the name read in katakana?", "お名前のフリガナは？", "이름을 가타카나로 어떻게 읽나요?", "¿Cómo se lee el nombre en katakana?", "Comment le nom se lit-il en katakana ?", "Wie liest sich der Name in Katakana?", "Como o nome se lê em katakana?"]),
+    ("allergy", ["有過敏或不吃的東西嗎？", "有过敏或忌口吗？", "Any allergies or foods to avoid?", "アレルギーや苦手な食材はありますか？", "알레르기나 못 먹는 음식이 있나요?", "¿Alguna alergia o algo que no comáis?", "Des allergies ou des aliments à éviter ?", "Allergien oder etwas, das ihr nicht esst?", "Alguma alergia ou algo que vocês não comem?"]),
+];
+
 /// The question for a key in a language ("" for an unknown key).
 pub fn question(lang: Lang, key: &str) -> &'static str {
-    QUESTIONS.iter().find(|(k, _)| *k == key).map(|(_, q)| q[lang_index(lang)]).unwrap_or("")
+    QUESTIONS.iter().chain(&OPTIONAL_QUESTIONS).find(|(k, _)| *k == key).map(|(_, q)| q[lang_index(lang)]).unwrap_or("")
 }
 
 /// The name to leave, for a call other than a table booking.
@@ -1229,8 +1837,24 @@ pub fn question_for(lang: Lang, key: &str, place: &str) -> &'static str {
     if key == "party" && !place.is_empty() && place != "restaurant" {
         return PARTY_ANY[lang_index(lang)];
     }
+    if key == "reference_no" && !place.is_empty() && !matches!(place, "tracking" | "shop_order" | "takeout") {
+        return REF_ANY[lang_index(lang)];
+    }
     question(lang, key)
 }
+
+/// The number of a booking or an order, for a call that is not about a parcel.
+const REF_ANY: [&str; 9] = [
+    "預約或訂單編號是多少？",
+    "预约或订单编号是多少？",
+    "What is the booking or order number?",
+    "予約番号か注文番号は？",
+    "예약 번호나 주문 번호는?",
+    "¿Número de reserva o de pedido?",
+    "Numéro de réservation ou de commande ?",
+    "Buchungs- oder Bestellnummer?",
+    "Número da reserva ou do pedido?",
+];
 
 /// How many people, for a call that is not about a meal (a taxi, a room, a court).
 const PARTY_ANY: [&str; 9] = [
@@ -1306,7 +1930,7 @@ pub fn sanitize_answers(v: Option<&Value>) -> BTreeMap<String, String> {
     let Some(map) = v.and_then(Value::as_object) else {
         return out;
     };
-    for key in KEYS.iter().copied().chain(["note"]) {
+    for key in KEYS.iter().chain(&OPTIONAL_KEYS).copied().chain(["note"]) {
         let raw = match map.get(key) {
             Some(Value::String(s)) => s.clone(),
             Some(Value::Number(n)) => n.to_string(),
@@ -1321,8 +1945,10 @@ pub fn sanitize_answers(v: Option<&Value>) -> BTreeMap<String, String> {
     out
 }
 
-/// The answers in the order of their weight, each with the words it goes by.
-const DETAIL_LABELS: [(&str, &str); 24] = [
+/// The answers in the order of their weight, each with the words it goes by
+/// (the details the owner added though nothing asked for them last: the
+/// first to go when the block is full).
+const DETAIL_LABELS: [(&str, &str); 33] = [
     ("phone", "phone"),
     ("name", "booking name"),
     ("contact", "name and phone"),
@@ -1346,6 +1972,15 @@ const DETAIL_LABELS: [(&str, &str); 24] = [
     ("backup", "backup"),
     ("time", "when"),
     ("orig_time", "original time"),
+    ("kids_detail", "children"),
+    ("allergy", "allergies"),
+    ("seating_pref", "seating"),
+    ("staff_pref", "preferred staff"),
+    ("customization", "how they like it"),
+    ("name_kana", "name in kana"),
+    ("vehicle_plate", "licence plate"),
+    ("floor_elevator", "floor and lift"),
+    ("budget", "budget"),
     ("note", "note"),
 ];
 
@@ -1594,9 +2229,9 @@ mod tests {
         // No region: no note stops the owner.
         assert_eq!((takeout.place, takeout.missing, takeout.note.as_str()), ("takeout", vec!["spec", "pickup"], ""));
         // A note too long is cut at a word, never inside one.
-        let long = format!("{} insurance card number", "Clinics there answer with a voice menu and ask for a date of birth and".repeat(2));
+        let long = format!("{} insurance card number", "Clinics there answer with a voice menu and ask for a date of birth and".repeat(4));
         let cut = note_line(&long);
-        assert!(cut.chars().count() <= NOTE_MAX_CHARS && cut.ends_with('…') && !cut.contains(" num…"), "{cut}");
+        assert!(cut.chars().count() <= LOCAL_NOTE_MAX_CHARS && cut.ends_with('…') && !cut.contains(" num…"), "{cut}");
         assert_eq!(question_for(Lang::ZhTw, "party", "transport"), "幾位？（幾大幾小）");
         assert_eq!(question_for(Lang::ZhTw, "party", "restaurant"), "幾位用餐？（幾大幾小）");
         assert_eq!(parse_answer(&gemini_json(r#"{"type":"contact","missing":["time"]}"#), &none).map(|a| a.missing), Some(vec![]));
@@ -1616,6 +2251,10 @@ mod tests {
             for key in KEYS {
                 assert!(!question(lang, key).is_empty(), "{lang:?} {key}");
             }
+            for key in OPTIONAL_KEYS {
+                assert!(!question(lang, key).is_empty(), "{lang:?} {key}");
+            }
+            assert!(!NOTE_HEAD[lang_index(lang)].is_empty() && !SELDOM_BY_PHONE[lang_index(lang)].is_empty() && !OWNER_ID[lang_index(lang)].is_empty());
             let card = card_text(lang, &["party", "phone", "name", "time"]);
             assert_eq!(card.lines().count(), 5, "{lang:?}: head, three questions, tail");
         }
@@ -1776,6 +2415,12 @@ mod tests {
         assert!(b.contains("when tomorrow 7") && b.contains("note window seat"), "{b}");
         let all: serde_json::Map<String, Value> = KEYS.iter().chain(&["note"]).map(|k| (k.to_string(), json!("v"))).collect();
         assert_eq!(sanitize_answers(Some(&Value::Object(all))).len(), KEYS.len() + 1);
+        // The details added though nothing asked for them are kept too, and go into the script.
+        let extra = sanitize_answers(Some(&json!({"name_kana": "ヤマダ", "allergy": "sin gluten", "vehicle_plate": "ABC-1234", "evil": "x"})));
+        assert_eq!(extra.len(), 3);
+        let answers: Vec<(String, String)> = extra.into_iter().collect();
+        let b = prompt_block("予約したい", &answers, Lang::Ja);
+        assert!(b.contains("name in kana ヤマダ") && b.contains("allergies sin gluten") && b.contains("licence plate ABC-1234"), "{b}");
     }
 
     /// The owner's own request: a table for seven adults with a number to
@@ -1846,16 +2491,22 @@ mod tests {
         // The model reads a party the local look missed: nothing to ask.
         let base = stand_in(200, 10, gemini_json(r#"{"type":"restaurant","missing":[],"note":""}"#)).await;
         let v = check(&Client::new(), &base, "key", task, &known, Lang::En, MODEL_TIMEOUT).await;
-        assert_eq!((v.source, v.missing.is_empty(), v.note.as_str()), ("model", true, ""));
+        assert_eq!((v.source, v.missing.is_empty()), ("model", true));
+        // Nothing missing: a note only as a reminder, in the owner's language.
+        assert_eq!(v.remind, crate::place_habits::worth_a_reminder(known.region, "restaurant"));
+        assert_eq!(v.note.is_empty(), !v.remind, "{}", v.note);
         // Another type, with a note; codes that type does not need there are dropped.
         let base = stand_in(200, 10, gemini_json(r#"{"type":"clinic","missing":["for_whom","party","visit_type","phone"],"note":"Muchas clínicas contestan con un menú de voz."}"#)).await;
         let v = check(&Client::new(), &base, "key", "Llama al dentista para una cita el lunes", &known, Lang::Es, MODEL_TIMEOUT).await;
         assert_eq!((v.place.as_str(), v.kind, v.missing.clone()), ("clinic", Kind::Appointment, vec!["for_whom", "visit_type", "phone"]));
         assert_eq!(v.note, "Muchas clínicas contestan con un menú de voz.");
-        // A restaurant there takes phone bookings: its note is dropped. An inquiry's
-        // question is the errand itself, never asked back.
+        // The model's note is kept (shown with questions or a reminder); without a
+        // region there is no local note. An inquiry's question is the errand itself,
+        // never asked back.
         let a = parse_answer(&gemini_json(r#"{"type":"restaurant","missing":["party"],"note":"Popular places book online."}"#), &known).unwrap();
-        assert_eq!((a.missing.clone(), a.note.as_str()), (vec!["party"], ""));
+        assert_eq!((a.missing.clone(), a.note.as_str()), (vec!["party"], "Popular places book online."));
+        let a = parse_answer(&gemini_json(r#"{"type":"restaurant","missing":["party"],"note":"Popular places book online."}"#), &Known::default()).unwrap();
+        assert_eq!(a.note, "");
         let a = parse_answer(&gemini_json(r#"{"type":"inquiry","missing":["question"],"note":""}"#), &known).unwrap();
         assert!(a.missing.is_empty(), "{:?}", a.missing);
         assert_eq!(question_for(Lang::Es, "for_whom", &v.place), "¿Para quién es y cómo se llama?");
@@ -1876,5 +2527,116 @@ mod tests {
         assert_eq!(place_type_of("Ask Sam if he is coming to dinner"), "contact");
         assert_eq!(question_for(Lang::En, "name", "repair"), "What name should I leave?");
         assert_eq!(question_for(Lang::En, "name", "restaurant"), question(Lang::En, "name"));
+        assert_eq!(question_for(Lang::En, "reference_no", "hotel"), "What is the booking or order number?");
+        assert_eq!(question_for(Lang::En, "reference_no", "tracking"), question(Lang::En, "reference_no"));
+        // A count in Korean native numbers is an order's what and how many.
+        assert!(!local("치킨 두 마리 배달 주문해 줘, 오늘 저녁 7시까지").missing.contains(&"spec"));
+    }
+
+    #[test]
+    fn other_kinds_of_business_are_read_in_many_languages_and_personal_calls_stay_personal() {
+        let cases = [
+            ("Ask the hotel if we can have a late checkout tomorrow at 2 pm", "hotel"),
+            ("ホテルに明日のチェックアウトを延ばせるか聞いて", "hotel"),
+            ("Reservar habitación doble para el viernes", "hotel"),
+            ("土曜の午前10時にトリミングを予約、トイプードル", "pet"),
+            ("Toilettage pour mon chien samedi à 10h", "pet"),
+            ("Bestell mir ein Taxi für morgen um 7 Uhr zum Flughafen", "transport"),
+            ("Chama um táxi para amanhã às 8h", "transport"),
+            ("택시 불러 줘, 내일 아침 7시", "transport"),
+            ("Où est mon colis ? Numéro de suivi 1Z999", "tracking"),
+            ("¿Dónde está mi paquete? Llama a la paquetería", "tracking"),
+            ("Call customer service about a refund", "customer_service"),
+            ("Kundenservice anrufen wegen Rückerstattung", "customer_service"),
+            ("Plombier pour une fuite demain matin", "home_service"),
+            ("이사 견적 문의, 다음 주 토요일", "home_service"),
+            ("Besichtigung der Wohnung beim Vermieter anfragen", "property"),
+            ("Tee time for 4 on Saturday at 9 am", "activity"),
+            ("Call the city office to renew my passport tomorrow at 10am", "government_school"),
+            ("Llama a la oficina municipal para pedir cita el lunes a las 9", "government_school"),
+        ];
+        for (task, place) in cases {
+            let l = local(task);
+            assert_eq!(l.place, place, "{task}");
+            assert_ne!((l.kind, l.unsure, l.missing.is_empty()), (Kind::Contact, false, true), "{task}");
+        }
+        // An asking word alone: the model looks (personal or not).
+        assert!(local("Pregunta si aceptan perros en la terraza").unsure);
+        for task in ["幫我打給媽媽說晚點回家", "Ask Sam if he is coming to dinner", "Llama a mamá y dile que llego tarde", "Ruf Oma an und sag, dass ich später komme", "Appelle Paul pour lui dire bonjour"] {
+            let l = local(task);
+            assert_eq!((l.kind, l.unsure), (Kind::Contact, false), "{task}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_clinic_that_asks_for_an_id_gets_a_reminder_in_the_owners_language() {
+        let tw = Known { owner_named: true, region: crate::place_habits::for_country("tw") };
+        let task = "幫我掛號洗牙，明天早上9點，王小明，電話0912345678";
+        // Nothing missing, no model: the data's own words.
+        let v = check(&Client::new(), "http://127.0.0.1:1", " ", task, &tw, Lang::ZhTw, MODEL_TIMEOUT).await;
+        assert_eq!((v.place.as_str(), v.missing.is_empty(), v.remind, v.source), ("clinic", true, true, "local"));
+        assert!(v.note.contains("身分證"), "{}", v.note);
+        let cn = check(&Client::new(), "http://127.0.0.1:1", " ", task, &tw, Lang::ZhCn, MODEL_TIMEOUT).await;
+        assert!(cn.note.contains("证") && !cn.note.contains("證"), "{}", cn.note);
+        // Another language and no key: the general line.
+        let en = check(&Client::new(), "http://127.0.0.1:1", " ", task, &tw, Lang::En, MODEL_TIMEOUT).await;
+        assert_eq!(en.note, OWNER_ID[lang_index(Lang::En)]);
+        // With a key, the model words the note.
+        let base = stand_in(200, 10, gemini_json(r#"{"type":"clinic","missing":[],"note":"Las clínicas allí suelen pedir el número de identidad; la IA no lo dará."}"#)).await;
+        let es = check(&Client::new(), &base, "key", task, &tw, Lang::Es, MODEL_TIMEOUT).await;
+        assert_eq!((es.source, es.remind), ("model", true));
+        assert!(es.note.starts_with("Las clínicas"), "{}", es.note);
+        // The model too slow: the general line again.
+        let slow = stand_in(200, 700, gemini_json(r#"{"type":"clinic","missing":[],"note":"x"}"#)).await;
+        let de = check(&Client::new(), &slow, "key", task, &tw, Lang::De, Duration::from_millis(120)).await;
+        assert_eq!((de.source, de.note.as_str()), ("timeout", OWNER_ID[lang_index(Lang::De)]));
+        // The same in a chat card.
+        assert!(local_note(Lang::Ko, task, &tw).starts_with("전화 전 참고: "), "{}", local_note(Lang::Ko, task, &tw));
+        // A place that takes bookings by phone and asks for nothing only the owner gives: no card.
+        let none = check(&Client::new(), "http://127.0.0.1:1", " ", "Ask Sam if he is coming to dinner", &tw, Lang::En, MODEL_TIMEOUT).await;
+        assert!(!none.remind && none.note.is_empty() && none.optional.is_empty());
+        assert!(local_note(Lang::En, "Ask Sam if he is coming to dinner", &tw).is_empty());
+    }
+
+    #[test]
+    fn what_the_owner_may_also_add_is_offered_with_a_card_and_never_what_the_words_give() {
+        let jp = Known { owner_named: false, region: crate::place_habits::for_country("jp") };
+        let task = "明日の夜7時にレストランを予約、大人2名";
+        let l = local_with(task, &jp);
+        let opt = optional_for(task, &jp, l.place, &l.missing, &[]);
+        assert!(opt.contains(&"name_kana") && opt.len() <= OPTIONAL_MAX, "{opt:?}");
+        assert!(!opt.iter().any(|k| l.missing.contains(k)), "{opt:?}");
+        let tw = Known { owner_named: true, region: crate::place_habits::for_country("tw") };
+        let drinks = optional_for("外帶兩杯珍奶，3點自取", &tw, "takeout", &[], &[]);
+        assert!(drinks.contains(&"customization"), "{drinks:?}");
+        // A backup time written is no option to add.
+        let ladder = ladder_of("訂今晚 7 點 4 位，不行就 8 點", Kind::Restaurant);
+        assert!(!optional_for("訂今晚 7 點 4 位，不行就 8 點", &tw, "restaurant", &[], &ladder).contains(&"backup"));
+        assert!(optional_for(task, &Known::default(), "restaurant", &[], &[]).is_empty());
+    }
+
+    #[test]
+    fn a_day_without_a_time_of_day_still_asks_the_time_in_every_language() {
+        for task in [
+            "明天訂位 4 位 0912345678",
+            "Book a table for 4 tomorrow, 555-010-0123",
+            "Réserver une table samedi pour 4, 06 12 34 56 78",
+            "Reservar mesa mañana para 4, 612 345 678",
+            "내일 4명 예약 010-1234-5678",
+        ] {
+            assert!(names_date(task) && !names_clock(task), "{task}");
+            assert!(local(task).missing.contains(&"time"), "{task}: {:?}", local(task).missing);
+        }
+        for task in [
+            "Réserve une table samedi 20h30, 4 personnes, au nom de Martin, 06 12 34 56 78",
+            "Reserva mesa para mañana a las 9, 2 adultos y 1 niño, a nombre de López, 612 345 678",
+            "Reservar mesa amanhã às 19h, 4 pessoas, em nome de Silva, (11) 91234-5678",
+            "明日の19時に予約、大人2名、山田で、090-1234-5678",
+            "Reservierung morgen um 19 Uhr für 4 Personen, Telefon 0151 2345 6789",
+        ] {
+            assert!(!local(task).missing.contains(&"time"), "{task}: {:?}", local(task).missing);
+        }
+        // A change names the booking by its day alone.
+        assert!(!local("取消明天的訂位，姓王").missing.contains(&"orig_time"));
     }
 }

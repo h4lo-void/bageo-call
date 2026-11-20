@@ -510,7 +510,7 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 |---|---|
 | `GET /calls/api/errands` | `{ok, errands}`，最新的在前，最多 200 筆。 |
 | `POST /calls/api/errands` | 開始一筆。Body `{number, name, contact_id, task, identity, serial, follow_up_of, answers, redial}`（`redial` 是 `true` 就打開「撥到通」，預設 `false`），回應 `{ok, errand}`。 |
-| `POST /calls/api/errands/preflight` | 撥出前看這筆代打還缺什麼。Body `{task, lang, number}`，回應 `{ok, kind, type, missing, note, region, ladder, source, ms}`。不會撥號。內容見下方。 |
+| `POST /calls/api/errands/preflight` | 撥出前看這筆代打還缺什麼。Body `{task, lang, number}`，回應 `{ok, kind, type, missing, note, remind, optional, region, ladder, source, ms}`。不會撥號。內容見下方。 |
 | `POST /calls/api/errands/{id}/cancel` | 排隊中：取消。撥號中或通話中：掛斷。已經結束的原樣回傳。`{ok, errand}`。 |
 | `POST /calls/api/errands/{id}/retry` | 同一筆再打一次（`attempts` 加 1，上一次移到 `history`）。`{ok, errand}`。還在進行中（或上一通還沒結束）：400 `busy`；手機相關的代碼同新增。 |
 | `DELETE /calls/api/errands/{id}` | 從清單刪掉（通話紀錄會留著）。`{ok}`；撥號中或通話中：400 `busy`。 |
@@ -522,7 +522,7 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 - 必填：`task`，以及號碼（或給聯絡人、先前的代打，用它們的號碼）。
 - `identity` 留空就照 `errand_identity`；`serial` 留空就用任何合適的手機。
 - 回應的狀態是 `dialing`，手機或號碼忙線時是 `queued`。
-- `answers` 可以不帶：你回答補問後的內容，格式 `{key: 文字}`。key 就是 `preflight` 回傳的那些，另有 `note` 放自由文字；每項最多 80 字（`note` 120 字），不認得的 key 會被丟掉。它們會以一小段文字放進這通電話的腳本交給 AI。
+- `answers` 可以不帶：你回答補問後的內容，格式 `{key: 文字}`。key 就是 `preflight` 在 `missing` 和 `optional` 回傳的那些，另有 `note` 放自由文字；每項最多 80 字（`note` 120 字），不認得的 key 會被丟掉。它們會以一小段文字放進這通電話的腳本交給 AI。
 - `place_type` 可以不帶：`preflight` 回傳的 `type`。沒帶就由 Bageo 從交辦內容判斷是哪一類電話。
 
 `POST /calls/api/errands/preflight` 的內容：
@@ -531,12 +531,14 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 - `kind`：`restaurant`、`appointment`、`order`、`change` 或 `contact`。
 - `type`：哪一類店家的電話，是 `restaurant`、`clinic`、`beauty`、`repair`、`takeout`、`shop_order`、`change`、`inquiry`、`hotel`、`activity`、`home_service`、`pet`、`tracking`、`customer_service`、`transport`、`property`、`government_school` 之一，或 `contact`；不知道就是空的。
 - `missing`：最多 3 筆 `{key, question}`，最重要的在前；什麼都不缺就是空的。只會問號碼所在地這類電話需要的資料：`time`、`party`、`phone`、`name`、`item`、`contact`、`backup`、`spec`、`pickup`、`substitute`、`orig_time`、`for_whom`、`visit_type`、`checkin_out`、`guests`、`address`、`pet_detail`、`reference_no`、`pickup_place`、`dropoff_place`、`room_type`、`duration`。設定了主人名字時，不會問 `name`，除非是幫別人辦而且這類電話要分清楚是誰。
-- `note`：撥號前值得知道的一句話，用 `lang` 的語言；只有這類電話當地很少能用電話辦成時才有（例如診所多半先接按鍵語音、客服要先核對本人），其他時候是空的。
+- `note`：撥號前值得知道的事，用 `lang` 的語言；有補問或 `remind` 時才有，其他時候是空的。中文直接用 Bageo 的當地資料；其他語言由小模型改寫，模型沒回答時改用通用的一句（這類店家多半不接電話預約，或對方可能要你本人的證件資料）。
+- `remind`：什麼都不缺，但撥出前仍值得先看 `note` 時為 `true`，控制台會顯示「直接撥出」和「取消」：這類店家當地很少接電話預約，或通常會問你本人的證件資料（身分證或護照號碼、居留證、出生日期、健保卡號、社會安全碼）。卡號、訂金、密碼、門禁碼、驗證碼不算，這些由通話中的 AI 處理。
+- `optional`：最多 4 筆 `{key, question}`，對方可能順便問的事，不填也會撥。只在有補問或 `remind` 時才有。除了上面的 key，還有 `kids_detail`、`seating_pref`、`staff_pref`、`budget`、`vehicle_plate`、`floor_elevator`、`customization`、`name_kana`、`allergy`。
 - `region`：套用了哪裡的習慣（`tw`、`us`、`hk-mo`、`jp`、`cn`、`sg`、`kr`、`gb-ie`、`ca`、`au-nz`、`es`、`mx`、`latam`、`ar-uy`、`fr`、`be`、`lu`、`de`、`at`、`ch`、`br` 或 `pt`），沒有就是空的。
 - `ladder`：你願意接受的時間，最好的在前（`["19:30", "20:30"]`），最多 4 個；交辦裡沒有寫到兩個以上的時間就是空的。
 - `source` 和 `ms`：`local`、`model` 或 `timeout`，以及花了幾毫秒。
-- Bageo 自己讀得懂、又什麼都不缺的交辦，幾毫秒內就在本機回答。看出有缺，或讀不懂（別種文字、夾很多數字的長文）時，會用 Gemini 金鑰問一個小模型（`gemini-flash-lite-latest`），最多等 2.5 秒；任何寫法、任何語言寫了都算有（「7個大人」「party of 7」「7 adultos」）。時間內沒答（`source` 為 `timeout`）或沒有金鑰，就照 Bageo 自己看出的問題問；讀不懂的就不問。
-- 在聊天室，確認卡會列出同樣的問題。直接回覆那張卡就是補答，你的回覆會存成 `answers.note`，AI 帶著它撥出；回「取消」就不撥。
+- Bageo 自己讀得懂、又什麼都不缺的交辦，幾毫秒內就在本機回答。看出有缺，或讀不懂（別種文字、夾很多數字的長文）時，會用 Gemini 金鑰問一個小模型（`gemini-flash-lite-latest`），最多等 2.5 秒；任何寫法、任何語言寫了都算有（「7個大人」「party of 7」「7 adultos」）。時間內沒答（`source` 為 `timeout`）或沒有金鑰，就照 Bageo 自己看出的問題問；讀不懂的就不問。什麼都不缺、但這類電話值得提醒時，`lang` 不是中文也會問小模型，只為了把 `note` 寫成你的語言。
+- 在聊天室，確認卡會列出同樣的問題。直接回覆那張卡就是補答，你的回覆會存成 `answers.note`，AI 帶著它撥出；回「取消」就不撥。這類電話值得提醒時，卡片也會附上 `note`。
 
 `GET /calls/api/errands/{id}/live?after=<seq>` 的內容：
 
