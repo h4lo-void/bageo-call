@@ -190,6 +190,39 @@ pub struct Words {
     pub ap_web_console: String,
     /// Label of the web link on the Telegram card.
     pub ap_web_label: String,
+    // Lines of the call record, notifications and the note for the summary
+    // model that were written in Chinese and English only.
+    /// A number with its contact's name in a title; `{number}`, `{name}`.
+    pub n_named_number: String,
+    /// Headline of a call the phone turned away during another call;
+    /// `{caller}`, `{device}`.
+    pub n_cw_headline: String,
+    /// What became of a blocked number's call that was declined while it rang.
+    pub n_blocked_declined: String,
+    /// Matter line of a call turned away during another call; `{sim}` = the
+    /// SIM in brackets, or nothing.
+    pub cw_matter: String,
+    pub cw_end_hint: String,
+    pub s_call_back_if_needed: String,
+    pub bl_declined_reply: String,
+    pub bl_declined_hint: String,
+    pub bl_announced_hint: String,
+    /// Where the middle of a long dialogue is left out for the summary model.
+    pub h_clip_mark: String,
+    // How the call ended, one line for the summary model.
+    pub h_ai_fail_hangup: String,
+    pub h_ai_fail_voicemail: String,
+    pub h_reject_hidden: String,
+    pub h_reject_list: String,
+    pub h_urgent_merged: String,
+    pub h_urgent_failed: String,
+    pub h_urgent_transfer: String,
+    pub h_stall_released: String,
+    /// `{t}` = the kind of call.
+    pub h_stall_spam: String,
+    pub h_stall_spam_nokind: String,
+    pub h_scam_stalling_off: String,
+    pub h_ai_ended: String,
 }
 
 /// The `strings`, `lists` and `formats` of a file in one object; nothing
@@ -250,22 +283,81 @@ mod tests {
     use sha2::{Digest, Sha256};
 
     /// SHA-256 (of the text with LF line ends) and key count of every file.
-    /// The files were written from the old `Phrases` constants and must stay
-    /// word for word what they were; change a value on purpose and update the
-    /// line here in the same commit.
+    /// The first 124 keys were written from the old `Phrases` constants, the
+    /// last 22 from the lines of the code that were Chinese and English only;
+    /// change a value on purpose and update the line here in the same commit.
     const GOLDEN: [(&str, &str, usize); 9] = [
-        ("en", "8e601d52786149cf87b75d417d4181150ffbffd5600650ea5392a38c17d14493", 124),
-        ("zh-TW", "b61dce3c2445d9dfd597379b10233f88b96df76fafb2ce74aba67e4c22d4dd15", 124),
-        ("zh-CN", "a28e02ea8da5e86342a0c9cd8d7b62a4794230a30a8b0a36e8bd5f6a9700f4fc", 124),
-        ("ja", "6886128c56b6ab2da230c93f12eda8259579933b121def770d73f193055d7c4c", 124),
-        ("ko", "84b7df2618b458955e74da2cb1f5c1ca9101ff6a5abac6df7d4a91e4d3e51e2d", 124),
-        ("es", "27625d41b254fd9d2a38906b9185110b190dd42b006e3e13ebe33c6482757bdc", 124),
-        ("fr", "e8d060a8b32f1f7f3aa3eca68b272738aabceaee37d19e96c52ed99de0d353c4", 124),
-        ("de", "b09d09a83600c9610147fb2ca337f517e47e745688a9c5c8d49ee74919006e6e", 124),
-        ("pt", "0f9f0b7343194b94c401a3eaa909d9c992cca7a8fed077aae1a30f59e3c953fa", 124),
+        ("en", "756062389fe02c332f835bee5b5baa1fb46e031e5c0d9900288ac17c080d7c83", 146),
+        ("zh-TW", "327f9222b62213a684a041ea5917d629bad85be26d1f30254ffdf4429205e6a4", 146),
+        ("zh-CN", "8da4c2be62687387a60d85fe418354b0354ec4871d8bcc4ff4f06def894ee53f", 146),
+        ("ja", "e4dd74c46e1fb431119aeacc054b94b3f345cb9badf974dcda074674c7d72260", 146),
+        ("ko", "a9427f1134525f3c30a91fb7bbfa58341934a137e94d0cd285ecf4462a52057d", 146),
+        ("es", "1df8e3c73e3ecc49060b7f152b05c1d34d4c25acc517def3af1795c2f91084ab", 146),
+        ("fr", "a442e20b8f6091d2952e2e74dcf5edb55622da6a2bc3022ff5c63d0abf3bd4d5", 146),
+        ("de", "b6a1f8e93744ba3c4a3996b373e227f29fbdf34817e39b2482108f891b842191", 146),
+        ("pt", "e2dfbdc72c33d9fc8f85511f0b7484179854a21b1e83adf9f17c49ed7d832fec", 146),
     ];
 
     const META: &str = include_str!("../../data/i18n/notify/_meta.json");
+
+    /// The lines that were Chinese-and-English-only, as the code wrote them
+    /// before they moved into the files: (key, zh-TW, en). Simplified Chinese
+    /// was the converter's output for the zh-TW line.
+    const OLD_LINES: &[(&str, &str, &str)] = &[
+        ("n_named_number", "{number}（{name}）", "{number} ({name})"),
+        ("n_cw_headline", "通話中插播未接：{caller}（{device}）", "Missed while on another call: {caller} ({device})"),
+        ("n_blocked_declined", "響鈴時直接拒接，沒有接起來，沒有用 AI", "Declined while it rang: not picked up, no AI"),
+        ("cw_matter", "通話中插播，手機忙線拒接{sim}", "came in during another call; the phone turned it away as busy{sim}"),
+        ("cw_end_hint", "通話中插播：手機忙線拒接（沒有用 AI）", "call waiting: the phone was on another call and turned it away (no AI)"),
+        ("s_call_back_if_needed", "要聯絡的話自己回電", "call back if needed"),
+        ("bl_declined_reply", "響鈴時直接拒接，沒有接起來（沒用 AI）", "declined while it rang: not picked up (no AI)"),
+        ("bl_declined_hint", "黑名單：響鈴時直接拒接（沒有用 AI）", "blocked number: declined while it rang (no AI)"),
+        ("bl_announced_hint", "黑名單：播無法接通語音後掛斷（沒有用 AI）", "blocked number: the announcement was played, then hung up (no AI)"),
+        ("h_clip_mark", "…（中間省略）…", "… (middle left out) …"),
+        ("h_ai_fail_hangup", "AI 連不上，系統直接掛斷，對方沒聽到任何回應", "the AI could not connect; the system hung up and the caller heard nothing"),
+        ("h_ai_fail_voicemail", "AI 失敗，改走語音留言", "the AI failed; the call went to voicemail"),
+        ("h_reject_hidden", "未顯示號碼，播拒接語音後掛斷（AI 沒有接）", "hidden number: the refusal announcement was played, then hung up (the AI did not answer)"),
+        ("h_reject_list", "黑名單：播無法接通語音後掛斷（AI 沒有接）", "blocked number: the unavailable announcement was played, then hung up (the AI did not answer)"),
+        ("h_urgent_merged", "來電者說有急事：手機打給主人，主人接起來後直接跟來電者通話，AI 退出；這通沒有被當成推銷或詐騙陪聊拖時間", "the caller said it was urgent: the phone called the owner, who picked up and was put through to the caller, and the AI left; this call was not treated as a sales or scam call to stall"),
+        ("h_urgent_failed", "來電者說有急事：手機打給主人但沒接通，AI 跟對方說主人會盡快回電；這通沒有被當成推銷或詐騙陪聊拖時間，「要處理」寫盡快回電給對方", "the caller said it was urgent: the phone called the owner but did not get through, and the AI told the caller the owner would call back soon; this call was not treated as a sales or scam call to stall, so the to-do is to call them back as soon as possible"),
+        ("h_urgent_transfer", "來電者說有急事，系統已馬上通知主人；這通沒有被當成推銷或詐騙陪聊拖時間，「要處理」寫盡快回電給對方", "the caller said it was urgent and the owner was alerted at once; this call was not treated as a sales or scam call to stall, so the to-do is to call them back as soon as possible"),
+        ("h_stall_released", "系統一度以為是推銷／詐騙，再確認一次是正常電話，AI 回到正常應對", "the system first took it for a sales / scam call; a second check found an ordinary call and the AI went back to talking normally"),
+        ("h_stall_spam", "系統判斷是推銷／詐騙（{t}），AI 改成故意陪他聊、拖時間", "the system judged it a sales / scam call ({t}), so the AI deliberately kept the caller talking to waste their time"),
+        ("h_stall_spam_nokind", "系統判斷像推銷／詐騙，AI 改成故意陪他聊、拖時間", "the system judged it a sales / scam call, so the AI deliberately kept the caller talking to waste their time"),
+        ("h_scam_stalling_off", "系統判斷是推銷／詐騙（{t}）；陪聊功能關著，AI 照一般方式應對", "the system judged it a sales / scam call ({t}); stalling is off, so the AI answered as usual"),
+        ("h_ai_ended", "AI 接聽並對話後結束（AI 說掰掰掛斷，或對方先掛）", "the AI answered and talked; the call ended normally (the AI said goodbye and hung up, or the caller hung up first)"),
+    ];
+
+    /// The keys of [`OLD_LINES`], the ones the six other languages were added to.
+    const FILLED_KEYS: &[&str] = &["n_named_number", "n_cw_headline", "n_blocked_declined", "cw_matter", "cw_end_hint", "s_call_back_if_needed", "bl_declined_reply", "bl_declined_hint", "bl_announced_hint", "h_clip_mark", "h_ai_fail_hangup", "h_ai_fail_voicemail", "h_reject_hidden", "h_reject_list", "h_urgent_merged", "h_urgent_failed", "h_urgent_transfer", "h_stall_released", "h_stall_spam", "h_stall_spam_nokind", "h_scam_stalling_off", "h_ai_ended"];
+
+    /// Texts a language writes the way English does, as (language code, key).
+    const SAME_AS_ENGLISH: &[(&str, &str)] = &[
+        ("ko", "n_named_number"),
+        ("es", "n_named_number"),
+        ("fr", "n_named_number"),
+        ("de", "n_named_number"),
+        ("pt", "n_named_number"),
+    ];
+
+    const SLOTS: [(&str, &str); 6] = [
+        ("number", "0912345678"),
+        ("name", "陳國華"),
+        ("caller", "0912345678"),
+        ("device", "Pixel 9"),
+        ("sim", " (SIM TW)"),
+        ("t", "疑似詐騙：假冒客服"),
+    ];
+
+    /// A text with the named slots replaced, one after the other.
+    fn plain(template: &str) -> String {
+        SLOTS.iter().fold(template.to_string(), |s, (k, v)| s.replace(&format!("{{{k}}}"), v))
+    }
+
+    fn word(l: Lang, key: &str) -> String {
+        let w = serde_json::to_value(words(l)).expect("serialize");
+        w[key].as_str().unwrap_or_else(|| panic!("{key} is no text")).to_string()
+    }
 
     /// Keys a language leaves empty on purpose, as (language code, key).
     const MAY_BE_EMPTY: &[(&str, &str)] = &[];
@@ -347,6 +439,40 @@ mod tests {
                     }
                     assert_eq!(slots(x), slots(e), "{l:?} {k}: {x}");
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn lines_that_were_chinese_and_english_only_read_as_before() {
+        use crate::locale::fill_in;
+        assert_eq!(OLD_LINES.len(), FILLED_KEYS.len());
+        for (key, tw, en) in OLD_LINES {
+            let (tw, en) = (plain(tw), plain(en));
+            assert_eq!(fill_in(Lang::ZhTw, &word(Lang::ZhTw, key), &SLOTS), tw, "{key}");
+            assert_eq!(fill_in(Lang::En, &word(Lang::En, key), &SLOTS), en, "{key}");
+            assert_eq!(fill_in(Lang::ZhCn, &word(Lang::ZhCn, key), &SLOTS), crate::zh_convert::to_cn(&tw), "{key}");
+            // Without slots the Simplified file holds the converter's output.
+            assert_eq!(word(Lang::ZhCn, key), crate::zh_convert::to_cn(&word(Lang::ZhTw, key)), "{key}");
+        }
+    }
+
+    #[test]
+    fn the_filled_in_languages_are_written_not_left_in_english() {
+        for l in [Lang::Ja, Lang::Ko, Lang::Es, Lang::Fr, Lang::De, Lang::Pt] {
+            for key in FILLED_KEYS {
+                if !SAME_AS_ENGLISH.contains(&(l.code(), *key)) {
+                    assert_ne!(word(l, key), word(Lang::En, key), "{l:?} {key}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn urgent_lines_name_the_to_do_label_of_their_own_language() {
+        for l in CORE.into_iter().filter(|l| *l != Lang::En) {
+            for key in ["h_urgent_failed", "h_urgent_transfer"] {
+                assert!(word(l, key).contains(words(l).s_todo.as_str()), "{l:?} {key}");
             }
         }
     }

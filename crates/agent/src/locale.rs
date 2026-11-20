@@ -279,19 +279,41 @@ pub fn notify_kv_sep() -> &'static str {
     &notify_words().sep
 }
 
-/// [`zh_or`] for what the owner reads (fallback summaries, notes for the
-/// summary model).
-pub fn notify_zh_or(zh_tw: &str, en: &str) -> String {
-    zh_or_in(notify_lang(), zh_tw, en)
+/// [`fill_in`] for what the owner reads.
+pub fn notify_fill(template: &str, slots: &[(&str, &str)]) -> String {
+    fill_in(notify_lang(), template, slots)
 }
 
-/// [`zh_or`] in a given language: Chinese for the two Chinese languages,
-/// English for every other one.
-pub fn zh_or_in(lang: Lang, zh_tw: &str, en: &str) -> String {
-    match lang {
-        Lang::ZhTw => zh_tw.to_string(),
-        Lang::ZhCn => crate::zh_convert::to_cn(zh_tw),
-        _ => en.to_string(),
+/// A text of [`Words`] with its named `{slots}` filled in one pass; a slot the
+/// text does not name is left out, a `{name}` that is no slot stays as it is.
+/// For Simplified Chinese the filled text goes through the converter, so a
+/// value written in Traditional characters (a contact's name, a phone's label)
+/// reads as Simplified, as it always did.
+pub fn fill_in(lang: Lang, template: &str, slots: &[(&str, &str)]) -> String {
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(i) = rest.find('{') {
+        out.push_str(&rest[..i]);
+        let after = &rest[i + 1..];
+        let slot = after
+            .find('}')
+            .and_then(|j| slots.iter().find(|s| s.0 == &after[..j]).map(|s| (j, s.1)));
+        match slot {
+            Some((j, value)) => {
+                out.push_str(value);
+                rest = &after[j + 1..];
+            }
+            None => {
+                out.push('{');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    if lang == Lang::ZhCn && !slots.is_empty() {
+        crate::zh_convert::to_cn(&out)
+    } else {
+        out
     }
 }
 
@@ -547,17 +569,6 @@ pub fn country_lang(iso: &str) -> Option<Lang> {
         .iter()
         .find(|&&(c, _)| c.eq_ignore_ascii_case(iso))
         .map(|&(_, lang)| lang)
-}
-
-/// A line that exists in Chinese and English only (fallback summaries, notes
-/// for the summary model): Chinese for the two Chinese settings, English for
-/// every other language.
-pub fn zh_or(zh_tw: &str, en: &str) -> String {
-    match current() {
-        Lang::ZhTw => zh_tw.to_string(),
-        Lang::ZhCn => crate::zh_convert::to_cn(zh_tw),
-        _ => en.to_string(),
-    }
 }
 
 /// Between a label and its value in the agent's language ("Number: …", "號碼：…").
@@ -1869,9 +1880,8 @@ mod tests {
         assert_eq!(for_owner_in(Lang::ZhCn, "听录音"), "听录音");
         assert_eq!(for_owner_in(Lang::Ja, "会議の件"), "会議の件");
         assert_eq!(for_owner_in(Lang::En, "Call back"), "Call back");
-        assert_eq!(zh_or_in(Lang::ZhTw, "中間省略", "left out"), "中間省略");
-        assert_eq!(zh_or_in(Lang::ZhCn, "中間省略", "left out"), "中间省略");
-        assert_eq!(zh_or_in(Lang::De, "中間省略", "left out"), "left out");
+        assert_eq!(fill_in(Lang::ZhCn, "{n}（{m}）", &[("n", "號碼"), ("m", "王小明")]), "号码（王小明）");
+        assert_eq!(fill_in(Lang::De, "{n} ({m}) {x} {", &[("n", "{m}"), ("m", "b")]), "{m} (b) {x} {");
     }
 
     #[test]
@@ -2749,7 +2759,6 @@ mod ext_tests {
             assert_eq!(crate::urgency::language_name(l), "English");
             assert!(crate::urgency::is_latin_lang(l));
             assert_eq!(crate::direct_transfer_words(l), crate::direct_transfer_words(en));
-            assert_eq!(zh_or_in(l, "是", "yes"), "yes");
             assert_eq!(for_owner_in(l, "Ciao"), "Ciao");
             assert_eq!(quoted(l, "ok"), quoted(en, "ok"));
             assert_eq!(date_time(l, &dt), date_time(en, &dt));

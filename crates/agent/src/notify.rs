@@ -1966,10 +1966,7 @@ pub async fn notify_rejected_call(
 /// for the "cannot be reached" announcement.
 fn blocked_outcome(declined: bool) -> String {
     if declined {
-        locale::notify_zh_or(
-            "響鈴時直接拒接，沒有接起來，沒有用 AI",
-            "Declined while it rang: not picked up, no AI",
-        )
+        locale::notify_words().n_blocked_declined.clone()
     } else {
         let p = locale::notify_words();
         p.n_blocked_done.replace("{}", locale::notify_phrases().unavailable)
@@ -1978,10 +1975,7 @@ fn blocked_outcome(declined: bool) -> String {
 
 /// Headline of a call the phone refused because it was already on a call.
 fn call_waiting_headline(caller: &str, device: &str) -> String {
-    locale::notify_zh_or(
-        &format!("通話中插播未接：{caller}（{device}）"),
-        &format!("Missed while on another call: {caller} ({device})"),
-    )
+    locale::notify_fill(&locale::notify_words().n_cw_headline, &[("caller", caller), ("device", device)])
 }
 
 /// A second call came in during a call and the phone turned it away (busy).
