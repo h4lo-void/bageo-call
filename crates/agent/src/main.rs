@@ -1455,11 +1455,11 @@ async fn main() -> Result<()> {
                                         "tg appointment decision failed task_id={}: {e:#}",
                                         action.task_id
                                     );
-                                    let p = locale::notify_phrases();
+                                    let p = locale::notify_words();
                                     let head = if action.confirm {
-                                        p.tc_confirm_failed
+                                        &p.tc_confirm_failed
                                     } else {
-                                        p.tc_ignore_failed
+                                        &p.tc_ignore_failed
                                     };
                                     format!("{head}{}{e:#}", locale::notify_kv_sep())
                                 }
@@ -1493,7 +1493,7 @@ async fn main() -> Result<()> {
                                 );
                                 format!(
                                     "{}{}{e:#}",
-                                    locale::notify_phrases().tc_confirm_failed,
+                                    locale::notify_words().tc_confirm_failed,
                                     locale::notify_kv_sep()
                                 )
                             }
@@ -1505,7 +1505,7 @@ async fn main() -> Result<()> {
                                 warn!("tg ignore fulfill failed task_id={}: {e:#}", action.task_id);
                                 format!(
                                     "{}{}{e:#}",
-                                    locale::notify_phrases().tc_ignore_failed,
+                                    locale::notify_words().tc_ignore_failed,
                                     locale::notify_kv_sep()
                                 )
                             }
@@ -5077,8 +5077,8 @@ fn first_call_waiting_report(serial: &str, caller: &str) -> bool {
 
 /// The web record of a call turned away during another call: fixed text, no LLM.
 fn call_waiting_summary(caller: &str, sim_country: Option<&str>) -> String {
-    let p = locale::notify_phrases();
-    let sep = p.sep;
+    let p = locale::notify_words();
+    let sep = p.sep.as_str();
     let number = display_caller_id(caller);
     let sim = sim_country
         .map(|c| format!(" (SIM {})", c.to_ascii_uppercase()))
@@ -5758,7 +5758,7 @@ async fn record_whitelist_direct_transfer(
     }
     let forward_to = rt.whitelist_forward_number.trim().to_string();
     let lang = locale::notify_lang();
-    let p = locale::phrases(lang);
+    let p = locale::words(lang);
     let [real_lbl, about_lbl, reply_prefix, todo_lbl, end_hint, alert_title, status_lbl, fwd_lbl] = direct_transfer_words(lang);
     if let Some(mut call) = state
         .calls
@@ -5832,13 +5832,13 @@ fn save_reject_list_notes(state: &AppState, record: &CallRecord) {
     let reason = settings_store::reject_reason_on(rt.pending_rejects(), &record.caller_id, record.sim_country.as_deref());
     // The record is the owner's; the announcement quoted is what the caller heard.
     let lang = locale::notify_lang();
-    let p = locale::phrases(lang);
+    let p = locale::words(lang);
     let announce = voice_preview::reject_announce_text();
     let summary = if declined {
         let reason = reason
             .map(|r| format!("\n{}{}{r}", p.n_reason, p.sep))
             .unwrap_or_default();
-        let sep = p.sep;
+        let sep = p.sep.as_str();
         format!(
             "{}{sep}{number}{reason}\n{}{sep}{}\n{}{sep}{}",
             p.s_caller,
@@ -5863,7 +5863,7 @@ fn save_reject_list_notes(state: &AppState, record: &CallRecord) {
         let reason = reason
             .map(|r| format!("\n{}{}{r}", p.n_reason, p.sep))
             .unwrap_or_default();
-        let sep = p.sep;
+        let sep = p.sep.as_str();
         format!(
             "{}{sep}{number}{reason}\n{}{sep}{}\n{}{sep}{}",
             p.s_caller,
@@ -7773,7 +7773,7 @@ async fn send_urgent_call_alert(state: &AppState, serial: &str, caller_num: &str
     let ct_name = contacts::lookup(caller_num, sim.as_deref()).map(|c| c.name);
     let caller_disp = contacts::named_number(display_caller_id(caller_num), ct_name.as_deref());
     let lang = locale::notify_lang();
-    let p = locale::phrases(lang);
+    let p = locale::words(lang);
     let title = urgent_call::alert_title(lang);
     let text = format!(
         "{title}\n{}: {caller_disp}\n{}: {}\n{}",
@@ -8342,7 +8342,7 @@ async fn run_gemini_session_to_end(
                         let dev = notify::device_label(&serial);
                         let fwd = rt.whitelist_forward_number.trim().to_string();
                         let lang = locale::notify_lang();
-                        let p = locale::phrases(lang);
+                        let p = locale::words(lang);
                         let urg_title = urgent_call::alert_title(lang);
                         let (urg_label, fwd_label, urg_footer) = match lang {
                             locale::Lang::ZhTw => ("緊急內容", "轉接號碼", "請立即回電或接手處理！"),
@@ -10304,20 +10304,20 @@ fn maybe_notify_voicemail(state: &AppState, call: &ActiveCall, notified: &Arc<At
         return;
     }
     let contact = call.reply_contact().unwrap_or("").to_string();
-    let p = locale::notify_phrases();
+    let p = locale::notify_words();
     let reply_line = match (call.reply_method(), call.contact_verified()) {
         (Some("phone"), true) => {
             if contact.is_empty() {
                 p.vm_call_back_unknown.to_string()
             } else {
-                locale::fill(p.vm_call_back_to, &contact)
+                locale::fill(&p.vm_call_back_to, &contact)
             }
         }
         (Some("email"), true) => {
             if contact.is_empty() {
                 p.vm_email_unknown.to_string()
             } else {
-                locale::fill(p.vm_email_to, &contact)
+                locale::fill(&p.vm_email_to, &contact)
             }
         }
         (Some("phone"), false) => p.vm_call_back_unchecked.to_string(),
@@ -10342,8 +10342,8 @@ fn maybe_notify_voicemail(state: &AppState, call: &ActiveCall, notified: &Arc<At
             return;
         }
         let lang = locale::notify_lang();
-        let p = locale::phrases(lang);
-        let sep = p.sep;
+        let p = locale::words(lang);
+        let sep = p.sep.as_str();
         let mut summary_block = String::new();
         let mut whisper_chars = 0usize;
         if let Some(rel) = vm_rel.as_deref() {
@@ -10397,7 +10397,7 @@ fn maybe_notify_voicemail(state: &AppState, call: &ActiveCall, notified: &Arc<At
                 listen_recording_line(
                     &eff,
                     &call_id,
-                    &locale::fill(p.vm_length, &locale::duration(lang, secs))
+                    &locale::fill(&p.vm_length, &locale::duration(lang, secs))
                 )
             ));
             notify_ai_request(&http, &eff, &caller, &serial, &body).await
@@ -10406,7 +10406,7 @@ fn maybe_notify_voicemail(state: &AppState, call: &ActiveCall, notified: &Arc<At
             reply.push_str(&format!(
                 "\n{}{sep}{}",
                 p.s_matter,
-                locale::fill(p.vm_no_transcript, &locale::duration(lang, secs))
+                locale::fill(&p.vm_no_transcript, &locale::duration(lang, secs))
             ));
             reply.push_str(&format!("\n{}", listen_recording_line(&eff, &call_id, "")));
             notify_voicemail(&http, &eff, &caller, &serial, secs, &reply).await
@@ -10513,7 +10513,7 @@ fn spawn_voicemail_task(state: &AppState, call: &ActiveCall) {
                     .patch(
                         &task_id,
                         TaskPatch {
-                            summary: Some(locale::notify_phrases().vm_task_failed.to_string()),
+                            summary: Some(locale::notify_words().vm_task_failed.to_string()),
                             fulfill_error: Some(Some(format!("extract: {e:#}"))),
                             ..Default::default()
                         },
@@ -10533,8 +10533,8 @@ fn spawn_voicemail_task(state: &AppState, call: &ActiveCall) {
         let token = rt.telegram_bot_token.trim();
         let chat = rt.telegram_chat_id.trim();
         if tg_inbound::task_card_ready(rt.call_notify, token, chat) {
-            let p = locale::notify_phrases();
-            let sep = p.sep;
+            let p = locale::notify_words();
+            let sep = p.sep.as_str();
             let title = if task.summary.trim().is_empty() {
                 format!("{} — {}", p.n_voicemail, display_caller_id(&caller_id))
             } else {
@@ -10838,8 +10838,8 @@ fn spawn_ai_talk_tg_summary(
                 warn!("ai talk summary skipped serial={serial}: no summary service (set a Gemini key or another OpenAI-compatible service)");
                 let _ = caller_disp;
                 note_source = "no_key";
-                let p = locale::notify_phrases();
-                let sep = p.sep;
+                let p = locale::notify_words();
+                let sep = p.sep.as_str();
                 format!(
                     "{}{sep}{}\n{}{sep}{}",
                     p.s_matter, p.s_no_service, p.s_todo, p.s_see_transcript
@@ -10851,12 +10851,12 @@ fn spawn_ai_talk_tg_summary(
         } else {
             note_source = "none";
             let lang = locale::notify_lang();
-            let p = locale::phrases(lang);
-            let sep = p.sep;
+            let p = locale::words(lang);
+            let sep = p.sep.as_str();
             format!(
                 "{}{sep}{}\n{}{sep}{}",
                 p.s_matter,
-                locale::fill(p.s_no_transcript, &locale::duration(lang, secs)),
+                locale::fill(&p.s_no_transcript, &locale::duration(lang, secs)),
                 p.s_todo,
                 p.s_listen_recording
             )
@@ -10868,10 +10868,10 @@ fn spawn_ai_talk_tg_summary(
                 body = stall_fallback_summary(&live_full, secs, scam.as_ref());
             }
         }
-        let ai_failed_line = locale::notify_phrases().s_ai_failed;
-        if ai_failed && !body.contains("AI 沒接上") && !body.contains(ai_failed_line) {
+        let ai_failed_line = locale::notify_words().s_ai_failed.as_str();
+        if ai_failed && !body.contains("AI 沒接上") && !body.contains(&ai_failed_line) {
             // The summary model usually writes it (prompt rule); make sure the owner sees it.
-            body.insert_str(0, &format!("{}\n", locale::notify_phrases().s_ai_fail_prefix));
+            body.insert_str(0, &format!("{}\n", locale::notify_words().s_ai_fail_prefix));
         }
         if ai_callback && !errand_call {
             let code = if callee_answered { "answered" } else { "no_answer" };
@@ -10982,7 +10982,7 @@ fn spawn_ai_talk_tg_summary(
         let detail_url = notify::call_detail_url(&eff, &call_id);
         if notify_on && !errand_call {
             if let Some(ev) = &calendar_event {
-                let label = locale::notify_phrases().n_calendar;
+                let label = &locale::notify_words().n_calendar;
                 body.push_str(&format!("\n{label}{}{} ({})", locale::notify_kv_sep(), ev.title, ev.when()));
                 // One tap adds it to the calendar the owner chose (setting
                 // `calendar_app`): its form, or the call's `.ics` at the console's
@@ -11140,14 +11140,14 @@ fn caller_side_text(dialogue: &str, caller_track: &str) -> String {
 /// Notification body when the AI never spoke and nothing usable was transcribed.
 fn ai_fail_summary_body(secs: f64) -> String {
     let lang = locale::notify_lang();
-    let p = locale::phrases(lang);
-    let sep = p.sep;
+    let p = locale::words(lang);
+    let sep = p.sep.as_str();
     format!(
         "{}{sep}{}\n{}{sep}{}\n{}{sep}{}\n{}{sep}{}",
         p.s_caller,
         p.s_unclear,
         p.s_matter,
-        locale::fill(p.s_ai_fail_matter, &locale::duration(lang, secs)),
+        locale::fill(&p.s_ai_fail_matter, &locale::duration(lang, secs)),
         p.s_reply,
         p.s_ai_failed,
         p.s_todo,
@@ -11166,21 +11166,21 @@ fn stall_fallback_summary(dialogue: &str, secs: f64, scam: Option<&calls::ScamJu
         .join("");
     let hits = gemini_live::stall_keyword_hits(&caller);
     let lang = locale::notify_lang();
-    let p = locale::phrases(lang);
-    let sep = p.sep;
-    let named: String = hits.iter().take(4).copied().collect::<Vec<_>>().join(p.list_sep);
+    let p = locale::words(lang);
+    let sep = p.sep.as_str();
+    let named: String = hits.iter().take(4).copied().collect::<Vec<_>>().join(&p.list_sep);
     let topic = if let Some(t) = scam.and_then(scam_topic) {
         t
     } else if named.is_empty() {
         p.s_stall_topic.to_string()
     } else {
-        locale::fill(p.s_stall_topic_kw, &named)
+        locale::fill(&p.s_stall_topic_kw, &named)
     };
     format!(
         "{}{sep}{topic}\n{}{sep}{}\n{}{sep}{}",
         p.s_matter,
         p.s_reply,
-        locale::fill(p.s_stall_reply, &locale::duration(lang, secs)),
+        locale::fill(&p.s_stall_reply, &locale::duration(lang, secs)),
         p.s_todo,
         p.s_nothing
     )
@@ -11210,7 +11210,7 @@ fn scam_topic(j: &calls::ScamJudgement) -> Option<String> {
     let t = scam_db::typology(&j.typology)?;
     let (sales, scam) = summary::sales_labels(lang);
     let label = if t.category == scam_db::Category::Scam { scam } else { sales };
-    Some(format!("{label}{}{}", locale::phrases(lang).sep, t.name(lang)))
+    Some(format!("{label}{}{}", locale::words(lang).sep, t.name(lang)))
 }
 
 /// One short line for the summary model about how the call ended, from the
@@ -11252,7 +11252,7 @@ fn summary_end_hint(events: &[String], scam: Option<&calls::ScamJudgement>) -> S
             None => locale::notify_zh_or("系統判斷像推銷／詐騙，AI 改成故意陪他聊、拖時間", "the system judged it a sales / scam call, so the AI deliberately kept the caller talking to waste their time"),
         }
     } else if has("persona_scam_detected") {
-        let t = topic.unwrap_or_else(|| locale::notify_phrases().s_stall_topic.to_string());
+        let t = topic.unwrap_or_else(|| locale::notify_words().s_stall_topic.to_string());
         locale::notify_zh_or(
             &format!("系統判斷是推銷／詐騙（{t}）；陪聊功能關著，AI 照一般方式應對"),
             &format!("the system judged it a sales / scam call ({t}); stalling is off, so the AI answered as usual"),
@@ -11287,7 +11287,7 @@ fn map_extracted_reply_method(raw: Option<&str>) -> Option<ReplyMethod> {
 fn display_caller_id(caller_id: &str) -> &str {
     let t = caller_id.trim();
     if t.is_empty() {
-        locale::notify_phrases().n_hidden
+        &locale::notify_words().n_hidden
     } else {
         t
     }

@@ -396,17 +396,17 @@ async fn tls_upgrade(stream: TcpStream, host: &str) -> Result<tokio_rustls::clie
 /// (`notify_language`; also what a task follow-up shows). Never include
 /// credential values in an error.
 pub fn gmail_missing_cred_msg() -> &'static str {
-    texts().f_gmail_missing
+    &texts().f_gmail_missing
 }
 
-fn texts() -> &'static locale::Phrases {
+fn texts() -> &'static locale::Words {
     owner_texts(&locale::active())
 }
 
 /// What the owner reads: the language of `notify_language`, which is the AI's
 /// own unless set apart.
-fn owner_texts(active: &locale::Active) -> &'static locale::Phrases {
-    locale::phrases(active.notify_lang)
+fn owner_texts(active: &locale::Active) -> &'static locale::Words {
+    locale::words(active.notify_lang)
 }
 
 fn validate_gmail_user(user: &str) -> Result<&str> {
@@ -416,7 +416,7 @@ fn validate_gmail_user(user: &str) -> Result<&str> {
         return Err(ChannelError::new("missing_field", "url", gmail_missing_cred_msg()).into());
     }
     if !user.contains('@') || user.starts_with('@') || user.ends_with('@') || user.contains(breaks_smtp_line) {
-        return Err(ChannelError::new("bad_value", "url", texts().g_bad_address).into());
+        return Err(ChannelError::new("bad_value", "url", texts().g_bad_address.as_str()).into());
     }
     Ok(user)
 }
@@ -424,10 +424,10 @@ fn validate_gmail_user(user: &str) -> Result<&str> {
 fn validate_recipient(to: &str) -> Result<&str> {
     let to = to.trim();
     if to.is_empty() {
-        return Err(ChannelError::new("missing_field", "target", texts().g_no_recipient).into());
+        return Err(ChannelError::new("missing_field", "target", texts().g_no_recipient.as_str()).into());
     }
     if !to.contains('@') || to.contains(breaks_smtp_line) {
-        return Err(ChannelError::new("bad_value", "target", texts().g_bad_recipient).into());
+        return Err(ChannelError::new("bad_value", "target", texts().g_bad_recipient.as_str()).into());
     }
     Ok(to)
 }
@@ -439,7 +439,7 @@ fn validate_app_password(app_password: &str) -> Result<&str> {
         return Err(ChannelError::new("missing_field", "token", gmail_missing_cred_msg()).into());
     }
     if app_password.len() < 8 {
-        return Err(ChannelError::new("bad_value", "token", texts().g_short_password).into());
+        return Err(ChannelError::new("bad_value", "token", texts().g_short_password.as_str()).into());
     }
     Ok(app_password)
 }
@@ -763,7 +763,7 @@ mod tests {
     #[test]
     fn gmail_messages_are_in_the_language_the_owner_reads_not_the_one_the_ai_speaks() {
         let active = locale::Active { lang: locale::Lang::En, notify_lang: locale::Lang::Ja, ..Default::default() };
-        assert_eq!(owner_texts(&active).f_gmail_missing, locale::phrases(locale::Lang::Ja).f_gmail_missing);
-        assert_ne!(owner_texts(&active).f_gmail_missing, locale::phrases(locale::Lang::En).f_gmail_missing);
+        assert_eq!(owner_texts(&active).f_gmail_missing, locale::words(locale::Lang::Ja).f_gmail_missing);
+        assert_ne!(owner_texts(&active).f_gmail_missing, locale::words(locale::Lang::En).f_gmail_missing);
     }
 }

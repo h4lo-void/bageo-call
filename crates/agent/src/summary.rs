@@ -105,18 +105,18 @@ pub fn summary_system_prompt(lang: Lang, owner: &str, aliases: &[String]) -> Str
             .replace("{owner}", &owner),
         ),
         other => {
-            let p = locale::phrases(other);
+            let (p, w) = (locale::phrases(other), locale::words(other));
             let (sales, scam) = sales_labels(other);
             format!("{SUMMARY_SYSTEM_PROMPT_EN}{}", rule(SUMMARY_ALIASES_RULE_EN))
                 .replace("{owner}", &owner)
                 .replace("{language}", p.name_en)
-                .replace("{s_caller}", p.s_caller)
-                .replace("{s_matter}", p.s_matter)
+                .replace("{s_caller}", &w.s_caller)
+                .replace("{s_matter}", &w.s_matter)
                 .replace("{s_sales}", sales)
                 .replace("{s_scam}", scam)
-                .replace("{s_reply}", p.s_reply)
-                .replace("{s_todo}", p.s_todo)
-                .replace("{s_ai_failed}", p.s_ai_failed)
+                .replace("{s_reply}", &w.s_reply)
+                .replace("{s_todo}", &w.s_todo)
+                .replace("{s_ai_failed}", &w.s_ai_failed)
         }
     };
     // The names go in last: the Simplified conversion leaves them as written.
@@ -422,7 +422,7 @@ fn empty_transcript_summary(lang: Lang) -> String {
         Lang::ZhTw => TW.to_string(),
         Lang::ZhCn => crate::zh_convert::to_cn(TW),
         _ => {
-            let p = locale::phrases(lang);
+            let p = locale::words(lang);
             format!("{}{}{}", p.s_matter, p.sep, p.s_no_summary)
         }
     }
@@ -437,8 +437,8 @@ fn fallback_summary_in(lang: Lang, caller: &str, transcript: &str) -> String {
         Lang::ZhCn => return crate::zh_convert::to_cn(&fallback_summary(caller, transcript)),
         _ => {}
     }
-    let p = locale::phrases(lang);
-    let sep = p.sep;
+    let p = locale::words(lang);
+    let sep = p.sep.as_str();
     let first = transcript
         .lines()
         .map(str::trim)
@@ -465,7 +465,7 @@ fn fallback_summary_in(lang: Lang, caller: &str, transcript: &str) -> String {
 pub fn is_fallback_summary(text: &str) -> bool {
     text.contains("（摘要服務暫時沒回應）")
         || text.contains("（摘要服务暂时没回应）")
-        || text.contains(locale::notify_phrases().s_no_summary)
+        || text.contains(locale::notify_words().s_no_summary.as_str())
 }
 
 /// How the summary prompt tells the model to mark a sales call and a likely
@@ -521,7 +521,7 @@ pub fn summary_says_sales(lang: Lang, summary: &str) -> bool {
         Lang::De => &["verkaufsanruf", "betrugsversuch", "aggressives inkasso", "belästigungsanruf", "drohanruf"],
         Lang::Pt => &["ligação comercial", "tentativa de golpe", "cobrança abusiva", "ligação de assédio"],
     };
-    let label = locale::phrases(lang).s_matter;
+    let label = locale::words(lang).s_matter.as_str();
     summary
         .lines()
         .map(str::trim)

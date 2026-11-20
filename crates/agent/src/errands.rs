@@ -3283,7 +3283,7 @@ fn errands_url(settings: &Settings) -> String {
 /// The notification about an errand's end, in `lang`.
 fn notice_body(lang: Lang, e: &Errand, settings: &Settings) -> String {
     let w = words(lang);
-    let sep = locale::phrases(lang).sep;
+    let sep = locale::words(lang).sep.as_str();
     let r = e.result.clone().unwrap_or_default();
     let label = outcome_label(&w, &r.outcome);
     let mut lines: Vec<String> = Vec::new();
@@ -3318,7 +3318,7 @@ fn notice_body(lang: Lang, e: &Errand, settings: &Settings) -> String {
 
 /// "AI 代打：<name or number>".
 fn notice_headline(lang: Lang, e: &Errand) -> String {
-    format!("{}{}{}", words(lang).title, locale::phrases(lang).sep, e.who())
+    format!("{}{}{}", words(lang).title, locale::words(lang).sep, e.who())
 }
 
 async fn notify(cb: &CallbackCtx<'_>, e: &Errand) {

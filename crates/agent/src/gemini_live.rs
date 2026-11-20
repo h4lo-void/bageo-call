@@ -3463,7 +3463,7 @@ pub(crate) fn merge_dialogue_fragments(transcript: &str) -> String {
 /// ("Caller: …", "AI: …") for the web record. Everything else reads the
 /// labels used inside the agent (對方／接聽).
 pub(crate) fn localize_dialogue(dialogue: &str, lang: crate::locale::Lang) -> String {
-    let p = crate::locale::phrases(lang);
+    let p = crate::locale::words(lang);
     dialogue
         .lines()
         .map(|l| {
@@ -11023,7 +11023,7 @@ mod tests {
         assert_eq!(localize_dialogue(d, Lang::Fr), "IA : Hello?\nAppelant : Hi, it's Jonas.");
         assert_eq!(localize_dialogue("接聽：喂？", Lang::ZhCn), "接听：喂？");
         for l in crate::locale::ALL {
-            let p = crate::locale::phrases(l);
+            let p = crate::locale::words(l);
             assert!(!p.d_caller.is_empty() && !p.d_ai.is_empty() && p.d_caller != p.d_ai, "{l:?}");
         }
     }

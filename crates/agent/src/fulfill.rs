@@ -17,25 +17,25 @@ use tracing::{info, warn};
 
 use crate::callback::{callback_number, callback_whitelist_allows, ControlRegistry};
 use crate::gmail::{gmail_missing_cred_msg, send_mail};
-use crate::locale::{self, Lang, Phrases};
+use crate::locale::{self, Lang, Words};
 use crate::openclaw::{configured as openclaw_configured, handoff_task};
 use crate::settings_store::RuntimeSettings;
 use crate::tasks::{ReplyMethod, TaskPatch, TaskRecord, TaskStatus, TaskStore};
 
 /// What the owner reads (task errors, the follow-up message): the
 /// notification language (setting `notify_language`).
-fn texts() -> &'static Phrases {
+fn texts() -> &'static Words {
     owner_texts(&locale::active())
 }
 
-fn owner_texts(active: &locale::Active) -> &'static Phrases {
-    locale::phrases(active.notify_lang)
+fn owner_texts(active: &locale::Active) -> &'static Words {
+    locale::words(active.notify_lang)
 }
 
 /// What the caller reads (the e-mail reply): the language the AI speaks with
 /// callers.
-fn caller_texts() -> &'static Phrases {
-    locale::phrases(locale::current())
+fn caller_texts() -> &'static Words {
+    locale::words(locale::current())
 }
 
 /// User confirmed the task (Telegram button or web UI). Runs fulfillment once.
@@ -138,7 +138,7 @@ async fn fulfill_via_openclaw(
             store.update_status(task_id, TaskStatus::Fulfilled).await
         }
         Err(e) => {
-            let msg = locale::fill(texts().f_openclaw_failed, &format!("{e:#}"));
+            let msg = locale::fill(&texts().f_openclaw_failed, &format!("{e:#}"));
             warn!(task_id, error = %msg, "fulfill: openclaw handoff failed");
             store
                 .patch(
@@ -345,18 +345,18 @@ fn email_body(task: &TaskRecord) -> String {
     let mut body = String::new();
     let summary = task.summary.trim();
     if !summary.is_empty() {
-        body.push_str(&heading(p.e_summary));
+        body.push_str(&heading(&p.e_summary));
         body.push_str(summary);
         body.push_str("\n\n");
     }
     let transcript = task.transcript.trim();
     if !transcript.is_empty() {
-        body.push_str(&heading(p.tc_transcript));
+        body.push_str(&heading(&p.tc_transcript));
         body.push_str(transcript);
         body.push('\n');
     }
     if body.is_empty() {
-        body.push_str(p.e_empty);
+        body.push_str(&p.e_empty);
         body.push('\n');
     }
     body
@@ -370,11 +370,11 @@ pub fn tg_result_text(task: &TaskRecord, confirmed: bool) -> String {
         return format!("{}\n{}", p.tc_ignored_task, task.summary.trim());
     }
     let status = match task.status {
-        TaskStatus::Fulfilled => p.tc_done,
-        TaskStatus::Confirmed => p.tc_in_progress,
-        TaskStatus::Failed => p.tc_failed,
-        TaskStatus::Pending => p.tc_pending,
-        TaskStatus::Ignored => p.tc_ignore_ack,
+        TaskStatus::Fulfilled => &p.tc_done,
+        TaskStatus::Confirmed => &p.tc_in_progress,
+        TaskStatus::Failed => &p.tc_failed,
+        TaskStatus::Pending => &p.tc_pending,
+        TaskStatus::Ignored => &p.tc_ignore_ack,
     };
     let mut lines = vec![format!("{}{sep}{status}", p.tc_task), task.summary.trim().to_string()];
     if let Some(err) = task.fulfill_error.as_deref().filter(|s| !s.is_empty()) {
@@ -658,7 +658,7 @@ mod tests {
         assert!(texts().f_callback_waiting.contains("控制"));
         // Every language says where to fix it.
         for l in locale::ALL {
-            let p = locale::phrases(l);
+            let p = locale::words(l);
             assert!(p.f_gmail_missing.contains("Gmail"), "{l:?}");
         }
     }
@@ -728,7 +728,7 @@ mod tests {
         let a = locale::Active { lang: Lang::En, notify_lang: Lang::ZhTw, ..Default::default() };
         assert!(owner_texts(&a).f_callback_waiting.contains("控制"));
         let b = locale::Active { lang: Lang::ZhTw, notify_lang: Lang::En, ..Default::default() };
-        assert_eq!(owner_texts(&b).f_callback_waiting, locale::phrases(Lang::En).f_callback_waiting);
+        assert_eq!(owner_texts(&b).f_callback_waiting, locale::words(Lang::En).f_callback_waiting);
     }
 
     /// A to-do's phone call-back is our call: its session is found by phone and

@@ -323,9 +323,9 @@ impl TgPoller {
             return Ok(None);
         }
 
-        let p = crate::locale::notify_phrases();
-        let ack = if confirm { p.tc_confirm_ack } else { p.tc_ignore_ack };
-        answer_callback_query(http, &self.api, bot_token, callback_id, Some(ack)).await;
+        let p = crate::locale::notify_words();
+        let ack = if confirm { &p.tc_confirm_ack } else { &p.tc_ignore_ack };
+        answer_callback_query(http, &self.api, bot_token, callback_id, Some(&ack)).await;
 
         if let Some(mid) = message_id {
             remove_keyboard_at(http, &self.api, bot_token, &chat_id, mid).await;
@@ -382,7 +382,7 @@ pub async fn send_task_card(
     task_id: &str,
     body_text: &str,
 ) -> Result<()> {
-    let p = crate::locale::notify_phrases();
+    let p = crate::locale::notify_words();
     send_task_card_labeled(
         http,
         bot_token,
@@ -390,8 +390,8 @@ pub async fn send_task_card(
         task_summary_title,
         task_id,
         body_text,
-        p.tc_confirm,
-        p.tc_ignore,
+        &p.tc_confirm,
+        &p.tc_ignore,
     )
     .await
     .map(|_| ())

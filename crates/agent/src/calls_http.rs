@@ -3468,11 +3468,11 @@ async fn quick_action_run(
     }
     if method != axum::http::Method::POST {
         let w = crate::control::words::words(lang);
-        let p = crate::locale::phrases(lang);
+        let p = crate::locale::words(lang);
         let name = q.name.as_deref().unwrap_or("").trim();
         let detail = match op {
             "confirm_task" | "ignore_task" => {
-                let label = if op == "confirm_task" { p.ap_confirm } else { p.ap_decline };
+                let label = if op == "confirm_task" { &p.ap_confirm } else { &p.ap_decline };
                 let about = match state.task_store.get(target).await {
                     Some(t) => t.summary.lines().next().unwrap_or("").chars().take(200).collect::<String>(),
                     None => String::new(),
@@ -3528,7 +3528,7 @@ async fn quick_action_run(
                 return reply_out(false, &crate::control::words::fmt(w.not_found, &[target]), target);
             }
             let confirm = op == "confirm_task";
-            let p = crate::locale::phrases(lang);
+            let p = crate::locale::words(lang);
             if let Some(task) = state.task_store.get(target).await {
                 if task.appointment.is_some() {
                     let console =
@@ -3548,7 +3548,7 @@ async fn quick_action_run(
                     {
                         Ok((_, msg)) => reply_out(
                             true,
-                            if confirm { p.ap_confirm } else { p.ap_decline },
+                            if confirm { &p.ap_confirm } else { &p.ap_decline },
                             &msg,
                         ),
                         Err(e) => reply_out(false, &crate::control::words::fmt(w.failed, &[""]), &format!("{e:#}")),
@@ -3570,7 +3570,7 @@ async fn quick_action_run(
             match res {
                 Ok(t) => reply_out(
                     true,
-                    if confirm { p.ap_confirm } else { p.ap_decline },
+                    if confirm { &p.ap_confirm } else { &p.ap_decline },
                     &t.summary,
                 ),
                 Err(e) => reply_out(false, &crate::control::words::fmt(w.failed, &[""]), &format!("{e:#}")),
