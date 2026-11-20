@@ -517,8 +517,10 @@ dialog .terms li+li{margin-top:8px}
 .er-pick .btn{min-height:30px}
 .er-pre{margin-top:16px;padding:12px 14px;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface2)}
 .er-pre .help{margin:4px 0 0}
+.er-pre .er-pre-note{margin:8px 0 0}
 .er-pre .er-pre-in{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .er-pre .er-pre-in input{flex:1 1 14rem;min-width:0}
+.er-pre .er-pre-opt{margin-top:12px}
 .er-count{font-variant-numeric:tabular-nums;white-space:nowrap}
 .er-list-head{margin:6px 0 10px}
 .er-list-head h2{font-size:1.04rem;font-weight:650}
@@ -885,11 +887,14 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
         <label class="sw"><input type="checkbox" id="erRedial" /><span><b data-i18n="er_redial"></b><small data-i18n="er_redial_h"></small></span></label></div>
       <div class="er-pre" id="erPre" role="group" aria-labelledby="erPreT" hidden>
         <b id="erPreT" data-i18n="er_pre_t"></b>
-        <p class="help" data-i18n="er_pre_d"></p>
+        <p class="help" id="erPreD" data-i18n="er_pre_d"></p>
+        <p class="er-pre-note" id="erPreNote" hidden><b data-i18n="er_pre_note"></b> <span id="erPreNoteT"></span></p>
         <div id="erPreList"></div>
+        <div class="er-pre-opt" id="erPreOpt" hidden><b data-i18n="er_pre_opt"></b><div id="erPreOptList"></div></div>
         <div class="row" style="margin-top:12px;gap:8px">
           <button type="button" class="btn primary sm" id="erPreOk" data-i18n="er_pre_ok"></button>
           <button type="button" class="btn sm" id="erPreGo" data-i18n="er_pre_go"></button>
+          <button type="button" class="btn sm ghost" id="erPreNo" data-i18n="cancel"></button>
         </div>
       </div>
       <p class="dlg-err" id="erErr" role="alert" hidden></p>
@@ -2450,6 +2455,9 @@ I18N["en"] = {
   er_pre_go: "Call anyway",
   er_pre_sim: "Use this line's number",
   er_pre_ph: "Optional",
+  er_pre_note: "Good to know:",
+  er_pre_opt: "You can also add (optional)",
+  er_pre_rt: "Before you call",
   er_start: "Start the call",
   er_starting: "Sending…",
   er_started: "Handed to the AI. It is calling now.",
@@ -3695,6 +3703,9 @@ I18N["zh-TW"] = {
   er_pre_go: "直接撥出",
   er_pre_sim: "帶入這支門號",
   er_pre_ph: "選填",
+  er_pre_note: "撥號前提醒：",
+  er_pre_opt: "可以順便交代（選填）",
+  er_pre_rt: "撥出前先看一下",
   er_start: "開始打",
   er_starting: "送出中…",
   er_started: "已交給 AI，正在撥號。",
@@ -4878,6 +4889,9 @@ I18N["zh-CN"] = {
   er_pre_go: "直接拨出",
   er_pre_sim: "带入这支号码",
   er_pre_ph: "选填",
+  er_pre_note: "拨号前提醒：",
+  er_pre_opt: "可以顺便交代（选填）",
+  er_pre_rt: "拨出前先看一下",
   er_start: "开始打",
   er_starting: "发送中…",
   er_started: "已交给 AI，正在拨号。",
@@ -6092,6 +6106,9 @@ I18N["ja"] = {
   er_pre_go: "このまま発信",
   er_pre_sim: "この回線の番号を入れる",
   er_pre_ph: "任意",
+  er_pre_note: "発信前のメモ：",
+  er_pre_opt: "あわせて伝えられること（任意）",
+  er_pre_rt: "発信する前に",
   er_start: "発信する",
   er_starting: "送信中…",
   er_started: "AI に任せました。発信しています。",
@@ -7306,6 +7323,9 @@ I18N["ko"] = {
   er_pre_go: "그대로 걸기",
   er_pre_sim: "이 회선 번호 넣기",
   er_pre_ph: "선택 사항",
+  er_pre_note: "전화 전 참고:",
+  er_pre_opt: "함께 전할 수 있는 것 (선택)",
+  er_pre_rt: "전화 걸기 전에",
   er_start: "전화 걸기",
   er_starting: "보내는 중…",
   er_started: "AI에게 맡겼습니다. 지금 거는 중입니다.",
@@ -8520,6 +8540,9 @@ I18N["es"] = {
   er_pre_go: "Llamar igualmente",
   er_pre_sim: "Usar el número de esta línea",
   er_pre_ph: "Opcional",
+  er_pre_note: "Ten en cuenta:",
+  er_pre_opt: "También puedes añadir (opcional)",
+  er_pre_rt: "Antes de llamar",
   er_start: "Llamar",
   er_starting: "Enviando…",
   er_started: "En manos de la IA. Está llamando.",
@@ -9734,6 +9757,9 @@ I18N["fr"] = {
   er_pre_go: "Appeler quand même",
   er_pre_sim: "Utiliser le numéro de cette ligne",
   er_pre_ph: "Facultatif",
+  er_pre_note: "À savoir :",
+  er_pre_opt: "Vous pouvez aussi ajouter (facultatif)",
+  er_pre_rt: "Avant d'appeler",
   er_start: "Lancer l'appel",
   er_starting: "Envoi…",
   er_started: "Confié à l'IA. Elle appelle.",
@@ -10948,6 +10974,9 @@ I18N["de"] = {
   er_pre_go: "Trotzdem anrufen",
   er_pre_sim: "Nummer dieser Leitung einsetzen",
   er_pre_ph: "Optional",
+  er_pre_note: "Gut zu wissen:",
+  er_pre_opt: "Du kannst noch angeben (optional)",
+  er_pre_rt: "Bevor du anrufst",
   er_start: "Anruf starten",
   er_starting: "Wird gesendet…",
   er_started: "An die KI übergeben. Sie ruft jetzt an.",
@@ -12162,6 +12191,9 @@ I18N["pt"] = {
   er_pre_go: "Ligar assim mesmo",
   er_pre_sim: "Usar o número desta linha",
   er_pre_ph: "Opcional",
+  er_pre_note: "Bom saber:",
+  er_pre_opt: "Você também pode adicionar (opcional)",
+  er_pre_rt: "Antes de ligar",
   er_start: "Ligar",
   er_starting: "Enviando…",
   er_started: "Entregue à IA. Ela está ligando.",
@@ -16697,7 +16729,7 @@ const erFollow = new Map(); // errand id → the reply being written ("reply and
 let erPick = null;          // the contact picked under "Who to call": { contact_id, name, phones, number }
 let erIdTouched = false;
 let erPhonesSig = "";
-let erPre = null; // the open card of questions: { body, missing }
+let erPre = null; // the open card before dialing: { body, missing, optional, note, remind }
 let erFormLang = "";
 let erTicks = 0;
 const erOpen = (e) => ER_OPEN.includes(e.status);
@@ -16830,6 +16862,7 @@ function erSending(on) {
   b.disabled = on;
   $("erPreOk").disabled = on;
   $("erPreGo").disabled = on;
+  $("erPreNo").disabled = on;
   if (on) b.append(h("span", { class: "spin", attr: { "aria-hidden": "true" } }));
   b.append(h("span", { text: t(on ? "er_starting" : "er_start") }));
 }
@@ -16940,19 +16973,27 @@ $("erForm").addEventListener("submit", async (ev) => {
   }
   erSending(true);
   let pre = null;
-  try { pre = await erPreflight(task); } catch (_) { pre = null; }
-  if (pre && Array.isArray(pre.missing) && pre.missing.length) {
+  try { pre = await erPreflight(task, body.number); } catch (_) { pre = null; }
+  if (pre && typeof pre.type === "string" && pre.type) body.place_type = pre.type;
+  const missing = pre && Array.isArray(pre.missing) ? pre.missing : [];
+  // A card when details are missing, or when such places there are worth a word first.
+  if (pre && (missing.length || pre.remind === true)) {
     erSending(false);
-    erPre = { body, missing: pre.missing };
+    erPre = {
+      body, missing, remind: !missing.length,
+      optional: Array.isArray(pre.optional) ? pre.optional : [],
+      note: typeof pre.note === "string" ? pre.note : "",
+    };
     erPreRender();
     return;
   }
   await erCreate(body, null);
 });
-// The quick check before dialing: no answer within 1.5 seconds counts as nothing missing.
-function erPreflight(task) {
-  const late = new Promise((resolve) => setTimeout(() => resolve(null), 1500));
-  return Promise.race([erApi("/preflight", jsonBody("POST", { task, lang })), late]);
+// The quick check before dialing: no answer within 3.5 seconds counts as nothing missing.
+// The number tells it where the call goes (what businesses there usually ask).
+function erPreflight(task, number) {
+  const late = new Promise((resolve) => setTimeout(() => resolve(null), 3500));
+  return Promise.race([erApi("/preflight", jsonBody("POST", { task, lang, number: number || "" })), late]);
 }
 async function erCreate(body, answers) {
   if (answers && Object.keys(answers).length) body.answers = answers;
@@ -16973,7 +17014,10 @@ async function erCreate(body, answers) {
 function erPreHide() {
   erPre = null;
   $("erPre").hidden = true;
+  $("erPreNote").hidden = true;
+  $("erPreOpt").hidden = true;
   clear($("erPreList"));
+  clear($("erPreOptList"));
 }
 // The number of the line picked in "Number to call from"; empty unless it is one number.
 function erLineNumber() {
@@ -16995,34 +17039,48 @@ function erLineNumber() {
 function erCollectPreAnswers() {
   const answers = {};
   if (!erPre) return answers;
-  for (const m of erPre.missing) {
+  for (const m of erPre.missing.concat(erPre.optional)) {
     const el = $("erPre_" + m.key);
     if (el && el.value.trim()) answers[m.key] = el.value.trim();
   }
   return answers;
 }
+// One question of the card: its field (with "use this line's number" for a number).
+function erPreField(m, number) {
+  const input = h("input", { type: "text", id: "erPre_" + m.key, maxlength: 80, autocomplete: "off", placeholder: t("er_pre_ph") });
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter" || ev.isComposing || ev.keyCode === 229) return;
+    ev.preventDefault();
+    if (!erPre || er.sending) return;
+    erCreate(erPre.body, erCollectPreAnswers());
+  });
+  const row = h("div", { class: "er-pre-in" }, input);
+  if (number && (m.key === "phone" || m.key === "contact")) {
+    row.append(h("button", {
+      type: "button", class: "btn sm ghost", text: t("er_pre_sim"),
+      onclick: () => { input.value = m.key === "contact" && input.value.trim() ? input.value.trim() + " " + number : number; input.focus(); },
+    }));
+  }
+  return h("div", { class: "field" }, h("label", { for: "erPre_" + m.key, text: m.question }), row);
+}
+// The card before dialing: the questions, or (nothing missing) a reminder with
+// "Call anyway" and "Cancel"; what may also be added is optional in both.
 function erPreRender() {
   const box = clear($("erPreList"));
+  const opt = clear($("erPreOptList"));
   const number = erLineNumber();
-  for (const m of erPre.missing) {
-    const input = h("input", { type: "text", id: "erPre_" + m.key, maxlength: 80, autocomplete: "off", placeholder: t("er_pre_ph") });
-    input.addEventListener("keydown", (ev) => {
-      if (ev.key !== "Enter" || ev.isComposing || ev.keyCode === 229) return;
-      ev.preventDefault();
-      if (!erPre || er.sending) return;
-      erCreate(erPre.body, erCollectPreAnswers());
-    });
-    const row = h("div", { class: "er-pre-in" }, input);
-    if (number && (m.key === "phone" || m.key === "contact")) {
-      row.append(h("button", {
-        type: "button", class: "btn sm ghost", text: t("er_pre_sim"),
-        onclick: () => { input.value = m.key === "contact" && input.value.trim() ? input.value.trim() + " " + number : number; input.focus(); },
-      }));
-    }
-    box.append(h("div", { class: "field" }, h("label", { for: "erPre_" + m.key, text: m.question }), row));
-  }
+  const title = erPre.remind ? "er_pre_rt" : "er_pre_t";
+  $("erPreT").dataset.i18n = title;
+  $("erPreT").textContent = t(title);
+  $("erPreD").hidden = erPre.remind;
+  $("erPreOk").hidden = erPre.remind;
+  $("erPreNoteT").textContent = erPre.note || "";
+  $("erPreNote").hidden = !erPre.note;
+  for (const m of erPre.missing) box.append(erPreField(m, number));
+  for (const m of erPre.optional) opt.append(erPreField(m, number));
+  $("erPreOpt").hidden = !erPre.optional.length;
   $("erPre").hidden = false;
-  const first = box.querySelector("input");
+  const first = $("erPre").querySelector("input") || $("erPreGo");
   if (first) first.focus();
 }
 $("erPreOk").addEventListener("click", () => {
@@ -17031,7 +17089,12 @@ $("erPreOk").addEventListener("click", () => {
 });
 $("erPreGo").addEventListener("click", () => {
   if (!erPre || er.sending) return;
-  erCreate(erPre.body, null);
+  // A reminder's "Call anyway" keeps what was added; the questions' skips them.
+  erCreate(erPre.body, erPre.remind ? erCollectPreAnswers() : null);
+});
+$("erPreNo").addEventListener("click", () => {
+  if (er.sending) return;
+  erPreHide();
 });
 function erReveal(id) {
   const c = erCards.get(id);

@@ -60,6 +60,7 @@ mod notify;
 mod openclaw;
 mod phone_region;
 mod phone_wifi;
+mod place_habits;
 mod preflight;
 mod prompts;
 mod recent_notices;
