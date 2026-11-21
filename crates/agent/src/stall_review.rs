@@ -835,7 +835,9 @@ fn han_key(chars: &[char], j: usize) -> Option<usize> {
     if chars.get(j + 1).is_some_and(|&n| numeral(n)) {
         return None;
     }
-    Some(j + 1 + match_any(chars, j + 1, HAN_KEY_SUFFIXES).unwrap_or(0))
+    // Speech-to-text may leave a space before the suffix: 請按 1 字 (粵語 撳一字).
+    let suffix_at = skip_ws(chars, j + 1);
+    Some(suffix_at + match_any(chars, suffix_at, HAN_KEY_SUFFIXES).unwrap_or(0))
 }
 
 fn han_presses(chars: &[char]) -> Presses {
@@ -1241,6 +1243,16 @@ mod tests {
             "普通話服務請按二",
             "广东话服务请按三，重听请按零",
             "粵語服務請撳一字",
+            // Cantonese 撳一字 written 按 1 字 by speech-to-text, with and without a space.
+            "粵語服務請按 1 字。普通話服務請按 2 字。",
+            "粵語服務請按1字，普通話服務請按2字",
+            "粵語服務請撳 一字，普通話服務請撳 二字",
+            "粤语服务请按 1 字，普通话服务请按 2 字",
+            "粤语服务请按 1 。",
+            "普通話服務請按 二 字",
+            "For English, press 2.",
+            "Untuk bahasa Inggris, tekan 2",
+            "Để nói chuyện với nhân viên, nhấn phím 0",
             "For billing, press 1.",
             "Press one for sales.",
             "Press pound to repeat this menu.",
@@ -1277,6 +1289,14 @@ mod tests {
             "利息按1成計算",
             "請按星期一的時間來",
             "我要轉接，門鈴按2",
+            "你按一下就好",
+            "電梯請按 1 號",
+            "請按 1 字",
+            "他按 2 字體很大",
+            "請按 1 字一個字慢慢打",
+            "Please press the button once",
+            "Tolong tekan tombolnya sekali",
+            "ボタンを押してみて",
             "I pressed one key and it broke",
             "She was pressing 1 again",
             "The press release is out",

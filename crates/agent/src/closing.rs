@@ -644,7 +644,7 @@ const FAREWELLS: Lexicon = &[
         "好掛了",
     ]),
     ("zh-CN", &["再见", "再会", "挂了啊", "先挂了", "我挂了", "那挂了", "好嘞拜拜", "挂啰", "挂咯", "挂啦", "那我挂了", "好挂了"]),
-    ("yue", &["得啦唔該晒", "得啦唔该晒", "得啦唔該曬", "先掛啦", "拜拜啦", "byebye", "收線啦", "收线啦", "得閒再傾", "得闲再倾", "遲啲再傾", "迟啲再倾"]),
+    ("yue", &["得啦唔該晒", "得啦唔该晒", "得啦唔該曬", "先掛啦", "先挂啦", "拜拜啦", "byebye", "收線啦", "收线啦", "得閒再傾", "得闲再倾", "遲啲再傾", "迟啲再倾"]),
     ("ja", &[
         // A bare 「ありがとうございました」 is thanks, like 謝謝 elsewhere; with 本日は／今日は it closes.
         // 「失礼いたします／します」 is in GREETING_BYES so opening phrases never close on Turn 1.
@@ -2803,6 +2803,34 @@ mod bench_closings {
         assert_eq!(m.on_caller(wrap, wrap, false, false).event, ClosingEvent::CallerThanksWrap);
         assert_eq!(m.on_ai_turn("唔該曬，bye-bye。", false, false), ClosingEvent::FarewellsExchanged);
         assert!(m.may_hang_up(false));
+    }
+
+    /// Cantonese closings in both scripts, with other languages beside them.
+    #[test]
+    fn cantonese_closings_in_both_scripts() {
+        for t in ["好啦，得啦唔該晒", "好啦，得啦唔该晒", "好啦，得啦唔該曬", "好，先掛啦", "好，先挂啦", "好，拜拜啦", "收線啦", "收线啦"] {
+            assert!(classify(t).is_some_and(|h| h.kind == Kind::Farewell), "{t}");
+        }
+        for t in ["好，係咁先", "好，系咁先", "好，收線先", "好，收线先", "好，就咁先", "好，唔阻你"] {
+            assert!(classify(t).is_some_and(|h| h.kind == Kind::PreClosing), "{t}");
+        }
+        for t in ["唔該晒", "唔該曬", "唔该晒", "唔該哂", "唔该哂"] {
+            assert!(is_fluff(t), "{t}");
+        }
+        // The same moment in other languages.
+        for (t, kind) in [
+            ("Okay, bye bye", Kind::Farewell),
+            ("じゃあ、またね", Kind::Farewell),
+            ("Dạ, tạm biệt", Kind::Farewell),
+            ("โอเค บ๊ายบาย", Kind::Farewell),
+            ("Baik, sampai jumpa", Kind::Farewell),
+            ("Oke sudah dulu ya", Kind::PreClosing),
+            ("Dạ vậy nhé", Kind::PreClosing),
+        ] {
+            assert!(classify(t).is_some_and(|h| h.kind == kind), "{t}");
+        }
+        // 「蕭先生」「稍息先」 are mis-heard words, not closings.
+        assert!(classify("好, 蕭先生。").is_none() && classify("好, 稍息先。").is_none());
     }
 
     #[test]
