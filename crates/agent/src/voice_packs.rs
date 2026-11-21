@@ -545,7 +545,8 @@ fn outcome_of(r: &Result<u64, Stop>) -> Outcome {
         Err(Stop::Fail(Fail::Offline(_))) => Outcome::Offline,
         Err(Stop::Fail(Fail::UpdateBageo(_))) => Outcome::UpdateBageo,
         Err(Stop::Fail(Fail::Io(_))) => Outcome::Io,
-        Err(Stop::Fail(Fail::Bad(_) | Fail::UpToDate)) => Outcome::BadPack,
+        // Restart is the local data's install cap; a voice download never ends so.
+        Err(Stop::Fail(Fail::Bad(_) | Fail::UpToDate | Fail::Restart)) => Outcome::BadPack,
     }
 }
 
