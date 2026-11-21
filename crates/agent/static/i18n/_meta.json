@@ -535,6 +535,7 @@
     "placeholders": ["{dir}"]
   },
   "bk_dlg_file": {
+    "same_ok": true,
     "where": "a label or sentence in the console. English: File: {name}",
     "who": "the owner",
     "placeholders": ["{name}"]
@@ -1007,11 +1008,13 @@
     "placeholders": []
   },
   "cal_do_office365": {
+    "same_ok": true,
     "where": "a label or sentence in the console. English: Add to Microsoft 365",
     "who": "the owner",
     "placeholders": []
   },
   "cal_do_outlook": {
+    "same_ok": true,
     "where": "a label or sentence in the console. English: Add to Outlook.com",
     "who": "the owner",
     "placeholders": []
@@ -1102,6 +1105,7 @@
     "placeholders": []
   },
   "chk_key": {
+    "same_ok": true,
     "where": "a label or sentence in the console. English: Gemini API key",
     "who": "the owner",
     "placeholders": []
@@ -2452,7 +2456,8 @@
   "er_who_ai": {
     "where": "a label or sentence in the console. English: AI",
     "who": "the owner",
-    "placeholders": []
+    "placeholders": [],
+    "max": 18
   },
   "er_who_callee": {
     "where": "a label or sentence in the console. English: Them",
@@ -3105,6 +3110,7 @@
     "placeholders": []
   },
   "f_key": {
+    "same_ok": true,
     "where": "a label or sentence in the console. English: Gemini API key",
     "who": "the owner",
     "placeholders": []
@@ -3385,6 +3391,7 @@
     "placeholders": []
   },
   "f_sum_base": {
+    "same_ok": true,
     "where": "a label or sentence in the console. English: API base URL",
     "who": "the owner",
     "placeholders": []
@@ -3395,6 +3402,7 @@
     "placeholders": []
   },
   "f_sum_key": {
+    "same_ok": true,
     "where": "a label or sentence in the console. English: API key",
     "who": "the owner",
     "placeholders": []
@@ -4214,6 +4222,7 @@
     "placeholders": []
   },
   "nf_apprise_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Notify URL (…/notify/KEY)",
     "who": "the owner",
     "placeholders": []
@@ -4235,11 +4244,13 @@
     "placeholders": []
   },
   "nf_chanify": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Chanify",
     "who": "the owner",
     "placeholders": []
   },
   "nf_chanify_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Token",
     "who": "the owner",
     "placeholders": []
@@ -4250,6 +4261,7 @@
     "placeholders": []
   },
   "nf_dingtalk": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: DingTalk bot",
     "who": "the owner",
     "placeholders": []
@@ -4260,41 +4272,49 @@
     "placeholders": []
   },
   "nf_dingtalk_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Webhook URL",
     "who": "the owner",
     "placeholders": []
   },
   "nf_discord": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Discord",
     "who": "the owner",
     "placeholders": []
   },
   "nf_discord_target": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Channel ID",
     "who": "the owner",
     "placeholders": []
   },
   "nf_discord_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Bot token",
     "who": "the owner",
     "placeholders": []
   },
   "nf_discord_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Webhook URL",
     "who": "the owner",
     "placeholders": []
   },
   "nf_feishu": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Feishu / Lark bot",
     "who": "the owner",
     "placeholders": []
   },
   "nf_feishu_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Webhook URL",
     "who": "the owner",
     "placeholders": []
   },
   "nf_gmail": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Email (Gmail)",
     "who": "the owner",
     "placeholders": []
@@ -4310,6 +4330,7 @@
     "placeholders": []
   },
   "nf_gmail_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Gmail address",
     "who": "the owner",
     "placeholders": []
@@ -4321,21 +4342,25 @@
     "placeholders": []
   },
   "nf_googlechat_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Webhook URL",
     "who": "the owner",
     "placeholders": []
   },
   "nf_gotify": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Gotify",
     "who": "the owner",
     "placeholders": []
   },
   "nf_gotify_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: App token",
     "who": "the owner",
     "placeholders": []
   },
   "nf_gotify_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Server URL",
     "who": "the owner",
     "placeholders": []
@@ -4352,11 +4377,13 @@
     "placeholders": []
   },
   "nf_homeassistant_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Long-lived access token",
     "who": "the owner",
     "placeholders": []
   },
   "nf_homeassistant_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Server URL",
     "who": "the owner",
     "placeholders": []
@@ -4373,6 +4400,7 @@
     "placeholders": []
   },
   "nf_ifttt_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Webhooks key",
     "who": "the owner",
     "placeholders": []
@@ -4389,26 +4417,31 @@
     "placeholders": []
   },
   "nf_line_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Channel access token",
     "who": "the owner",
     "placeholders": []
   },
   "nf_matrix": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Matrix",
     "who": "the owner",
     "placeholders": []
   },
   "nf_matrix_target": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Room ID",
     "who": "the owner",
     "placeholders": []
   },
   "nf_matrix_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Access token",
     "who": "the owner",
     "placeholders": []
   },
   "nf_matrix_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Homeserver URL",
     "who": "the owner",
     "placeholders": []
@@ -4430,11 +4463,13 @@
     "placeholders": []
   },
   "nf_nextcloud_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Server URL",
     "who": "the owner",
     "placeholders": []
   },
   "nf_ntfy": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: ntfy",
     "who": "the owner",
     "placeholders": []
@@ -4455,6 +4490,7 @@
     "placeholders": []
   },
   "nf_pushbullet": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Pushbullet",
     "who": "the owner",
     "placeholders": []
@@ -4465,16 +4501,19 @@
     "placeholders": []
   },
   "nf_pushbullet_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Access token",
     "who": "the owner",
     "placeholders": []
   },
   "nf_pushdeer": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: PushDeer",
     "who": "the owner",
     "placeholders": []
   },
   "nf_pushdeer_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: PushKey",
     "who": "the owner",
     "placeholders": []
@@ -4485,21 +4524,25 @@
     "placeholders": []
   },
   "nf_pushover": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Pushover",
     "who": "the owner",
     "placeholders": []
   },
   "nf_pushover_target": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: User key",
     "who": "the owner",
     "placeholders": []
   },
   "nf_pushover_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: API token",
     "who": "the owner",
     "placeholders": []
   },
   "nf_pushplus": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: PushPlus",
     "who": "the owner",
     "placeholders": []
@@ -4510,6 +4553,7 @@
     "placeholders": []
   },
   "nf_pushplus_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Token",
     "who": "the owner",
     "placeholders": []
@@ -4521,21 +4565,25 @@
     "placeholders": []
   },
   "nf_rocketchat_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Webhook URL",
     "who": "the owner",
     "placeholders": []
   },
   "nf_serverchan": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: ServerChan",
     "who": "the owner",
     "placeholders": []
   },
   "nf_serverchan_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: SendKey",
     "who": "the owner",
     "placeholders": []
   },
   "nf_signal": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Signal",
     "who": "the owner",
     "placeholders": []
@@ -4551,6 +4599,7 @@
     "placeholders": []
   },
   "nf_signal_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: API server URL",
     "who": "the owner",
     "placeholders": []
@@ -4567,21 +4616,25 @@
     "placeholders": []
   },
   "nf_slack_target": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Channel ID",
     "who": "the owner",
     "placeholders": []
   },
   "nf_slack_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Bot token",
     "who": "the owner",
     "placeholders": []
   },
   "nf_slack_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Incoming webhook URL",
     "who": "the owner",
     "placeholders": []
   },
   "nf_smtp": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Email (SMTP)",
     "who": "the owner",
     "placeholders": []
@@ -4597,6 +4650,7 @@
     "placeholders": []
   },
   "nf_smtp_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: SMTP URL (smtp://login@host:port)",
     "who": "the owner",
     "placeholders": []
@@ -4608,6 +4662,7 @@
     "placeholders": []
   },
   "nf_synology_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Webhook URL",
     "who": "the owner",
     "placeholders": []
@@ -4619,26 +4674,31 @@
     "placeholders": []
   },
   "nf_teams_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Workflow webhook URL",
     "who": "the owner",
     "placeholders": []
   },
   "nf_telegram": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Telegram",
     "who": "the owner",
     "placeholders": []
   },
   "nf_telegram_target": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Chat ID",
     "who": "the owner",
     "placeholders": []
   },
   "nf_telegram_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Bot token",
     "who": "the owner",
     "placeholders": []
   },
   "nf_webex": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Webex",
     "who": "the owner",
     "placeholders": []
@@ -4649,6 +4709,7 @@
     "placeholders": []
   },
   "nf_webex_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Bot access token",
     "who": "the owner",
     "placeholders": []
@@ -4665,6 +4726,7 @@
     "placeholders": []
   },
   "nf_webhook_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: URL",
     "who": "the owner",
     "placeholders": []
@@ -4675,11 +4737,13 @@
     "placeholders": []
   },
   "nf_wecom_url": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Webhook URL",
     "who": "the owner",
     "placeholders": []
   },
   "nf_wxpusher": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: WxPusher",
     "who": "the owner",
     "placeholders": []
@@ -4690,11 +4754,13 @@
     "placeholders": []
   },
   "nf_wxpusher_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: appToken (AT_…) or SPT",
     "who": "the owner",
     "placeholders": []
   },
   "nf_zulip": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Zulip",
     "who": "the owner",
     "placeholders": []
@@ -5921,7 +5987,8 @@
   "tr_tts": {
     "where": "a label or sentence in the console. English: AI",
     "who": "the owner",
-    "placeholders": []
+    "placeholders": [],
+    "max": 18
   },
   "tr_tts_h": {
     "where": "a label or sentence in the console. English: Only what the AI said.",
@@ -6231,7 +6298,8 @@
   "who_ai": {
     "where": "a label or sentence in the console. English: AI",
     "who": "the owner",
-    "placeholders": []
+    "placeholders": [],
+    "max": 18
   },
   "who_caller": {
     "where": "a label or sentence in the console. English: Caller",

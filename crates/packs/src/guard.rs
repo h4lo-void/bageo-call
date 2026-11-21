@@ -126,9 +126,21 @@ fn is_emoji(c: char) -> bool {
 /// only in Chinese, Japanese and Korean, the no-break space only in French
 /// (the space before French punctuation), U+FE0F only right after an emoji.
 pub fn hidden_char(s: &str, w: Writing) -> Option<char> {
+    hidden_char_with_breaks(s, w, 0)
+}
+
+/// [hidden_char] for a translation of an English text that has line breaks:
+/// the text may carry up to `breaks` U+000A, never more (the English says
+/// how many). Every other rule is unchanged.
+pub fn hidden_char_with_breaks(s: &str, w: Writing, breaks: usize) -> Option<char> {
+    let mut breaks_left = breaks;
     let mut prev = None;
     for c in s.chars() {
         let ok = match c {
+            '\n' if breaks_left > 0 => {
+                breaks_left -= 1;
+                true
+            }
             '\u{200C}' | '\u{200D}' => w.script.is_some_and(joins),
             '\u{3000}' => w.script.is_some_and(|s| matches!(s, Script::Han | Script::Japanese | Script::Hangul)),
             '\u{00A0}' => w.code == "fr",
@@ -595,6 +607,31 @@ pub fn rule_change(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn line_breaks_follow_the_english() {
+        let (fa, hi, ar, ja, de, es, zh) =
+            (Writing::of("fa"), Writing::of("hi"), Writing::of("ar"), Writing::of("ja"), Writing::of("de"), Writing::of("es"), Writing::ZH);
+        // English with one line break: a translation with one is fine.
+        assert_eq!(hidden_char_with_breaks("Erste Zeile\nZweite Zeile", de, 1), None);
+        assert_eq!(hidden_char_with_breaks("पहली पंक्ति\nदूसरी पंक्ति", hi, 1), None);
+        assert_eq!(hidden_char_with_breaks("السطر الأول\nالسطر الثاني", ar, 1), None);
+        assert_eq!(hidden_char_with_breaks("一行目\n二行目", ja, 1), None);
+        // Fewer breaks than the English is fine too.
+        assert_eq!(hidden_char_with_breaks("Primera línea y segunda", es, 2), None);
+        // English without a line break: a translation with one is refused.
+        assert_eq!(hidden_char("Línea uno\nlínea dos", es), Some('\n'));
+        assert_eq!(hidden_char_with_breaks("第一行\n第二行", zh, 0), Some('\n'));
+        assert_eq!(hidden_char("Erste Zeile\nZweite Zeile", de), Some('\n'));
+        // More breaks than the English: refused.
+        assert_eq!(hidden_char_with_breaks("पहली\nदूसरी\nतीसरी", hi, 1), Some('\n'));
+        assert_eq!(hidden_char_with_breaks("السطر\nالثاني\nالثالث", ar, 1), Some('\n'));
+        // Other control characters stay refused, and the Persian ZWNJ stays allowed.
+        assert_eq!(hidden_char_with_breaks("Zeile\tzwei\nx", de, 1), Some('\t'));
+        assert_eq!(hidden_char_with_breaks("Zeile\r\nzwei", de, 1), Some('\r'));
+        assert_eq!(hidden_char_with_breaks("می\u{200C}خواهم\nسلام", fa, 1), None);
+        assert_eq!(hidden_char_with_breaks("می\u{200C}خواهم\nسلام", de, 1), Some('\u{200C}'));
+    }
 
     #[test]
     fn phrases_respect_word_edges() {

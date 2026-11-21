@@ -30,7 +30,7 @@ use serde_json::Value;
 
 use crate::check::{banned_phrase, plain_file_name, push, unsupported_phrase, valid_commit, valid_min_bageo, MAX_NAME};
 use crate::data::{is_country, official_ext_index, OfficialLang, Script, OFFICIAL_LANG_INFO};
-use crate::guard::{foreign_letter, has_web_address, hidden_char, hidden_reason, mixed_word, rule_change, Writing};
+use crate::guard::{foreign_letter, has_web_address, hidden_char_with_breaks, hidden_reason, mixed_word, rule_change, Writing};
 use crate::model::LocalesRef;
 use crate::source::{sorted_paths, SourceFile, SrcHello, SrcLayer};
 use crate::util::{days_from_civil, fold, is_sha256_hex, now_days, parse_date, sha256_hex, valid_date, valid_rfc3339_utc};
@@ -671,8 +671,10 @@ fn length_limit(en: &str, meta: Option<&Meta>, script: Script) -> usize {
 }
 
 /// L06, the same rule the region checks use ([crate::guard::hidden_char]).
-fn charset(out: &mut Vec<Issue>, file: &str, field: &str, s: &str, w: Writing) {
-    if let Some(c) = hidden_char(s, w) {
+/// breaks: how many line breaks the text may carry (those of its English
+/// original; 0 when there is none).
+fn charset(out: &mut Vec<Issue>, file: &str, field: &str, s: &str, w: Writing, breaks: usize) {
+    if let Some(c) = hidden_char_with_breaks(s, w, breaks) {
         push(out, file, field, lrule::CHARSET, format!("contains U+{:04X} ({})", c as u32, hidden_reason(c)));
     }
 }
@@ -775,7 +777,7 @@ fn own_text(out: &mut Vec<Issue>, file: &str, field: &str, s: &str, max: usize, 
     if n > max {
         push(out, file, field, lrule::LENGTH, format!("{n} characters, the limit is {max}"));
     }
-    charset(out, file, field, s, w);
+    charset(out, file, field, s, w, 0);
     script_letters(out, file, field, s, allowed);
     patterns(out, file, field, s, None);
     phrases(out, file, field, s, p);
@@ -935,7 +937,7 @@ fn check_value(out: &mut Vec<Issue>, cx: &Ctx, field: &str, tr: &str, en: &str, 
     if n > max {
         push(out, file, field, lrule::LENGTH, format!("{n} characters, the limit is {max}"));
     }
-    charset(out, file, field, tr, Writing::of_info(cx.info));
+    charset(out, file, field, tr, Writing::of_info(cx.info), en.matches('\n').count());
     if let Some(c) = mixed_word(tr) {
         push(out, file, field, lrule::CHARSET, format!("the letter '{c}' (U+{:04X}) mixes Latin, Cyrillic or Greek letters in one word", c as u32));
     }
@@ -1119,7 +1121,7 @@ fn check_speech(out: &mut Vec<Issue>, file: &str, prefix: &str, info: &OfficialL
                 } else if s.chars().count() > SPEECH_MAX {
                     push(out, file, &f, lrule::LENGTH, format!("more than {SPEECH_MAX} characters"));
                 }
-                charset(out, file, &f, s, w);
+                charset(out, file, &f, s, w, 0);
             }
         }
     }
@@ -1677,5 +1679,28 @@ mod tests {
         assert!(out.is_empty(), "{out:?}");
         check_value(&mut out, &hi, "strings.x", "The service is running", "The service is running", None, false);
         assert!(out.iter().any(|i| i.rule == lrule::UNTRANSLATED), "{out:?}");
+    }
+
+    #[test]
+    fn a_translation_may_break_lines_where_the_english_does() {
+        let base = Ctx { file: "languages/hi/console.json", prefix: "", kind: Kind::Console, info: ext_lang("hi").unwrap(), strict: true };
+        let charset_issues = |code: &str, tr: &str, en: &str| {
+            let cx = Ctx { info: ext_lang(code).unwrap(), ..base };
+            let mut out = Vec::new();
+            check_value(&mut out, &cx, "strings.x", tr, en, None, false);
+            out.iter().filter(|i| i.rule == lrule::CHARSET).count()
+        };
+        let en = "Line one\nLine two";
+        // The English has one break: one break in the translation is fine.
+        assert_eq!(charset_issues("hi", "पहली पंक्ति\nदूसरी पंक्ति", en), 0);
+        assert_eq!(charset_issues("ar", "السطر الأول\nالسطر الثاني", en), 0);
+        assert_eq!(charset_issues("th", "บรรทัดแรก\nบรรทัดที่สอง", en), 0);
+        assert_eq!(charset_issues("ru", "Первая строка\nВторая строка", en), 0);
+        // The English has none: a break in the translation is refused.
+        assert_eq!(charset_issues("it", "Prima riga\nSeconda riga", "Line one and two"), 1);
+        assert_eq!(charset_issues("vi", "Dòng một\nDòng hai", "Line one and two"), 1);
+        // More breaks than the English: refused.
+        assert_eq!(charset_issues("ru", "Первая\nвторая\nтретья", en), 1);
+        assert_eq!(charset_issues("hi", "पहली\nदूसरी\nतीसरी", en), 1);
     }
 }
