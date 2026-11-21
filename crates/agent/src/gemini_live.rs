@@ -2419,6 +2419,10 @@ fn with_errand_tools(setup: &mut Value) {
 /// later calls declare propose_appointment blocking (its answer stays silent).
 static NON_BLOCKING_REFUSED: AtomicBool = AtomicBool::new(false);
 
+/// Set once a setup declaring end_call was refused for its function
+/// declaration: later calls go without it (the closing words still end them).
+static END_CALL_REFUSED: AtomicBool = AtomicBool::new(false);
+
 /// The setup failure names the function declaration (not a network hiccup):
 /// stop asking for `NON_BLOCKING` until the agent restarts.
 fn non_blocking_refused(why: &str) -> bool {
@@ -3336,6 +3340,10 @@ fn persona_stall_idle_nudge_client_content() -> String {
 
 fn persona_idle_nudge_client_content() -> String {
     crate::prompts::client_turn(&crate::prompts::current().kick_idle)
+}
+
+fn persona_cold_nudge_client_content() -> String {
+    crate::prompts::client_turn(&crate::prompts::current().kick_cold)
 }
 
 fn in_spoken_language(payload: String, spoken: Option<crate::lang_lock::Spoken>) -> String {
@@ -5069,10 +5077,18 @@ pub async fn run_session(
     // The stored prompt stays as it is; appointments add their part after it
     // (with the current local time), and the tools.
     let base_prompt = scoped(&session_prompt(system_prompt, outbound));
+    // An answered persona call: the AI may end it itself (end_call) and is told
+    // how to pick up and close; never an errand or a call-back.
+    let end_call_on = persona && outbound == Outbound::Incoming && !END_CALL_REFUSED.load(Ordering::Relaxed);
+    let base_prompt = if end_call_on {
+        format!("{base_prompt}{}", crate::prompts::pack(prompt_lang).end_call_note)
+    } else {
+        base_prompt
+    };
     let system_prompt = call_system_prompt(&base_prompt, appt.as_ref(), chrono::Local::now(), false);
     let thinking = live_thinking_level(model, thinking_level);
     // Low-latency turn-taking: high EOU sensitivity + short silence.
-    let build_setup = |non_blocking: bool| -> Value {
+    let build_setup = |non_blocking: bool, end_call: bool| -> Value {
         let mut setup = json!({
             "setup": {
                 "model": model_path,
@@ -5113,6 +5129,9 @@ pub async fn run_session(
             }
         }
         with_appointment_tools(&mut setup, appt.is_some(), non_blocking);
+        if end_call {
+            crate::end_call::add_to_setup(&mut setup, non_blocking);
+        }
         if errand.is_some() {
             with_errand_tools(&mut setup);
         }
@@ -5120,7 +5139,10 @@ pub async fn run_session(
     };
     // Appointments: propose_appointment goes NON_BLOCKING unless the API refused
     // that before; a setup that fails with it is sent once more without it.
-    let mut non_blocking = appt.is_some() && !NON_BLOCKING_REFUSED.load(Ordering::Relaxed);
+    // end_call too goes NON_BLOCKING (its closing line is not held up), and
+    // without end_call when a setup with it is refused.
+    let mut non_blocking = (appt.is_some() || end_call_on) && !NON_BLOCKING_REFUSED.load(Ordering::Relaxed);
+    let mut end_call_tool = end_call_on;
     let mut debug_raw_left = debug_raw_budget();
     let (mut sink, mut stream, setup, mut conn_opened_at, setup_ok) = 'connect: loop {
         let connect_fut = tokio_tungstenite::connect_async(&url);
@@ -5137,7 +5159,7 @@ pub async fn run_session(
             resp.status()
         );
         let (mut sink, mut stream) = ws.split();
-        let setup = build_setup(non_blocking);
+        let setup = build_setup(non_blocking, end_call_tool);
         // Same setup for every call (stalling included): long calls rotate to a fresh
         // session every ~8 min instead (rotation setups add `historyConfig`).
         send_text_before_deadline(
@@ -5148,7 +5170,7 @@ pub async fn run_session(
         )
         .await?;
         info!(
-            "Gemini Live setup sent serial={serial} voice={voice} stall={} max_s={} server_vad={server_vad} thinking={} appointments={} non_blocking={non_blocking}",
+            "Gemini Live setup sent serial={serial} voice={voice} stall={} max_s={} server_vad={server_vad} thinking={} appointments={} non_blocking={non_blocking} end_call={end_call_tool}",
             stall.is_some(),
             if persona { persona_max_secs } else { LIVE_MAX_SECS },
             thinking.unwrap_or("-"),
@@ -5216,6 +5238,17 @@ pub async fn run_session(
                     "Gemini Live setup with a NON_BLOCKING function failed serial={serial} ({why}) — sending it again without"
                 );
                 non_blocking = false;
+                continue 'connect;
+            }
+            if end_call_tool {
+                // The API may not take end_call at all: once more without it.
+                if non_blocking_refused(&why) {
+                    END_CALL_REFUSED.store(true, Ordering::Relaxed);
+                }
+                warn!(
+                    "Gemini Live setup with end_call failed serial={serial} ({why}) — sending it again without"
+                );
+                end_call_tool = false;
                 continue 'connect;
             }
             bail!("{why}");
@@ -5704,6 +5737,16 @@ pub async fn run_session(
     // (what the repeat guard and propose_appointment's caller compare against).
     let mut turns_done: u64 = 0;
     let mut chunks_at_turn_start: u64 = 0;
+    // Model turns completed when the caller's last turn ended (cold-gap nudge).
+    let mut turns_at_last_caller_eou: u64 = 0;
+    // end_call accepted, waiting for our last words and the quiet after them.
+    let mut end_call_pending: Option<crate::end_call::Pending> = None;
+    let mut cold_gap = crate::end_call::ColdGap::default();
+    // What the caller has said since the AI last started speaking (end_call's guard).
+    let mut caller_turn_text = String::new();
+    // What the AI has said since the caller's last turn ended (an end_call waits
+    // when these words ask the caller something).
+    let mut ai_reply_text = String::new();
     let mut repeat_guard = RepeatGuard::default();
     let mut repeat_drops: u32 = 0;
     // Sales / scam: the second look at a call the keywords flagged (stall_review)
@@ -6033,6 +6076,13 @@ pub async fn run_session(
                     appt_block_sent,
                     non_blocking,
                 );
+                // The normal session's end_call comes back with it.
+                let next_setup = next_setup.map(|mut s| {
+                    if end_call_tool {
+                        crate::end_call::add_to_setup(&mut s, non_blocking);
+                    }
+                    s
+                });
                 rotate_setup = next_setup;
                 rotate_due = need_rotate
                     .then(|| tokio::time::Instant::now() + Duration::from_secs(STALL_PROMPT_SWITCH_FORCE_SECS));
@@ -6677,6 +6727,54 @@ pub async fn run_session(
             }
         }
 
+        // end_call accepted: the line closes once our last words have played and
+        // it has stayed quiet end_call::GRACE; the caller speaking again cancels it.
+        if let Some(p) = end_call_pending {
+            let view = crate::end_call::PendingView {
+                since_accept: p.accepted_at.elapsed(),
+                caller_spoke: activity_open || local_eou_sent > p.eou_at_accept,
+                ai_busy: model_generating || !play_head.speech_left(phone_sr).is_zero(),
+                ai_spoke: p.spoke_before || audio_chunks_out > p.audio_at_accept,
+                ai_asked: crate::end_call::ends_on_question(&ai_reply_text),
+                quiet_for_grace: play_head.drained_for(crate::end_call::GRACE, PLAYER_DRAIN_SLACK_BYTES),
+            };
+            match crate::end_call::step(&view) {
+                crate::end_call::Step::Wait => {}
+                crate::end_call::Step::Withdraw => {
+                    end_call_pending = None;
+                    info!(
+                        "end_call withdrawn serial={serial} reason={} after_ms={} — our last words ask the caller something, their answer comes first",
+                        p.reason,
+                        view.since_accept.as_millis()
+                    );
+                }
+                crate::end_call::Step::Cancel => {
+                    end_call_pending = None;
+                    info!(
+                        "end_call cancelled serial={serial} reason={} after_ms={} — the caller spoke again, the call goes on",
+                        p.reason,
+                        view.since_accept.as_millis()
+                    );
+                }
+                crate::end_call::Step::HangUp => {
+                    end_reason = SessionEndReason::Goodbye;
+                    closing_sm.hangup("end_call");
+                    let waited = let_the_phone_finish(&play_head, phone_sr, &cancel).await;
+                    signal_force_hangup(&mut hangup_signaled);
+                    info!(
+                        "end_call hangup serial={serial} reason={} talk_s={} after_ms={} ai_spoke={} — our last words played, line quiet {}ms (waited {}ms)",
+                        p.reason,
+                        session_start.elapsed().as_secs(),
+                        view.since_accept.as_millis(),
+                        view.ai_spoke,
+                        crate::end_call::GRACE.as_millis(),
+                        waited.as_millis()
+                    );
+                    break;
+                }
+            }
+        }
+
         // Wall-clock max talk time → agent will play goodbye WAV (persona: plain hangup).
         // Not while the phone dials the owner for a whitelist urgent call.
         if session_start.elapsed() >= Duration::from_secs(max_secs)
@@ -6843,6 +6941,51 @@ pub async fn run_session(
             && !model_generating
             && !ai_playing
             && play_head.drained_for(Duration::from_millis(300), PLAYER_DRAIN_SLACK_BYTES);
+        // The caller finished a turn and the AI has said nothing: one light nudge
+        // per turn to pick it up (stalling has its own above; the 15 s one below
+        // is for a line where nobody speaks).
+        let cold_view = crate::end_call::ColdView {
+            on: persona && !cb_once && errand.is_none(),
+            stalling: stall_on,
+            busy: first_downlink_at.is_none()
+                || activity_open
+                || model_generating
+                || ai_playing
+                || goodbye_pending
+                || end_call_pending.is_some()
+                || wrap_up_sent
+                || caller_hold
+                || !tool_open.is_empty()
+                || errand_asking
+                || ivr_since.is_some()
+                || urgent_ctl.as_ref().is_some_and(|c| c.ai_quiet())
+                || !play_head.drained_for(Duration::from_millis(300), PLAYER_DRAIN_SLACK_BYTES),
+            eou_n: local_eou_sent,
+            since_eou: last_caller_eou_at.map(|t| t.elapsed()),
+            ai_spoke_since_eou: audio_chunks_out > chunks_at_last_caller_eou,
+            model_done_since_eou: turns_done > turns_at_last_caller_eou,
+        };
+        if cold_gap.due(&cold_view) {
+            cold_gap.sent(local_eou_sent);
+            model_turn_pending = true;
+            repeat_guard.clear();
+            match send_text_before_deadline(
+                &mut sink,
+                in_spoken_language(persona_cold_nudge_client_content(), Some(call_language.spoken())),
+                tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
+                "gemini persona cold-gap nudge send",
+            )
+            .await
+            {
+                Ok(()) => info!(
+                    "Persona cold-gap nudge serial={serial} eou_n={local_eou_sent} gap_ms={} model_done={}",
+                    cold_view.since_eou.map_or(0, |d| d.as_millis()),
+                    cold_view.model_done_since_eou
+                ),
+                Err(e) => warn!("Persona cold-gap nudge failed serial={serial}: {e:#}"),
+            }
+            last_activity_at = tokio::time::Instant::now();
+        }
         // A function call open (appointments) is not a quiet line; a recording gets no
         // nudge; nor does an appointment's call-back (the AI talks only when the
         // callee has). An errand's call does get one.
@@ -7035,6 +7178,48 @@ pub async fn run_session(
                                         } else {
                                             call.id.clone()
                                         };
+                                        // end_call: answered here at once; whether it counts is
+                                        // ours to decide (end_call::judge), not the model's.
+                                        if call.name == crate::end_call::NAME && errand.is_none() {
+                                            let reason = crate::end_call::reason_label(&call.args);
+                                            let spoke = audio_chunks_out > chunks_at_last_caller_eou;
+                                            info!(
+                                                "end_call received serial={serial} id={key} reason={reason} talk_s={} ai_spoke={spoke} stall={stall_on}",
+                                                session_start.elapsed().as_secs()
+                                            );
+                                            let verdict = crate::end_call::judge(&crate::end_call::Check {
+                                                stalling: stall_on || live_is_stall,
+                                                since_answer: first_downlink_at.map(|t| t.elapsed()),
+                                                caller_turn: &caller_turn_text,
+                                                ai_spoke_since_caller: spoke,
+                                            });
+                                            match verdict {
+                                                Ok(()) => {
+                                                    end_call_pending = Some(crate::end_call::Pending {
+                                                        accepted_at: now,
+                                                        audio_at_accept: audio_chunks_out,
+                                                        eou_at_accept: local_eou_sent,
+                                                        spoke_before: spoke,
+                                                        reason,
+                                                    });
+                                                }
+                                                Err(why) => info!(
+                                                    "end_call refused serial={serial} id={key} why={} — the call goes on",
+                                                    why.as_str()
+                                                ),
+                                            }
+                                            if let Err(e) = send_text_before_deadline(
+                                                &mut sink,
+                                                crate::end_call::response(&call.id, verdict).to_string(),
+                                                now + API_SEND_TIMEOUT,
+                                                "gemini end_call toolResponse send",
+                                            )
+                                            .await
+                                            {
+                                                warn!("end_call toolResponse send failed serial={serial}: {e:#}");
+                                            }
+                                            continue;
+                                        }
                                         // An errand: ask_owner, answered on its own task (the
                                         // owner may take up to ASK_WAIT).
                                         if let Some(e) = errand.clone() {
@@ -7268,6 +7453,7 @@ pub async fn run_session(
                                     let s_raw = tx_carry(&mut out_space_held, s_raw);
                                     let s_raw = s_raw.as_str();
                                     push_tx_window(&mut out_tx_window, s_raw, 800);
+                                    push_tx_window(&mut ai_reply_text, s_raw, 400);
                                     push_tx_window(&mut turn_out_text, s_raw, 400);
                                     // Whitelist urgent call: dialing is decided by the AI saying its hold-on
                                     // line; the keyword table only lets weak hold-on phrases ("hold on",
@@ -7495,6 +7681,7 @@ pub async fn run_session(
                                     push_tx_window(&mut in_tx_window, s_raw, 800);
                                     push_tx_window(&mut caller_text_all, s_raw, 400);
                                     push_tx_window(&mut caller_recent, s_raw, 400);
+                                    push_tx_window(&mut caller_turn_text, s_raw, 400);
                                     // The caller speaks a language the AI's own
                                     // speech-to-text has no hint for: its goodbye in
                                     // it would go unnoticed. Added at the next pause.
@@ -7784,6 +7971,7 @@ pub async fn run_session(
                                     if !model_generating {
                                         // A new turn: words coming in now are its own.
                                         closing_sm.ai_started();
+                                        caller_turn_text.clear();
                                     }
                                     model_generating = true;
                                     play_head.set_generating(
@@ -7832,6 +8020,8 @@ pub async fn run_session(
                                         chunks_at_last_caller_eou = audio_chunks_out;
                                         bytes_at_last_caller_eou = downlink_pcm_bytes;
                                         last_caller_eou_at = Some(tokio::time::Instant::now());
+                                        turns_at_last_caller_eou = turns_done;
+                                        ai_reply_text.clear();
                                         info!(
                                             "Gemini Live caller turn ended by server VAD serial={serial} silence_ms={silence_ms} voiced_ms={voiced_ms} activity_ms={activity_ms} n={local_eou_sent}"
                                         );
@@ -8837,6 +9027,8 @@ pub async fn run_session(
                                                 bytes_at_last_caller_eou = downlink_pcm_bytes;
                                                 turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
                                                 last_caller_eou_at = Some(now);
+                                                turns_at_last_caller_eou = turns_done;
+                                                ai_reply_text.clear();
                                             }
                                             info!(
                                                 "Gemini Live caller spoke over the end of our reply serial={serial} voiced_ms={said_ms} held_ms={} — passed on",
@@ -9107,6 +9299,8 @@ pub async fn run_session(
                                 bytes_at_last_caller_eou = downlink_pcm_bytes;
                                 turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
                                 last_caller_eou_at = Some(tokio::time::Instant::now());
+                                turns_at_last_caller_eou = turns_done;
+                                ai_reply_text.clear();
                                 info!(
                                     "Gemini Live {} serial={serial} silence_ms={silence_ms} voiced_ms={voiced_ms} activity_ms={activity_ms} forced={force_end} short={} raw_max={turn_raw_max:.0} floor={:.0} n={local_eou_sent} chunks_out={audio_chunks_out}",
                                     if server_vad { "caller voice end (local)" } else { "activityEnd" },

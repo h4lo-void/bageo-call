@@ -58,6 +58,10 @@ pub struct Pack {
     /// Read back a time, date, amount or phone number once as a question;
     /// added to every normal call's prompt, never to the stalling one.
     pub readback_note: String,
+    /// How to pick up after the caller passed something on, and how to close
+    /// and call end_call; added to an answered persona call's prompt when the
+    /// function is declared (never to the stalling one).
+    pub end_call_note: String,
     pub guard_persona: String,
     pub guard_assistant: String,
     /// `{aliases}` = the owner's other names (setting `owner_aliases`); added
@@ -91,6 +95,8 @@ pub struct Pack {
     pub kick_repeat: String,
     pub kick_stall_idle: String,
     pub kick_idle: String,
+    /// The caller finished a turn and the AI has said nothing for a moment.
+    pub kick_cold: String,
     /// The caller is a recording or a voice menu: say nothing to it.
     pub kick_ivr: String,
     /// Leads the call's transcript in a fresh (rotated) Live session; the second
@@ -133,6 +139,12 @@ const ZH_KICK_REPEAT: &str = "【系統指令·不是對方說的話】連線剛
 const ZH_KICK_STALL_IDLE: &str = "【系統指令·不是對方說的話】對方安靜了幾秒。不要乾等，主動接話，怎麼接隨你：\
 問他還在不在、碎念一下剛剛那件事、或丟一個新問題讓他講，一兩句，不要說掰掰。";
 const ZH_KICK_IDLE: &str = "【系統指令·不是對方說的話】對方安靜好一陣子了。像真人一樣只用一句很短的話問他還在不在（自己換說法；對方講中文就像「喂？還在嗎？」），講完就停，不要說掰掰。";
+const ZH_KICK_COLD: &str = "【系統指令·不是對方說的話】對方剛講完一段，你還沒接話。照這通電話的講話風格和當地習慣，用自己的話順口接一句：讓他知道你聽到了；\
+他要講的事講完了，就順便問一下還有沒有別的事；他剛剛問了你問題，就先回答。一兩句就好，講完就停。";
+const ZH_END_CALL_NOTE: &str = "\n【交代完與收尾】對方交代完一件事（提醒、通知、轉達消息）時，不要聽完就不出聲：自然應一聲讓他知道你聽到了，\
+再照當地習慣和你的講話風格，順口問一下還有沒有別的事。事情都講完、對方也準備結束了，就算他沒說再見（只說好、謝謝、那就這樣），\
+你也可以照當地習慣和講話風格，用自己的話自然收一句（不一定要說掰掰），說完呼叫 end_call。對方還在講、還在問，或你還沒回答他，就不要呼叫。\
+這一段跟上面【結束】說法不同的地方，以這一段為準。";
 const ZH_KICK_IVR: &str = "【系統指令·不是對方說的話】對方是預錄的語音或語音選單（一直自己講、叫你按鍵），不是真人。不要對它講話、不要回應它，保持安靜。";
 /// A rotated session read the Chinese note as a cue to go back to Chinese with a
 /// caller who had been speaking English: the note names the caller's language.
@@ -249,6 +261,7 @@ fn zh_tw_pack() -> Pack {
         carrier_note: gl::PERSONA_CARRIER_NOTE.to_string(),
         hello_loop_note: gl::PERSONA_HELLO_LOOP_NOTE.to_string(),
         readback_note: gl::PERSONA_READBACK_NOTE.to_string(),
+        end_call_note: ZH_END_CALL_NOTE.to_string(),
         guard_persona: gl::PERSONA_GUARD.to_string(),
         guard_assistant: ZH_GUARD_ASSISTANT.to_string(),
         aliases_persona: ZH_ALIASES_PERSONA.to_string(),
@@ -271,6 +284,7 @@ fn zh_tw_pack() -> Pack {
         kick_repeat: ZH_KICK_REPEAT.to_string(),
         kick_stall_idle: in_caller_language(ZH_KICK_STALL_IDLE),
         kick_idle: in_caller_language(ZH_KICK_IDLE),
+        kick_cold: in_caller_language(ZH_KICK_COLD),
         kick_ivr: ZH_KICK_IVR.to_string(),
         history_note: format!("{ZH_HISTORY_NOTE}】"),
         history_note_stall: format!("{ZH_HISTORY_NOTE}{ZH_HISTORY_NOTE_STALL}】"),
@@ -305,6 +319,7 @@ fn zh_cn_pack() -> Pack {
         carrier_note: String::new(),
         hello_loop_note: to_cn(&p.hello_loop_note),
         readback_note: to_cn(&p.readback_note),
+        end_call_note: to_cn(&p.end_call_note),
         guard_persona: to_cn(&p.guard_persona),
         guard_assistant: to_cn(&p.guard_assistant),
         aliases_persona: to_cn(&p.aliases_persona),
@@ -327,6 +342,7 @@ fn zh_cn_pack() -> Pack {
         kick_repeat: to_cn(&p.kick_repeat),
         kick_stall_idle: to_cn(&p.kick_stall_idle),
         kick_idle: to_cn(&p.kick_idle),
+        kick_cold: to_cn(&p.kick_cold),
         kick_ivr: to_cn(&p.kick_ivr),
         history_note: to_cn(&p.history_note),
         history_note_stall: to_cn(&p.history_note_stall),
@@ -460,6 +476,10 @@ const EN_KICK_RESUME: &str = "The connection switched over for a moment. Carry o
 const EN_KICK_REPEAT: &str = "The connection just switched and your last line made no sound; the caller did not hear it. Say that line again naturally (same meaning is enough), then stop.";
 const EN_KICK_STALL_IDLE: &str = "The caller has been quiet for a few seconds. Do not just wait; speak up, any way you like: ask whether they are still there, mutter about what was just said, or bring a new question for them to talk about. One or two sentences, no goodbye.";
 const EN_KICK_IDLE: &str = "The caller has been quiet for a good while. Like a real person, ask in one very short line whether they are still there (your own wording), then stop. Do not say goodbye.";
+const EN_KICK_COLD: &str = "The caller has just finished speaking and you have not replied. In your own words, in the call's talk style and the way people there do, pick it up in a line: let them know you heard; if what they called about is done, ask in passing whether there is anything else; if they asked you something, answer it first. One or two sentences, then stop.";
+const EN_END_CALL_NOTE: &str = "\n[Passing on and closing] When the caller has passed on one thing (a reminder, a notice, a message), do not go silent after it: acknowledge it naturally so they know you heard, then, the way people there do and in your talk style, ask in passing whether there is anything else. \
+Once the business is done and the caller is ready to finish, even without a goodbye (only an okay, a thanks, a that's it), you may close with a natural line of your own that fits local custom and your talk style (it need not contain a goodbye word), then call end_call. \
+Do not call it while the caller is still talking or asking, or before you have answered them. Where this differs from [Ending], this part wins.";
 const EN_KICK_IVR: &str = "The caller is a recorded message or an automatic voice menu (it talks on by itself and tells you to press keys), not a person. Do not talk to it and do not answer it; stay silent.";
 const EN_HISTORY_NOTE: &str = "[System note — not something the caller said] This call has been going on for a while and the connection just switched over; below is the conversation so far. Carry on exactly as before, in the language the caller is speaking now (even if that is not {language}); do not greet them again and do not say hello.";
 const EN_HISTORY_NOTE_STALL: &str = " This call has been judged a sales or scam call: from your next line on, follow [Keep them talking] from your instructions, in your own way, and drop the earlier kind of replies (\"I'll think about it\", \"I'll check later\", \"call me later\").";
@@ -680,6 +700,7 @@ fn generic_pack(lang: Lang) -> Pack {
         carrier_note: String::new(),
         hello_loop_note: fill(EN_HELLO_LOOP_NOTE),
         readback_note: fill(EN_READBACK_NOTE),
+        end_call_note: fill(EN_END_CALL_NOTE),
         guard_persona: fill(EN_GUARD_PERSONA),
         guard_assistant: fill(EN_GUARD_ASSISTANT),
         aliases_persona: fill(EN_ALIASES_PERSONA),
@@ -702,6 +723,7 @@ fn generic_pack(lang: Lang) -> Pack {
         kick_repeat: sys(EN_KICK_REPEAT),
         kick_stall_idle: in_caller_language(EN_KICK_STALL_IDLE),
         kick_idle: in_caller_language(EN_KICK_IDLE),
+        kick_cold: in_caller_language(EN_KICK_COLD),
         kick_ivr: sys(EN_KICK_IVR),
         history_note: fill(EN_HISTORY_NOTE),
         history_note_stall: fill(&format!("{EN_HISTORY_NOTE}{EN_HISTORY_NOTE_STALL}")),
@@ -1538,6 +1560,8 @@ mod tests {
                 &p.kick_repeat,
                 &p.kick_stall_idle,
                 &p.kick_idle,
+                &p.kick_cold,
+                &p.end_call_note,
                 &p.kick_ivr,
                 &p.history_note,
                 &p.history_note_stall,
@@ -1847,6 +1871,7 @@ mod tests {
             };
             for kick in [
                 &p.kick_idle,
+                &p.kick_cold,
                 &p.kick_stall_idle,
                 &p.kick_wrap_up,
                 &p.kick_stall_wrap_up,
@@ -1878,6 +1903,24 @@ mod tests {
                 );
             } else {
                 assert!(!p.kick_idle.contains(locale::phrases(lang).still_there), "{lang:?}");
+            }
+        }
+    }
+
+    /// The closing direction names the function and gives a direction only (no
+    /// line to say word for word); the built prompt never has it (the call adds
+    /// it when end_call is declared, never to the stalling prompt).
+    #[test]
+    fn the_end_call_note_is_a_direction_in_every_language() {
+        for lang in locale::ALL {
+            let p = pack(lang);
+            for text in [&p.end_call_note, &p.kick_cold] {
+                assert!(!text.contains('「') && !text.contains('“') && !text.contains('"'), "{lang:?}: {text}");
+            }
+            assert!(p.end_call_note.contains("end_call"), "{lang:?}");
+            for stall in [StallPrompt::Off, StallPrompt::ListenFirst, StallPrompt::Full] {
+                let built = build(&ctx(lang, false, stall));
+                assert!(!built.contains(p.end_call_note.trim()), "{lang:?} {stall:?}");
             }
         }
     }
