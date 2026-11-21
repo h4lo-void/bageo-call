@@ -335,10 +335,18 @@ fn asset_response(headers: &HeaderMap, asset: &crate::console_i18n::Asset, conte
 /// `GET /calls/i18n/<code>.json`: one language of the console, for the page to
 /// fetch when it is chosen. Public like the page.
 async fn i18n_file(Path(file): Path<String>, headers: HeaderMap) -> Response {
-    match file.strip_suffix(".json").and_then(crate::console_i18n::language_file) {
-        Some(asset) => asset_response(&headers, &asset, "application/json; charset=utf-8", "Accept-Encoding"),
-        None => StatusCode::NOT_FOUND.into_response(),
+    let Some(code) = file.strip_suffix(".json") else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if let Some(asset) = crate::console_i18n::language_file(code) {
+        return asset_response(&headers, &asset, "application/json; charset=utf-8", "Accept-Encoding");
     }
+    // A language outside the nine, from the translations pack. Same headers.
+    if let Some(body) = crate::locales_store::console_file(code) {
+        let asset = crate::console_i18n::asset_of(body);
+        return asset_response(&headers, &asset, "application/json; charset=utf-8", "Accept-Encoding");
+    }
+    StatusCode::NOT_FOUND.into_response()
 }
 
 async fn ui(headers: HeaderMap, RawQuery(query): RawQuery) -> Response {
@@ -3917,8 +3925,27 @@ mod tests {
         let mut h = HeaderMap::new();
         h.insert(header::IF_NONE_MATCH, f.headers()[header::ETAG].clone());
         assert_eq!(i18n_file(Path("ko.json".into()), h).await.status(), StatusCode::NOT_MODIFIED);
-        assert_eq!(i18n_file(Path("ar.json".into()), HeaderMap::new()).await.status(), StatusCode::NOT_FOUND);
+        // Not a language file name. ar.json comes from the pack when that pack has console text.
+        assert_eq!(i18n_file(Path("nope.json".into()), HeaderMap::new()).await.status(), StatusCode::NOT_FOUND);
         assert_eq!(i18n_file(Path("ko".into()), HeaderMap::new()).await.status(), StatusCode::NOT_FOUND);
+        // A language outside the nine comes from the translations pack, with the same headers.
+        // Right to left stays out until the page can show it.
+        use crate::locales_store::testing;
+        let packed = testing::gz(2026112199, |v| {
+            for (code, word) in [("it", "Consola"), ("ar", "لوحة")] {
+                v["langs"][code]["console"] = testing::console(word);
+            }
+        });
+        testing::use_gz(&packed);
+        let it = i18n_file(Path("it.json".into()), HeaderMap::new()).await;
+        assert_eq!(it.status(), StatusCode::OK);
+        assert_eq!(it.headers()[header::CACHE_CONTROL], "no-cache");
+        let mut h = HeaderMap::new();
+        h.insert(header::IF_NONE_MATCH, it.headers()[header::ETAG].clone());
+        assert_eq!(i18n_file(Path("it.json".into()), h).await.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(i18n_file(Path("fa.json".into()), HeaderMap::new()).await.status(), StatusCode::NOT_FOUND);
+        assert_eq!(i18n_file(Path("ar.json".into()), HeaderMap::new()).await.status(), StatusCode::NOT_FOUND);
+        testing::use_builtin();
     }
 
     #[test]

@@ -5,11 +5,11 @@
 //! translators from a bageo-call checkout into source/en/<file>.json and
 //! source/meta/<file>.json of the packs repository.
 //!
-//! Supported today: notify (JSON with its _meta.json), the phone app
-//! (Android values/strings.xml) and the desktop widget (the "en" object of
-//! desktop/ui/i18n.json). The console is read from [CONSOLE_EN] once its
-//! English moves out of calls.html into a data file; until then it is
-//! skipped with a note.
+//! Supported today: notify (JSON with its _meta.json), the console
+//! (static/i18n/en.json and its _meta.json), the phone app (Android
+//! values/strings.xml) and the desktop widget (the "en" object of
+//! desktop/ui/i18n.json). A console file that is not there yet is skipped
+//! with a note.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -21,8 +21,8 @@ use crate::locales::{brace_tokens, printf_tokens, valid_key, EnText, Kind, Meta,
 
 pub const NOTIFY_EN: &str = "crates/agent/data/i18n/notify/en.json";
 pub const NOTIFY_META: &str = "crates/agent/data/i18n/notify/_meta.json";
-pub const CONSOLE_EN: &str = "crates/agent/data/i18n/console/en.json";
-pub const CONSOLE_META: &str = "crates/agent/data/i18n/console/_meta.json";
+pub const CONSOLE_EN: &str = "crates/agent/static/i18n/en.json";
+pub const CONSOLE_META: &str = "crates/agent/static/i18n/_meta.json";
 pub const APP_EN: &str = "android/app/src/main/res/values/strings.xml";
 pub const APP_META: &str = "android/app/src/main/res/i18n_meta.json";
 pub const DESKTOP_EN: &str = "desktop/ui/i18n.json";
@@ -182,7 +182,16 @@ pub fn parse_android_strings(xml: &str) -> Result<BTreeMap<String, String>, Stri
 fn read_english(kind: Kind, path: &Path) -> Result<EnText, String> {
     let bytes = fs::read(path).map_err(|e| e.to_string())?;
     match kind {
-        Kind::Notify | Kind::Console => serde_json::from_slice(&bytes).map_err(|e| e.to_string()),
+        Kind::Notify | Kind::Console => {
+            let mut v: Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+            // The console file also names its language. The English source does not.
+            if kind == Kind::Console {
+                if let Some(obj) = v.as_object_mut() {
+                    obj.remove("lang");
+                }
+            }
+            serde_json::from_value(v).map_err(|e| e.to_string())
+        }
         Kind::App => {
             let xml = String::from_utf8(bytes).map_err(|e| e.to_string())?;
             Ok(EnText { schema: 1, strings: parse_android_strings(&xml)?, ..EnText::default() })

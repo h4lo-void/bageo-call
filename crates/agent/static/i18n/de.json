@@ -1253,6 +1253,8 @@
     "lang_unreviewed": "(noch nicht von Muttersprachlern geprüft)",
     "lang_partial": "Einige Funktionen unterstützen diese Sprache noch nicht: Werbe- und Betrugsanrufe hinhalten, Hinweise je nach Anruf, kurze Antworten und Stimmproben.",
     "lang_fallback": "Diese Sprache ist gerade nicht verfügbar, deshalb laufen Anrufe vorerst auf Englisch.",
-    "lang_load_failed": "Diese Sprache konnte nicht geladen werden. Die aktuelle bleibt."
+    "lang_load_failed": "Diese Sprache konnte nicht geladen werden. Die aktuelle bleibt.",
+    "lang_unreviewed_note": "Diese Sprache wurde noch nicht von Muttersprachlern geprüft.",
+    "lang_help_fix": "Beim Korrigieren helfen"
   }
 }

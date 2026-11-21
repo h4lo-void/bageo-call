@@ -1253,6 +1253,8 @@
     "lang_unreviewed": "（待当地人确认）",
     "lang_partial": "部分功能还没支持这个语言：推销诈骗陪聊、通话情境提示、短回应判断、预录试听。",
     "lang_fallback": "这个语言目前不能用，通话会先用英文。",
-    "lang_load_failed": "无法加载这个语言，保持当前语言。"
+    "lang_load_failed": "无法加载这个语言，保持当前语言。",
+    "lang_unreviewed_note": "这个语言还没有当地人校对过。",
+    "lang_help_fix": "帮忙修正"
   }
 }

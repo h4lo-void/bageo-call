@@ -3107,6 +3107,11 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
   </section>
 </main>
 
+<p class="help" id="langReview" hidden style="position:fixed;left:0;right:0;bottom:0;margin:0;padding:8px 16px;text-align:center;background:var(--bg);border-top:1px solid var(--line);z-index:8">
+  <span data-i18n="lang_unreviewed_note"></span>
+  <a id="langHelpFix" data-i18n="lang_help_fix" href="https://github.com/h4lo-void/bageo-packs/tree/main/languages" target="_blank" rel="noopener"></a>
+</p>
+
 <div id="toast" role="status" aria-live="polite"></div>
 
 <dialog id="dlg" aria-labelledby="dlgTitle">
@@ -3308,11 +3313,29 @@ let lang = "en";
 function matchLang(s) {
   const low = String(s || "").trim().toLowerCase();
   if (!low) return "";
-  const exact = LANGS.find((l) => l.toLowerCase() === low);
+  const list = pageLangs();
+  const exact = list.find((l) => l.toLowerCase() === low);
   if (exact) return exact;
   if (low.startsWith("zh")) return /hant|tw|hk|mo/.test(low) ? "zh-TW" : "zh-CN";
   const base = low.split(/[-_]/)[0];
-  return LANGS.find((l) => l === base) || "";
+  return list.find((l) => l === base) || "";
+}
+// A ?lang= code the page can fetch even before the language list arrives.
+function rawLang(s) {
+  const known = matchLang(s);
+  if (known) return known;
+  const t = String(s || "").trim();
+  return /^[A-Za-z]{2,3}$/.test(t) ? t.toLowerCase() : "";
+}
+// Core languages, plus every language the agent offers for this page.
+function pageLangs() {
+  const extra = S && Array.isArray(S.languages) ? offeredLangs("console").map((x) => x.code) : [];
+  const out = [];
+  const seen = {};
+  for (const c of LANGS.concat(extra)) {
+    if (!seen[c]) { seen[c] = 1; out.push(c); }
+  }
+  return out;
 }
 function t(key, vars) {
   let s = I18N[lang][key];
@@ -3336,8 +3359,8 @@ const loc = () => INTL_LOCALE[lang] || lang;
 // The texts of a language the page did not come with, fetched when it is chosen.
 // false = they could not be had (the answer was not there or not a language file).
 async function loadLang(l) {
-  if (I18N[l]) return true;
-  if (!LANGS.includes(l)) return false;
+  if (!l || I18N[l]) return !!I18N[l];
+  if (!pageLangs().includes(l) && !/^[a-z]{2,3}$/.test(l)) return false;
   try {
     const res = await fetch(basePath + "/i18n/" + encodeURIComponent(l) + ".json", { cache: "no-cache" });
     if (!res.ok) return false;
@@ -3644,7 +3667,7 @@ if (darkQuery.addEventListener) {
   });
 }
 function setLang(l) {
-  lang = LANGS.includes(l) && I18N[l] ? l : "en";
+  lang = I18N[l] ? l : "en";
   document.documentElement.lang = HTML_LANG[lang] || lang;
   $("langSel").value = lang;
   applyI18n();
@@ -3663,6 +3686,33 @@ function setLang(l) {
   renderImport();
   renderSms();
   if (view === "system") renderSystem();
+  renderLangReview();
+}
+function fillPageLangs() {
+  const sel = $("langSel");
+  if (!sel) return;
+  const keep = lang;
+  while (sel.options.length) sel.remove(0);
+  for (const l of pageLangs()) {
+    const info = LANG_INFO[l];
+    const name = (info && info.native) || LANG_NAMES[l] || l;
+    sel.append(h("option", { value: l, text: name }));
+  }
+  if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
+  refreshLangCombos();
+  renderLangReview();
+}
+function renderLangReview() {
+  const note = $("langReview");
+  if (!note) return;
+  const info = LANG_INFO[lang];
+  const show = !!(info && info.reviewed === false);
+  note.hidden = !show;
+  document.body.style.paddingBottom = show ? "52px" : "";
+  if (show) {
+    const a = $("langHelpFix");
+    a.href = info.help || ("https://github.com/h4lo-void/bageo-packs/tree/main/languages/" + lang);
+  }
 }
 (function fillLangSel() {
   for (const l of LANGS) $("langSel").append(h("option", { value: l, text: LANG_NAMES[l] || l }));
@@ -5505,6 +5555,7 @@ async function loadSettings() {
     $("setLoading").hidden = true;
     $("setGrid").hidden = false;
     populate();
+    fillPageLangs();
     const firstLang = d.language_chosen === false && !qs.get("lang") ? matchLang(store.get("pca.lang")) || browserLang() : "";
     if (firstLang) await adoptFirstLang(firstLang);
     // No language chosen in this browser: follow the language the owner reads.
@@ -8965,7 +9016,8 @@ async function checkInitialPassword() {
   buildSecrets();
   // ?lang= (for links and testing) > chosen here before > the agent's language > what the agent
   // sent the page in (BOOT.lang: the address, else the language cookie, else the browser's languages).
-  const want = matchLang(qs.get("lang")) || matchLang(store.get("pca.lang")) || matchLang(store.get("pca.srvlang"))
+  // A language outside the nine is only known to the page once the settings arrive, so these go by their code.
+  const want = rawLang(qs.get("lang")) || rawLang(store.get("pca.lang")) || rawLang(store.get("pca.srvlang"))
     || BOOT.lang;
   // The page came with the language the agent picked from the address, the cookie and the
   // browser; this browser may have chosen another one before, which is fetched here.

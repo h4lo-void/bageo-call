@@ -1253,6 +1253,8 @@
     "lang_unreviewed": "(not yet checked by a native speaker)",
     "lang_partial": "Some features don't support this language yet: stalling sales and scam calls, call scenario hints, short replies, and voice samples.",
     "lang_fallback": "This language isn't available right now, so calls will be in English for now.",
-    "lang_load_failed": "Couldn't load that language. Staying in the current one."
+    "lang_load_failed": "Couldn't load that language. Staying in the current one.",
+    "lang_unreviewed_note": "This language has not been checked by a native speaker yet.",
+    "lang_help_fix": "Help fix it"
   }
 }

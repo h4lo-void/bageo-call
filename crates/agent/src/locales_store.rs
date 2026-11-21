@@ -16,6 +16,9 @@
 //! - Notify: Call, and at least [READY_PERCENT] % of Bageo's notification
 //!   keys passed. Notifications, summaries and chat replies use it; a missing
 //!   key reads English.
+//! - Console: Notify, and the file has console text. The console can be shown
+//!   in it. A missing key reads English. Right-to-left languages stay at
+//!   Notify while [RTL_CONSOLE] is off.
 //!
 //! Like the local data pack, a table in use is never freed (Box::leak): a call
 //! keeps its &'static phrases and prompts for its whole length, the next call
@@ -44,6 +47,29 @@ const BUILTIN: &[u8] = include_bytes!("../data/packs/bageo-locales.json.gz");
 /// checked against.
 const NOTIFY_EN: &str = include_str!("../data/i18n/notify/en.json");
 const NOTIFY_META: &str = include_str!("../data/i18n/notify/_meta.json");
+/// The console's English, the same file the page ships, plus the notes for translators.
+const CONSOLE_EN: &str = include_str!("../static/i18n/en.json");
+const CONSOLE_META: &str = include_str!("../static/i18n/_meta.json");
+
+/// Writing direction is compiled in (never taken from a download).
+const RTL: &[&str] = &["ar", "he", "fa", "ur", "ps", "sd"];
+/// Off until the page follows writing direction (L6). Right-to-left languages
+/// stay at Notify and are left out of the console's language menu.
+pub const RTL_CONSOLE: bool = false;
+
+fn writing_rtl(code: &str) -> bool {
+    RTL.contains(&code)
+}
+
+/// A right-to-left language is offered in the console only after L6.
+fn console_offered(code: &str) -> bool {
+    RTL_CONSOLE || !writing_rtl(code)
+}
+
+/// Public translations repository, the same path as [crate::pack_update]'s REPO_PATH.
+fn help_url(code: &str) -> String {
+    format!("https://github.com/h4lo-void/bageo-packs/tree/main/languages/{code}")
+}
 
 /// The installed file's name, in {CALLS_DATA_DIR}/packs/.
 pub const FILE_NAME: &str = "bageo-locales.json.gz";
@@ -67,6 +93,8 @@ pub enum Stage {
     Call,
     /// Call, and what the owner reads is in it too.
     Notify,
+    /// Notify, and the console can be shown in it.
+    Console,
 }
 
 impl Stage {
@@ -75,6 +103,7 @@ impl Stage {
             Stage::None => "none",
             Stage::Call => "call",
             Stage::Notify => "notify",
+            Stage::Console => "console",
         }
     }
 }
@@ -91,6 +120,8 @@ pub struct ExtLocale {
     zh_cn: &'static str,
     phrases: Option<Phrases>,
     words: Option<Words>,
+    /// Console texts that passed. Missing keys read English on the page.
+    console: Option<BTreeMap<String, String>>,
     /// The call prompts, built for the first call in this language and kept
     /// with this table: a newer table builds its own.
     prompt: OnceLock<Pack>,
@@ -169,11 +200,11 @@ impl LocaleTable {
             // One per field, however many rules it broke.
             let dropped = issues
                 .iter()
-                .filter(|i| (i.field == at || i.field.starts_with(&format!("{at}."))) && !i.field.starts_with(&format!("{at}.console")))
+                .filter(|i| i.field == at || i.field.starts_with(&format!("{at}.")))
                 .map(|i| i.field.as_str())
                 .collect::<std::collections::BTreeSet<_>>()
                 .len();
-            let LocaleLang { names, status, speech, notify, .. } = lang;
+            let LocaleLang { names, status, speech, notify, console, .. } = lang;
             let mut phrases = speech.as_ref().and_then(|s| call_phrases(e, s));
             let notify_keys = notify.as_ref().map_or(0, |f| f.keys().count());
             let words = match &notify {
@@ -182,11 +213,22 @@ impl LocaleTable {
                 }
                 _ => None,
             };
-            let stage = match (&phrases, &words) {
+            let console_text = console.as_ref().and_then(|f| {
+                let m: BTreeMap<String, String> = f
+                    .strings
+                    .iter()
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                    .collect();
+                if m.is_empty() { None } else { Some(m) }
+            });
+            let mut stage = match (&phrases, &words) {
                 (Some(_), Some(_)) => Stage::Notify,
                 (Some(_), None) => Stage::Call,
                 _ => Stage::None,
             };
+            if stage >= Stage::Notify && console_text.is_some() && console_offered(e.code()) {
+                stage = Stage::Console;
+            }
             let closing = speech.as_ref().and_then(|s| s.closing.as_ref());
             if let (Some(p), Some(c)) = (phrases.as_mut(), closing) {
                 if let Some(words) = ExtraWords::ai_farewells(e.code(), c) {
@@ -201,7 +243,7 @@ impl LocaleTable {
             }
             let zh_tw = leak(names.zh.clone());
             let zh_cn = leak(crate::zh_convert::to_cn(&names.zh));
-            langs.insert(e, ExtLocale { names, status, stage, dropped, zh_tw, zh_cn, phrases, words, prompt: OnceLock::new() });
+            langs.insert(e, ExtLocale { names, status, stage, dropped, zh_tw, zh_cn, phrases, words, console: console_text, prompt: OnceLock::new() });
         }
         let closing = ExtraWords::from_verified(&verified);
         LocaleTable { version: loc.version, langs, closing, ai_farewells }
@@ -252,12 +294,24 @@ fn call_phrases(e: Ext, s: &Speech) -> Option<Phrases> {
 fn english() -> &'static English {
     static E: OnceLock<English> = OnceLock::new();
     E.get_or_init(|| {
-        let text: EnText = serde_json::from_str(NOTIFY_EN).unwrap_or_default();
-        let meta: BTreeMap<String, Meta> = serde_json::from_str(NOTIFY_META).unwrap_or_default();
         let mut files = BTreeMap::new();
-        files.insert(Kind::Notify, EnSource { text, meta });
+        files.insert(Kind::Notify, en_source(NOTIFY_EN, NOTIFY_META, false));
+        files.insert(Kind::Console, en_source(CONSOLE_EN, CONSOLE_META, true));
         English { files }
     })
+}
+
+/// English text plus its notes. drop_lang removes the console file's lang field.
+fn en_source(text: &str, meta: &str, drop_lang: bool) -> EnSource {
+    let mut text: Value = serde_json::from_str(text).unwrap_or_default();
+    if drop_lang {
+        if let Some(obj) = text.as_object_mut() {
+            obj.remove("lang");
+        }
+    }
+    let text: EnText = serde_json::from_value(text).unwrap_or_default();
+    let meta: BTreeMap<String, Meta> = serde_json::from_str(meta).unwrap_or_default();
+    EnSource { text, meta }
 }
 
 /// Where a translations file comes from. The built-in one ships with the
@@ -284,9 +338,7 @@ fn parse_from(gz: &[u8], origin: Origin, today: i64) -> Result<(Locales, Vec<Iss
     let today = if origin == Origin::Builtin { NO_DATE_LIMIT } else { today };
     let mut loc = parse_locales_at(gz, MAX_LOCALES_BYTES, today)?;
     let judge = |code: &str, c: &Closing, said: &str| crate::closing::judge(code, c, said);
-    let mut dropped = sanitize_locales(&mut loc, english(), Some(&judge));
-    // The console is not translated by this file yet: its absence is no loss.
-    dropped.retain(|i| !(i.rule == lrule::KEY && i.field.ends_with(".console")));
+    let dropped = sanitize_locales(&mut loc, english(), Some(&judge));
     Ok((loc, dropped))
 }
 
@@ -549,12 +601,29 @@ pub fn menu() -> Vec<Value> {
             "native": l.names.native,
             "en": l.names.en,
             "zh": l.names.zh,
-            "dir": if Lang::Ext(e).rtl() { "rtl" } else { "ltr" },
+            "dir": if writing_rtl(e.code()) { "rtl" } else { "ltr" },
             "stage": l.stage.code(),
             "reviewed": l.reviewed(),
+            "help": help_url(e.code()),
         }));
     }
     out
+}
+
+/// One language's console file from the pack in use, same shape as a core
+/// language file. None when that language has no console text or is not
+/// offered in the console (right to left, while RTL_CONSOLE is off).
+pub fn console_file(code: &str) -> Option<String> {
+    let e = Ext::from_code(code)?;
+    let l = current().get(e)?;
+    if l.stage < Stage::Console {
+        return None;
+    }
+    let strings = l.console.as_ref()?;
+    if strings.is_empty() {
+        return None;
+    }
+    Some(json!({ "schema": 1, "lang": code, "strings": strings }).to_string())
 }
 
 /// Test translations (it, th, ar, fa, ru), only ever built in tests: the
@@ -629,6 +698,16 @@ pub(crate) mod testing {
             lists.insert(k.clone(), json!(items));
         }
         json!({"strings": strings, "lists": lists, "formats": en["formats"].clone()})
+    }
+
+    /// Made-up console text for a language: every English key, one word of it.
+    pub(crate) fn console(word: &str) -> Value {
+        let en: Value = serde_json::from_str(CONSOLE_EN).unwrap();
+        let mut strings = serde_json::Map::new();
+        for (k, v) in en["strings"].as_object().unwrap() {
+            strings.insert(k.clone(), json!(made_up(word, v.as_str().unwrap())));
+        }
+        json!({ "strings": strings })
     }
 
     /// The test translations as JSON (edit before packing).
@@ -747,7 +826,14 @@ mod tests {
     #[test]
     fn the_shipped_translations_bring_twenty_languages_to_notifications() {
         let (loc, dropped) = parse_from(BUILTIN, Origin::Builtin, 0).unwrap_or_else(|i| panic!("{}", i[0]));
-        assert_eq!(loc.version, 2026112103);
+        assert_eq!(loc.version, 2026112104);
+        // A language that ships console text has nearly all of it (a key added to English after the draft reads English).
+        let en_keys = en_source(CONSOLE_EN, CONSOLE_META, true).text.keys().count();
+        for (code, l) in &loc.langs {
+            if let Some(c) = &l.console {
+                assert!(c.strings.len() * 100 >= en_keys * 95, "{code}: {} of {en_keys} console keys", c.strings.len());
+            }
+        }
         assert!(dropped.is_empty(), "{:?}", dropped.iter().map(|i| i.to_string()).collect::<Vec<_>>());
         let t = builtin();
         let codes: Vec<&str> = t.langs().map(|(e, _)| e.code()).collect();
@@ -771,7 +857,43 @@ mod tests {
         testing::use_builtin();
         let menu = menu();
         assert_eq!(menu.len(), 9 + SHIPPED.len());
-        assert!(menu[9..].iter().all(|x| x["stage"] == "notify" && x["reviewed"] == false));
+        assert!(menu[9..].iter().all(|x| x["reviewed"] == false));
+        // Right-to-left stays out of the console menu until RTL_CONSOLE is on.
+        for x in &menu[9..] {
+            let code = x["code"].as_str().unwrap();
+            assert_eq!(x["dir"], if writing_rtl(code) { "rtl" } else { "ltr" }, "{code}");
+            if writing_rtl(code) {
+                assert_ne!(x["stage"], "console", "{code}");
+            }
+        }
+    }
+
+    #[test]
+    fn console_text_puts_a_language_in_the_console_menu_except_right_to_left_ones() {
+        let packed = gz(builtin().version + 1, |v| {
+            for (code, word) in [("it", "Consola"), ("ar", "لوحة"), ("th", "แผง")] {
+                v["langs"][code]["console"] = testing::console(word);
+            }
+        });
+        let t = use_gz(&packed);
+        let menu = menu();
+        let stage = |code: &str| menu.iter().find(|x| x["code"] == code).unwrap()["stage"].clone();
+        assert_eq!(stage("it"), "console");
+        // Thai has console text but no notifications in this test table: the console needs Notify first.
+        assert_eq!(stage("th"), "call");
+        // Arabic has console text but writes right to left: it stays at Notify.
+        assert_eq!(stage("ar"), "notify");
+        assert_eq!(t.get(ext("ar")).unwrap().stage, Stage::Notify);
+        // fa has no console text: still Call.
+        assert_eq!(stage("fa"), "call");
+        let it = menu.iter().find(|x| x["code"] == "it").unwrap();
+        assert_eq!(it["help"], "https://github.com/h4lo-void/bageo-packs/tree/main/languages/it");
+        // The file is served in the same shape as a core language file.
+        let file: Value = serde_json::from_str(&console_file("it").unwrap()).unwrap();
+        assert_eq!((file["schema"].as_u64(), file["lang"].as_str()), (Some(1), Some("it")));
+        assert!(file["strings"].as_object().unwrap().len() >= 1250);
+        assert!(console_file("zz").is_none() && console_file("fa").is_none());
+        testing::use_builtin();
     }
 
     #[test]

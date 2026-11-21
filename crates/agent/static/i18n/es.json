@@ -1253,6 +1253,8 @@
     "lang_unreviewed": "(pendiente de revisión por un hablante nativo)",
     "lang_partial": "Algunas funciones aún no admiten este idioma: entretener llamadas de venta y estafas, sugerencias según la llamada, respuestas cortas y muestras de voz.",
     "lang_fallback": "Este idioma no está disponible ahora, así que por el momento las llamadas serán en inglés.",
-    "lang_load_failed": "No se pudo cargar ese idioma. Se mantiene el actual."
+    "lang_load_failed": "No se pudo cargar ese idioma. Se mantiene el actual.",
+    "lang_unreviewed_note": "Este idioma todavía no lo ha revisado un hablante nativo.",
+    "lang_help_fix": "Ayudar a corregirlo"
   }
 }
