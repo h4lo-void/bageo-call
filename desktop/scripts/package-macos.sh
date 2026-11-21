@@ -40,7 +40,8 @@ if [ "$#" -eq 4 ]; then
   REPO=$4
   cp "$3" "$APP/Contents/MacOS/agent"
   chmod 755 "$APP/Contents/MacOS/agent"
-  cp -R "$REPO/assets" "$REPO/LICENSES" "$APP/Contents/Resources/"
+  sh "$REPO/scripts/bundle-assets.sh" copy "$REPO/assets" "$APP/Contents/Resources/assets"
+  cp -R "$REPO/LICENSES" "$APP/Contents/Resources/"
   cp "$REPO/LICENSE" "$REPO/NOTICE.md" "$REPO/.env.example" "$APP/Contents/Resources/"
 fi
 
