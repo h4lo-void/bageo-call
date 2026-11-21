@@ -40,12 +40,12 @@ Details for some rows:
   Voice packs for other languages and regions are downloaded only when you
   press Download, and only from GitHub. GitHub sees your IP address and which
   language you download ([API](API.md#voice-downloads)).
-- **Extra languages and regional artwork**: calls already include all 70
-  built-in languages. When `extras_auto` is on (default), signing in to the
-  console downloads only the missing extra language packs matching your
-  settings or browser and your home country's mascot art directly from
-  GitHub (`h4lo-void/bageo-packs`, [API](API.md#local-data)); turning it off
-  downloads them only when you pick Download.
+- **Extra languages and regional artwork**: calls and the Android app already
+  include all 79 built-in languages. Extra console/notification language packs,
+  regional artwork, local data updates and Bageo release checks never connect
+  to the internet automatically; they connect to GitHub (`h4lo-void/bageo-packs`
+  and `h4lo-void/bageo-call`, [API](API.md#local-data)) only when you manually
+  click Download or Check for updates.
 - **Contact imports**: vCard, CSV/TSV, plain text, `.xlsx` and `.docx` imports
   are read on your computer. **PDF files and pictures** (and files in which
   nothing was found) are sent to Gemini (`gemini-flash-lite-latest`) to read

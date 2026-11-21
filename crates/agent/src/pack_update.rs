@@ -743,8 +743,68 @@ async fn restore_route(State(state): State<CallsState>, headers: HeaderMap, Quer
     Json(body).into_response()
 }
 
+const BAGEO_LATEST_URL: &str = "https://github.com/h4lo-void/bageo-call/releases/latest";
+const BAGEO_TAG_PREFIX: &str = "https://github.com/h4lo-void/bageo-call/releases/tag/";
+
+/// Extracts the `x.y.z` version from a GitHub release redirect `Location` URL.
+fn parse_bageo_release_location(loc: &str) -> Option<String> {
+    let base = Url::parse(BAGEO_LATEST_URL).ok()?;
+    let target = base.join(loc).ok()?;
+    let tag = target.as_str().strip_prefix(BAGEO_TAG_PREFIX)?;
+    let ver = tag.trim_start_matches(['v', 'V']);
+    (!ver.contains('/') && !ver.contains('?') && !ver.contains('#') && version_parts(ver).is_some())
+        .then(|| ver.to_string())
+}
+
+/// POST /api/packs/bageo-check: manual check of the latest Bageo release on GitHub.
+/// Never runs automatically; only when the user clicks "Check for updates".
+async fn bageo_check(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>) -> Response {
+    if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
+        return unauthorized();
+    }
+    if !json_request(&headers) {
+        return json_required();
+    }
+    let Ok(c) = client_with(CONNECT_TIMEOUT) else {
+        return Json(json!({ "ok": true, "result": "offline", "current": BAGEO_VERSION, "url": BAGEO_LATEST_URL })).into_response();
+    };
+    let resp = match c.get(BAGEO_LATEST_URL).send().await {
+        Ok(r) => r,
+        Err(_) => {
+            return Json(json!({ "ok": true, "result": "offline", "current": BAGEO_VERSION, "url": BAGEO_LATEST_URL })).into_response();
+        }
+    };
+    let latest = resp
+        .headers()
+        .get(reqwest::header::LOCATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(parse_bageo_release_location);
+    match latest {
+        Some(ver) if !bageo_at_least(&ver) => Json(json!({
+            "ok": true,
+            "result": "update_available",
+            "current": BAGEO_VERSION,
+            "latest": ver,
+            "url": BAGEO_LATEST_URL,
+        }))
+        .into_response(),
+        Some(ver) => Json(json!({
+            "ok": true,
+            "result": "up_to_date",
+            "current": BAGEO_VERSION,
+            "latest": ver,
+            "url": BAGEO_LATEST_URL,
+        }))
+        .into_response(),
+        None => Json(json!({ "ok": true, "result": "offline", "current": BAGEO_VERSION, "url": BAGEO_LATEST_URL })).into_response(),
+    }
+}
+
 pub fn router() -> Router<CallsState> {
-    Router::new().route("/api/packs/update", get(status).post(update)).route("/api/packs/restore", post(restore_route))
+    Router::new()
+        .route("/api/packs/update", get(status).post(update))
+        .route("/api/packs/restore", post(restore_route))
+        .route("/api/packs/bageo-check", post(bageo_check))
 }
 
 #[cfg(test)]

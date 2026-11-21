@@ -1184,7 +1184,7 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
               <input type="hidden" id="f-home_country" data-k="home_country" data-t="text" />
               <div class="cb" id="hcBox"></div>
               <div class="help" data-i18n="f_home_country_h"></div></div>
-            <div class="field"><label class="sw"><input type="checkbox" data-k="extras_auto" data-t="bool" /><span><b data-i18n="f_extras_auto"></b><small data-i18n="f_extras_auto_h"></small></span></label></div>
+            <div class="field" hidden><label class="sw"><input type="checkbox" data-k="extras_auto" data-t="bool" /><span><b data-i18n="f_extras_auto"></b><small data-i18n="f_extras_auto_h"></small></span></label></div>
             <div class="field" id="packField"><div class="lbl" data-i18n="pk_title"></div>
               <div class="muted" id="pkVersion"></div>
               <div class="pv">
@@ -4445,7 +4445,8 @@ async function loadSettings() {
     const srv = matchLang(S.notify_language || S.language);
     if (srv) store.set("pca.srvlang", srv);
     if (!qs.get("lang") && !store.get("pca.lang") && srv && srv !== lang) await chooseLang(srv, true);
-    if (!exAutoOnce) { exAutoOnce = true; exAutoCheck(d); }
+    if (!exAutoOnce) { exAutoOnce = true; exLoadQuiet(); }
+    vpRender();
     if (pendingJump) jumpGroup(pendingJump);
     else if (!document.querySelector("#snav a.on")) markSnav("basics");
     if (view === "system") renderSystem();
@@ -5696,6 +5697,9 @@ async function pkRun(btn, path, working) {
     const key = "pk_r_" + d.result;
     pkMsg = I18N.en[key] != null ? key : "pk_r_bad_pack";
     pkRender();
+    if (d.result === "update_bageo") {
+      window.open("https://github.com/h4lo-void/bageo-call/releases/latest", "_blank", "noopener");
+    }
     if (d.result === "updated" || d.result === "restored") { packAsked = false; loadPackRegions(); }
   } catch (e) {
     pkMsg = "";
@@ -5752,17 +5756,65 @@ function vpPackFor(l) {
   }
   return regions.map((r) => packs.find((p) => p.region === r)).find(Boolean) || packs.find((p) => !p.region) || null;
 }
-// The pack the card offers: for the console's language, the language setting or a SIM's
-// language, unless "Not now" was pressed for it.
+// The pack the card offers on the very first visit only (using local built-in data, never connecting
+// to the internet until the user clicks Download). After the first prompt is shown or dismissed,
+// "__first_pack_prompt__" is saved in dismissed_pack_prompts and everything is manual from then on.
+const FIRST_PACK_PROMPT = "__first_pack_prompt__";
+let vpFirstOffer = null;
+let vpFirstSaved = false;
+async function markFirstPackPrompt(extraId) {
+  const list = [...((S && S.dismissed_pack_prompts) || [])];
+  if (!list.includes(FIRST_PACK_PROMPT)) list.push(FIRST_PACK_PROMPT);
+  if (extraId && !list.includes(extraId)) list.push(extraId);
+  if (S) S.dismissed_pack_prompts = list;
+  if (vpFirstSaved && !extraId) return;
+  vpFirstSaved = true;
+  try {
+    const d = await api("/settings", jsonBody("PUT", { dismissed_pack_prompts: list }));
+    if (S && d.settings && d.settings.dismissed_pack_prompts) S.dismissed_pack_prompts = d.settings.dismissed_pack_prompts;
+  } catch (_) {}
+}
+function exFirstPackFor(raw) {
+  if (!exInfo || !Array.isArray(exInfo.langs)) return null;
+  const low = String(raw || "").trim().toLowerCase();
+  const base = low.split(/[-_]/)[0];
+  const norm = base === "iw" ? "he" : base === "in" ? "id" : base === "ji" ? "yi" : base === "no" ? "nb" : base;
+  const row = exInfo.langs.find((r) => r.code === low || r.code === norm);
+  if (!row || row.downloaded) return null;
+  return { kind: "ext_lang", id: "lang-" + row.code, lang: row.code, region: null, bytes: row.bytes || 40000, native: row.native, en: row.en };
+}
 function vpOffer() {
+  if (vpFirstOffer) {
+    if (vpFirstOffer.kind === "ext_lang") {
+      const r = ((exInfo && exInfo.langs) || []).find((x) => x.code === vpFirstOffer.lang);
+      if (r && r.downloaded) { vpFirstOffer = null; return null; }
+    } else {
+      const p = ((vpInfo && vpInfo.packs) || []).find((x) => x.id === vpFirstOffer.id);
+      if (p && p.downloaded) { vpFirstOffer = null; return null; }
+    }
+    return vpFirstOffer;
+  }
+  if (!S || !vpInfo || !exInfo) return null;
+  const dismissed = S.dismissed_pack_prompts || [];
+  const anyDownloaded = ((vpInfo.downloaded || []).length > 0) || ((exInfo.langs || []).some((r) => r.downloaded));
+  if (dismissed.length > 0 || anyDownloaded) return null;
+  const rawLangs = [S.language, S.notify_language, ...Object.values(S.sim_languages || {}), ...(navigator.languages || [navigator.language])].filter(Boolean);
+  const extOffer = rawLangs.map(exFirstPackFor).find(Boolean);
   const langs = [];
   const add = (l) => { const m = matchLang(l); if (m && !langs.includes(m)) langs.push(m); };
   add(lang);
-  add(S && S.language);
-  Object.values((S && S.sim_languages) || {}).forEach(add);
+  add(S.language);
+  Object.values(S.sim_languages || {}).forEach(add);
   add(browserLang());
-  const dismissed = (S && S.dismissed_pack_prompts) || [];
-  return langs.map(vpPackFor).find((p) => p && !dismissed.includes(p.id)) || null;
+  const voiceOffer = langs.map(vpPackFor).find(Boolean);
+  const found = extOffer || voiceOffer || null;
+  if (found) {
+    vpFirstOffer = found;
+    markFirstPackPrompt(found.id);
+  } else {
+    markFirstPackPrompt("");
+  }
+  return vpFirstOffer;
 }
 function vpRender() {
   const has = !!vpInfo && (((vpInfo.packs || []).length > 0) || ((vpInfo.downloaded || []).length > 0));
@@ -5831,20 +5883,40 @@ async function vpRun(path, opts, working, btn) {
   }
 }
 const vpDownload = (id, btn) => vpRun("/voices/download", jsonBody("POST", { id }), "vp_working", btn);
-$("vpCardGet").addEventListener("click", () => vpDownload($("vpCard").dataset.id, null));
+$("vpCardGet").addEventListener("click", async () => {
+  const offer = vpFirstOffer;
+  vpFirstOffer = null;
+  if (offer && offer.kind === "ext_lang") {
+    vpButtons().forEach((b) => { b.disabled = true; });
+    try {
+      const d = await api("/extras/download", jsonBody("POST", { lang: offer.lang }));
+      exInfo = d;
+      if (d.result === "installed") {
+        await exSyncMenus();
+        toast(t("vp_r_installed"));
+        if (offeredLangs("console").some((x) => x.code === offer.lang)) {
+          await chooseLang(offer.lang, true);
+        }
+      } else {
+        toast(exErrText(d.result), true);
+      }
+    } catch (e) {
+      if (e.status !== 401) toast(e.message || t("err_network"), true);
+    } finally {
+      vpRender();
+      vpButtons().forEach((b) => { b.disabled = false; });
+    }
+    return;
+  }
+  vpDownload($("vpCard").dataset.id, null);
+});
 $("btnVpVoice").addEventListener("click", () => vpDownload($("btnVpVoice").dataset.id, $("btnVpVoice")));
 // "Not now": that pack is not offered again (saved in the settings).
 $("vpCardLater").addEventListener("click", async () => {
   const id = $("vpCard").dataset.id;
-  const list = [...((S && S.dismissed_pack_prompts) || [])];
-  if (id && !list.includes(id)) list.push(id);
+  vpFirstOffer = null;
   $("vpCard").hidden = true;
-  try {
-    const d = await api("/settings", jsonBody("PUT", { dismissed_pack_prompts: list }));
-    if (S) S.dismissed_pack_prompts = (d.settings && d.settings.dismissed_pack_prompts) || list;
-  } catch (e) {
-    if (e.status !== 401) toast(t("save_failed", { msg: e.message }), true);
-  }
+  await markFirstPackPrompt(id);
   vpRender();
 });
 $("btnVpImport").addEventListener("click", () => $("vpFile").click());
@@ -5985,11 +6057,18 @@ async function exRun(code, act) {
     exRender();
   }
 }
+async function exLoadQuiet() {
+  try {
+    exInfo = await api("/extras");
+    vpRender();
+  } catch (_) {}
+}
 async function exLoad() {
   exShowErr("");
   try {
     exInfo = await api("/extras");
     exRender();
+    vpRender();
   } catch (e) {
     if (e.status !== 401) exShowErr(e.message || t("err_network"));
   }
@@ -6281,15 +6360,6 @@ function tsLoadArt(code) {
   TS_EXT_LOADING[code] = fetch(artUrl, { cache: "no-store" })
     .then(async (res) => {
       if (res.ok) return res.json();
-      if (res.status === 404 && S && S.extras_auto !== false) {
-        try {
-          const dl = await api("/extras/download", jsonBody("POST", { art: code }));
-          if (dl && (dl.result === "installed" || dl.result === "up_to_date")) {
-            const res2 = await fetch(artUrl, { cache: "no-store" });
-            if (res2.ok) return res2.json();
-          }
-        } catch (_) {}
-      }
       TS_EXT_MISS[code] = true;
       return null;
     })
@@ -6903,7 +6973,32 @@ function renderSystem() {
   const kv = clear($("sysAbout"));
   const row = (label, value, mono) => { if (value != null && value !== "") kv.append(h("dt", { text: label }), h("dd", { class: mono ? "mono" : "", text: String(value) })); };
   if (health) {
-    row(t("ab_version"), health.version);
+    if (health.version != null && health.version !== "") {
+      const verStatus = h("span", { class: "pv-status", style: "margin-inline-start:8px" });
+      const verBtn = h("button", { type: "button", class: "btn sm", style: "margin-inline-start:8px", text: t("pk_check"), onclick: async () => {
+        verBtn.disabled = true;
+        verStatus.textContent = t("pk_checking");
+        try {
+          const d = await api("/packs/bageo-check", jsonBody("POST", {}));
+          const url = (d && d.url) || "https://github.com/h4lo-void/bageo-call/releases/latest";
+          if (d && d.result === "update_available") {
+            verStatus.textContent = "";
+            verStatus.append(h("a", { href: url, target: "_blank", rel: "noopener", text: "v" + d.latest }));
+            const w = window.open(url, "_blank", "noopener");
+            if (!w) location.href = url;
+          } else if (d && d.result === "up_to_date") {
+            verStatus.textContent = t("pk_r_up_to_date");
+          } else {
+            verStatus.textContent = t("pk_r_offline");
+          }
+        } catch (e) {
+          verStatus.textContent = e.message || t("pk_r_offline");
+        } finally {
+          verBtn.disabled = false;
+        }
+      } });
+      kv.append(h("dt", { text: t("ab_version") }), h("dd", {}, h("span", { text: String(health.version) }), verBtn, verStatus));
+    }
     row(t("ab_model"), health.gemini_live_model, true);
     row(t("ab_data"), health.calls_data_dir, true);
     row(t("ab_settings"), storagePath, true);

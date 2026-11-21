@@ -333,8 +333,9 @@ pub struct RuntimeSettings {
     #[serde(default = "default_true")]
     pub phone_wifi: bool,
     /// Download extra languages and region art that match settings or the
-    /// browser on login when missing (`crate::extras`).
-    #[serde(default = "default_true")]
+    /// browser on login when missing (`crate::extras`). Defaults to `false`
+    /// so Bageo never connects to GitHub automatically in the background.
+    #[serde(default)]
     pub extras_auto: bool,
     /// When a call fixes a date (delivery, appointment, callback time), add an
     /// "add to calendar" link to the summary. One more request to the summary
@@ -1227,7 +1228,7 @@ impl RuntimeSettings {
             public_url: env_or("PUBLIC_URL", ""),
             mdns_name: base.mdns_name.clone(),
             phone_wifi: env_bool("PHONE_WIFI", true),
-            extras_auto: env_bool("EXTRAS_AUTO", true),
+            extras_auto: env_bool("EXTRAS_AUTO", false),
             calendar_suggest: env_bool("CALENDAR_SUGGEST", true),
             calendar_app: String::new(),
             appointment_mode: sanitize_appointment_mode(&env_or("APPOINTMENT_MODE", "off")),
@@ -4248,7 +4249,7 @@ mod tests {
         assert_eq!(rt.language, "en");
         let rt = store.apply_patch(&json!({ "language": "ar", "notify_language": "ar" })).unwrap();
         assert_eq!((rt.lang(), rt.notify_lang()), (ext("ar"), ext("ar")));
-        assert!(rt.extras_auto);
+        assert!(!rt.extras_auto);
         // The settings API lists core languages + downloaded + active in settings.
         let shown = store.masked_json();
         let langs = shown["languages"].as_array().unwrap();
@@ -4256,6 +4257,8 @@ mod tests {
         assert!(langs.iter().any(|l| l["code"] == "it" && l["stage"] == "notify" && l["reviewed"] == false));
         assert!(!langs.iter().any(|l| l["code"] == "th"));
         assert!(!langs.iter().any(|l| l["code"] == "ru"));
+        let rt = store.apply_patch(&json!({ "extras_auto": true })).unwrap();
+        assert!(rt.extras_auto);
         let rt = store.apply_patch(&json!({ "extras_auto": false })).unwrap();
         assert!(!rt.extras_auto);
         // The translations go back to ones without these languages: English,
