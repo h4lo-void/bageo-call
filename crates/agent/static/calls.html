@@ -1568,6 +1568,10 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
               <input type="range" class="ts-range" id="f-talk_style_level" data-k="talk_style_level" data-t="int" min="1" max="5" step="1" aria-describedby="tsBubbleDesc" />
               <div class="ts-ends" aria-hidden="true"><span data-i18n="ts_casual"></span><span data-i18n="ts_formal"></span></div>
               <div class="help" id="tsCustomNote" data-i18n="ts_custom" hidden></div>
+              <div class="pv" id="tsVpBox" hidden style="margin-top:8px">
+                <button type="button" class="btn sm primary" id="btnTsVpVoice"></button>
+                <span class="pv-status" id="tsVpStatus" aria-live="polite"></span>
+              </div>
             </div>
           </div>
           <div class="hr"></div>
@@ -1984,6 +1988,17 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
     <div class="dlg-btns">
       <button type="button" class="btn" id="dlgCancel" data-i18n="cancel"></button>
       <button type="submit" class="btn primary" id="dlgOk"></button>
+    </div>
+  </form>
+</dialog>
+<dialog id="vpDlg" aria-labelledby="vpDlgAsk">
+  <form method="dialog">
+    <h2 id="vpDlgAsk"></h2>
+    <p id="vpDlgHelp"></p>
+    <p class="help" id="vpDlgEn" hidden></p>
+    <div class="dlg-btns">
+      <button type="button" class="btn" id="vpDlgLater" data-i18n="vp_not_now"></button>
+      <button type="button" class="btn primary" id="vpDlgGet" data-i18n="vp_get"></button>
     </div>
   </form>
 </dialog>
@@ -5500,9 +5515,9 @@ function makeCombo(box, opts) {
     attr: { role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false", "aria-controls": listId, spellcheck: "false" } });
   const list = h("ul", { id: listId, class: "cb-list", hidden: true, attr: { role: "listbox" } });
   box.append(input, list);
-  let all = [], shown = [], active = -1, value = "";
+  let all = [], shown = [], active = -1, value = "", isSearching = false;
   const labelOf = (v) => { const o = all.find((x) => x.value === v); return o ? ((opts && opts.short && o.short) || o.label) : v; };
-  const keysOf = (o) => o.keys || (o.keys = [o.label, ...(o.search || [])].filter(Boolean).map(foldText));
+  const keysOf = (o) => o.keys || (o.keys = [o.label, o.searchLabel, ...(o.search || [])].filter(Boolean).map(foldText));
   // 0 = the whole of a name or code, 1 = the start of one, 2 = inside one, 3 = not found.
   const rankOf = (o, q) => {
     let best = 3;
@@ -5517,7 +5532,7 @@ function makeCombo(box, opts) {
     clear(list);
     if (!shown.length) list.append(h("li", { class: "cb-none", text: t("cb_none"), attr: { role: "option", "aria-disabled": "true" } }));
     shown.forEach((o, i) => {
-      list.append(h("li", { id: listId + "-" + i, class: i === active ? "on" : "", text: o.label,
+      list.append(h("li", { id: listId + "-" + i, class: i === active ? "on" : "", text: (isSearching && o.searchLabel) ? o.searchLabel : o.label,
         attr: { role: "option", "aria-selected": String(o.value === value) },
         onpointerdown: (e) => e.preventDefault(), onclick: () => pick(o) }));
     });
@@ -5528,9 +5543,10 @@ function makeCombo(box, opts) {
     } else input.removeAttribute("aria-activedescendant");
   }
   function open(typed) {
-    if (typed) {
-      const q = foldText(input.value);
-      shown = !q ? all.slice() : all.filter((o) => !o.pin).map((o, i) => ({ o, i, r: rankOf(o, q) })).filter((x) => x.r < 3)
+    const q = typed ? foldText(input.value) : "";
+    isSearching = !!q;
+    if (q) {
+      shown = all.filter((o) => !o.pin).map((o, i) => ({ o, i, r: rankOf(o, q) })).filter((x) => x.r < 3)
         .sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.o).concat(all.filter((o) => o.pin));
       active = shown.length ? 0 : -1;
     } else {
@@ -5596,7 +5612,7 @@ function langOption(o) {
   if (!own) return { value: code, label: o.textContent, search: [] };
   const en = LANG_EN[code] || (info && info.en) || code;
   const mark = info && info.reviewed === false ? " " + t("lang_unreviewed") : "";
-  return { value: code, label: (own === en ? en : own + " · " + en) + mark, short: own, search: [own, en, langNameHere(code), code, info && info.zh].filter(Boolean) };
+  return { value: code, label: own + mark, searchLabel: (own === en ? en : own + " · " + en) + mark, short: own, search: [own, en, langNameHere(code), code, info && info.zh].filter(Boolean) };
 }
 const langCombos = [];
 let cbSeq = 0;
@@ -5748,27 +5764,24 @@ function vpPackFor(l) {
   const packs = ((vpInfo && vpInfo.packs) || []).filter((p) => p.lang === l);
   if (!packs.length) return null;
   const regions = vpRegions();
-  const usable = (p) => !p.region || regions.includes(p.region);
-  if (packs.some((p) => usable(p) && (p.downloaded || p.bundled))) {
-    // Only a region's own pack is still worth offering then.
-    const own = regions.map((r) => packs.find((p) => p.region === r)).find(Boolean);
-    return own && !own.downloaded ? own : null;
-  }
-  return regions.map((r) => packs.find((p) => p.region === r)).find(Boolean) || packs.find((p) => !p.region) || null;
+  const def = l === "en" ? packs.find((p) => p.region === "us") : l === "es" ? packs.find((p) => p.region === "es") : null;
+  const match = regions.map((r) => packs.find((p) => p.region === r)).find(Boolean)
+    || packs.find((p) => !p.region)
+    || def
+    || packs[0];
+  return match && !match.downloaded ? match : null;
 }
-// The pack the card offers on the very first visit only (using local built-in data, never connecting
-// to the internet until the user clicks Download). After the first prompt is shown or dismissed,
-// "__first_pack_prompt__" is saved in dismissed_pack_prompts and everything is manual from then on.
+// The pack the card and modal offer when a language/voice pack is missing and has not been
+// dismissed yet (using local built-in data, never connecting to the internet until the user
+// clicks Download).
 const FIRST_PACK_PROMPT = "__first_pack_prompt__";
 let vpFirstOffer = null;
-let vpFirstSaved = false;
+let vpDlgShownFor = "";
 async function markFirstPackPrompt(extraId) {
   const list = [...((S && S.dismissed_pack_prompts) || [])];
   if (!list.includes(FIRST_PACK_PROMPT)) list.push(FIRST_PACK_PROMPT);
   if (extraId && !list.includes(extraId)) list.push(extraId);
   if (S) S.dismissed_pack_prompts = list;
-  if (vpFirstSaved && !extraId) return;
-  vpFirstSaved = true;
   try {
     const d = await api("/settings", jsonBody("PUT", { dismissed_pack_prompts: list }));
     if (S && d.settings && d.settings.dismissed_pack_prompts) S.dismissed_pack_prompts = d.settings.dismissed_pack_prompts;
@@ -5784,36 +5797,29 @@ function exFirstPackFor(raw) {
   return { kind: "ext_lang", id: "lang-" + row.code, lang: row.code, region: null, bytes: row.bytes || 40000, native: row.native, en: row.en };
 }
 function vpOffer() {
-  if (vpFirstOffer) {
-    if (vpFirstOffer.kind === "ext_lang") {
-      const r = ((exInfo && exInfo.langs) || []).find((x) => x.code === vpFirstOffer.lang);
-      if (r && r.downloaded) { vpFirstOffer = null; return null; }
-    } else {
-      const p = ((vpInfo && vpInfo.packs) || []).find((x) => x.id === vpFirstOffer.id);
-      if (p && p.downloaded) { vpFirstOffer = null; return null; }
-    }
-    return vpFirstOffer;
-  }
   if (!S || !vpInfo || !exInfo) return null;
   const dismissed = S.dismissed_pack_prompts || [];
-  const anyDownloaded = ((vpInfo.downloaded || []).length > 0) || ((exInfo.langs || []).some((r) => r.downloaded));
-  if (dismissed.length > 0 || anyDownloaded) return null;
-  const rawLangs = [S.language, S.notify_language, ...Object.values(S.sim_languages || {}), ...(navigator.languages || [navigator.language])].filter(Boolean);
-  const extOffer = rawLangs.map(exFirstPackFor).find(Boolean);
+  const pickedLang = ($("f-language") && $("f-language").value) || S.language || lang;
+  const pickedVoice = vpPackFor(matchLang(pickedLang) || pickedLang);
+  if (pickedVoice && !dismissed.includes(pickedVoice.id)) {
+    vpFirstOffer = pickedVoice;
+    return vpFirstOffer;
+  }
+  if (dismissed.includes(FIRST_PACK_PROMPT)) {
+    vpFirstOffer = null;
+    return null;
+  }
+  const rawLangs = [pickedLang, S.language, S.notify_language, ...Object.values(S.sim_languages || {}), ...(navigator.languages || [navigator.language])].filter(Boolean);
+  const extOffer = rawLangs.map(exFirstPackFor).find((p) => p && !dismissed.includes(p.id));
   const langs = [];
   const add = (l) => { const m = matchLang(l); if (m && !langs.includes(m)) langs.push(m); };
+  add(pickedLang);
   add(lang);
   add(S.language);
   Object.values(S.sim_languages || {}).forEach(add);
   add(browserLang());
-  const voiceOffer = langs.map(vpPackFor).find(Boolean);
-  const found = extOffer || voiceOffer || null;
-  if (found) {
-    vpFirstOffer = found;
-    markFirstPackPrompt(found.id);
-  } else {
-    markFirstPackPrompt("");
-  }
+  const voiceOffer = langs.map(vpPackFor).find((p) => p && !dismissed.includes(p.id));
+  vpFirstOffer = extOffer || voiceOffer || null;
   return vpFirstOffer;
 }
 function vpRender() {
@@ -5839,30 +5845,52 @@ function vpRender() {
   const working = vpMsg ? t(vpMsg) : "";
   $("vpStatus").textContent = working;
   $("vpVoiceStatus").textContent = working;
+  if ($("tsVpStatus")) $("tsVpStatus").textContent = working;
   const offer = vpOffer();
   $("vpCard").hidden = !offer;
   if (offer) {
-    const pl = LANGS.includes(offer.lang) ? offer.lang : "en";
+    const pl = LANGS.includes(offer.lang) ? offer.lang : lang;
     const vars = (l) => ({ name: vpName(offer, l), size: vpSize(offer.bytes) });
-    $("vpCardAsk").textContent = tIn(pl, "vp_ask", vars(pl));
-    $("vpCardHelp").textContent = tIn(pl, "vp_ask_h");
+    const askText = tIn(pl, "vp_ask", vars(pl));
+    const helpText = tIn(pl, "vp_ask_h");
+    const enText = pl === "en" ? "" : `${tIn("en", "vp_ask", vars("en"))} ${tIn("en", "vp_ask_h")}`;
+    $("vpCardAsk").textContent = askText;
+    $("vpCardHelp").textContent = helpText;
     $("vpCardAsk").lang = $("vpCardHelp").lang = pl;
     $("vpCardEn").hidden = pl === "en";
-    $("vpCardEn").textContent = pl === "en" ? "" : `${tIn("en", "vp_ask", vars("en"))} ${tIn("en", "vp_ask_h")}`;
+    $("vpCardEn").textContent = enText;
     $("vpCard").dataset.id = offer.id;
+    const dlg = $("vpDlg");
+    if (dlg && typeof dlg.showModal === "function" && vpDlgShownFor !== offer.id && !($("pwSetupDlg") && $("pwSetupDlg").open)) {
+      vpDlgShownFor = offer.id;
+      $("vpDlgAsk").textContent = askText;
+      $("vpDlgHelp").textContent = helpText;
+      $("vpDlgEn").hidden = pl === "en";
+      $("vpDlgEn").textContent = enText;
+      applyI18n(dlg);
+      if (!dlg.open) { try { dlg.showModal(); } catch (_) {} }
+    }
+  } else if ($("vpDlg") && $("vpDlg").open) {
+    $("vpDlg").close();
   }
   const pick = vpPackFor(pvLang() || lang);
   $("vpVoiceBox").hidden = !pick;
+  if ($("tsVpBox")) $("tsVpBox").hidden = !pick;
   if (pick) {
-    $("btnVpVoice").textContent = t("vp_get_voice", { name: vpName(pick, lang), size: vpSize(pick.bytes) });
+    const btnLabel = t("vp_get_voice", { name: vpName(pick, lang), size: vpSize(pick.bytes) });
+    $("btnVpVoice").textContent = btnLabel;
     $("btnVpVoice").dataset.id = pick.id;
+    if ($("btnTsVpVoice")) {
+      $("btnTsVpVoice").textContent = btnLabel;
+      $("btnTsVpVoice").dataset.id = pick.id;
+    }
   }
 }
 async function vpLoad() {
   try { vpInfo = await api("/voices"); } catch (_) { vpInfo = null; }
   vpRender();
 }
-const vpButtons = () => [$("vpCardGet"), $("vpCardLater"), $("btnVpVoice"), $("btnVpImport"), ...$("vpRows").querySelectorAll("button")];
+const vpButtons = () => [$("vpCardGet"), $("vpCardLater"), $("vpDlgGet"), $("vpDlgLater"), $("btnVpVoice"), $("btnTsVpVoice"), $("btnVpImport"), ...$("vpRows").querySelectorAll("button")].filter(Boolean);
 async function vpRun(path, opts, working, btn) {
   vpButtons().forEach((b) => { b.disabled = true; });
   vpMsg = working;
@@ -5883,15 +5911,18 @@ async function vpRun(path, opts, working, btn) {
   }
 }
 const vpDownload = (id, btn) => vpRun("/voices/download", jsonBody("POST", { id }), "vp_working", btn);
-$("vpCardGet").addEventListener("click", async () => {
+async function vpAcceptOffer() {
   const offer = vpFirstOffer;
+  const id = (offer && offer.id) || $("vpCard").dataset.id;
   vpFirstOffer = null;
+  if ($("vpDlg") && $("vpDlg").open) $("vpDlg").close();
   if (offer && offer.kind === "ext_lang") {
     vpButtons().forEach((b) => { b.disabled = true; });
     try {
       const d = await api("/extras/download", jsonBody("POST", { lang: offer.lang }));
       exInfo = d;
       if (d.result === "installed") {
+        await markFirstPackPrompt(offer.id);
         await exSyncMenus();
         toast(t("vp_r_installed"));
         if (offeredLangs("console").some((x) => x.code === offer.lang)) {
@@ -5908,17 +5939,24 @@ $("vpCardGet").addEventListener("click", async () => {
     }
     return;
   }
-  vpDownload($("vpCard").dataset.id, null);
-});
-$("btnVpVoice").addEventListener("click", () => vpDownload($("btnVpVoice").dataset.id, $("btnVpVoice")));
-// "Not now": that pack is not offered again (saved in the settings).
-$("vpCardLater").addEventListener("click", async () => {
-  const id = $("vpCard").dataset.id;
+  await vpDownload(id, null);
+  await markFirstPackPrompt(id);
+}
+async function vpDismissOffer() {
+  const id = (vpFirstOffer && vpFirstOffer.id) || $("vpCard").dataset.id;
   vpFirstOffer = null;
   $("vpCard").hidden = true;
+  if ($("vpDlg") && $("vpDlg").open) $("vpDlg").close();
   await markFirstPackPrompt(id);
   vpRender();
-});
+}
+$("vpCardGet").addEventListener("click", vpAcceptOffer);
+$("vpDlgGet").addEventListener("click", vpAcceptOffer);
+$("btnVpVoice").addEventListener("click", () => vpDownload($("btnVpVoice").dataset.id, $("btnVpVoice")));
+if ($("btnTsVpVoice")) $("btnTsVpVoice").addEventListener("click", () => vpDownload($("btnTsVpVoice").dataset.id, $("btnTsVpVoice")));
+// "Not now": that pack is not offered again (saved in the settings).
+$("vpCardLater").addEventListener("click", vpDismissOffer);
+$("vpDlgLater").addEventListener("click", vpDismissOffer);
 $("btnVpImport").addEventListener("click", () => $("vpFile").click());
 $("vpFile").addEventListener("change", () => {
   const file = $("vpFile").files[0];
@@ -6168,8 +6206,23 @@ function browserCountries() {
   }
   return out;
 }
-// The country Bageo goes by: the one picked here, else the phones' SIM.
-const homeCountryNow = () => ($("f-home_country").value || connectedCountries()[0] || "");
+// The country Bageo goes by: the one picked here, else the SIM/browser country matching the call language, else the first SIM/browser country.
+function homeCountryNow() {
+  const picked = $("f-home_country").value;
+  if (picked) return picked;
+  const curLang = ($("f-language") && $("f-language").value) || (S && S.language) || lang || "";
+  const cands = [...connectedCountries(), ...browserCountries()];
+  if (curLang && packRegions) {
+    const match = cands.find((cc) => {
+      const r = regionOfCountry(cc);
+      return r && String(r.lang || "").toLowerCase() === curLang.toLowerCase();
+    });
+    if (match) return match;
+    const byLang = packRegions.find((r) => String(r.lang || "").toLowerCase() === curLang.toLowerCase() && (r.countries || []).length);
+    if (byLang && byLang.countries[0]) return byLang.countries[0];
+  }
+  return cands[0] || "";
+}
 
 // ----- "Country you live in"
 let hcCombo = null;
@@ -6180,6 +6233,7 @@ function renderHomeCountry() {
       updateDirty();
       renderAboutHints();
       tsRender(true);
+      vpRender();
     } });
   }
   const cur = $("f-home_country").value;
@@ -6193,7 +6247,7 @@ function renderHomeCountry() {
     const en = (r && r.countries.length === 1 && r.name && r.name.en) || intlEn || cc.toUpperCase();
     const own = nativeCountryName(cc, r) || en;
     const rank = first.indexOf(cc);
-    return { value: cc, en, rank: rank < 0 ? 1e6 : rank, label: own === en ? en : own + " · " + en,
+    return { value: cc, en, rank: rank < 0 ? 1e6 : rank, label: own, searchLabel: own === en ? en : own + " · " + en,
       search: [own, en, intlEn, countryName(cc), cc, DIAL[cc] ? "+" + DIAL[cc] : "",
         ...(r && r.name ? [r.name.en, r.name.zh, r.name.native] : []), ...(COUNTRY_ALIASES[cc] || "").split("|")] };
   }).sort((a, b) => a.rank - b.rank || a.en.localeCompare(b.en, "en"));
@@ -6376,10 +6430,10 @@ function tsLoadArt(code) {
     .finally(() => { delete TS_EXT_LOADING[code]; });
 }
 const tsLook = (code) => TS_REGIONS[code] || (TS_EXT_ART[code] && TS_EXT_ART[code].look) || TS_REGIONS["default"];
-// A region's own art only once local people have checked it (local_reviewed); else the plain one.
+// A region's own art when built-in or downloaded; else load it and fall back to the plain one.
 function tsRegion() {
   const r = regionOfCountry(homeCountryNow());
-  if (!r || r.status !== "local_reviewed") return "default";
+  if (!r) return "default";
   if (TS_REGIONS[r.code] || TS_EXT_ART[r.code]) return r.code;
   tsLoadArt(r.code);
   return "default";
@@ -6431,8 +6485,8 @@ function tsRender(animate) {
     if (level === 1) tsReplay(wing, "bts-wave"); else wing.classList.remove("bts-wave");
   }
 }
-// After any edit: the AI assistant wears a headset, "As me" holds the phone; an own
-// prompt turns the slider off; answer 3 follows the answer style.
+// After any edit: the AI assistant wears a headset, "As me" holds the phone; the slider
+// stays adjustable at all times; answer 3 follows the answer style.
 function tsSync() {
   const asMe = pickedStyle() === "persona";
   $("tsBox").querySelectorAll(".bts-phone").forEach((el) => { el.style.display = asMe ? "" : "none"; });
@@ -6440,11 +6494,13 @@ function tsSync() {
   $("abSayField").hidden = !asMe;
   $("abAvoidField").hidden = !asMe;
   $("abAsksField").hidden = asMe;
-  const own = String(promptDraft[promptStyleShown] || "").trim() !== "";
-  $("f-talk_style_level").disabled = own;
+  const cur = String(promptDraft[promptStyleShown] || "").trim();
+  const own = !!cur && cur !== String(curDefaultPrompt() || "").trim() && cur !== String(curDefaultTemplate() || "").trim();
+  $("f-talk_style_level").disabled = false;
   $("tsCustomNote").hidden = !own;
-  $("tsField").classList.toggle("off", own);
+  $("tsField").classList.remove("off");
   $("abExtraCount").textContent = String($("f-about_extra").value.length);
+  tsRender(false);
 }
 $("f-talk_style_level").addEventListener("input", () => {
   tsTouched = true;
