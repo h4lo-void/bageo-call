@@ -638,6 +638,29 @@ const FAREWELLS: Lexicon = &[
         "hoşça kal", "hoşça kalın", "hoşçakal", "hoşçakalın", "görüşürüz", "görüşmek üzere", "iyi geceler",
         "kendine iyi bak", "kendinize iyi bakın", "güle güle", "allaha ısmarladık", "bay bay",
     ]),
+    // Swedish, Norwegian, Danish, Finnish. "Ha det bra", "vi ses" and "farvel" are
+    // everyday words too: GREETING_BYES.
+    ("sv", &["hej då", "hejdå"]),
+    ("nb", &["hei så lenge", "takk for praten"]),
+    ("da", &["fortsat god dag", "hav en god dag", "hav det godt", "tak for snakken"]),
+    ("fi", &["kuulemiin", "kiitos ja hei", "hyvää päivänjatkoa"]),
+    // Czech, Slovak. Not "zatím" alone: "je to tak zatím" is "so far".
+    ("cs", &[
+        "na shledanou", "nashledanou", "nashle", "mějte se", "mějte se hezky", "tak se mějte", "pěkný zbytek dne",
+        "hezký zbytek dne", "zatím ahoj", "zatím čau", "tak pa",
+    ]),
+    ("sk", &[
+        "dovidenia", "do videnia", "majte sa", "majte sa pekne", "maj sa", "maj sa pekne", "pekný zvyšok dňa",
+        "zatiaľ ahoj", "zatiaľ čau",
+    ]),
+    ("hu", &[
+        "viszlát", "viszontlátásra", "viszonthallásra", "további szép napot", "további szép napot kívánok", "akkor szia",
+    ]),
+    ("bg", &["дочуване", "айде чао"]),
+    // Croatian and Serbian in Latin letters.
+    ("hr", &["doviđenja", "dovidjenja", "do viđenja", "ajde bok"]),
+    ("sr", &["ajde ćao"]),
+    ("uk", &["давай бувай", "ну все па па"]),
 ];
 
 /// Greetings that also say goodbye: farewells only once the business is done
@@ -688,6 +711,41 @@ const GREETING_BYES: Lexicon = &[
     ("te", &["నమస్కారం"]),
     // Not "eyvallah": "anladım, eyvallah" is "got it, thanks" in the middle of a call.
     ("tr", &["iyi günler", "iyi akşamlar", "kolay gelsin", "hayırlı günler"]),
+    // Also everyday words: "Hon verkar ha det bra", "jag vet inte när vi ses", "sen var
+    // det tack och hej". Not "vi hörs" / "vi høres": "we can hear each other".
+    ("sv", &["ha det så bra", "ha det bra", "ha det gott", "vi ses", "tack och hej"]),
+    // "I Norge er det norsk som snakkes", "Hun ser ut til å ha det godt".
+    ("nb", &["ha det godt", "vi snakkes", "snakkes senere", "snakkes", "ha en fin dag"]),
+    // "Vi tog et sidste farvel", "jeg ved ikke hvornår vi snakkes ved".
+    ("da", &["farvel", "vi snakkes ved"]),
+    // Greetings as well. Not "nähdään": "odotetaan ja nähdään" is "let's wait and see".
+    ("fi", &["moikka", "heippa", "moi moi", "hei hei"]),
+    ("cs", &["ahoj", "čau", "hezký den"]),
+    // "Nemal som dobrú noc", "bol to pekný deň".
+    ("sk", &["čaute", "pekný deň", "dobrú noc"]),
+    // "Szép napot kívánok" also opens a call; "minden jót" a birthday call.
+    ("hu", &["sziasztok", "szia", "szép napot kívánok", "szép napot", "minden jót"]),
+    // "A fost o zi frumoasă". Not "ne auzim" ("nu ne auzim": we can't hear each other)
+    // or "numai bine" ("Ce faceți? Mulțumesc, numai bine").
+    ("ro", &["o zi frumoasă", "o zi frumoasa", "seară bună", "seara buna", "spor la treabă", "spor la treaba"]),
+    // "Беше приятен ден", "днес имам лека работа". Not "живи и здрави": "how are you" is
+    // answered with it.
+    ("bg", &["чао чао", "чао", "приятен ден", "хубав ден", "лека вечер", "всичко добро", "лека работа", "до скоро"]),
+    // "Έτσι τα λέμε", "ήταν καλό βράδυ", "η σειρά δεν είχε καλή συνέχεια"; "τι έγινε,
+    // γεια" opens a call. Not "έλα γεια", which also opens one.
+    ("el", &[
+        "έγινε γεια", "εγινε γεια", "γεια σας", "γεια σου", "γεια χαρά", "τα λέμε", "καλό βράδυ", "καλό απόγευμα", "χαιρετώ",
+        "καλή συνέχεια",
+    ]),
+    // "Mama šalje lijep pozdrav", "bio je ugodan dan". Not "čujemo se": "ne čujemo se"
+    // is "we can't hear each other".
+    ("hr", &["bok", "vidimo se", "ugodan dan", "lijep pozdrav", "pozdrav", "svako dobro", "laku noć", "laku noc"]),
+    // "Bilo je prijatno".
+    ("sr", &["ćao", "prijatno", "sve najbolje"]),
+    // "Ми завтра зідзвонимось", "лікар сказав: бережіть себе". Not "на зв'язку": "I'm on the line".
+    ("uk", &[
+        "тихого дня", "зідзвонимось", "зідзвонимося", "усього найкращого", "всього найкращого", "бережіть себе", "бережи себе",
+    ]),
 ];
 
 /// How calls are answered and opened; never a goodbye by themselves.
@@ -755,6 +813,19 @@ const EXTRA_THANKS: &[&str] = &[
     "çok teşekkür ederim", "teşekkür ederim", "teşekkürler", "sağ olun", "sağ ol", "sağolun", "sağol",
     "bardzo dziękuję", "dziękuję bardzo", "dziękuję", "dziekuje", "dzięki wielkie", "dzięki", "dzieki",
     "hartelijk bedankt", "bedankt", "dank je wel", "dank u wel", "dank je", "dank u",
+    // Not the Danish "tak" alone: Polish "tak" is "yes".
+    "tack så mycket", "tusen tack", "stort tack", "tack ska du ha", "tack",
+    "tusen takk", "mange takk", "takk skal du ha", "takk",
+    "tusind tak", "mange tak", "tak skal du have", "tak for det",
+    "kiitos paljon", "paljon kiitoksia", "kiitoksia", "kiitos", "kiitti",
+    "děkuji moc", "děkuju moc", "moc děkuji", "moc děkuju", "děkuji", "děkuju", "díky moc", "díky",
+    "ďakujem veľmi pekne", "ďakujem pekne", "ďakujem", "vďaka",
+    "köszönöm szépen", "nagyon köszönöm", "köszönöm", "köszönjük", "köszi", "kösz",
+    "mulțumesc frumos", "mulțumesc mult", "mulțumesc", "multumesc", "mulțumim", "mersi",
+    "много благодаря", "благодаря ви", "благодаря", "мерси",
+    "ευχαριστώ πολύ", "ευχαριστούμε", "ευχαριστώ", "ευχαριστω",
+    "hvala lijepa", "hvala lepo", "hvala puno", "puno hvala", "hvala vam", "hvala",
+    "дуже дякую", "щиро дякую", "дякую вам", "дякуємо", "дякую",
 ];
 
 /// Thanks for something, at the very end ("Thanks for your help", "thank you
@@ -765,6 +836,9 @@ const THANKS_FOR: &[&str] = &[
     "thanks for", "many thanks for", "muchas gracias por", "gracias por", "merci beaucoup pour", "merci pour",
     "vielen dank für", "danke für", "obrigado pela", "obrigada pela", "obrigado pelo", "obrigada pelo",
     "obrigado por", "obrigada por", "grazie mille per", "grazie per",
+    "tack så mycket för", "tack för", "tusen takk for", "takk for", "tusind tak for", "mange tak for", "tak for", "děkuji za", "děkuju za",
+    "díky za", "ďakujem za", "vďaka za", "köszönöm a", "köszönöm az", "mulțumesc mult pentru", "mulțumesc pentru",
+    "hvala na", "hvala za",
 ];
 const THANKS_FOR_MAX_WORDS: usize = 4;
 
@@ -1356,15 +1430,20 @@ fn thanks_wrap(text: &str) -> bool {
     let all = norm(text);
     let mut t = all.as_str();
     let mut thanked = false;
+    let mut nordic = false;
     for _ in 0..MAX_PEEL {
         match peel(t) {
             Some((rest, Peel::Thanks)) => {
                 thanked = true;
+                nordic |= is_nordic_thanks(t[rest.len()..].trim());
                 t = rest;
             }
             Some((rest, Peel::Particle | Peel::Word)) if !thanked => t = rest,
             _ => break,
         }
+    }
+    if thanked && nordic {
+        return nordic_settled_only(t);
     }
     if !thanked || t.is_empty() || is_fluff(t) || ends_as_question(t) || asks(t) {
         return false;
@@ -1381,6 +1460,55 @@ fn thanks_wrap(text: &str) -> bool {
             bare.contains(w)
         }
     }))
+}
+
+/// Swedish, Norwegian, Danish and Finnish thanks also say "please" at the end of a
+/// request ("Kan jag få ditt nummer, tack"; "Ja, takk" is "yes, please"): a wrap-up
+/// only after nothing but settling words ([`nordic_settled_only`]).
+const NORDIC_THANKS: &[&str] = &[
+    "tack så mycket", "tusen tack", "stort tack", "tack ska du ha", "tack", "tusen takk", "mange takk", "takk skal du ha",
+    "takk", "tusind tak", "mange tak", "tak skal du have", "tak for det", "kiitos paljon", "paljon kiitoksia", "kiitoksia",
+    "kiitos", "kiitti",
+];
+const NORDIC_THANKS_FOR: &[&str] = &["tack så mycket för", "tack för", "tusen takk for", "takk for", "mange tak for", "tak for"];
+
+/// Words that settle a matter before Nordic thanks. Not "ja" / "joo" / "kyllä" alone
+/// ("yes, please"), "bra" / "fint" / "godt" / "hyvää" ("fine, thanks" answers "how are
+/// you") or "nej" / "nei" / "ei" alone ("no, thanks").
+const NORDIC_SETTLED: &[&str] = &[
+    "okej", "ok", "okay", "okei", "perfekt", "utmärkt", "uppfattat", "jag förstår", "då vet jag det", "då vet jag", "det var allt",
+    "det var bara det", "då gör vi så", "det låter bra", "låter bra", "greit", "den er grei", "flott", "supert", "skjønner",
+    "jeg skjønner", "da vet jeg det", "da vet jeg", "det var alt", "da gjør vi det sånn", "høres bra ut", "notert", "forstått", "super",
+    "forstået", "i orden", "det er i orden", "så ved jeg det", "det var det", "det gør vi", "det lyder godt", "lyder godt",
+    "selvä", "selvä homma", "selvä juttu", "hyvä on", "ymmärrän", "nyt tiedän", "sitten tiedän", "se oli siinä",
+    "siinä kaikki", "ei muuta", "kuulostaa hyvältä",
+];
+/// Short words that may stand next to them: "Nej, det var allt, tack", "Okej, bra, tack".
+const NORDIC_FILLERS: &[&str] = &[
+    "ja", "jaha", "jo", "joo", "kyllä", "nej", "nei", "ei", "nå", "no", "niin", "då", "da", "så", "bra", "fint", "godt", "hyvä",
+];
+
+fn is_nordic_thanks(said: &str) -> bool {
+    NORDIC_THANKS.contains(&said)
+        || NORDIC_THANKS_FOR.iter().any(|p| said.strip_prefix(p).is_some_and(|rest| rest.starts_with(' ')))
+}
+
+/// `t` (normalized, the thanks peeled off) is settling words only, at least one of
+/// [`NORDIC_SETTLED`]: "okej", "nej det var allt", "selvä".
+fn nordic_settled_only(t: &str) -> bool {
+    let mut rest = t.trim_end();
+    let mut settled = false;
+    while !rest.is_empty() {
+        if let Some(head) = NORDIC_SETTLED.iter().find_map(|p| ends_with_phrase(rest, p)) {
+            settled = true;
+            rest = head;
+        } else if let Some(head) = NORDIC_FILLERS.iter().find_map(|p| ends_with_phrase(rest, p)) {
+            rest = head;
+        } else {
+            return false;
+        }
+    }
+    settled
 }
 
 /// Only greetings, thanks and short replies (or nothing): 「喂？」, "Alo, chào anh
@@ -3514,4 +3642,765 @@ mod review_probe2_tests {
     }
 }
 
+/// Third batch of closing words (Swedish, Norwegian, Danish, Finnish, Czech, Slovak,
+/// Hungarian, Romanian, Bulgarian, Greek, Croatian, Serbian, Ukrainian).
+#[cfg(test)]
+mod regional_closing_words_3_tests {
+    use super::*;
 
+    fn after_talk(lang: &'static str) -> ClosingMachine {
+        let mut m = ClosingMachine::new(lang);
+        m.on_caller("Parcel delivery info", "Parcel delivery info", false, false);
+        m
+    }
+
+    /// The caller's turn as the live session feeds it: with the older check.
+    fn hears(m: &mut ClosingMachine, t: &str) -> ClosingStep {
+        m.on_caller(t, t, crate::locale::caller_wraps_up(t), false)
+    }
+
+    fn closes(s: &ClosingStep) -> bool {
+        s.ends_call || matches!(s.event, ClosingEvent::CallerFarewell | ClosingEvent::CallerPreClosing)
+    }
+
+    fn all_close(cases: &[(&'static str, &str)], m: impl Fn(&'static str) -> ClosingMachine) -> Vec<String> {
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let mut mm = m(lang);
+            let s = hears(&mut mm, t);
+            if s.event != ClosingEvent::CallerFarewell || !s.ends_call {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        bad
+    }
+
+    #[test]
+    fn goodbyes_end_the_call() {
+        let cases: &[(&'static str, &str)] = &[
+            ("sv", "Hej då!"), ("sv", "Okej, hej då."), ("sv", "Tack för hjälpen, hej då!"), ("sv", "Hejdå!"),
+            ("nb", "Hei så lenge!"), ("nb", "Takk for praten!"), ("nb", "Ok, hei så lenge."),
+            ("da", "Fortsat god dag!"), ("da", "Hav en god dag."), ("da", "Mange tak, hav en god dag!"), ("da", "Hav det godt!"),
+            ("da", "Tak for snakken."),
+            ("fi", "Kuulemiin!"), ("fi", "Kiitos, kuulemiin."), ("fi", "Kiitos ja hei!"), ("fi", "Hyvää päivänjatkoa!"),
+            ("fi", "Kiitos paljon, hyvää päivänjatkoa."),
+            ("cs", "Na shledanou!"), ("cs", "Děkuji, na shledanou."), ("cs", "Nashledanou."), ("cs", "Díky, nashle!"),
+            ("cs", "Mějte se hezky!"), ("cs", "Tak se mějte."), ("cs", "Přeji pěkný zbytek dne."), ("cs", "Hezký zbytek dne!"),
+            ("cs", "Zatím ahoj!"), ("cs", "Tak zatím čau."), ("cs", "Tak pa!"),
+            ("sk", "Dovidenia!"), ("sk", "Ďakujem, dovidenia."), ("sk", "Vďaka, do videnia!"), ("sk", "Majte sa pekne!"),
+            ("sk", "Maj sa!"), ("sk", "Pekný zvyšok dňa!"), ("sk", "Zatiaľ ahoj."), ("sk", "Tak zatiaľ čau!"),
+            ("hu", "Viszlát!"), ("hu", "Köszönöm, viszontlátásra."), ("hu", "Viszonthallásra!"), ("hu", "További szép napot!"),
+            ("hu", "Köszönöm, további szép napot kívánok."), ("hu", "Akkor szia!"), ("hu", "Na akkor szia."),
+            ("bg", "Дочуване!"), ("bg", "Благодаря, дочуване."), ("bg", "Айде, чао!"),
+            ("hr", "Doviđenja!"), ("hr", "Hvala, doviđenja."), ("hr", "Do viđenja!"), ("hr", "Ajde, bok!"),
+            ("sr", "Ajde, ćao!"), ("sr", "Hvala lepo, doviđenja."),
+            ("uk", "Давай, бувай!"), ("uk", "Ну все, па-па!"),
+        ];
+        let bad = all_close(cases, after_talk);
+        assert!(bad.is_empty(), "goodbyes missed:\n{}", bad.join("\n"));
+    }
+
+    /// Words that are greetings or everyday words too close right after thanks or a short "ok".
+    #[test]
+    fn cued_goodbyes_close_after_thanks_or_ok() {
+        let cases: &[(&'static str, &str)] = &[
+            ("sv", "Tack, ha det bra!"), ("sv", "Tack, ha det så bra."), ("sv", "Tack så mycket, ha det gott!"),
+            ("sv", "Tack, vi ses!"), ("sv", "Tusen tack, tack och hej."), ("sv", "Tack för hjälpen, ha det bra."),
+            ("nb", "Takk, ha det godt!"), ("nb", "Tusen takk, vi snakkes."), ("nb", "Ok, snakkes!"),
+            ("nb", "Takk for hjelpen, ha en fin dag!"), ("nb", "Mange takk, snakkes senere."),
+            ("da", "Tak for det, farvel."), ("da", "Mange tak, farvel!"), ("da", "Tak for hjælpen, vi snakkes ved."),
+            ("da", "Tusind tak, vi ses."),
+            ("fi", "Kiitos, moikka!"), ("fi", "Kiitti, heippa!"), ("fi", "Kiitos paljon, moi moi."),
+            ("cs", "Díky, ahoj!"), ("cs", "Děkuju, čau."), ("cs", "Děkuji moc, hezký den!"), ("cs", "Ok, ahoj."),
+            ("cs", "Díky za info, ahoj."),
+            ("sk", "Ďakujem, čaute!"), ("sk", "Vďaka, pekný deň."), ("sk", "Ďakujem pekne, dobrú noc!"),
+            ("sk", "Ďakujem za pomoc, ahoj."),
+            ("hu", "Köszönöm, szia!"), ("hu", "Köszi, sziasztok!"), ("hu", "Köszönöm szépen, szép napot!"),
+            ("hu", "Köszönöm, szép napot kívánok."), ("hu", "Köszönöm, minden jót!"), ("hu", "Köszönöm a segítséget, szia."),
+            ("ro", "Mulțumesc, o zi frumoasă!"), ("ro", "Mersi, seară bună!"), ("ro", "Mulțumesc frumos, spor la treabă."),
+            ("ro", "Mulțumesc pentru ajutor, o zi frumoasă."),
+            ("bg", "Благодаря, чао!"), ("bg", "Мерси, чао чао."), ("bg", "Благодаря, приятен ден!"), ("bg", "Благодаря ви, хубав ден."),
+            ("bg", "Благодаря, лека вечер!"), ("bg", "Мерси, всичко добро."), ("bg", "Благодаря, лека работа!"),
+            ("bg", "Благодаря, до скоро."),
+            ("el", "Ευχαριστώ, γεια σας!"), ("el", "Ευχαριστώ πολύ, γεια σου."), ("el", "Ευχαριστώ, γεια χαρά!"),
+            ("el", "Ευχαριστούμε, τα λέμε."), ("el", "Ευχαριστώ, καλό βράδυ!"), ("el", "Ευχαριστώ, καλό απόγευμα."),
+            ("el", "Ευχαριστώ, χαιρετώ."), ("el", "Ευχαριστώ, καλή συνέχεια!"),
+            ("el", "Ευχαριστώ, έγινε, γεια!"), ("el", "Ευχαριστώ πολύ, εγινε γεια."),
+            ("hr", "Hvala, bok!"), ("hr", "Hvala lijepa, vidimo se."), ("hr", "Hvala, ugodan dan!"), ("hr", "Hvala, lijep pozdrav."),
+            ("hr", "Hvala vam, pozdrav!"), ("hr", "Hvala, svako dobro."), ("hr", "Hvala, laku noć!"), ("hr", "Hvala na pomoći, bok."),
+            ("sr", "Hvala, ćao!"), ("sr", "Hvala lepo, prijatno."), ("sr", "Hvala, sve najbolje!"),
+            ("uk", "Дякую, тихого дня!"), ("uk", "Дякую, усього найкращого."), ("uk", "Дякую вам, всього найкращого!"),
+            ("uk", "Дякую, зідзвонимось."), ("uk", "Дуже дякую, зідзвонимося!"),
+            ("uk", "Дякую, бережіть себе!"), ("uk", "Дякую, бережи себе."),
+            // Words already listed, now after this batch's thanks.
+            ("ro", "Mulțumesc, bună ziua."), ("uk", "Дякую, бувай!"), ("uk", "Дякую, па-па."),
+        ];
+        let bad = all_close(cases, after_talk);
+        assert!(bad.is_empty(), "cued goodbyes missed:\n{}", bad.join("\n"));
+    }
+
+    const CUED_ALONE: &[(&str, &str)] = &[
+        ("sv", "Ha det bra!"), ("sv", "Ha det gott."), ("sv", "Vi ses!"), ("sv", "Tack och hej!"),
+        ("nb", "Ha det godt!"), ("nb", "Vi snakkes."), ("nb", "Snakkes!"), ("nb", "Snakkes senere."), ("nb", "Ha en fin dag!"),
+        ("da", "Farvel!"), ("da", "Vi snakkes ved."),
+        ("fi", "Moikka!"), ("fi", "Heippa!"), ("fi", "Moi moi!"),
+        ("cs", "Ahoj!"), ("cs", "Čau!"), ("cs", "Hezký den!"),
+        ("sk", "Čaute!"), ("sk", "Pekný deň!"), ("sk", "Dobrú noc!"),
+        ("hu", "Szia!"), ("hu", "Sziasztok!"), ("hu", "Szép napot!"), ("hu", "Szép napot kívánok!"), ("hu", "Minden jót!"),
+        ("ro", "O zi frumoasă!"), ("ro", "Seară bună!"), ("ro", "Spor la treabă!"),
+        ("bg", "Чао!"), ("bg", "Чао, чао!"), ("bg", "Приятен ден!"), ("bg", "Хубав ден!"), ("bg", "Лека вечер!"),
+        ("bg", "Всичко добро!"), ("bg", "Лека работа!"), ("bg", "До скоро!"),
+        ("el", "Γεια σας!"), ("el", "Γεια σου!"), ("el", "Γεια χαρά!"), ("el", "Τα λέμε!"), ("el", "Καλό βράδυ!"),
+        ("el", "Καλό απόγευμα!"), ("el", "Χαιρετώ!"), ("el", "Καλή συνέχεια!"),
+        ("el", "Έγινε, γεια!"), ("el", "Εντάξει, έγινε, γεια."),
+        ("hr", "Bok!"), ("hr", "Vidimo se!"), ("hr", "Ugodan dan!"), ("hr", "Lijep pozdrav!"), ("hr", "Pozdrav!"),
+        ("hr", "Svako dobro!"), ("hr", "Laku noć!"),
+        ("sr", "Ćao!"), ("sr", "Prijatno!"), ("sr", "Sve najbolje!"),
+        ("uk", "Тихого дня!"), ("uk", "Зідзвонимось!"), ("uk", "Усього найкращого!"),
+        ("uk", "Бережіть себе!"), ("uk", "Бережи себе."),
+    ];
+
+    /// Alone, mid-call, they wait: the AI's goodbye before them, or a cue in the same turn.
+    #[test]
+    fn cued_words_alone_close_only_after_the_ais_goodbye() {
+        let mut bad = Vec::new();
+        for (lang, t) in CUED_ALONE {
+            let mut m = after_talk(lang);
+            let s = hears(&mut m, t);
+            if closes(&s) {
+                bad.push(format!("[{lang}] mid-call {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        let bad_after_ai = all_close(CUED_ALONE, |lang| {
+            let mut m = after_talk(lang);
+            m.on_ai_turn("Okay, goodbye!", false, false);
+            m
+        });
+        bad.extend(bad_after_ai.into_iter().map(|b| format!("after the AI's goodbye: {b}")));
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// Ordinary sentences holding a newly added word: no goodbye.
+    #[test]
+    fn lookalikes_do_not_close() {
+        let cases: &[(&'static str, &str)] = &[
+            ("sv", "Barnen vinkade hej då till mormor vid tåget"), ("sv", "Hej då är det sista ordet i boken"),
+            ("sv", "Vi hann inte säga hejdå ordentligt igår"),
+            ("sv", "Hon verkar ha det bra"), ("sv", "Barnen ska ha det bra hos oss"), ("sv", "Jag hoppas att hunden får ha det bra"),
+            ("sv", "Han förtjänar att ha det så bra"), ("sv", "Alla borde få ha det så bra"), ("sv", "Det är skönt att få ha det så bra"),
+            ("sv", "Katten verkar ha det gott"), ("sv", "Pensionärerna ska ha det gott"), ("sv", "De tycks ha det gott"),
+            ("sv", "Jag vet inte när vi ses"), ("sv", "Det spelar ingen roll var vi ses"), ("sv", "Mamma undrar hur ofta vi ses"),
+            ("sv", "Han tog pengarna och sedan var det tack och hej"), ("sv", "Leverantören bara försvann, tack och hej"),
+            ("sv", "Det blev inget avtal, bara tack och hej"),
+            ("sv", "Tack vare er kom paketet fram"), ("sv", "Tack för att du ringde, men jag har en fråga till om fakturan"),
+            ("sv", "Kolla bara att vi hörs"), ("sv", "Ja, vi hörs"),
+            ("nb", "Hei, så lenge du er hjemme kan pakken leveres"), ("nb", "Han ropte hei så lenge og gikk"),
+            ("nb", "Hei så lenge var det eneste han sa"),
+            ("nb", "Jeg sa takk for praten og la på"), ("nb", "Takk for praten i går, men jeg ringer om fakturaen"),
+            ("nb", "Takk for praten sist, jeg har et spørsmål om leiligheten"),
+            ("nb", "Hun ser ut til å ha det godt"), ("nb", "Dyrene skal ha det godt på gården"),
+            ("nb", "Vi vil at besteforeldrene skal ha det godt"),
+            ("nb", "I Norge er det norsk som snakkes"), ("nb", "Dette er et tema som sjelden snakkes"), ("nb", "Jeg vet ikke når vi snakkes"),
+            ("nb", "Detaljene kan snakkes om senere"), ("nb", "Prisen må snakkes senere"), ("nb", "Det kan snakkes senere"),
+            ("nb", "Vi håper barna skal ha en fin dag"), ("nb", "Hun fortjener å ha en fin dag"),
+            ("nb", "Målet er at alle skal ha en fin dag"),
+            ("nb", "Takk for at du ringte, men pakken har ikke kommet ennå"), ("nb", "Ja, vi høres"),
+            ("da", "Hun sagde fortsat god dag og gik"), ("da", "Fortsat god dag er en almindelig hilsen"),
+            ("da", "Skriv fortsat god dag nederst i mailen"),
+            ("da", "Skriv hav en god dag på kortet"), ("da", "Hav en god dag står der på skiltet"),
+            ("da", "Hun sagde hav en god dag til alle kunderne"),
+            ("da", "Hav det godt står der på kortet"), ("da", "Han sagde hav det godt til naboen"),
+            ("da", "Hav det godt på ferien og ring når I er hjemme"),
+            ("da", "Tak for snakken i går, men jeg ringer om fakturaen"), ("da", "Han sendte en sms med tak for snakken og et tilbud"),
+            ("da", "Tak for snakken sidst, har du fået pakken"),
+            ("da", "Vi tog et sidste farvel med farmor"), ("da", "Til begravelsen sagde vi et sidste farvel"),
+            ("da", "Vi har sagt farvel til den gamle bil"),
+            ("da", "Jeg ved ikke hvornår vi snakkes ved"), ("da", "Det er sjældent vi snakkes ved"), ("da", "Mor er glad når vi snakkes ved"),
+            ("da", "Tak skal du have for pakken, men den var forkert"),
+            ("fi", "Hän sanoi kuulemiin ja lopetti puhelun"), ("fi", "Kuulemiin on vanha sana"),
+            ("fi", "Kirjoitin kuulemiin viestin loppuun vaikka se oli sähköposti"),
+            ("fi", "Kiitos ja hei ovat ensimmäiset sanat jotka opin"), ("fi", "Hän sanoi kiitos ja hei ja lähti"),
+            ("fi", "Kiitos ja hei, soitan Postista paketin takia"),
+            ("fi", "Toivotin hyvää päivänjatkoa ja lähdin kaupasta"), ("fi", "Hyvää päivänjatkoa ei sovi illalla"),
+            ("fi", "Kassalla sanotaan aina hyvää päivänjatkoa asiakkaille"),
+            ("fi", "Lapsi sanoi moikka mummolle"), ("fi", "Moikka, täällä on Liisa hammaslääkäristä"), ("fi", "Sano moikka"),
+            ("fi", "Heippa, soitan siitä paketista"), ("fi", "Hän huikkasi heippa ovelta"), ("fi", "Kirjoita viestiin heippa"),
+            ("fi", "Moi moi, täällä Pekka"), ("fi", "Lapset huusivat moi moi"), ("fi", "Moi moi on tuttu tervehdys"),
+            ("fi", "Odotetaan ja nähdään"), ("fi", "Kiitos tiedosta, mutta minulla on vielä kysymys laskusta"),
+            ("cs", "Řekl na shledanou a odešel"), ("cs", "Na shledanou se těším"), ("cs", "Slovo nashledanou se píše dohromady"),
+            ("cs", "Nashle je hovorová zkratka"), ("cs", "Říkal nashle všem"), ("cs", "Nashle nikdy neříkám"),
+            ("cs", "Mějte se na pozoru před podvodníky"), ("cs", "Mějte se k světu"), ("cs", "Říkal mějte se a odešel"),
+            ("cs", "Měli jsme pěkný zbytek dne u babičky"), ("cs", "Pěkný zbytek dne vám přeje vaše pošta"),
+            ("cs", "Hezký zbytek dne jsme strávili venku"),
+            ("cs", "Zatím ahoj neřekl"), ("cs", "Zatím čau nikdo neřekl"), ("cs", "Psal zatím ahoj na konec zprávy"),
+            ("cs", "Tak pak zavolám"), ("cs", "Říkal tak pa a zavěsil"), ("cs", "Tak pa už neříkej"),
+            ("cs", "Ahoj, tady Petr z doručovací služby"), ("cs", "Řekni mu ahoj"), ("cs", "Děti říkají každému ahoj"),
+            ("cs", "Čau, volám kvůli tomu balíku"), ("cs", "Řekni jim čau"), ("cs", "Čau je neformální pozdrav"),
+            ("cs", "Byl to hezký den"), ("cs", "Máme za sebou hezký den"), ("cs", "Zítra má být hezký den"),
+            ("cs", "Díky tomu balík dorazil dřív"), ("cs", "Děkuji za informaci, ale mám ještě jednu otázku k faktuře"),
+            ("cs", "Je to tak zatím"),
+            ("sk", "Povedal dovidenia a odišiel"), ("sk", "Dovidenia sa píše spolu"), ("sk", "Dovidenia nehovorí nikdy"),
+            ("sk", "Majte sa na pozore pred podvodníkmi"), ("sk", "Maj sa k svetu"), ("sk", "Majte sa ako doma"),
+            ("sk", "Mali sme pekný zvyšok dňa pri mori"), ("sk", "Pekný zvyšok dňa vám želá pošta"),
+            ("sk", "Pekný zvyšok dňa sme strávili vonku"),
+            ("sk", "Zatiaľ ahoj nepovedal"), ("sk", "Zatiaľ čau nikto nepovedal"), ("sk", "Napísal zatiaľ ahoj na koniec správy"),
+            ("sk", "Čaute, volám kvôli balíku"), ("sk", "Povedz im čaute"), ("sk", "Čaute je pozdrav pre viacerých"),
+            ("sk", "Bol to pekný deň"), ("sk", "Zajtra bude pekný deň"), ("sk", "Mali sme pekný deň"),
+            ("sk", "Nemal som dobrú noc"), ("sk", "Dieťa malo dobrú noc"), ("sk", "Prajem si aspoň jednu dobrú noc"),
+            ("sk", "Vďaka tomu balík prišiel skôr"),
+            ("hu", "Viszlát nélkül ment el"), ("hu", "Azt írta viszlát a levél végére"), ("hu", "Viszlát helyett köszönt"),
+            ("hu", "Viszontlátásra nem számítok"), ("hu", "A viszontlátásra mindenki készül"), ("hu", "Viszontlátásra várjuk a rendelőben"),
+            ("hu", "Viszonthallásra mondta a rádiós"), ("hu", "A viszonthallásra régi köszönés"), ("hu", "Viszonthallásra nem volt idő"),
+            ("hu", "További szép napot kívánunk minden vásárlónak"), ("hu", "A pénztáros mindig további szép napot mond"),
+            ("hu", "További szép napot írt a levél végére"),
+            ("hu", "Akkor szia, de még egy kérdés"), ("hu", "Ha akkor szia lett volna, nem haragszik"), ("hu", "Akkor szia volt a válasza"),
+            ("hu", "Szia, a csomag miatt hívlak"), ("hu", "Mondd meg anyának, hogy szia"), ("hu", "Szia vagy jó napot, mindegy"),
+            ("hu", "Sziasztok, itt Anna a rendelőből"), ("hu", "Mondd a gyerekeknek, hogy sziasztok"), ("hu", "Sziasztok, mindenki megvan"),
+            ("hu", "Szép napot kívánok, a postáról hívom"), ("hu", "Szép napot ígér az időjárás"), ("hu", "Szép napot csináltunk belőle"),
+            ("hu", "Minden jót a születésnapodra"), ("hu", "Nem hoz minden jót a holnap"), ("hu", "Kívánok neki minden jót"),
+            ("hu", "Köszönöm a türelmét, de még van egy kérdésem a számlával kapcsolatban"),
+            ("ro", "A fost o zi frumoasă"), ("ro", "Mâine va fi o zi frumoasă"), ("ro", "Am avut o zi frumoasă la mare"),
+            ("ro", "A fost o seară bună"), ("ro", "Am avut o seară bună cu familia"), ("ro", "Sper să fie o seară bună pentru meci"),
+            ("ro", "Le-am urat spor la treabă"), ("ro", "Spor la treabă, vă sun de la curierat"), ("ro", "Am nevoie de spor la treabă"),
+            ("ro", "Mulțumesc pentru informație, dar mai am o întrebare despre factură"),
+            ("ro", "Ok, nu ne auzim bine"), ("ro", "Alo, nu ne auzim"), ("ro", "Mulțumesc, numai bine"),
+            ("bg", "Дочуване казваме само по телефона"), ("bg", "Той каза дочуване и затвори"), ("bg", "Думата дочуване е стара"),
+            ("bg", "Айде чао не е учтиво"), ("bg", "Каза айде чао и си тръгна"), ("bg", "Айде чао, ама чакай още нещо"),
+            ("bg", "Чао, обаждам се за пратката"), ("bg", "Кажи му чао"), ("bg", "Чао е италианска дума"),
+            ("bg", "Беше приятен ден"), ("bg", "Утре ще е приятен ден"), ("bg", "Имахме приятен ден на морето"),
+            ("bg", "Днес е хубав ден"), ("bg", "Беше хубав ден за разходка"), ("bg", "Чакаме хубав ден"),
+            ("bg", "Имахме лека вечер"), ("bg", "Беше лека вечер на работа"), ("bg", "Обещават лека вечер без дъжд"),
+            ("bg", "При нас всичко добро"), ("bg", "Всичко добро идва с времето"), ("bg", "Не всичко добро е скъпо"),
+            ("bg", "Днес имам лека работа"), ("bg", "Търся лека работа"), ("bg", "Това е лека работа"),
+            ("bg", "Написа до скоро в края на писмото"), ("bg", "До скоро е кратко сбогуване"), ("bg", "Каза до скоро и затвори"),
+            ("bg", "Благодаря за информацията, но имам още един въпрос"), ("bg", "Благодаря, живи и здрави"),
+            ("el", "Μόλις έγινε, γεια σας, εδώ κούριερ"), ("el", "Το λάθος έγινε, γεια σας και πάλι, σας καλώ για το δέμα"),
+            ("el", "Τι έγινε, γεια σου, εδώ ο Νίκος"),
+            ("el", "Γεια σας, σας καλώ από την τράπεζα"), ("el", "Πείτε στα παιδιά γεια σας"),
+            ("el", "Γεια σας κι από μένα, για το ραντεβού σας καλώ"),
+            ("el", "Γεια σου Νίκο, εδώ ο υδραυλικός"), ("el", "Πες του γεια σου"), ("el", "Γεια σου κι εσένα"),
+            ("el", "Γεια χαρά, για το δέμα παίρνω"), ("el", "Είπε γεια χαρά"), ("el", "Γεια χαρά λέμε στους φίλους"),
+            ("el", "Έτσι τα λέμε"), ("el", "Πώς τα λέμε στα αγγλικά"), ("el", "Αυτά τα λέμε κάθε μέρα"),
+            ("el", "Ήταν καλό βράδυ"), ("el", "Περάσαμε καλό βράδυ"), ("el", "Ελπίζω να έχουμε καλό βράδυ"),
+            ("el", "Ήταν καλό απόγευμα"), ("el", "Καλό απόγευμα, σας καλώ από το φαρμακείο"),
+            ("el", "Περάσαμε καλό απόγευμα στην παραλία"),
+            ("el", "Όταν τον βλέπω τον χαιρετώ"), ("el", "Χαιρετώ τη μητέρα σας"), ("el", "Σας χαιρετώ, είμαι από την εταιρεία"),
+            ("el", "Η σειρά δεν είχε καλή συνέχεια"), ("el", "Καλή συνέχεια έχει η ιστορία"),
+            ("el", "Περιμένουμε καλή συνέχεια στη θεραπεία"),
+            ("el", "Ευχαριστώ για την ενημέρωση, αλλά έχω μια ερώτηση"), ("el", "Ευχαριστώ, να είστε καλά"),
+            ("hr", "Rekao je doviđenja i otišao"), ("hr", "Doviđenja se piše zajedno"), ("hr", "Doviđenja nije rekao nikome"),
+            ("hr", "Ajde bok, a sad ozbiljno"), ("hr", "Rekao je ajde bok i spustio slušalicu"), ("hr", "Ajde bok nije pristojno"),
+            ("hr", "Bok, zovem zbog paketa"), ("hr", "Reci mu bok"), ("hr", "Bok je kratki pozdrav"),
+            ("hr", "Vidimo se u petak u devet sati"), ("hr", "Vidimo se rijetko"), ("hr", "Vidimo se tek u ponedjeljak, ali imam pitanje"),
+            ("hr", "Bio je ugodan dan"), ("hr", "Sutra će biti ugodan dan"), ("hr", "Imali smo ugodan dan na moru"),
+            ("hr", "Mama šalje lijep pozdrav"), ("hr", "Prenesi joj lijep pozdrav"), ("hr", "Lijep pozdrav od cijele obitelji"),
+            ("hr", "Pozdrav, zovem iz banke"), ("hr", "Šaljem pozdrav"), ("hr", "Kolega vam šalje pozdrav"),
+            ("hr", "Želim mu svako dobro"), ("hr", "Svako dobro dijete zaslužuje poklon"), ("hr", "Ne donosi svako dobro sreću"),
+            ("hr", "Poželio sam djeci laku noć"), ("hr", "Imali smo laku noć"), ("hr", "Laku noć im je rekla mama"),
+            ("hr", "Hvala na strpljenju, ali imam još jedno pitanje oko računa"), ("hr", "Ne čujemo se"), ("hr", "Ok, čujemo se"),
+            ("sr", "Ajde ćao, a sad o računu"), ("sr", "Rekao je ajde ćao i otišao"), ("sr", "Ajde ćao nije lepo reći"),
+            ("sr", "Ćao, zovem zbog paketa"), ("sr", "Reci mu ćao"), ("sr", "Ćao je italijanska reč"),
+            ("sr", "Bilo je prijatno"), ("sr", "Prijatno mi je da vas čujem"), ("sr", "Veče je bilo veoma prijatno"),
+            ("sr", "Sve najbolje za rođendan"), ("sr", "Želimo mu sve najbolje"), ("sr", "Kupili smo sve najbolje"),
+            ("uk", "Бережіть себе від шахраїв"), ("uk", "Лікар сказав: бережіть себе і пийте воду"), ("uk", "Бережіть себе взимку"),
+            ("uk", "Бережи себе для важливого"), ("uk", "Лікар сказав: бережіть себе"), ("uk", "Відпочивайте більше і бережіть себе"),
+            ("el", "Τι έγινε, γεια"), ("el", "Δεν ξέρω τι έγινε, γεια"),
+            ("uk", "Давай бувай у нас частіше"), ("uk", "Давай бувай на зборах"), ("uk", "Він сказав давай бувай і пішов"),
+            ("uk", "Ну все па-па, а тепер про рахунок"), ("uk", "Ну все, па-па сказала дитина і заснула"),
+            ("uk", "Тихого дня сьогодні не було"), ("uk", "Ми давно не мали тихого дня"), ("uk", "Тихого дня, дзвоню з пошти"),
+            ("uk", "Усього найкращого з днем народження"), ("uk", "Ми бажаємо йому усього найкращого"), ("uk", "Усього найкращого не купиш"),
+            ("uk", "Ми завтра зідзвонимось"), ("uk", "Він сказав, що ввечері зідзвонимось"), ("uk", "Ми з кур'єром зранку зідзвонимося"),
+            ("uk", "Дякую за інформацію, але в мене ще одне питання"), ("uk", "Ок, на зв'язку"), ("uk", "Так, я на зв'язку"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            for l in [*lang, "en"] {
+                let mut m = after_talk(l);
+                let s = hears(&mut m, t);
+                if closes(&s) {
+                    bad.push(format!("[{l}] {t} -> {:?} ends={}", s.event, s.ends_call));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "lookalikes treated as closing:\n{}", bad.join("\n"));
+    }
+
+    /// Thanks or "ok" first, then an ordinary sentence ending on a newly added word.
+    #[test]
+    fn a_cue_before_an_ordinary_sentence_is_no_goodbye() {
+        let cases: &[(&'static str, &str)] = &[
+            ("sv", "Tack, jag vet inte när vi ses"), ("sv", "Okej, hon verkar ha det bra"), ("sv", "Ja, barnen ska ha det bra hos oss"),
+            ("nb", "Takk, i Norge er det norsk som snakkes"), ("nb", "Ok, prisen må snakkes senere"),
+            ("da", "Tak, til begravelsen sagde vi et sidste farvel"), ("da", "Ja, det er sjældent vi snakkes ved"),
+            ("fi", "Okei, lapset huusivat moi moi"), ("fi", "Kiitos, odotetaan ja nähdään"),
+            ("cs", "Děkuji, byl to hezký den"), ("cs", "Ok, řekni mu ahoj"),
+            ("sk", "Ďakujem, nemal som dobrú noc"), ("sk", "Ok, zajtra bude pekný deň"),
+            ("hu", "Köszönöm, mondd meg anyának, hogy szia"), ("hu", "Ok, szép napot ígér az időjárás"),
+            ("ro", "Mulțumesc, a fost o zi frumoasă"), ("ro", "Mersi, a fost o seară bună"),
+            ("bg", "Благодаря, днес имам лека работа"), ("bg", "Да, беше приятен ден"),
+            ("el", "Ευχαριστώ, έτσι τα λέμε"), ("el", "Ευχαριστώ, ήταν καλό βράδυ"),
+            ("hr", "Hvala, mama šalje lijep pozdrav"), ("hr", "Ok, želim mu svako dobro"),
+            ("sr", "Hvala, bilo je prijatno"), ("sr", "Ok, kupili smo sve najbolje"),
+            ("uk", "Дякую, ми завтра зідзвонимось"), ("uk", "Так, ми давно не мали тихого дня"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let mut m = after_talk(lang);
+            let s = hears(&mut m, t);
+            if closes(&s) {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        assert!(bad.is_empty(), "closing after a cue:\n{}", bad.join("\n"));
+    }
+
+    /// Bare thanks in the new languages is thanks, no goodbye.
+    #[test]
+    fn bare_thanks_does_not_close() {
+        let cases: &[(&'static str, &str)] = &[
+            ("sv", "Tack!"), ("sv", "Tack så mycket."), ("nb", "Takk!"), ("nb", "Tusen takk."), ("da", "Mange tak!"),
+            ("da", "Tak for det."), ("fi", "Kiitos!"), ("fi", "Kiitos paljon."), ("cs", "Děkuji!"), ("cs", "Díky moc."),
+            ("sk", "Ďakujem!"), ("sk", "Vďaka."), ("hu", "Köszönöm!"), ("hu", "Köszi."), ("ro", "Mulțumesc!"), ("ro", "Mersi."),
+            ("bg", "Благодаря!"), ("bg", "Мерси."), ("el", "Ευχαριστώ!"), ("el", "Ευχαριστώ πολύ."), ("hr", "Hvala!"),
+            ("sr", "Hvala lepo."), ("uk", "Дякую!"), ("uk", "Дуже дякую."), ("pl", "Tak"), ("pl", "Tak, tak"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let mut m = after_talk(lang);
+            let s = hears(&mut m, t);
+            if closes(&s) || s.event == ClosingEvent::CallerThanksWrap {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        assert!(bad.is_empty(), "bare thanks closed:\n{}", bad.join("\n"));
+    }
+
+    /// Swedish, Norwegian, Danish and Finnish thanks after settling words only is a
+    /// wrap-up; after the AI's goodbye bare thanks keeps the closing; with a goodbye
+    /// after it, it ends the call.
+    #[test]
+    fn nordic_thanks_still_wraps_up() {
+        let wraps: &[(&'static str, &str)] = &[
+            ("sv", "Okej, tack så mycket"), ("sv", "Nej, det var allt, tack"), ("nb", "Ok, takk skal du ha"),
+            ("nb", "Greit, tusen takk"), ("da", "Okay, mange tak"), ("da", "Det var det, tak for det"),
+            ("fi", "Selvä, kiitos paljon"), ("fi", "Okei, kiitos"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in wraps {
+            let mut m = after_talk(lang);
+            let s = hears(&mut m, t);
+            if s.event != ClosingEvent::CallerThanksWrap || s.ends_call || m.state() != ClosingState::PreClosing {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={} state={:?}", s.event, s.ends_call, m.state()));
+            }
+        }
+        let after_ai: &[(&'static str, &str)] = &[
+            ("sv", "Tack så mycket"), ("sv", "Okej, tack så mycket"), ("nb", "Takk skal du ha"), ("nb", "Ok, takk skal du ha"),
+            ("da", "Tusind tak"), ("da", "Okay, mange tak"), ("fi", "Kiitos paljon"), ("fi", "Selvä, kiitos"),
+        ];
+        for (lang, t) in after_ai {
+            let mut m = after_talk(lang);
+            m.on_ai_turn("Okay, goodbye!", false, false);
+            let s = hears(&mut m, t);
+            if m.state() == ClosingState::Talking || closes(&s) {
+                bad.push(format!("after the AI's goodbye [{lang}] {t} -> {:?} state={:?}", s.event, m.state()));
+            }
+        }
+        let byes: &[(&'static str, &str)] = &[
+            ("sv", "Tack så mycket, hej då"), ("nb", "Takk skal du ha, hei så lenge"), ("da", "Tusind tak, hav en god dag"),
+            ("fi", "Kiitos paljon, kuulemiin"),
+        ];
+        bad.extend(all_close(byes, after_talk));
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// The caller's first words, and greetings back after the AI's: no goodbye.
+    #[test]
+    fn openers_and_greeting_exchanges_do_not_close() {
+        let openers: &[(&'static str, &str)] = &[
+            ("cs", "Ahoj!"), ("cs", "Čau, tady Petr"), ("cs", "Dobrý den, ahoj"), ("sk", "Čaute!"), ("hu", "Szia!"),
+            ("hu", "Sziasztok!"), ("hu", "Szép napot kívánok!"), ("hu", "Jó napot, szép napot kívánok!"),
+            ("hu", "Boldog születésnapot, minden jót!"), ("ro", "Spor la treabă!"), ("bg", "Чао!"), ("bg", "Здравейте, хубав ден!"),
+            ("el", "Γεια σας!"), ("el", "Γεια σου!"), ("el", "Γεια χαρά!"), ("el", "Καλό απόγευμα!"), ("el", "Χαιρετώ!"),
+            ("hr", "Bok!"), ("hr", "Pozdrav!"), ("sr", "Ćao!"), ("fi", "Moikka!"), ("fi", "Heippa!"), ("fi", "Moi moi!"),
+            ("uk", "Тихого дня!"), ("uk", "Добрий день, тихого дня!"), ("sv", "Vi ses!"), ("da", "Farvel!"),
+            ("el", "Τι έγινε, γεια!"), ("el", "Έλα, γεια!"), ("uk", "Бережіть себе!"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in openers {
+            let mut m = ClosingMachine::new(lang);
+            let s = hears(&mut m, t);
+            if closes(&s) {
+                bad.push(format!("[{lang}] opener {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        let exchanges: &[(&'static str, &str, &str)] = &[
+            ("hu", "Szia!", "Szia!"), ("hu", "Halló?", "Köszönöm, szia"), ("cs", "Ahoj!", "Ahoj!"), ("el", "Γεια σας!", "Γεια σας!"),
+            ("el", "Παρακαλώ;", "Ευχαριστώ, γεια σας"), ("hr", "Bok!", "Bok, hvala"), ("bg", "Ало?", "Благодаря, чао"),
+            ("fi", "Moikka!", "Kiitos, moikka"), ("uk", "Алло?", "Дякую, тихого дня"), ("ro", "Alo?", "Mulțumesc, spor la treabă"),
+            ("sv", "Hallå?", "Ja, hej"), ("nb", "Hallo?", "Ja, hei hei"),
+        ];
+        for (lang, ai, caller) in exchanges {
+            let mut m = ClosingMachine::new(lang);
+            m.on_ai_turn(ai, false, false);
+            let s = hears(&mut m, caller);
+            if closes(&s) {
+                bad.push(format!("[{lang}] AI: {ai} / caller: {caller} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        for (lang, ai) in [("cs", "Ahoj!"), ("hu", "Szia!"), ("el", "Γεια σας!"), ("bg", "Чао!"), ("hr", "Bok!")] {
+            let mut m = ClosingMachine::new(lang);
+            m.on_ai_turn(ai, false, false);
+            let s = hears(&mut m, "I am calling about the parcel for tomorrow");
+            if closes(&s) || m.state() != ClosingState::Talking {
+                bad.push(format!("[{lang}] AI says {ai} -> {:?} state {:?}", s.event, m.state()));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// The research's own "not a goodbye yet" lines.
+    #[test]
+    fn false_closings_from_the_research_do_not_close() {
+        let cases: &[(&'static str, &str)] = &[
+            ("sv", "En sak till"), ("sv", "Förresten"), ("sv", "Vänta lite"), ("sv", "Innan vi lägger på"), ("sv", "En snabb fråga"),
+            ("sv", "Apropå det"), ("sv", "Kom på en grej"), ("sv", "Hördu förresten"),
+            ("nb", "Forresten"), ("nb", "En ting til"), ("nb", "Vent litt"), ("nb", "Kom på en ting"), ("nb", "Før du legger på"),
+            ("nb", "Et kjapt spørsmål"), ("nb", "Du forresten"), ("nb", "Apropos det"),
+            ("da", "For resten"), ("da", "Lige en ting til"), ("da", "Vent lige lidt"), ("da", "Inden vi lægger på"),
+            ("da", "Et hurtigt spørgsmål"), ("da", "Kom lige i tanke om"), ("da", "Hov forresten"), ("da", "Apropos det"),
+            ("fi", "Ai niin"), ("fi", "Vielä yksi juttu"), ("fi", "Muuten"), ("fi", "Hetkinen vielä"), ("fi", "Ennen kuin lopetan"),
+            ("fi", "Semmoinen juttu vielä"), ("fi", "Tuli muuten mieleen"), ("fi", "Pikainen kysymys"),
+            ("cs", "Jinak"), ("cs", "Hele ještě"), ("cs", "Jo a mimochodem"), ("cs", "Počkejte ještě"), ("cs", "Takže tak"),
+            ("cs", "No nicméně"), ("cs", "Ještě jedna věc"), ("cs", "Vlastně ještě"),
+            ("sk", "Inak"), ("sk", "Počkajte ešte"), ("sk", "Ozaj"), ("sk", "Ešte jedna vec"), ("sk", "Takže tak"),
+            ("sk", "Mimochodom"), ("sk", "Vlastne ešte"), ("sk", "No ale"),
+            ("hu", "Amúgy"), ("hu", "Ja és még valami"), ("hu", "Várj csak"), ("hu", "Várjon csak"), ("hu", "Szóval"),
+            ("hu", "Egyébként"), ("hu", "Még annyit"), ("hu", "Na szóval"),
+            ("ro", "Apropo"), ("ro", "Stai puțin"), ("ro", "Stați puțin"), ("ro", "Încă ceva"), ("ro", "De altfel"),
+            ("ro", "Așa deci"), ("ro", "Și încă o chestie"), ("ro", "Păi uite"),
+            ("bg", "Добре, значи"), ("bg", "Чакай само"), ("bg", "А, и още нещо"), ("bg", "Между другото"),
+            ("bg", "Още един въпрос"), ("bg", "Добре, а иначе"), ("bg", "Преди да затворя"), ("bg", "Само да уточня"),
+            ("el", "Α, και κάτι άλλο"), ("el", "Περίμενε λίγο"), ("el", "Να ρωτήσω κάτι"), ("el", "Πριν κλείσουμε"),
+            ("el", "Ωραία, αλλά"), ("el", "Κάτι τελευταίο"), ("el", "Παρεμπιπτόντως"), ("el", "Αλήθεια, ξέχασα"),
+            ("hr", "Dobro, nego"), ("hr", "Čekaj samo malo"), ("hr", "Samo još nešto"), ("hr", "Usput rečeno"),
+            ("hr", "Prije nego poklopim"), ("hr", "Još jedno pitanje"), ("hr", "Aha, a reci mi"), ("hr", "Zaboravih pitati"),
+            ("sr", "Čekaj samo sekund"), ("sr", "Pre nego prekinem"), ("sr", "Zaboravih da pitam"),
+            ("uk", "А, слухай, ще момент"), ("uk", "І ще одне питання"), ("uk", "До речі, поки не забув"), ("uk", "Зачекай секунду"),
+            ("uk", "Дивись, тут таке"), ("uk", "А, і ще"), ("uk", "Секундочку, уточню"), ("uk", "Словом, дивись"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let mut m = after_talk(lang);
+            let s = hears(&mut m, t);
+            if closes(&s) {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        assert!(bad.is_empty(), "research false closings closed:\n{}", bad.join("\n"));
+    }
+}
+
+/// Reviewer probes for the third batch of closing words.
+#[cfg(test)]
+mod review_probe3_tests {
+    use super::*;
+
+    fn talk(lang: &'static str) -> ClosingMachine {
+        let mut m = ClosingMachine::new(lang);
+        m.on_caller("Parcel delivery info", "Parcel delivery info", false, false);
+        m
+    }
+
+    fn hear(m: &mut ClosingMachine, t: &str) -> ClosingStep {
+        m.on_caller(t, t, crate::locale::caller_wraps_up(t), false)
+    }
+
+    fn closes(s: &ClosingStep) -> bool {
+        s.ends_call || matches!(s.event, ClosingEvent::CallerFarewell | ClosingEvent::CallerPreClosing)
+    }
+
+    /// Run each text through a fresh mid-call machine; collect those that close or wrap.
+    fn run(cases: &[(&'static str, &str)], wrap_too: bool) -> Vec<String> {
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let mut m = talk(lang);
+            let s = hear(&mut m, t);
+            if closes(&s) || (wrap_too && s.event == ClosingEvent::CallerThanksWrap) || m.state() != ClosingState::Talking {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={} state={:?}", s.event, s.ends_call, m.state()));
+            }
+        }
+        bad
+    }
+
+    /// Thanks first, then more business: the caller is not done.
+    #[test]
+    fn thanks_then_more_business_is_not_the_end() {
+        let cases: &[(&'static str, &str)] = &[
+            ("sv", "Tack, en sak till"), ("sv", "Tack, jag har en fråga till om fakturan"), ("sv", "Tack för hjälpen, men det är en sak till"),
+            ("sv", "Tack, kan du skicka det igen"), ("sv", "Tack, då ringer jag tillbaka i morgon"),
+            ("nb", "Takk, ett spørsmål til"), ("nb", "Takk, jeg har en ting til"), ("nb", "Takk for hjelpen, men pakken er feil"),
+            ("da", "Tak for det, en ting mere"), ("da", "Mange tak, jeg har et spørgsmål mere"), ("da", "Tak for hjælpen, men pakken er forkert"),
+            ("fi", "Kiitos, yksi asia vielä"), ("fi", "Kiitos, minulla on toinen kysymys"), ("fi", "Kiitos tiedosta, mutta paketti on väärä"),
+            ("cs", "Díky, ještě jedna věc"), ("cs", "Děkuji, mám ještě jednu otázku"), ("cs", "Děkuju, ale balík je špatný"),
+            ("sk", "Ďakujem, ešte jedna vec"), ("sk", "Vďaka, mám ešte jednu otázku"), ("sk", "Ďakujem, ale balík je zlý"),
+            ("hu", "Köszönöm, még egy dolog"), ("hu", "Köszönöm, van még egy kérdésem"), ("hu", "Köszi, de a csomag rossz"),
+            ("ro", "Mulțumesc, încă o întrebare"), ("ro", "Mulțumesc, mai am o problemă"), ("ro", "Mersi, dar coletul este greșit"),
+            ("bg", "Благодаря, още един въпрос"), ("bg", "Благодаря, имам още един проблем"), ("bg", "Мерси, но пратката е грешна"),
+            ("el", "Ευχαριστώ, μια ερώτηση ακόμα"), ("el", "Ευχαριστώ, έχω άλλο ένα πρόβλημα"), ("el", "Ευχαριστώ, αλλά το δέμα είναι λάθος"),
+            ("hr", "Hvala, još jedno pitanje"), ("hr", "Hvala, imam još jedan problem"), ("hr", "Hvala, ali paket je pogrešan"),
+            ("sr", "Hvala, imam još jedno pitanje"), ("uk", "Дякую, ще одне питання"), ("uk", "Дякую, у мене ще одна проблема"),
+            ("uk", "Дякую, але посилка не та"),
+            ("en", "Thanks, one more thing"), ("es", "Gracias, una cosa más"), ("de", "Danke, noch eine Sache"), ("fr", "Merci, encore une chose"),
+            ("pt", "Obrigado, mais uma coisa"), ("ja", "ありがとうございます、もう一つあります"), ("ko", "감사합니다, 하나 더 있어요"), ("zh-TW", "謝謝，還有一件事"),
+        ];
+        let bad = run(cases, true);
+        assert!(bad.is_empty(), "thanks + more business treated as the end:\n{}", bad.join("\n"));
+    }
+
+    /// After the AI's goodbye, thanks and then new business reopens the call; thanks alone does not.
+    #[test]
+    fn new_business_after_the_ais_goodbye_reopens() {
+        let cases: &[(&'static str, &str)] = &[
+            ("sv", "Tack, en sak till"), ("nb", "Takk, ett spørsmål til"), ("da", "Tak, en ting mere"), ("fi", "Kiitos, yksi asia vielä"),
+            ("cs", "Díky, ještě jedna věc"), ("sk", "Ďakujem, ešte jedna vec"), ("hu", "Köszönöm, még egy dolog"),
+            ("ro", "Mulțumesc, încă o întrebare"), ("bg", "Благодаря, още един въпрос"), ("el", "Ευχαριστώ, μια ερώτηση ακόμα"),
+            ("hr", "Hvala, još jedno pitanje"), ("sr", "Hvala, još jedno pitanje"), ("uk", "Дякую, ще одне питання"),
+            ("sv", "Tack för hjälpen, men jag har en sak till att fråga"), ("cs", "Díky, ale ještě potřebuji změnit adresu"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let mut m = talk(lang);
+            m.on_ai_turn("Okay, goodbye!", true, false);
+            if m.state() == ClosingState::Talking {
+                bad.push(format!("setup: AI goodbye did not leave Talking ({lang})"));
+                continue;
+            }
+            let s = hear(&mut m, t);
+            if m.state() != ClosingState::Talking || s.ends_call {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={} state={:?}", s.event, s.ends_call, m.state()));
+            }
+        }
+        assert!(bad.is_empty(), "business after the AI's goodbye did not reopen:\n{}", bad.join("\n"));
+    }
+
+    /// Northern "tack / takk / tak" also means "please": a request ending on it is no wrap-up.
+    #[test]
+    fn please_is_not_a_wrap_up() {
+        let cases: &[(&'static str, &str)] = &[
+            ("sv", "Okej, jag skulle vilja boka en tid, tack"), ("sv", "Ja, kan jag få ditt nummer, tack"), ("sv", "Ok, skicka det till mig igen, tack"),
+            ("nb", "Ok, jeg vil gjerne bestille time, takk"), ("nb", "Ja, kan jeg få nummeret ditt, takk"),
+            ("da", "Okay, send det igen, tusind tak"), ("da", "Ja, kan jeg få dit nummer, mange tak"),
+            ("sv", "Ja, jag lägger paketet vid dörren, tack"),
+        ];
+        let bad = run(cases, true);
+        assert!(bad.is_empty(), "request ending on please taken as a wrap-up:\n{}", bad.join("\n"));
+    }
+
+    /// Ordinary sentences that END on a new farewell phrase, not said as goodbye.
+    #[test]
+    fn sentences_ending_on_farewell_phrases_are_no_goodbye() {
+        let cases: &[(&'static str, &str)] = &[
+            ("sv", "Jag hörde honom säga hej då"), ("sv", "Barnet lärde sig säga hej då"),
+            ("nb", "Jeg ringer ikke for å si takk for praten"), ("nb", "Hun skrev bare takk for praten"),
+            ("da", "Vi ønsker alle kunder fortsat god dag"), ("da", "Skiltet i butikken sagde hav en god dag"),
+            ("fi", "Postin ääni sanoo aina kuulemiin"), ("fi", "Hän sanoo aina kiitos ja hei"),
+            ("cs", "Automat v bance říká vždy na shledanou"), ("cs", "Moje dcera se učí říkat na shledanou"),
+            ("sk", "Dcéra sa učí hovoriť dovidenia"),
+            ("hu", "A kisfiam megtanulta, hogy viszlát"), ("hu", "A gép mindig azt mondja, hogy viszlát"),
+            ("bg", "Детето се научи да казва дочуване"), ("bg", "Автоматът казва винаги дочуване"),
+            ("hr", "Dijete je naučilo reći doviđenja"), ("hr", "Automat uvijek kaže ajde bok"),
+            ("uk", "Автовідповідач завжди каже давай бувай"), ("uk", "Дитина вчиться казати ну все па па"),
+        ];
+        // Reported speech ending on a farewell closes in every language (English "goodbye" too):
+        // the design of the unconditional list, shown for information only.
+        let bad = run(cases, false);
+        let en = run(&[("en", "I heard him say goodbye"), ("en", "The child learned to say goodbye")], false);
+        println!("REPORTED-SPEECH closes: new={} of {}, english baseline={} of 2", bad.len(), cases.len(), en.len());
+    }
+
+    /// Greetings said mid-call (a transfer, a second person) and first sentences: no goodbye.
+    #[test]
+    fn greetings_first_and_mid_call_do_not_close() {
+        let greets: &[(&'static str, &str)] = &[
+            ("sv", "Hej"), ("sv", "Hej, det är Anna"), ("nb", "Hei"), ("nb", "Hei, det er Per"), ("da", "Hej"), ("fi", "Hei"),
+            ("fi", "Moi"), ("cs", "Ahoj"), ("cs", "Čau"), ("cs", "Ahoj, tady Petr"), ("sk", "Ahoj"), ("sk", "Čau"), ("hu", "Szia"),
+            ("hu", "Szia, itt Anna"), ("bg", "Чао"), ("bg", "Здрасти"), ("el", "Γεια"), ("el", "Γεια σου"), ("el", "Γεια σας"),
+            ("hr", "Bok"), ("hr", "Bok, tko je"), ("sr", "Ćao"), ("sr", "Ćao, ko je"), ("uk", "Привіт"), ("ro", "Salut"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in greets {
+            let mut first = ClosingMachine::new(lang);
+            let s = hear(&mut first, t);
+            if closes(&s) {
+                bad.push(format!("first [{lang}] {t} -> {:?}", s.event));
+            }
+            let mut mid = talk(lang);
+            let s = hear(&mut mid, t);
+            if closes(&s) {
+                bad.push(format!("mid [{lang}] {t} -> {:?}", s.event));
+            }
+            // After the AI's own (non-goodbye) turn.
+            let mut m = talk(lang);
+            m.on_ai_turn("Hello, how can I help?", false, false);
+            let s = hear(&mut m, t);
+            if closes(&s) {
+                bad.push(format!("after AI [{lang}] {t} -> {:?}", s.event));
+            }
+        }
+        // The AI greets in the language, caller greets back with a thanks cue before.
+        for (lang, ai, caller) in [("cs", "Ahoj!", "Díky, ahoj, tady Petr"), ("hu", "Szia!", "Szia, köszönöm, hogy felvetted"), ("el", "Γεια σας!", "Γεια σας, ευχαριστώ που απαντήσατε")] {
+            let mut m = ClosingMachine::new(lang);
+            m.on_ai_turn(ai, false, false);
+            let s = hear(&mut m, caller);
+            if closes(&s) {
+                bad.push(format!("greeting exchange [{lang}] {caller} -> {:?}", s.event));
+            }
+        }
+        assert!(bad.is_empty(), "greeting closed the call:\n{}", bad.join("\n"));
+    }
+
+    /// Words that are thanks only as the last word of a thanks, used otherwise: not fluff.
+    #[test]
+    fn thanks_words_used_otherwise_are_not_fluff() {
+        for t in [
+            "We need to change tack", "Vi trenger nytt tak for huset", "Jeg trenger tak for huset",
+            "That is a different tack",
+        ] {
+            assert!(!is_fluff(t), "{t}");
+        }
+    }
+
+    /// The core nine languages and a few more: their own farewells and thanks still behave.
+    #[test]
+    fn other_languages_keep_their_behavior() {
+        let bye: &[(&'static str, &str)] = &[
+            ("en", "Thanks, bye!"), ("es", "Gracias, adiós"), ("fr", "Merci, au revoir"), ("de", "Danke, tschüss"), ("pt", "Obrigado, tchau"),
+            ("ja", "ありがとうございます、失礼します"), ("ko", "감사합니다, 안녕히 계세요"), ("zh-TW", "謝謝，再見"), ("it", "Grazie, arrivederci"),
+            ("ru", "Спасибо, до свидания"), ("pl", "Dziękuję, do widzenia"), ("tr", "Teşekkürler, hoşça kalın"), ("nl", "Bedankt, tot ziens"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in bye {
+            let mut m = talk(lang);
+            let s = hear(&mut m, t);
+            if !(s.ends_call && s.event == ClosingEvent::CallerFarewell) {
+                bad.push(format!("lost bye [{lang}] {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        let go_on: &[(&'static str, &str)] = &[
+            ("en", "Thanks, one more thing"), ("pl", "Tak, mam jeszcze jedno pytanie"), ("pl", "Tak, pa pa mówi dziecko"), ("de", "Ja, und noch eine Frage"),
+            ("es", "Sí, hay otra cosa"), ("tr", "Tamam, bir şey daha var"), ("pl", "Dzięki, ale jest jeszcze problem"),
+            ("en", "The bok choy is in the box"), ("en", "Thanks, we have a different tack on it"),
+        ];
+        for (lang, t) in go_on {
+            let mut m = talk(lang);
+            let s = hear(&mut m, t);
+            if closes(&s) {
+                bad.push(format!("closed [{lang}] {t} -> {:?}", s.event));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+}
+
+/// Recheck of the Nordic thanks fix.
+#[cfg(test)]
+mod review_probe3_recheck_tests {
+    use super::*;
+
+    fn talk(lang: &'static str) -> ClosingMachine {
+        let mut m = ClosingMachine::new(lang);
+        m.on_caller("Parcel delivery info", "Parcel delivery info", false, false);
+        m
+    }
+
+    fn hear(m: &mut ClosingMachine, t: &str) -> ClosingStep {
+        m.on_caller(t, t, crate::locale::caller_wraps_up(t), false)
+    }
+
+    fn after_ai_bye(lang: &'static str) -> ClosingMachine {
+        let mut m = talk(lang);
+        m.on_ai_turn("Okay, goodbye!", true, false);
+        m
+    }
+
+    /// Thanks, then a request or more business: no wrap-up mid-call; after the AI's goodbye it reopens.
+    #[test]
+    fn nordic_thanks_then_more_is_no_wrap_up() {
+        let cases: &[(&'static str, &str)] = &[
+            ("sv", "Tack, kan du ringa mig imorgon?"), ("nb", "Takk, men jeg har ett spørsmål til"),
+            ("da", "Tak, og hvad med fredag?"), ("fi", "Kiitos, voisitko lähettää sen uudestaan?"),
+            ("sv", "Okej, kan du skicka det igen, tack"), ("nb", "Greit, send det på e-post, takk"),
+            ("da", "Okay, ring mig i morgen, tak"), ("fi", "Selvä, lähetä se sähköpostiin, kiitos"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let mut m = talk(lang);
+            let s = hear(&mut m, t);
+            println!("MID [{lang}] {t} -> {:?} ends={} state={:?}", s.event, s.ends_call, m.state());
+            if s.ends_call || s.event != ClosingEvent::None || m.state() != ClosingState::Talking {
+                bad.push(format!("mid-call [{lang}] {t} -> {:?} ends={} state={:?}", s.event, s.ends_call, m.state()));
+            }
+            let mut m = after_ai_bye(lang);
+            let s = hear(&mut m, t);
+            println!("AFTER-AI [{lang}] {t} -> {:?} ends={} state={:?}", s.event, s.ends_call, m.state());
+            if s.ends_call || m.state() != ClosingState::Talking {
+                bad.push(format!("after the AI's goodbye [{lang}] {t} -> {:?} ends={} state={:?}", s.event, s.ends_call, m.state()));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// Real Nordic thanks wrap-ups still hold.
+    #[test]
+    fn nordic_real_wrap_ups_still_hold() {
+        let mut bad = Vec::new();
+        // Settling word + thanks, mid-call: a thanks wrap-up.
+        for (lang, t) in [("sv", "Okej, tack så mycket"), ("nb", "Ok, takk skal du ha"), ("da", "Okay, tusind tak"), ("fi", "Selvä, kiitos paljon")] {
+            let mut m = talk(lang);
+            let s = hear(&mut m, t);
+            if s.event != ClosingEvent::CallerThanksWrap || s.ends_call || m.state() != ClosingState::PreClosing {
+                bad.push(format!("mid-call [{lang}] {t} -> {:?} ends={} state={:?}", s.event, s.ends_call, m.state()));
+            }
+        }
+        // After the AI's goodbye: thanks keeps the closing (or ends the call).
+        let after: &[(&'static str, &str)] = &[
+            ("sv", "Okej, tack så mycket"), ("nb", "Takk skal du ha"), ("da", "Tusind tak for hjælpen"), ("fi", "Kiitos paljon, hei hei"),
+            ("sv", "Tack för hjälpen"), ("nb", "Tusen takk for hjelpen"), ("fi", "Kiitos paljon"),
+        ];
+        for (lang, t) in after {
+            let mut m = after_ai_bye(lang);
+            let s = hear(&mut m, t);
+            println!("WRAP-AFTER-AI [{lang}] {t} -> {:?} ends={} state={:?}", s.event, s.ends_call, m.state());
+            if m.state() == ClosingState::Talking {
+                bad.push(format!("after the AI's goodbye reopened [{lang}] {t} -> {:?} state={:?}", s.event, m.state()));
+            }
+        }
+        // Bare thanks mid-call, against the English baseline (same design: thanks alone is no wrap-up).
+        for (lang, t) in [("nb", "Takk skal du ha"), ("da", "Tusind tak for hjælpen"), ("fi", "Kiitos paljon, hei hei"), ("en", "Thank you so much for your help"), ("en", "Thanks a lot, bye bye")] {
+            let mut m = talk(lang);
+            let s = hear(&mut m, t);
+            println!("BARE-MID [{lang}] {t} -> {:?} ends={} state={:?}", s.event, s.ends_call, m.state());
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// Other languages' thanks wrap-ups are unchanged by the Nordic rule.
+    #[test]
+    fn other_thanks_wrap_ups_unchanged() {
+        let mut bad = Vec::new();
+        for (lang, t) in [
+            ("en", "Okay, no problem, I'll leave it at the door, thanks"), ("de", "Alles klar, dann lege ich es vor die Tür, danke"),
+            ("cs", "Dobře, ok, nechám to u dveří, díky"), ("pl", "Ok, zostawię to pod drzwiami, dziękuję"),
+        ] {
+            let mut m = talk(lang);
+            let s = hear(&mut m, t);
+            println!("OTHER [{lang}] {t} -> {:?}", s.event);
+            if lang == "en" || lang == "de" {
+                if s.event != ClosingEvent::CallerThanksWrap {
+                    bad.push(format!("[{lang}] {t} -> {:?}", s.event));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+}

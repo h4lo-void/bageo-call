@@ -32,7 +32,10 @@
     "AE",
     "EG",
     "NL",
-    "PL"
+    "PL",
+    "RO",
+    "MD",
+    "UA"
   ],
   "countries": {
     "TW": {
@@ -3140,6 +3143,361 @@
           ],
           "sources": [
             "Policja"
+          ]
+        }
+      ]
+    },
+    "RO": {
+      "name": "Romania",
+      "name_local": "România",
+      "iso": "ro",
+      "calling_code": "+40",
+      "languages": [
+        "ro"
+      ],
+      "prevalence_note": "Romanian Police and DNSC warnings 2025-2026: spoofed bank or police calls pushing a cancellation loan or a new account, the accident method with a courier collecting cash, and fake tax inspectors.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "ro_credit_de_anulare",
+          "typology": "fake_bank_account_alert",
+          "name": "Fals angajat al băncii sau al BNR: credit de anulare",
+          "name_en": "Fake bank or central bank staff pushing a cancellation loan",
+          "prevalence": "very_high",
+          "lang": "ro",
+          "context_keywords": [
+            "banca națională a româniei"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "facem un credit de anulare",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "mutăm banii într-un cont nou",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "mutați urgent banii",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "spuneți-mi codul primit",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as bank anti-fraud staff, the central bank or the police says a loan was taken in the owner's name and a cancellation loan or a move to a new account is needed.",
+          "legit_en": "Banks and the central bank never ask customers to take a loan or move their money to another account over the phone.",
+          "bait_tactics": [
+            "Spune că aplicația băncii se actualizează și roagă-l să explice încă o dată, rar",
+            "Întreabă liniștit de ce zi este cererea de credit și pentru ce sumă"
+          ],
+          "sources": [
+            "Poliția Română",
+            "DNSC"
+          ]
+        },
+        {
+          "id": "ro_metoda_accidentul",
+          "typology": "fake_relative_money",
+          "name": "Metoda accidentul: rudă implicată într-un accident",
+          "name_en": "Relative in a car accident, cash collected by a courier",
+          "prevalence": "high",
+          "lang": "ro",
+          "context_keywords": [
+            "a provocat un accident",
+            "împăcare amiabilă",
+            "a lovit pe cineva cu mașina"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "trimitem un curier după bani",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "vine un curier să ia banii",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "ca să nu fie arestat",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A fake lawyer, police officer or doctor says a relative caused a serious accident and a courier will come for cash to settle it amicably.",
+          "legit_en": "Police and lawyers never send couriers to collect cash for a relative in trouble.",
+          "bait_tactics": [
+            "Fă-te îngrijorat și întreabă încet ce s-a întâmplat exact și unde",
+            "Spune că trebuie să găsești ochelarii ca să notezi adresa"
+          ],
+          "sources": [
+            "Poliția Română",
+            "IGP Moldova"
+          ]
+        },
+        {
+          "id": "ro_anaf_poprire",
+          "typology": "fake_official",
+          "name": "Fals inspector ANAF: poprire pe cont și plată imediată",
+          "name_en": "Fake tax inspector demanding payment to lift an account freeze",
+          "prevalence": "medium",
+          "lang": "ro",
+          "context_keywords": [
+            "inspector anaf",
+            "poprire pe cont"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "deblocăm contul după plată",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A fake tax inspector says the account is frozen for tax debts and will be unblocked once a payment is made through a link.",
+          "legit_en": "The tax office does not call to take payments through links or messaging apps.",
+          "bait_tactics": [
+            "Întreabă rar pentru ce an este datoria",
+            "Spune că nu găsești plicul de la ANAF și roagă-l să aștepte"
+          ],
+          "sources": [
+            "Poliția Română",
+            "DNSC"
+          ]
+        }
+      ]
+    },
+    "MD": {
+      "name": "Moldova",
+      "name_local": "Moldova",
+      "iso": "md",
+      "calling_code": "+373",
+      "languages": [
+        "ro",
+        "ru"
+      ],
+      "prevalence_note": "Moldovan police warnings 2025-2026: the relative-in-an-accident scheme with cash collected in person, and fake bank staff calling about loans.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "md_ruda_accident",
+          "typology": "fake_relative_money",
+          "name": "Ruda implicată într-un accident",
+          "name_en": "Relative in a car accident, cash collected by a courier",
+          "prevalence": "high",
+          "lang": "ro",
+          "context_keywords": [
+            "a provocat un accident",
+            "împăcare amiabilă",
+            "am avut un accident"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "trimitem un curier după bani",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "vine un curier să ia banii",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "ca să nu fie arestat",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "dă bani unui om",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A fake lawyer, police officer or doctor says a relative caused a serious accident and a courier will come for cash to settle it amicably.",
+          "legit_en": "Police and lawyers never send couriers to collect cash for a relative in trouble.",
+          "bait_tactics": [
+            "Fă-te îngrijorat și întreabă încet ce s-a întâmplat exact și unde",
+            "Spune că trebuie să găsești ochelarii ca să notezi adresa"
+          ],
+          "sources": [
+            "IGP Moldova"
+          ]
+        },
+        {
+          "id": "md_credit_de_anulare",
+          "typology": "fake_bank_account_alert",
+          "name": "Fals angajat al băncii sau al BNM: credit de anulare",
+          "name_en": "Fake bank or central bank staff pushing a cancellation loan",
+          "prevalence": "high",
+          "lang": "ro",
+          "context_keywords": [
+            "banca națională a moldovei"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "facem un credit de anulare",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "mutăm banii într-un cont nou",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "spuneți-mi codul primit",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as bank anti-fraud staff, the central bank or the police says a loan was taken in the owner's name and a cancellation loan or a move to a new account is needed.",
+          "legit_en": "Banks and the central bank never ask customers to take a loan or move their money to another account over the phone.",
+          "bait_tactics": [
+            "Spune că aplicația băncii se actualizează și roagă-l să explice încă o dată, rar",
+            "Întreabă liniștit de ce zi este cererea de credit și pentru ce sumă"
+          ],
+          "sources": [
+            "IGP Moldova"
+          ]
+        }
+      ]
+    },
+    "UA": {
+      "name": "Ukraine",
+      "name_local": "Україна",
+      "iso": "ua",
+      "calling_code": "+380",
+      "languages": [
+        "uk"
+      ],
+      "prevalence_note": "Cyberpolice and National Bank warnings 2025-2026: fake bank security asking for card codes or a reserve account, relatives in a car accident with cash handed to a driver, and fake aid payouts.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "ua_bank_security_card",
+          "typology": "fake_bank_account_alert",
+          "name": "Фейкова служба безпеки банку: дані картки і резервний рахунок",
+          "name_en": "Fake bank security asking for card details or a move to a reserve account",
+          "prevalence": "very_high",
+          "lang": "uk",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "назвіть три цифри на звороті",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "перекажіть кошти на резервний рахунок",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "переведіть кошти на резервний рахунок",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank security service reports a suspicious payment and asks for the three digits on the back of the card or a transfer to a reserve account.",
+          "legit_en": "Banks never ask for the code on the back of the card or a transfer to another account by phone.",
+          "bait_tactics": [
+            "Скажи, що застосунок банку оновлюється, і попроси повторити повільніше",
+            "Спокійно перепитай, про який саме платіж і на яку суму йдеться"
+          ],
+          "sources": [
+            "Kiberpolitsiia",
+            "National Bank of Ukraine"
+          ]
+        },
+        {
+          "id": "ua_relative_accident_driver",
+          "typology": "fake_relative_money",
+          "name": "Родич у ДТП: гроші через водія",
+          "name_en": "Relative in a car accident, cash handed to a driver",
+          "prevalence": "high",
+          "lang": "uk",
+          "context_keywords": [
+            "потрапив у дтп",
+            "щоб закрити кримінальну справу"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "передайте гроші водію",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "передайте гроші водієві",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "передайте гроші водієм",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "терміново переведи гроші",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "переведи гроші на цю картку",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller says a son or grandchild caused a car accident or is held by the police, and cash must be handed to a driver to close the case.",
+          "legit_en": "Police never settle a case for cash handed to a driver.",
+          "bait_tactics": [
+            "Хвилюйся і повільно розпитуй, де саме сталося ДТП",
+            "Скажи, що шукаєш окуляри, щоб записати адресу"
+          ],
+          "sources": [
+            "Kiberpolitsiia"
+          ]
+        },
+        {
+          "id": "ua_aid_payout_link",
+          "typology": "fake_government_subsidy",
+          "name": "Фейкова виплата єПідтримки або ООН",
+          "name_en": "Fake state or UN aid payout asking for card details",
+          "prevalence": "high",
+          "lang": "uk",
+          "context_keywords": [
+            "грошова допомога оон",
+            "єпідтримка"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "для зарахування виплати введіть",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "для отримання виплати введіть",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "сплатіть податок за посиланням",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller announces a state or UN aid payment and asks the owner to enter card details or a PIN through a link to receive it.",
+          "legit_en": "State and UN aid programmes never ask for a card PIN to pay out.",
+          "bait_tactics": [
+            "Запитай, з якого місяця нараховано виплату",
+            "Скажи, що картка лежить в іншій кімнаті, і попроси почекати"
+          ],
+          "sources": [
+            "Kiberpolitsiia"
           ]
         }
       ]

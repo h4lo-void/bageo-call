@@ -3484,6 +3484,125 @@ mod added_countries_2_tests {
     }
 }
 
+/// Reviewer probes for the third batch of countries, under the live rule
+/// (gemini_live::stall_score_add + stall_engages, copied step by step).
+#[cfg(test)]
+mod review_probe3_tests {
+    use super::*;
+
+    fn live(text: &str, skip_new: bool) -> (bool, u32, Vec<&'static str>) {
+        let found: Vec<(&'static str, u32, bool)> = keyword_hits(text)
+            .into_iter()
+            .filter(|h| {
+                !(skip_new
+                    && db()
+                        .country_kw_map
+                        .get(&normalized_hit_key(h.text))
+                        .is_some_and(|p| !p.is_empty() && p.iter().all(|(i, _)| ["ro", "md", "ua"].contains(&i.as_str()))))
+            })
+            .map(|h| (h.text, h.weight, h.hard))
+            .collect();
+        let longer = |kw: &str, k: &str| k.len() > kw.len() && k.contains(kw);
+        let mut hits: Vec<&'static str> = Vec::new();
+        let mut score = 0;
+        for &(kw, w, _) in &found {
+            if hits.contains(&kw) || found.iter().any(|&(k, _, _)| longer(kw, k)) || hits.iter().any(|&h| longer(kw, h)) {
+                continue;
+            }
+            hits.push(kw);
+            score += w;
+        }
+        let engaged = hits.iter().any(|h| is_hard(h))
+            || (score >= 3 && hits.iter().any(|h| keyword(h).map_or(0, |k| k.weight) >= 2));
+        (engaged, score, hits)
+    }
+
+    const NORMAL: &[(&str, &str)] = &[
+        ("ro", "Bună ziua, sunt de la banca dumneavoastră, extrasul de cont pentru luna aceasta este disponibil în aplicație"),
+        ("ro", "Bună ziua, sunt curier Fan Courier, am un colet pentru dumneavoastră, sunteți acasă între patru și șase"),
+        ("ro", "Bună ziua, vă sunăm de la clinică, analizele dumneavoastră sunt gata, puteți trece să le ridicați"),
+        ("ro", "Bună seara, sunt proprietara apartamentului, vreau să trec luni să verific contorul de gaze"),
+        ("ro", "Bună ziua, de la școala copilului, ședința cu părinții este miercuri la ora șase"),
+        ("ro", "Alo, Poșta Română, coletul dumneavoastră este la oficiul poștal, vă rugăm să veniți cu buletinul"),
+        ("ro", "Bună ziua, ANAF, aveți de depus declarația unică până pe 25 mai, puteți face asta online în spațiul privat virtual"),
+        ("ro", "Bună ziua, sunt de la bancă, cardul dumneavoastră expiră luna viitoare, vă trimitem unul nou prin curier la adresa de domiciliu"),
+        ("md", "Bună ziua, sunt de la Moldova Agroindbank, extrasul de cont este gata, îl puteți ridica la filială"),
+        ("md", "Bună ziua, sunt curier, am un colet pentru dumneavoastră, sunteți acasă astăzi după ora patru"),
+        ("md", "Bună ziua, vă sun de la policlinică, rezultatele analizelor sunt gata, puteți veni după ele"),
+        ("md", "Bună ziua, sunt proprietarul apartamentului, mâine vine meșterul să schimbe contorul de apă"),
+        ("md", "Bună ziua, de la liceu, ședința cu părinții este joi la ora cinci"),
+        ("ua", "Добрий день, це Приватбанк, виписка по вашому рахунку доступна в застосунку"),
+        ("ua", "Добрий день, кур'єр Укрпошти, у мене для вас посилка, ви вдома"),
+        ("ua", "Добрий день, клініка, ваші аналізи готові, можна забрати"),
+        ("ua", "Добрий день, я орендодавець, у понеділок прийду перевірити лічильники"),
+        ("ua", "Добрий день, школа, батьківські збори у середу о шостій"),
+        ("ua", "Добрий день, це ваш банк, ви подавали заявку на кредит, запрошуємо підписати договір у відділенні"),
+        ("ua", "Добрий день, Нова пошта, ваша посилка чекає у відділенні, при отриманні потрібен паспорт"),
+        ("ua", "Добрий день, ваша картка закінчується у наступному місяці, ми відправимо нову кур'єром на вашу адресу"),
+        ("ua", "Добрый день, это курьер, у меня для вас посылка, вы дома"),
+        ("ua", "Добрый день, это ваш банк, выписка по счету доступна в приложении"),
+        ("ua", "Добрий день, Ощадбанк, пенсійна виплата надійшла на вашу картку, баланс у застосунку"),
+    ];
+
+    /// Existing behavior, not asserted: Romanian "credit" matches the older French "crédit" (weight 2) and with "banca" engages.
+    #[allow(dead_code)]
+    const ENGAGE_ON_EXISTING_WORDS: &[(&str, &str)] = &[
+        ("ro", "Bună ziua, sunt de la bancă, ați cerut un credit pentru renovare, vă propunem o programare la sucursală pentru semnarea contractului"),
+        ("ro", "Bună ziua, banca vă anunță că rata de credit a fost debitată din contul dumneavoastră, soldul este în aplicație"),
+        ("md", "Bună ziua, vă sunăm de la banca MAIB, ați solicitat un credit de consum, vă așteptăm la semnarea contractului"),
+    ];
+
+    const SCAMS: &[(&str, &str)] = &[
+        ("ro", "Sunt de la Poliția Capitalei, nepotul dumneavoastră a lovit pe cineva cu mașina, trebuie să dați urgent bani ca să nu fie arestat"),
+        ("ro", "Ați câștigat un premiu de la Kaufland, pentru a-l primi trimiteți banii pentru taxa de transport prin Western Union"),
+        ("ro", "Aici serviciul de securitate al băncii, mutați urgent banii în contul sigur"),
+        ("ro", "Sunt de la bancă, cineva a luat un credit în numele dumneavoastră, trebuie să luați un credit de anulare chiar acum"),
+        ("md", "Sunt de la Moldova Agroindbank, contul dumneavoastră a fost compromis, spuneți-mi codul primit prin SMS"),
+        ("md", "Mamă, am avut un accident, dă bani unui om care vine acum la tine"),
+        ("ua", "Ваша картка заблокована, я співробітник служби безпеки банку, продиктуйте код з СМС щоб розблокувати"),
+        ("ua", "Мамо, я в лікарні, терміново переведи гроші на цю картку"),
+        ("ua", "Ви виграли автомобіль, для отримання сплатіть податок за посиланням"),
+        ("ua", "Вас турбує служба безпеки банку, на вас оформлюють кредит, переведіть гроші на безпечний рахунок"),
+    ];
+
+    #[test]
+    fn live_rule_leaves_ordinary_calls_alone() {
+        let mut bad = Vec::new();
+        for (iso, t) in NORMAL {
+            let (e, s, h) = live(t, false);
+            let (e0, _, _) = live(t, true);
+            println!("NORMAL [{iso}] engaged={e} without_new={e0} score={s} hits={h:?}");
+            if e {
+                bad.push(format!("[{iso}] engaged (without the new words: {e0}) score={s} hits={h:?}: {t}"));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    #[test]
+    fn live_rule_on_reworded_scams_report() {
+        for (iso, t) in SCAMS {
+            let (e, s, h) = live(t, false);
+            let (e0, _, _) = live(t, true);
+            println!("SCAM [{iso}] engaged={e} without_new={e0} score={s} hits={h:?}");
+        }
+    }
+
+    /// The new words must never make a call engage that did not without them.
+    #[test]
+    fn new_words_never_tip_anything() {
+        let mut bad = Vec::new();
+        for (iso, t) in NORMAL.iter().chain(SCAMS.iter()) {
+            let (e, _, h) = live(t, false);
+            let (e0, _, _) = live(t, true);
+            if e && !e0 && NORMAL.iter().any(|(_, n)| n == t) {
+                bad.push(format!("[{iso}] tipped by new words: {h:?}: {t}"));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+}
+
 /// Reviewer probe (second batch of countries): own ordinary calls, legitimate
 /// anti-fraud warnings and reworded scams, run through the live engage rule.
 #[cfg(test)]
@@ -3661,4 +3780,251 @@ mod review_probe2_tests {
     }
 }
 
+/// Third batch of countries (Romania, Moldova, Ukraine): own scams caught, ordinary
+/// calls and real anti-fraud warnings left alone, under the live engage rule.
+#[cfg(test)]
+mod added_countries_3_tests {
+    use super::*;
 
+    /// The engage rule the live call uses (gemini_live::stall_engages): any scam-only
+    /// demand, or a score of 3 with one keyword of weight 2. Hits count once each.
+    fn engages(hits: &[Hit]) -> bool {
+        let mut seen: Vec<&str> = Vec::new();
+        let (mut score, mut strong, mut hard) = (0, false, false);
+        for h in hits {
+            if seen.contains(&h.text) {
+                continue;
+            }
+            seen.push(h.text);
+            score += h.weight;
+            strong |= h.weight >= 2;
+            hard |= h.hard;
+        }
+        hard || (score >= 3 && strong)
+    }
+
+    fn from_country(iso: &str, hits: &[Hit]) -> bool {
+        hits.iter().any(|h| {
+            db().country_kw_map
+                .get(&normalized_hit_key(h.text))
+                .is_some_and(|pairs| pairs.iter().any(|(i, _)| i == iso))
+        })
+    }
+
+    type Row = (&'static str, &'static [&'static str], &'static [&'static str], &'static [&'static str]);
+
+    /// Existing behavior, not asserted to stay quiet: these engage on keywords the
+    /// database had before this batch (the Romanian "credit" folds into the French
+    /// "crédit" of weight 2, with "banca" it reaches 3). The new words must not add to it.
+    const ENGAGE_ON_EXISTING_WORDS: &[(&str, &str)] = &[
+        ("ro", "Banca vă reamintește: nu faceți niciodată un credit la telefon și nu mutați banii în alt cont"),
+        ("ro", "Am observat o cerere de credit pe numele dumneavoastră, ați depus-o chiar dumneavoastră"),
+        ("md", "Banca vă anunță că un credit pe numele dumneavoastră a fost achitat integral"),
+    ];
+
+    /// Country, typical scams, ordinary calls (bank, courier, clinic, landlord or
+    /// school), real anti-fraud warnings.
+    const ROWS: &[Row] = &[
+        (
+            "ro",
+            &[
+                "Bună ziua, sunt de la Banca Națională a României, cineva a cerut un credit pe numele dumneavoastră, ca să-l oprim facem un credit de anulare",
+                "Sunt avocatul fiului dumneavoastră, a provocat un accident grav, pentru o împăcare amiabilă trimitem un curier după bani",
+                "Sunt inspector ANAF, aveți poprire pe cont, deblocăm contul după plată prin linkul trimis",
+                "Sunt de la Poliția Capitalei, nepotul dumneavoastră a lovit pe cineva cu mașina, trebuie să dați urgent bani ca să nu fie arestat",
+            ],
+            &[
+                "Bună ziua, vă sunăm de la bancă, cardul dumneavoastră nou a ajuns la sucursală și îl puteți ridica cu buletinul",
+                "Bună ziua, sunt curierul, coletul dumneavoastră ajunge mâine între zece și douăsprezece",
+                "Bună ziua, cabinetul stomatologic, vă reamintim de programarea de joi la ora zece",
+                "Bună seara, sunt proprietarul, sâmbătă vine instalatorul să repare robinetul din bucătărie",
+            ],
+            &[
+                "Banca vă reamintește: nu mutați niciodată banii în alt cont la cererea cuiva care vă sună",
+                "Poliția Română avertizează: nu dați bani curierilor trimiși de cei care spun că o rudă a provocat un accident",
+                "Bună ziua, banca vă informează că poprirea pe cont de la ANAF a fost ridicată",
+                "Poliția vă roagă să nu dați bani cuiva care spune că o rudă va fi arestată",
+            ],
+        ),
+        (
+            "md",
+            &[
+                "Bună ziua, sunt de la poliție, fiul dumneavoastră a provocat un accident, vine un curier să ia banii pentru împăcare",
+                "Vă sun de la Banca Națională a Moldovei, s-a deschis un credit pe numele dumneavoastră, trebuie să facem un credit de anulare",
+                "Mamă, am avut un accident, dă bani unui om care vine acum la tine",
+            ],
+            &[
+                "Bună ziua, vă sună banca, cardul nou e gata, îl puteți ridica de la filială",
+                "Alo, Poșta Moldovei, coletul dumneavoastră a sosit la oficiul poștal",
+                "Bună ziua, centrul medical, vă amintim de vizita la medicul de familie mâine la nouă",
+                "Bună ziua, vă sun de la școală, copilul are febră, puteți veni să-l luați",
+            ],
+            &["Poliția vă roagă să nu dați bani persoanelor care spun că o rudă a fost implicată într-un accident"],
+        ),
+        (
+            "ua",
+            &[
+                "Вас турбує служба безпеки банку, з вашої картки намагаються списати гроші, назвіть три цифри на звороті картки і перекажіть кошти на резервний рахунок",
+                "Ваш син потрапив у ДТП, щоб закрити кримінальну справу, передайте гроші водієві",
+                "Вам нарахована грошова допомога ООН, для зарахування виплати введіть номер картки і пін-код",
+                "Мамо, я в лікарні, терміново переведи гроші на цю картку",
+            ],
+            &[
+                "Добрий день, це ваш банк, нова картка вже у відділенні, можете забрати з паспортом",
+                "Добрий день, Нова пошта, ваша посилка прибуде завтра до відділення",
+                "Доброго дня, стоматологія, нагадуємо про ваш запис у четвер о десятій",
+                "Добрий вечір, це власниця квартири, у суботу прийде сантехнік подивитися кран",
+                "Це служба безпеки банку, на ваше ім'я подано заявку на кредит, ви її подавали",
+            ],
+            &[
+                "Банк нагадує: ніколи не називайте три цифри на звороті картки і не переказуйте кошти на резервний рахунок",
+                "Поліція попереджає: не передавайте гроші водіям незнайомих людей, навіть якщо кажуть, що родич потрапив у ДТП",
+                "Служба безпеки банку нагадує: працівники банку ніколи не просять пін-код",
+                "Грошова допомога ООН зараховується без жодних кодів і посилань",
+            ],
+        ),
+    ];
+
+    #[test]
+    fn added_countries_3_catch_their_scams_and_leave_ordinary_calls_alone() {
+        let mut bad = Vec::new();
+        for (iso, scams, ordinary, warnings) in ROWS {
+            if !db().countries.contains_key(*iso) {
+                bad.push(format!("missing country profile: {iso}"));
+                continue;
+            }
+            for t in scams.iter() {
+                let hits = keyword_hits(t);
+                if !engages(&hits) || !from_country(iso, &hits) {
+                    bad.push(format!("{iso}: scam not caught by its own keywords: {t} {hits:?}"));
+                }
+            }
+            for t in ordinary.iter() {
+                let hits = keyword_hits(t);
+                if engages(&hits) || from_country(iso, &hits) {
+                    bad.push(format!("{iso}: ordinary call hit: {t} {hits:?}"));
+                }
+            }
+            let whole = keyword_hits(&ordinary.join(" "));
+            if engages(&whole) {
+                bad.push(format!("{iso}: ordinary calls together engaged: {whole:?}"));
+            }
+            for t in warnings.iter() {
+                let hits = keyword_hits(t);
+                if engages(&hits) {
+                    bad.push(format!("{iso}: warning engaged: {t} {hits:?}"));
+                }
+            }
+            let all_warnings = keyword_hits(&warnings.join(" "));
+            if engages(&all_warnings) {
+                bad.push(format!("{iso}: warnings together engaged: {all_warnings:?}"));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// Only the new country words count: a sentence that engages with them but not
+    /// without them is this batch's fault. And no weight-2 country word turns up in
+    /// an ordinary call or a warning.
+    #[test]
+    fn new_country_words_do_not_tip_ordinary_calls_or_warnings() {
+        let mut bad = Vec::new();
+        let rows = ROWS.iter().flat_map(|(iso, _, normal, warn)| normal.iter().chain(warn.iter()).map(move |t| (*iso, *t)));
+        for (iso, t) in rows.chain(ENGAGE_ON_EXISTING_WORDS.iter().copied()) {
+            let hits = keyword_hits(t);
+            let without: Vec<Hit> = hits.iter().copied().filter(|h| !from_country(iso, &[*h])).collect();
+            if engages(&hits) && !engages(&without) {
+                bad.push(format!("{iso}: new words tip it: {t} {hits:?}"));
+            }
+            if hits.iter().any(|h| h.weight >= 2 && from_country(iso, &[*h])) {
+                bad.push(format!("{iso}: a weight-2 country word in an ordinary call or warning: {t} {hits:?}"));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// No new keyword is scam-only, and none is a weight-1 word turned stronger.
+    #[test]
+    fn new_country_keywords_are_weight_two_at_most_and_never_hard() {
+        let mut bad = Vec::new();
+        for iso in ["ro", "md", "ua"] {
+            for sc in &db().countries[iso].scams {
+                for rf in &sc.red_flag_keywords {
+                    if rf.hard || rf.weight != 2 {
+                        bad.push(format!("{iso}/{}: {:?} weight {} hard {}", sc.id, rf.text, rf.weight, rf.hard));
+                    }
+                }
+                for ctx in &sc.context_keywords {
+                    let hits = keyword_hits(ctx);
+                    if hits.iter().any(|h| h.hard) {
+                        bad.push(format!("{iso}/{}: context {ctx:?} is hard: {hits:?}", sc.id));
+                    }
+                }
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+}
+
+/// Recheck: ordinary calls near the newly added RO / MD / UA phrases, under the live rule.
+#[cfg(test)]
+mod review_probe3_recheck_tests {
+    use super::*;
+
+    fn is_new(h: &Hit) -> bool {
+        db().country_kw_map
+            .get(&normalized_hit_key(h.text))
+            .is_some_and(|p| !p.is_empty() && p.iter().all(|(i, _)| ["ro", "md", "ua"].contains(&i.as_str())))
+    }
+
+    /// gemini_live::stall_score_add + stall_engages, step by step.
+    fn live(text: &str, skip_new: bool) -> (bool, u32, Vec<&'static str>) {
+        let found: Vec<(&'static str, u32)> =
+            keyword_hits(text).into_iter().filter(|h| !(skip_new && is_new(h))).map(|h| (h.text, h.weight)).collect();
+        let longer = |kw: &str, k: &str| k.len() > kw.len() && k.contains(kw);
+        let mut hits: Vec<&'static str> = Vec::new();
+        let mut score = 0;
+        for &(kw, w) in &found {
+            if hits.contains(&kw) || found.iter().any(|&(k, _)| longer(kw, k)) || hits.iter().any(|&h| longer(kw, h)) {
+                continue;
+            }
+            hits.push(kw);
+            score += w;
+        }
+        let engaged = hits.iter().any(|h| is_hard(h))
+            || (score >= 3 && hits.iter().any(|h| keyword(h).map_or(0, |k| k.weight) >= 2));
+        (engaged, score, hits)
+    }
+
+    const NORMAL: &[(&str, &str)] = &[
+        ("ro", "Bună ziua, banca vă informează că transferul de bani în contul dumneavoastră a fost efectuat urgent, cum ați cerut"),
+        ("ro", "Bună ziua, curierul vine azi după-amiază, pregătiți banii, plata se face numerar sau cu cardul la livrare"),
+        ("ro", "Bună ziua, clinica vă roagă să veniți urgent mâine dimineață, medicul vrea să discute rezultatele"),
+        ("ro", "Bună seara, sunt proprietarul, chiria o puteți da omului meu care trece sâmbătă, ca să nu mai faceți drumul"),
+        ("md", "Bună ziua, vă sunăm de la bancă, vă rugăm să ne spuneți dacă ați primit codul de activare a cardului nou prin poștă"),
+        ("md", "Bună ziua, Nova Poshta, curierul vine mâine, dați banii pentru livrare direct curierului"),
+        ("md", "Bună ziua, policlinica, fiul dumneavoastră a căzut la sport, nu e grav, veniți să-l luați ca să nu stea singur"),
+        ("md", "Bună ziua, sunt proprietara, dă bani pentru gaz vecinului meu, el plătește factura mâine"),
+        ("ua", "Добрий день, Приватбанк, кошти за вашим переказом успішно зараховано на картку"),
+        ("ua", "Добрий день, кур'єр Нової пошти, оплата при отриманні, можна готівкою або на картку"),
+        ("ua", "Добрий день, клініка, будь ласка, терміново зателефонуйте лікарю щодо аналізів"),
+        ("ua", "Привіт, це хазяїн квартири, у мене нова картка, переведи гроші за оренду на цю картку до п'ятниці"),
+        ("ua", "Добрий день, це власниця, терміново переведи гроші за комуналку, бо завтра відключать світло"),
+        ("ua", "Добрий день, школа, батьківський комітет збирає гроші на екскурсію, можна переказати на картку класного керівника"),
+    ];
+
+    #[test]
+    fn ordinary_calls_near_new_phrases_stay_quiet() {
+        let mut bad = Vec::new();
+        for (iso, t) in NORMAL {
+            let (e, s, h) = live(t, false);
+            let (e0, _, _) = live(t, true);
+            let new_hits: Vec<&str> = keyword_hits(t).iter().filter(|h| is_new(h)).map(|h| h.text).collect();
+            println!("RECHECK [{iso}] engaged={e} without_new={e0} score={s} hits={h:?} new={new_hits:?}");
+            if e {
+                bad.push(format!("[{iso}] engaged (without the new words: {e0}) score={s} hits={h:?}: {t}"));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+}
