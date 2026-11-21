@@ -757,6 +757,14 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
   .ts{grid-template-columns:minmax(0,1fr)}
   .choice.three,.ab-list{grid-template-columns:minmax(0,1fr)}
 }
+#exLangDlg{max-width:560px;width:calc(100vw - 32px)}
+.ex-list{max-height:52vh;overflow:auto;margin-top:10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg)}
+.ex-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.ex-row:last-child{border-bottom:0}
+.ex-row>.grow{min-width:0}
+.ex-row b{display:block;font-weight:600}
+.ex-row small{display:block;color:var(--muted);font-size:.82rem}
+.ex-acts{display:flex;gap:6px;flex:0 0 auto;align-items:center}
 </style>
 </head>
 <body>
@@ -794,6 +802,11 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
     <span class="grow"><b id="vpCardAsk"></b> <span id="vpCardHelp"></span><span class="help" id="vpCardEn" style="display:block"></span></span>
     <button type="button" class="btn sm" id="vpCardGet" data-i18n="vp_get"></button>
     <button type="button" class="btn sm ghost" id="vpCardLater" data-i18n="vp_not_now"></button>
+  </div>
+  <div class="banner info" id="exAutoUndo" hidden role="status">
+    <span class="grow" id="exAutoUndoText"></span>
+    <button type="button" class="btn sm ghost" id="exAutoUndoBtn" data-i18n="undo"></button>
+    <button type="button" class="btn sm ghost" id="exAutoUndoClose" data-i18n="close"></button>
   </div>
 
   <!-- ======================= Calls ======================= -->
@@ -1123,8 +1136,7 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
             <div class="field"><label for="f-language" data-i18n="f_language"></label>
               <select id="f-language" data-k="language" data-t="text"></select>
               <div class="help" data-i18n="f_language_h"></div>
-              <div class="help" id="langPartial" data-i18n="lang_partial" hidden></div>
-              <div class="help" id="langFallback" data-i18n="lang_fallback" hidden></div></div>
+              <div class="help" id="langPartial" data-i18n="lang_partial" hidden></div></div>
             <div class="field"><label for="f-owner_name" data-i18n="f_owner"></label>
               <input type="text" id="f-owner_name" data-k="owner_name" data-t="text" maxlength="40" data-i18n-ph="f_owner_ph" />
               <div class="help" data-i18n="f_owner_h"></div></div>
@@ -1162,6 +1174,7 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
               <input type="hidden" id="f-home_country" data-k="home_country" data-t="text" />
               <div class="cb" id="hcBox"></div>
               <div class="help" data-i18n="f_home_country_h"></div></div>
+            <div class="field"><label class="sw"><input type="checkbox" data-k="extras_auto" data-t="bool" /><span><b data-i18n="f_extras_auto"></b><small data-i18n="f_extras_auto_h"></small></span></label></div>
             <div class="field" id="packField"><div class="lbl" data-i18n="pk_title"></div>
               <div class="muted" id="pkVersion"></div>
               <div class="pv">
@@ -3262,6 +3275,20 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
     </div>
   </form>
 </dialog>
+<dialog id="exLangDlg" aria-labelledby="exLangTitle">
+  <form method="dialog">
+    <h2 id="exLangTitle" data-i18n="ex_title"></h2>
+    <p class="help" style="margin-top:4px" data-i18n="ex_desc"></p>
+    <div class="field" style="margin-top:8px">
+      <input type="search" id="exLangSearch" data-i18n-ph="ex_search_ph" data-i18n-aria="ex_search_ph" autocomplete="off" />
+    </div>
+    <div class="banner bad" id="exLangErr" hidden role="alert" style="margin-top:10px"></div>
+    <div class="ex-list" id="exLangList"></div>
+    <div class="dlg-btns">
+      <button type="button" class="btn" id="exLangClose" data-i18n="close"></button>
+    </div>
+  </form>
+</dialog>
 <script id="i18n-boot" type="application/json">__I18N_BOOT__</script>
 <script>
 "use strict";
@@ -3705,6 +3732,7 @@ function setLang(l) {
   renderSms();
   if (view === "system") renderSystem();
   renderLangReview();
+  if ($("exLangDlg") && $("exLangDlg").open) exRender();
 }
 function fillPageLangs() {
   const sel = $("langSel");
@@ -3716,6 +3744,7 @@ function fillPageLangs() {
     const name = (info && info.native) || LANG_NAMES[l] || l;
     sel.append(h("option", { value: l, text: name }));
   }
+  if (S) sel.append(h("option", { value: "__more__", text: t("ex_more") }));
   if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
   refreshLangCombos();
   renderLangReview();
@@ -3737,7 +3766,8 @@ function renderLangReview() {
 })();
 $("langSel").addEventListener("change", async () => {
   const l = $("langSel").value;
-  if (!(await chooseLang(l))) { $("langSel").value = lang; return; }
+  if (l === "__more__") { $("langSel").value = lang; refreshLangCombos(); exOpen($("langSel")); return; }
+  if (!(await chooseLang(l))) { $("langSel").value = lang; refreshLangCombos(); return; }
   store.set("pca.lang", l);
   followNotifyLang(l);
 });
@@ -3753,7 +3783,7 @@ async function followNotifyLang(l) {
     if (el) el.value = S.notify_language || "";
     updateDirty();
     store.set("pca.srvlang", l);
-    toast(t("notify_follows_ui", { lang: LANG_NAMES[l] || l }));
+    toast(t("notify_follows_ui", { lang: LANG_NAMES[l] || (LANG_INFO[l] && LANG_INFO[l].native) || l }));
   } catch (e) {
     if (e.status !== 401) toast(t("save_failed", { msg: e.message }), true);
   }
@@ -5580,6 +5610,7 @@ async function loadSettings() {
     const srv = matchLang(S.notify_language || S.language);
     if (srv) store.set("pca.srvlang", srv);
     if (!qs.get("lang") && !store.get("pca.lang") && srv && srv !== lang) await chooseLang(srv, true);
+    if (!exAutoOnce) { exAutoOnce = true; exAutoCheck(d); }
     if (pendingJump) jumpGroup(pendingJump);
     else if (!document.querySelector("#snav a.on")) markSnav("basics");
     if (view === "system") renderSystem();
@@ -5661,39 +5692,44 @@ function keepSaved(sel, code) {
   const name = langNameHere(code) || (LANG_INFO[code] && LANG_INFO[code].native) || code;
   sel.append(h("option", { value: code, text: name, dataset: { stale: "1" } }));
 }
-// A saved language the agent no longer offers for calls (the AI's or a SIM's):
-// say that calls use English until it is back.
-function langFallbackSync() {
-  const el = $("langFallback");
-  if (!el) return;
-  const stale = (s) => { const o = s && s.selectedOptions && s.selectedOptions[0]; return !!(o && o.dataset.stale); };
-  el.hidden = !(stale($("f-language")) || Array.from(document.querySelectorAll(".sl-lang")).some(stale));
-}
 // A language outside the nine in use (the AI's, the owner's or a SIM's): say
 // that some features do not follow it yet.
 function langPartialSync() {
-  langFallbackSync();
   const el = $("langPartial");
   if (!el) return;
   const sims = Array.from(document.querySelectorAll(".sl-lang")).map((s) => s.value);
-  const codes = [$("f-language").value, $("f-notify_language").value].concat(sims);
-  el.hidden = !codes.some((c) => c && !LANG_NAMES[c]);
+  const codes = [$("f-language").value, $("f-notify_language").value].concat(sims).filter((c) => c && c !== "__more__");
+  el.hidden = !codes.some((c) => !LANG_NAMES[c]);
 }
 document.addEventListener("change", (e) => {
   const el = e.target;
-  if (el && (el.id === "f-language" || el.id === "f-notify_language" || (el.classList && el.classList.contains("sl-lang")))) langPartialSync();
+  if (el && (el.id === "f-language" || el.id === "f-notify_language" || (el.classList && el.classList.contains("sl-lang")))) {
+    if (el.value === "__more__") {
+      el.value = el.dataset.prev || "";
+      refreshLangCombos();
+      exOpen(el);
+      return;
+    }
+    el.dataset.prev = el.value;
+    langPartialSync();
+  }
 });
-function buildMenus() {
+function fillLanguageSelects(keepMain, keepNotif) {
   fillSelect($("f-language"), (sel) => {
     for (const x of offeredLangs("call")) sel.append(h("option", { value: x.code, text: langText(x) }));
-    keepSaved(sel, S.language);
+    keepSaved(sel, keepMain || S.language);
+    sel.append(h("option", { value: "__more__", text: t("ex_more") }));
   });
   // What the owner reads: "" = the same as the AI's language.
   fillSelect($("f-notify_language"), (sel) => {
     sel.append(h("option", { value: "", text: t("nl_same") }));
     for (const x of offeredLangs("notify")) sel.append(h("option", { value: x.code, text: langText(x) }));
-    keepSaved(sel, S.notify_language);
+    keepSaved(sel, keepNotif || S.notify_language);
+    sel.append(h("option", { value: "__more__", text: t("ex_more") }));
   });
+}
+function buildMenus() {
+  fillLanguageSelects();
   fillSelect($("f-gemini_voice_name"), (sel) => {
     const voices = Array.isArray(S.voices) ? S.voices : [];
     const label = (v) => `${v.name} · ${String(v.character || "").split(",").map((w) => tCode("vc_", w)).join(t("list_sep"))}`;
@@ -5755,7 +5791,9 @@ function simLangRow(e) {
   lg.append(h("option", { value: "", text: t("nl_same") }));
   for (const x of offeredLangs("call")) lg.append(h("option", { value: x.code, text: langText(x) }));
   keepSaved(lg, e.lang);
+  if (S) lg.append(h("option", { value: "__more__", text: t("ex_more") }));
   lg.value = e.lang || "";
+  lg.dataset.prev = lg.value;
   const row = h("div", { class: "brow slrow" }, cc, lg,
     h("button", { type: "button", class: "btn sm ghost sl-del", title: t("sl_remove"), "aria-label": t("sl_remove"), text: t("ct_delete") }));
   langCombo(lg, false, "cb-sl");
@@ -5772,7 +5810,10 @@ function renderSimLangRows(list) {
   if (!rows.length) box.append(h("p", { class: "muted sl-empty", text: t("sl_empty") }));
   for (const e of rows) box.append(simLangRow(e));
 }
-const simLangRowsNow = () => Array.from(document.querySelectorAll("#simLangRows .slrow")).map((r) => ({ country: r.querySelector(".sl-cc").value, lang: r.querySelector(".sl-lang").value }));
+const simLangRowsNow = () => Array.from(document.querySelectorAll("#simLangRows .slrow")).map((r) => {
+  const v = r.querySelector(".sl-lang").value;
+  return { country: r.querySelector(".sl-cc").value, lang: v === "__more__" ? "" : v };
+});
 const simLangValue = () => simLangObj(simLangRowsNow());
 $("btnSimLangAdd").addEventListener("click", () => {
   const box = $("simLangRows");
@@ -6653,8 +6694,8 @@ function makeCombo(box, opts) {
   function open(typed) {
     if (typed) {
       const q = foldText(input.value);
-      shown = !q ? all.slice() : all.map((o, i) => ({ o, i, r: rankOf(o, q) })).filter((x) => x.r < 3)
-        .sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.o);
+      shown = !q ? all.slice() : all.filter((o) => !o.pin).map((o, i) => ({ o, i, r: rankOf(o, q) })).filter((x) => x.r < 3)
+        .sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.o).concat(all.filter((o) => o.pin));
       active = shown.length ? 0 : -1;
     } else {
       shown = all.slice();
@@ -6715,6 +6756,7 @@ function langNameHere(code) {
 }
 function langOption(o) {
   const code = o.value, info = LANG_INFO[code], own = LANG_NAMES[code] || (info && info.native);
+  if (code === "__more__") return { value: code, label: t("ex_more"), search: [t("ex_more"), "more"], pin: true };
   if (!own) return { value: code, label: o.textContent, search: [] };
   const en = LANG_EN[code] || (info && info.en) || code;
   const mark = info && info.reviewed === false ? " " + t("lang_unreviewed") : "";
@@ -6735,6 +6777,12 @@ function langCombo(sel, short, cls) {
   sel.style.display = "none";
   sel.after(box);
   const combo = makeCombo(box, { short, onPick: (v) => {
+    if (v === "__more__") {
+      combo.setValue(sel.value);
+      exOpen(sel);
+      return;
+    }
+    sel.dataset.prev = v;
     sel.value = v;
     sel.dispatchEvent(new Event("input", { bubbles: true }));
     sel.dispatchEvent(new Event("change", { bubbles: true }));
@@ -6971,6 +7019,193 @@ $("vpFile").addEventListener("change", () => {
   if (file) vpRun("/voices/import", { method: "POST", headers: { "Content-Type": "application/zip" }, body: file }, "vp_importing", $("btnVpImport"));
 });
 $("f-language").addEventListener("change", vpRender);
+
+// ----- extra languages modal & auto-download on login
+let exInfo = null, exBusy = "", exBusyAct = "", exTargetSel = null, exAutoOnce = false;
+const exFailed = {};
+function exLangLocalizedName(row) {
+  const here = langNameHere(row.code);
+  if (here) return here;
+  return String(lang).startsWith("zh") ? (row.zh || row.en || row.code) : (row.en || row.code);
+}
+function exLevelText(row) {
+  const lvl = row.downloaded ? row.stage : (row.level || row.stage);
+  if (lvl === "console") return t("ex_lvl_console");
+  if (lvl === "notify") return t("ex_lvl_notify");
+  return t("ex_lvl_basic");
+}
+function exErrText(res) {
+  if (res === "in_use") return t("ex_r_in_use");
+  if (res === "restart") return t("pk_r_restart");
+  const k = "vp_r_" + res;
+  return I18N.en[k] != null ? t(k) : t("vp_r_bad_pack");
+}
+function exShowErr(msg) {
+  const el = $("exLangErr");
+  el.textContent = msg || "";
+  el.hidden = !msg;
+}
+function exCanUseTarget(row) {
+  if (!exTargetSel || !row.downloaded) return false;
+  if (exTargetSel.id === "langSel") return row.stage === "console";
+  if (exTargetSel.id === "f-notify_language") return row.stage === "notify" || row.stage === "console";
+  return row.stage === "call" || row.stage === "notify" || row.stage === "console";
+}
+async function exSyncMenus() {
+  try {
+    const d = await api("/settings");
+    if (d && d.settings && Array.isArray(d.settings.languages)) {
+      S.languages = d.settings.languages;
+      const keepMain = $("f-language").value;
+      const keepNotif = $("f-notify_language").value;
+      const sims = Array.from(document.querySelectorAll("#simLangRows .sl-lang")).map((el) => ({ el, val: el.value }));
+      fillLanguageSelects(keepMain, keepNotif);
+      if ([...$("f-language").options].some((o) => o.value === keepMain)) $("f-language").value = keepMain;
+      if ([...$("f-notify_language").options].some((o) => o.value === keepNotif)) $("f-notify_language").value = keepNotif;
+      for (const { el, val } of sims) {
+        while (el.options.length) el.remove(0);
+        el.append(h("option", { value: "", text: t("nl_same") }));
+        for (const x of offeredLangs("call")) el.append(h("option", { value: x.code, text: langText(x) }));
+        keepSaved(el, val);
+        if (S) el.append(h("option", { value: "__more__", text: t("ex_more") }));
+        el.value = val;
+      }
+      fillPageLangs();
+      refreshLangCombos();
+      langPartialSync();
+    }
+  } catch (_) {}
+}
+async function exUseLang(code) {
+  const sel = exTargetSel;
+  if ($("exLangDlg").open) $("exLangDlg").close();
+  if (!sel) return;
+  if (sel.id === "langSel") {
+    if (await chooseLang(code)) { store.set("pca.lang", code); followNotifyLang(code); }
+    return;
+  }
+  sel.dataset.prev = code;
+  sel.value = code;
+  refreshLangCombos();
+  sel.dispatchEvent(new Event("input", { bubbles: true }));
+  sel.dispatchEvent(new Event("change", { bubbles: true }));
+}
+function exRender() {
+  const list = clear($("exLangList"));
+  if (!exInfo || !Array.isArray(exInfo.langs)) return;
+  const q = foldText($("exLangSearch").value);
+  const rows = exInfo.langs.filter((r) => {
+    if (!q) return true;
+    const hay = [r.code, r.native, r.en, r.zh, exLangLocalizedName(r)].filter(Boolean).map(foldText);
+    return hay.some((s) => s.includes(q));
+  });
+  if (!rows.length) { list.append(h("p", { class: "muted", style: "padding:14px;text-align:center", text: t("ex_empty") })); return; }
+  for (const r of rows) {
+    const sub = exLangLocalizedName(r);
+    const title = (r.native === sub ? r.native : `${r.native} · ${sub}`) + (r.reviewed === false ? ` ${t("lang_unreviewed")}` : "");
+    const parts = [exLevelText(r)];
+    if (r.bytes > 0) parts.push(vpSize(r.bytes));
+    if (r.downloaded && r.in_use) parts.push(t("ex_in_use"));
+    const acts = h("div", { class: "ex-acts" });
+    if (exBusy === r.code) {
+      acts.append(h("button", { type: "button", class: "btn sm", disabled: true, text: t(exBusyAct === "del" ? "ex_deleting" : "ex_downloading") }));
+    } else if (!r.downloaded) {
+      const btnText = exFailed[r.code] ? t("retry") : t("ex_download");
+      acts.append(h("button", { type: "button", class: "btn sm primary", disabled: !!exBusy, text: btnText, onclick: () => exRun(r.code, "get") }));
+    } else {
+      if (exCanUseTarget(r)) {
+        acts.append(h("button", { type: "button", class: "btn sm primary", disabled: !!exBusy, text: t("ex_use"), onclick: () => exUseLang(r.code) }));
+      }
+      acts.append(h("button", {
+        type: "button", class: "btn sm ghost", disabled: !!exBusy || !!r.in_use,
+        title: r.in_use ? t("ex_in_use") : "", text: t("vp_delete"), onclick: () => exRun(r.code, "del")
+      }));
+    }
+    list.append(h("div", { class: "ex-row" },
+      h("div", { class: "grow" }, h("b", { text: title }), h("small", { text: parts.join(" · ") })),
+      acts));
+  }
+}
+async function exRun(code, act) {
+  exBusy = code; exBusyAct = act;
+  exShowErr("");
+  exRender();
+  try {
+    const d = await api(act === "del" ? "/extras/delete" : "/extras/download", jsonBody("POST", { lang: code }));
+    exInfo = d;
+    if (d.result === "installed" || d.result === "removed") {
+      delete exFailed[code];
+      await exSyncMenus();
+      toast(t(d.result === "installed" ? "vp_r_installed" : "vp_r_removed"));
+    } else {
+      if (act === "get") exFailed[code] = true;
+      exShowErr(exErrText(d.result));
+    }
+  } catch (e) {
+    if (act === "get") exFailed[code] = true;
+    if (e.status !== 401) exShowErr(e.message || t("err_network"));
+  } finally {
+    exBusy = ""; exBusyAct = "";
+    exRender();
+  }
+}
+async function exLoad() {
+  exShowErr("");
+  try {
+    exInfo = await api("/extras");
+    exRender();
+  } catch (e) {
+    if (e.status !== 401) exShowErr(e.message || t("err_network"));
+  }
+}
+function exOpen(sel) {
+  exTargetSel = sel || null;
+  const d = $("exLangDlg");
+  if (!d || typeof d.showModal !== "function") return;
+  applyI18n(d);
+  $("exLangSearch").value = "";
+  exShowErr("");
+  d.showModal();
+  if (exInfo) exRender();
+  exLoad();
+  $("exLangSearch").focus();
+}
+$("exLangSearch").addEventListener("input", exRender);
+$("exLangClose").addEventListener("click", () => $("exLangDlg").close());
+async function exAutoCheck(settingsResp) {
+  if (!S || !S.extras_auto) return;
+  const navLangs = Array.from(navigator.languages || [navigator.language || ""]).filter(Boolean);
+  if (!navLangs.length) return;
+  const firstVisit = settingsResp && settingsResp.language_chosen === false && !qs.get("lang") && !store.get("pca.lang");
+  const primaryCore = matchLang(navLangs[0]);
+  try {
+    const res = await api("/extras/auto", jsonBody("POST", { browser: navLangs }));
+    if (!res || !Array.isArray(res.started) || !res.started.length) return;
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 1200));
+      const info = await api("/extras");
+      if (!info.running) break;
+    }
+    await exSyncMenus();
+    if (firstVisit && !primaryCore) {
+      const picked = res.started.find((x) => x.kind === "lang" && x.code);
+      if (picked && offeredLangs("console").some((x) => x.code === picked.code)) {
+        const prev = lang;
+        if (await chooseLang(picked.code, true)) {
+          const info = LANG_INFO[picked.code];
+          $("exAutoUndoText").textContent = t("ex_switched", { lang: (info && info.native) || picked.code });
+          $("exAutoUndo").hidden = false;
+          $("exAutoUndoBtn").onclick = async () => {
+            await chooseLang(prev, true);
+            store.set("pca.lang", prev);
+            $("exAutoUndo").hidden = true;
+          };
+          $("exAutoUndoClose").onclick = () => { $("exAutoUndo").hidden = true; };
+        }
+      }
+    }
+  } catch (_) {}
+}
 const regionOfCountry = (cc) => (cc && packRegions && packRegions.find((r) => Array.isArray(r.countries) && r.countries.includes(cc))) || null;
 const regionNamers = {};
 // A country's name in one language ("" when the browser has none for it).

@@ -114,7 +114,8 @@ Bageo never answers preflights. This covers:
 - `POST /calls/api/errands`, `…/{id}/cancel`, `…/{id}/retry`, `…/{id}/say`;
 - `POST /calls/api/backup/run`, `…/export`, `…/file-ticket`, `…/restore`, `…/delete`, `…/unlock`, `…/apply`, `…/discard`, `…/open-folder` (`POST /calls/api/backup/import` needs an `X-Filename` header instead).
 - `POST /calls/api/packs/update` and `POST /calls/api/packs/restore`.
-- `POST /calls/api/voices/download` and `POST /calls/api/voices/delete` (`POST /calls/api/voices/import` takes the zip as `application/zip` instead).
+- `POST /calls/api/voices/download` and `POST /calls/api/voices/delete` (`POST /calls/api/voices/import` takes the zip as `application/zip` instead);
+- `POST /calls/api/extras/download`, `POST /calls/api/extras/delete` and `POST /calls/api/extras/auto`.
 
 Where a route allows an empty body, it counts as `{}`. This is the second line
 of defence. The first is setting a password (`CALLS_UI_TOKEN`) whenever your
@@ -240,7 +241,7 @@ Details for `GET /calls/api/settings`:
 - Secrets come back masked (`"abc…wxyz"`) with a `<name>_set` flag.
 - Notification channels come back with empty `url` / `token` plus `url_hint`, `token_hint`, `url_set`, `token_set`.
 - Read-only helpers: `default_prompt`, `voices`, `ambience_kinds`, `languages`, `countries` (ISO codes for *Main language for each SIM*), `seen_sim_countries` (SIM countries the phones reported since Bageo started), `notify_kinds`, `sample_lines`, `summary_ready`.
-- `languages` is a list of `{code, native, en, zh, dir, stage, reviewed}`: the nine core languages (`stage` `console`), then each other Gemini Live language the translations carry far enough. `stage` `call`: the AI can answer and talk in it (`language`, `sim_languages`); `notify`: notifications, summaries and chat replies too (`notify_language`). `reviewed` is false until a native speaker checked the translation. `dir` is `rtl` for languages written right to left. `language`, `notify_language` and `sim_languages` accept these codes; a stored code whose language no longer goes far enough (the translations went back) is kept and read as English.
+- `languages` is a list of `{code, native, en, zh, dir, stage, reviewed, downloaded, help}`: the nine core languages (`stage` `console`, `downloaded` `true`), plus each extra Gemini Live language already downloaded on this computer or referenced in `language`, `notify_language` or `sim_languages`. `stage` `call`: the AI can answer and talk in it (`language`, `sim_languages`); `notify`: notifications, summaries and chat replies too (`notify_language`); `console`: the console can switch to it too. `reviewed` is false until a native speaker checked the translation. `dir` is `rtl` for languages written right to left.
 
 Fields worth knowing (all of them are in `RuntimeSettings` in
 [`settings_store.rs`](../../crates/agent/src/settings_store.rs) and on the
@@ -272,6 +273,7 @@ Fields worth knowing (all of them are in `RuntimeSettings` in
 | `ui_password` | Password for external console/API access (masked on read; `"ui_password_clear": true` clears it). |
 | `country_code` | Digits only (`886`, `1`). Not shown in the console; a value here wins over `COUNTRY_CODE`. |
 | `gemini_thinking_level` | `low` (default) / `medium` / `high`, for thinking models only. |
+| `extras_auto` | `true` (default) / `false`: when the console opens, download missing extra language packs matching settings or the browser and the home country's mascot art from GitHub (`POST /calls/api/extras/auto`). |
 
 Rules for `PUT`:
 
@@ -760,7 +762,13 @@ Three routes show and update the local data the AI uses for each country's habit
 |---|---|
 | `GET /calls/api/packs/update` | The data in use: `{version, date, builtin, regions, locales: {version, date, builtin, languages}, voice_list_kept, running, last_check}`. `last_check` also has `pack_result` and `locales_result`. |
 | `POST /calls/api/packs/update` | Body `{}`. Checks for newer files now and installs them: the same fields as `GET`, plus `result` (`updated` when either file was). |
-| `POST /calls/api/packs/restore` | Body `{}`. Deletes the downloaded data and translations, and a downloaded voice list (`voice_list_kept`), and goes back to the ones built into Bageo: the same fields, with `result` `restored` (`busy` while a check runs; `io` when a file cannot be deleted, and then that one stays in use). |
+| `POST /calls/api/packs/restore` | Body `{}`. Deletes the downloaded data and translations, and a downloaded voice list (`voice_list_kept`) and extras index (`extras_index_kept`), and goes back to the ones built into Bageo: the same fields, with `result` `restored` (`busy` while a check runs; `io` when a file cannot be deleted, and then that one stays in use). |
+| `GET /calls/api/extras` | All 70 extra languages and known region art: `{ok, version, extras_auto, running, langs, art}`. |
+| `POST /calls/api/extras/download` | Body `{"lang": "<code>"}` or `{"art": "<region>"}`. Downloads and installs one extra language pack or region mascot art file straight from GitHub; returns `{..., result}`. |
+| `POST /calls/api/extras/delete` | Body `{"lang": "<code>"}` or `{"art": "<region>"}`. Deletes a downloaded extra file (`in_use` if the language is still set in settings, `removed`, `not_listed`, `restart`). |
+| `POST /calls/api/extras/auto` | Body `{"browser": ["..."]}`. When `extras_auto` is `true`, queues up to 3 missing items (settings languages, first browser tag, `local_reviewed` home region art) in the background: `{ok: true, started}`. |
+| `GET /calls/extras/art/{file}` | Public static route serving an already-downloaded and verified `art-<region>.json` file (never triggers a download; `no-cache`, `nosniff`). |
+| `GET /calls/i18n/desktop/{file}` | Public static route serving a downloaded extra language's desktop widget strings (`<code>.json`) with English fallback per missing key. |
 
 Details:
 
@@ -768,6 +776,7 @@ Details:
 - `result`: `up_to_date`, `updated` (calls from now on use it; a call already going keeps the old data), `offline` (no connection, a time-out or GitHub did not answer: try again later), `bad_pack` (the download was refused; nothing changed), `update_bageo` (the data needs a newer Bageo), `restart` (8 updates were installed since Bageo started: restart it first), `io` (it could not be saved) or `busy` (another check is running).
 - What Bageo checks: it reads `bageo-pack-index.json` (at most 16 KiB) from `https://github.com/h4lo-void/bageo-packs/releases/latest/download/`, then the file it names (a plain file name, at most 4 MiB) in the same release. Every address, including each of at most 5 redirects, must be `https` on the standard port, without a user name, on `github.com` (under that repository's releases), `objects.githubusercontent.com` or `release-assets.githubusercontent.com`. The size and SHA-256 must match the index, the index's `format` and `min_bageo` must fit this Bageo, and the version must be newer than the one in use. The file is then checked in full, like the built-in one, and renamed into place in one step. The address cannot be changed by a setting.
 - The downloaded version is kept as `packs/bageo-pack.json` in the data folder and checked again each time Bageo starts; a download left unfinished there is deleted.
+- On-demand extra language packs (`lang-<code>.json.gz`, up to 600 KiB compressed and unpacked; calls already have all 70 languages built in) and region art files (`art-<region>.json`, up to 64 KiB, strict SVG element/attribute allowlist) come from `bageo-extras-index.json` (up to 256 KiB) in the same GitHub repository and live under `packs/extras/`. Extra packs are not backed up.
 
 ## Voice downloads
 

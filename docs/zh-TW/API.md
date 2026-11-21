@@ -87,7 +87,8 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - `POST /calls/api/errands`、`…/{id}/cancel`、`…/{id}/retry`、`…/{id}/say`；
 - `POST /calls/api/backup/run`、`…/export`、`…/file-ticket`、`…/restore`、`…/delete`、`…/unlock`、`…/apply`、`…/discard`、`…/open-folder`（`POST /calls/api/backup/import` 則改成要帶 `X-Filename` 標頭）。
 - `POST /calls/api/packs/update` 和 `POST /calls/api/packs/restore`。
-- `POST /calls/api/voices/download` 和 `POST /calls/api/voices/delete`（`POST /calls/api/voices/import` 改成用 `application/zip` 送 zip 檔）。
+- `POST /calls/api/voices/download` 和 `POST /calls/api/voices/delete`（`POST /calls/api/voices/import` 改成用 `application/zip` 送 zip 檔）；
+- `POST /calls/api/extras/download`、`POST /calls/api/extras/delete` 和 `POST /calls/api/extras/auto`。
 
 允許空 body 的路由，空 body 當成 `{}`。這是第二道防線；第一道是控制台對區網開放時一定要設密碼（`CALLS_UI_TOKEN`）。
 
@@ -214,7 +215,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - 機密欄位以遮罩回傳（`"abc…wxyz"`），附一個 `<name>_set` 旗標。
 - 通知管道回傳時 `url`／`token` 是空的，另外附 `url_hint`、`token_hint`、`url_set`、`token_set`。
 - 唯讀的輔助欄位：`default_prompt`、`voices`、`ambience_kinds`、`languages`、`countries`（「各 SIM 卡的主要語言」可選的國家代碼）、`seen_sim_countries`（Bageo 啟動後手機回報過的 SIM 卡國家）、`notify_kinds`、`sample_lines`、`summary_ready`。
-- `languages` 是 `{code, native, en, zh, dir, stage, reviewed}` 的清單：先列核心九種語言（`stage` 是 `console`），再列翻譯已經做到位的其他 Gemini Live 語言。`stage` 是 `call`：AI 能用這個語言接聽與回話（`language`、`sim_languages`）；`notify`：通知、摘要、聊天室回覆也能用（`notify_language`）。當地人還沒確認過翻譯時 `reviewed` 是 false。由右到左書寫的語言 `dir` 是 `rtl`。`language`、`notify_language`、`sim_languages` 都收這些代碼；已存的代碼如果因為翻譯退回而不再到位，值照樣保留，使用時當英文。
+- `languages` 是 `{code, native, en, zh, dir, stage, reviewed, downloaded, help}` 的清單：核心九種語言（`stage` 是 `console`、`downloaded` 是 `true`），加上這台電腦已下載或設定（`language`、`notify_language`、`sim_languages`）用到中的其他 Gemini Live 語言。`stage` 是 `call`：AI 能用這個語言接聽與回話；`notify`：通知、摘要與聊天室回覆也能用；`console`：控制台也能切換成這個語言。當地人還沒確認過翻譯時 `reviewed` 是 false。由右到左書寫的語言 `dir` 是 `rtl`。
 
 值得知道的欄位（全部都在 [`settings_store.rs`](../../crates/agent/src/settings_store.rs) 的 `RuntimeSettings` 和[設定參考](SETTINGS.md)裡）：
 
@@ -244,6 +245,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 | `ui_password` | 外部存取網頁控制台與 API 的密碼（讀取時遮罩；`"ui_password_clear": true` 可清空）。 |
 | `country_code` | 只有數字（`886`、`1`）。控制台不顯示；這裡有值時優先於 `COUNTRY_CODE`。 |
 | `gemini_thinking_level` | `low`（預設）／`medium`／`high`，只對 thinking 模型有效。 |
+| `extras_auto` | `true`（預設）／`false`：登入控制台時自動從 GitHub 下載設定或瀏覽器用到且缺少的語言包，以及所在國家的地區插圖（`POST /calls/api/extras/auto`）。 |
 
 `PUT` 的規則：
 
@@ -709,7 +711,13 @@ Content-Type: application/json
 |---|---|
 | `GET /calls/api/packs/update` | 目前使用的資料：`{version, date, builtin, regions, locales: {version, date, builtin, languages}, voice_list_kept, running, last_check}`。`last_check` 另有 `pack_result` 和 `locales_result`。 |
 | `POST /calls/api/packs/update` | Body `{}`。馬上檢查有沒有新版，有就安裝：欄位同 `GET`，另加 `result`（任一個檔更新了就是 `updated`）。 |
-| `POST /calls/api/packs/restore` | Body `{}`。刪掉下載的資料與翻譯，以及下載的語音清單（`voice_list_kept`），改回 Bageo 內建的版本：欄位同上，`result` 是 `restored`（正在檢查時是 `busy`；有檔案刪不掉時是 `io`，刪不掉的那個繼續使用）。 |
+| `POST /calls/api/packs/restore` | Body `{}`。刪掉下載的資料與翻譯，以及下載的語音清單（`voice_list_kept`）和擴充包清單（`extras_index_kept`），改回 Bageo 內建的版本：欄位同上，`result` 是 `restored`（正在檢查時是 `busy`；有檔案刪不掉時是 `io`，刪不掉的那個繼續使用）。 |
+| `GET /calls/api/extras` | 全部 70 種擴充語言與已知地區插圖清單：`{ok, version, extras_auto, running, langs, art}`。 |
+| `POST /calls/api/extras/download` | Body `{"lang": "<code>"}` 或 `{"art": "<region>"}`。直接從 GitHub 下載並安裝一個語言擴充包或地區插圖檔，回 `{..., result}`。 |
+| `POST /calls/api/extras/delete` | Body `{"lang": "<code>"}` 或 `{"art": "<region>"}`。刪除已下載的擴充檔（設定仍在使用時回 `in_use`，其餘為 `removed`、`not_listed`、`restart`）。 |
+| `POST /calls/api/extras/auto` | Body `{"browser": ["..."]}`。`extras_auto` 為 `true` 時，在背景排入最多 3 個缺少項目（設定用到的語言、第一個符合的瀏覽器語言、已校對的所在國家插圖）：`{ok: true, started}`。 |
+| `GET /calls/extras/art/{file}` | 公開靜態路由，只回傳這台電腦已下載且驗證過的 `art-<region>.json`（不會觸發下載；附 `no-cache`、`nosniff`）。 |
+| `GET /calls/i18n/desktop/{file}` | 公開靜態路由，回傳已下載語言的桌面狀態小程式文字（`<code>.json`），缺少的鍵值自動退回英文。 |
 
 細節：
 
@@ -717,6 +725,7 @@ Content-Type: application/json
 - `result`：`up_to_date`、`updated`（之後的電話都用新的；正在進行的通話照用舊的）、`offline`（沒有網路、逾時或 GitHub 沒回應，稍後再試）、`bad_pack`（下載的檔被拒收，什麼都沒改）、`update_bageo`（這份資料要更新版的 Bageo）、`restart`（這次啟動已經裝了 8 次更新，請先重新開啟 Bageo）、`io`（存不了檔）或 `busy`（已經有檢查在跑）。
 - Bageo 怎麼檢查：從 `https://github.com/h4lo-void/bageo-packs/releases/latest/download/` 讀 `bageo-pack-index.json`（最多 16 KiB），再下載同一個 Release 裡它指名的檔（只能是純檔名，最多 4 MiB）。每個網址，包括最多 5 次轉址的每一跳，都必須是 `https`、標準連接埠、不帶使用者名稱，主機只能是 `github.com`（限該資料庫的 Release）、`objects.githubusercontent.com` 或 `release-assets.githubusercontent.com`。大小和 SHA-256 要跟 index 一致，index 的 `format` 與 `min_bageo` 要符合這版 Bageo，版本要比現在用的新。接著跟內建版本一樣做完整檢查，再一次改名到位。下載來源不能用設定改。
 - 下載的版本存在資料資料夾的 `packs/bageo-pack.json`，Bageo 每次啟動都會再檢查一次；沒下載完的暫存檔會刪掉。
+- 依需求下載的語言擴充包（`lang-<code>.json.gz`，壓縮與解開後各最多 600 KiB；通話用的 70 種語言全部已內建）與地區插圖（`art-<region>.json`，最多 64 KiB，僅允許白名單 SVG 元素與屬性）來自同一個 GitHub 資料庫的 `bageo-extras-index.json`（最多 256 KiB），放在 `packs/extras/`，不列入備份。
 
 ## 語音下載
 

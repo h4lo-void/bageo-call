@@ -260,7 +260,7 @@ fn version_at_least(have: &str, need: &str) -> bool {
 }
 
 /// This Bageo is at least min (x.y.z).
-fn bageo_at_least(min: &str) -> bool {
+pub(crate) fn bageo_at_least(min: &str) -> bool {
     version_at_least(BAGEO_VERSION, min)
 }
 
@@ -645,7 +645,11 @@ pub(crate) fn restore_all(voices: &Path) -> &'static str {
         tracing::warn!("voice list: cannot delete the downloaded one ({e}); still in use");
         return Outcome::Io.code();
     }
-    tracing::info!("local data pack, translations and voice list: back to the built-in ones");
+    if let Err(e) = crate::extras::restore_builtin_index(&crate::extras::extras_root()) {
+        tracing::warn!("extras list: cannot delete the downloaded one ({e}); still in use");
+        return Outcome::Io.code();
+    }
+    tracing::info!("local data pack, translations, voice list and extras list: back to the built-in ones");
     "restored"
 }
 
@@ -682,6 +686,7 @@ fn status_json() -> Value {
         },
         // A downloaded voice list is kept: "Restore" puts the built-in one back too.
         "voice_list_kept": crate::voice_packs::kept_index(&crate::voice_packs::voices_root()),
+        "extras_index_kept": crate::extras::kept_index(&crate::extras::extras_root()),
         "running": RUNNING.load(Ordering::SeqCst),
         "last_check": LAST.lock().unwrap_or_else(|e| e.into_inner()).clone(),
     })

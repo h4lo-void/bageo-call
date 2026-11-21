@@ -1276,6 +1276,23 @@
     "lang_fallback": "この言語は今は使えないため、通話はしばらく英語になります。",
     "lang_load_failed": "その言語を読み込めませんでした。今の言語のままにします。",
     "lang_unreviewed_note": "この言語は、まだ現地の人の確認が済んでいません。",
-    "lang_help_fix": "修正を手伝う"
+    "lang_help_fix": "修正を手伝う",
+    "f_extras_auto": "必要な言語を自動でダウンロード",
+    "f_extras_auto_h": "サインイン時に、ブラウザーや SIM の言語、地域のイラストを GitHub から自動で取得します。",
+    "ex_more": "その他の言語…",
+    "ex_title": "その他の言語",
+    "ex_desc": "70 言語すべてでそのまま通話できます。言語パックを入れると、操作画面や通知にも使えます。GitHub から直接取得します。",
+    "ex_search_ph": "言語を検索",
+    "ex_download": "ダウンロード",
+    "ex_downloading": "ダウンロード中…",
+    "ex_deleting": "削除中…",
+    "ex_use": "使う",
+    "ex_in_use": "設定で使用中",
+    "ex_lvl_console": "コンソールと通知",
+    "ex_lvl_notify": "通知と要約",
+    "ex_lvl_basic": "通話のみ",
+    "ex_switched": "コンソールを{lang}に切り替えました。",
+    "ex_r_in_use": "設定で使われているため削除できません。",
+    "ex_empty": "一致する言語がありません"
   }
 }

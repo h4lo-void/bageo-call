@@ -200,8 +200,8 @@ pub fn gate(f: &Facts) -> Gate {
         "/calls/api/control/inbound" if f.mcp_token_set => return Gate::Pass,
         _ => {}
     }
-    // The console's language files: texts of the page, nothing private.
-    if f.path.starts_with("/calls/i18n/") {
+    // The console's language files and mascot region art: static assets, nothing private.
+    if f.path.starts_with("/calls/i18n/") || f.path.starts_with("/calls/extras/art/") {
         return Gate::Pass;
     }
     if ics_what(f.path).is_some() && f.ics_key_ok {
@@ -753,6 +753,8 @@ mod tests {
             "/calls/api/backup/export",
             "/calls/api/control/inbound",
             "/calls/api/call/abc/event.ics",
+            "/calls/api/extras",
+            "/calls/api/extras/download",
             "/v1/turn",
         ] {
             assert_eq!(gate(&outside(path)), Gate::NeedPassword, "{path}");
@@ -763,6 +765,8 @@ mod tests {
             "/calls/manifest.webmanifest",
             "/calls/icon-192.png",
             "/calls/i18n/ja.json",
+            "/calls/i18n/desktop/it.json",
+            "/calls/extras/art/art-vn.json",
             "/calls/api/quick-action",
             "/mcp",
             "/api/phone-pairing/claim",

@@ -303,7 +303,7 @@ fn fulfill_err_response(e: anyhow::Error) -> Response {
 
 /// An embedded text (the page, a language file) with its ETag: a 304 when the
 /// browser has it, else the gzip when it takes gzip.
-fn asset_response(headers: &HeaderMap, asset: &crate::console_i18n::Asset, content_type: &'static str, vary: &'static str) -> Response {
+pub(crate) fn asset_response(headers: &HeaderMap, asset: &crate::console_i18n::Asset, content_type: &'static str, vary: &'static str) -> Response {
     let not_modified = headers
         .get(header::IF_NONE_MATCH)
         .and_then(|v| v.to_str().ok())
@@ -313,6 +313,7 @@ fn asset_response(headers: &HeaderMap, asset: &crate::console_i18n::Asset, conte
         .header(header::ETAG, asset.etag.as_str())
         // Revalidate every load (cheap 304) so a rebuilt agent ships the new UI at once.
         .header(header::CACHE_CONTROL, "no-cache")
+        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
         .header(header::VARY, vary);
     if not_modified {
         return builder
@@ -3617,10 +3618,10 @@ async fn quick_action_run(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn quick_state(root: &std::path::Path) -> CallsState {
+    pub(crate) fn quick_state(root: &std::path::Path) -> CallsState {
         let mut base = Settings::from_env();
         base.calls_data_dir = root.to_string_lossy().into_owned();
         base.telegram_bot_token = String::new();
@@ -3652,7 +3653,7 @@ mod tests {
         }
     }
 
-    async fn body_text(r: Response) -> String {
+    pub(crate) async fn body_text(r: Response) -> String {
         let b = axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap();
         String::from_utf8_lossy(&b).into_owned()
     }
@@ -5421,5 +5422,6 @@ pub fn router(state: CallsState) -> Router {
         .merge(crate::backup::router())
         .merge(crate::pack_update::router())
         .merge(crate::voice_packs::router())
+        .merge(crate::extras::router())
         .with_state(state)
 }

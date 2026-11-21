@@ -1276,6 +1276,23 @@
     "lang_fallback": "這個語言目前不能用，通話會先用英文。",
     "lang_load_failed": "無法載入這個語言，維持目前的語言。",
     "lang_unreviewed_note": "這個語言還沒有當地人校對過。",
-    "lang_help_fix": "幫忙修正"
+    "lang_help_fix": "幫忙修正",
+    "f_extras_auto": "自動下載需要的語言",
+    "f_extras_auto_h": "登入時會自動從 GitHub 下載瀏覽器或 SIM 卡用到的語言與地區插圖。",
+    "ex_more": "更多語言…",
+    "ex_title": "其他語言",
+    "ex_desc": "全部 70 種語言都能直接通話；下載語言包後，控制台或通知也能切換成該語言。直接從 GitHub 下載。",
+    "ex_search_ph": "搜尋語言",
+    "ex_download": "下載",
+    "ex_downloading": "下載中…",
+    "ex_deleting": "刪除中…",
+    "ex_use": "使用",
+    "ex_in_use": "設定使用中",
+    "ex_lvl_console": "控制台與通知",
+    "ex_lvl_notify": "通知與摘要",
+    "ex_lvl_basic": "僅通話",
+    "ex_switched": "控制台已切換為{lang}。",
+    "ex_r_in_use": "設定仍在使用這個語言，請先換掉再刪除。",
+    "ex_empty": "找不到符合的語言"
   }
 }

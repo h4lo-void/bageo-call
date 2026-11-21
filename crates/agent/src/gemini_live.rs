@@ -13318,14 +13318,12 @@ mod translated_ai_goodbyes {
     #[test]
     fn the_ais_goodbye_in_each_translated_language_is_heard_and_other_lines_are_not() {
         crate::locales_store::testing::use_builtin();
-        // Languages whose farewells passed their examples ("vi" did not: its
-        // example "Thôi chào em nhé." is no closing to the classifier).
         let checked = |code: &str| {
             crate::locales_store::builtin()
                 .phrases(crate::locale::Ext::from_code(code).unwrap())
                 .is_some_and(|p| !p.farewells.is_empty())
         };
-        assert_eq!(SAID.iter().filter(|(c, _, _)| !checked(c)).map(|(c, _, _)| *c).collect::<Vec<_>>(), ["vi"]);
+        assert!(SAID.iter().all(|(c, _, _)| checked(c)));
         for (code, yes, no) in SAID {
             assert_eq!(ai_says_translated_farewell(yes), checked(code), "{code}: {yes}");
             assert!(turn_ends_with_closing(yes), "{code}: {yes}");

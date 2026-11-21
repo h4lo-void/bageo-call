@@ -1276,6 +1276,23 @@
     "lang_fallback": "This language isn't available right now, so calls will be in English for now.",
     "lang_load_failed": "Couldn't load that language. Staying in the current one.",
     "lang_unreviewed_note": "This language has not been checked by a native speaker yet.",
-    "lang_help_fix": "Help fix it"
+    "lang_help_fix": "Help fix it",
+    "f_extras_auto": "Download matching languages automatically",
+    "f_extras_auto_h": "Downloads your browser or SIM languages and local artwork straight from GitHub when signed in.",
+    "ex_more": "More languages…",
+    "ex_title": "Other languages",
+    "ex_desc": "All 70 languages work for calls right away. Download a language pack to also show menus or notifications in it. Downloaded straight from GitHub.",
+    "ex_search_ph": "Search language",
+    "ex_download": "Download",
+    "ex_downloading": "Downloading…",
+    "ex_deleting": "Deleting…",
+    "ex_use": "Use",
+    "ex_in_use": "In use in settings",
+    "ex_lvl_console": "Console & notifications",
+    "ex_lvl_notify": "Notifications & summaries",
+    "ex_lvl_basic": "Calls only",
+    "ex_switched": "Switched console to {lang}.",
+    "ex_r_in_use": "Can't delete while selected in settings.",
+    "ex_empty": "No matching languages"
   }
 }

@@ -1276,6 +1276,23 @@
     "lang_fallback": "这个语言目前不能用，通话会先用英文。",
     "lang_load_failed": "无法加载这个语言，保持当前语言。",
     "lang_unreviewed_note": "这个语言还没有当地人校对过。",
-    "lang_help_fix": "帮忙修正"
+    "lang_help_fix": "帮忙修正",
+    "f_extras_auto": "自动下载需要的语言",
+    "f_extras_auto_h": "登录时会自动从 GitHub 下载浏览器或 SIM 卡用到的语言与地区插图。",
+    "ex_more": "更多语言…",
+    "ex_title": "其他语言",
+    "ex_desc": "全部 70 种语言都能直接通话；下载语言包后，控制台或通知也能切换成该语言。直接从 GitHub 下载。",
+    "ex_search_ph": "搜索语言",
+    "ex_download": "下载",
+    "ex_downloading": "下载中…",
+    "ex_deleting": "删除中…",
+    "ex_use": "使用",
+    "ex_in_use": "设置使用中",
+    "ex_lvl_console": "控制台与通知",
+    "ex_lvl_notify": "通知与摘要",
+    "ex_lvl_basic": "仅通话",
+    "ex_switched": "控制台已切换为{lang}。",
+    "ex_r_in_use": "设置仍在使用这个语言，请先换掉再删除。",
+    "ex_empty": "找不到匹配的语言"
   }
 }

@@ -1276,6 +1276,23 @@
     "lang_fallback": "Este idioma não está disponível agora, então por enquanto as ligações serão em inglês.",
     "lang_load_failed": "Não foi possível carregar esse idioma. Continuamos no atual.",
     "lang_unreviewed_note": "Este idioma ainda não foi conferido por um falante nativo.",
-    "lang_help_fix": "Ajudar a corrigir"
+    "lang_help_fix": "Ajudar a corrigir",
+    "f_extras_auto": "Baixar automaticamente os idiomas necessários",
+    "f_extras_auto_h": "Ao entrar, baixa direto do GitHub os idiomas do navegador ou do SIM e as ilustrações locais.",
+    "ex_more": "Mais idiomas…",
+    "ex_title": "Outros idiomas",
+    "ex_desc": "Todos os 70 idiomas já funcionam nas ligações. Baixe um pacote para usar também menus ou avisos nesse idioma. Direto do GitHub.",
+    "ex_search_ph": "Buscar idioma",
+    "ex_download": "Baixar",
+    "ex_downloading": "Baixando…",
+    "ex_deleting": "Excluindo…",
+    "ex_use": "Usar",
+    "ex_in_use": "Em uso nos ajustes",
+    "ex_lvl_console": "Console e notificações",
+    "ex_lvl_notify": "Notificações e resumos",
+    "ex_lvl_basic": "Somente chamadas",
+    "ex_switched": "Console alterado para {lang}.",
+    "ex_r_in_use": "Não pode excluir enquanto estiver em uso.",
+    "ex_empty": "Nenhum idioma correspondente"
   }
 }

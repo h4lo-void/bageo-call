@@ -87,7 +87,9 @@
   "ab_days": {
     "where": "the About you section. English: {n} days",
     "who": "the owner",
-    "placeholders": ["{n}"]
+    "placeholders": [
+      "{n}"
+    ]
   },
   "ab_extra": {
     "where": "the About you section. English: Anything else the AI should know",
@@ -107,7 +109,9 @@
   "ab_parcel_ph": {
     "where": "the About you section. English: e.g. {x}",
     "who": "the owner",
-    "placeholders": ["{x}"]
+    "placeholders": [
+      "{x}"
+    ]
   },
   "ab_parcel_ph0": {
     "where": "the About you section. English: e.g. Leave it at the front desk",
@@ -142,7 +146,9 @@
   "ab_suggested": {
     "where": "the About you section. English: Talk style set to “{level}” to match. You can change it.",
     "who": "the owner",
-    "placeholders": ["{level}"]
+    "placeholders": [
+      "{level}"
+    ]
   },
   "ab_version": {
     "where": "the About you section. English: Version",
@@ -377,7 +383,9 @@
   "ap_res_sms_failed": {
     "where": "a label or sentence in the console. English: The text didn't go out: {why}",
     "who": "the owner",
-    "placeholders": ["{why}"]
+    "placeholders": [
+      "{why}"
+    ]
   },
   "ap_res_sms_none": {
     "where": "a label or sentence in the console. English: This number can't take texts, so call them back yourself",
@@ -412,7 +420,9 @@
   "ap_sms_from_call": {
     "where": "a label or sentence in the console. English: {phone} (took the call)",
     "who": "the owner",
-    "placeholders": ["{phone}"]
+    "placeholders": [
+      "{phone}"
+    ]
   },
   "ap_time_unconfirmed": {
     "where": "a label or sentence in the console. English: The caller never confirmed this time read back; check it with them before you answer",
@@ -532,13 +542,17 @@
   "bk_dir_ph_d": {
     "where": "a label or sentence in the console. English: Default location: {dir}",
     "who": "the owner",
-    "placeholders": ["{dir}"]
+    "placeholders": [
+      "{dir}"
+    ]
   },
   "bk_dlg_file": {
     "same_ok": true,
     "where": "a label or sentence in the console. English: File: {name}",
     "who": "the owner",
-    "placeholders": ["{name}"]
+    "placeholders": [
+      "{name}"
+    ]
   },
   "bk_dlg_has": {
     "where": "a label or sentence in the console. English: Choose what to restore:",
@@ -558,7 +572,9 @@
   "bk_dlg_size": {
     "where": "a label or sentence in the console. English: Size: {size}",
     "who": "the owner",
-    "placeholders": ["{size}"]
+    "placeholders": [
+      "{size}"
+    ]
   },
   "bk_dlg_title": {
     "where": "a label or sentence in the console. English: Restore from this backup?",
@@ -569,17 +585,23 @@
     "same_ok": true,
     "where": "a label or sentence in the console. English: Bageo {ver}",
     "who": "the owner",
-    "placeholders": ["{ver}"]
+    "placeholders": [
+      "{ver}"
+    ]
   },
   "bk_dlg_when": {
     "where": "a label or sentence in the console. English: Backup made {time}",
     "who": "the owner",
-    "placeholders": ["{time}"]
+    "placeholders": [
+      "{time}"
+    ]
   },
   "bk_done_apply": {
     "where": "a label or sentence in the console. English: Restored. Your previous settings were saved as {name}.",
     "who": "the owner",
-    "placeholders": ["{name}"]
+    "placeholders": [
+      "{name}"
+    ]
   },
   "bk_done_delete": {
     "where": "a label or sentence in the console. English: Backup deleted.",
@@ -594,7 +616,9 @@
   "bk_done_run": {
     "where": "a label or sentence in the console. English: Backup saved: {name}",
     "who": "the owner",
-    "placeholders": ["{name}"]
+    "placeholders": [
+      "{name}"
+    ]
   },
   "bk_encrypt": {
     "where": "a label or sentence in the console. English: Encrypt backup files",
@@ -882,7 +906,9 @@
   "bk_show_all": {
     "where": "a label or sentence in the console. English: Show all ({n})",
     "who": "the owner",
-    "placeholders": ["{n}"]
+    "placeholders": [
+      "{n}"
+    ]
   },
   "bk_show_less": {
     "where": "a label or sentence in the console. English: Show only the latest 10",
@@ -905,7 +931,9 @@
   "bk_st_next": {
     "where": "a label or sentence in the console. English: Next backup: {time}",
     "who": "the owner",
-    "placeholders": ["{time}"]
+    "placeholders": [
+      "{time}"
+    ]
   },
   "bk_st_none": {
     "where": "a label or sentence in the console. English: No backup yet.",
@@ -915,7 +943,9 @@
   "bk_st_ok": {
     "where": "a label or sentence in the console. English: Last backup: {time}, done.",
     "who": "the owner",
-    "placeholders": ["{time}"]
+    "placeholders": [
+      "{time}"
+    ]
   },
   "bk_st_restoring": {
     "where": "a label or sentence in the console. English: Restoring…",
@@ -1072,7 +1102,9 @@
   "calls_cleared": {
     "where": "a label or sentence in the console. English: Deleted {n} calls",
     "who": "the owner",
-    "placeholders": ["{n}"]
+    "placeholders": [
+      "{n}"
+    ]
   },
   "cancel": {
     "where": "a label or sentence in the console. English: Cancel",
@@ -1213,12 +1245,16 @@
   "ct_delete_title": {
     "where": "a label or sentence in the console. English: Delete {name}?",
     "who": "the owner",
-    "placeholders": ["{name}"]
+    "placeholders": [
+      "{name}"
+    ]
   },
   "ct_deleted": {
     "where": "a label or sentence in the console. English: {name} deleted",
     "who": "the owner",
-    "placeholders": ["{name}"]
+    "placeholders": [
+      "{name}"
+    ]
   },
   "ct_edit_title": {
     "where": "a label or sentence in the console. English: Edit contact",
@@ -1243,7 +1279,9 @@
   "ct_exists": {
     "where": "a label or sentence in the console. English: This number is already saved for {name}.",
     "who": "the owner",
-    "placeholders": ["{name}"]
+    "placeholders": [
+      "{name}"
+    ]
   },
   "ct_export": {
     "where": "a label or sentence in the console. English: Export vCard",
@@ -1277,7 +1315,9 @@
   "ct_imp_dup": {
     "where": "a label or sentence in the console. English: Same number as {name}",
     "who": "the owner",
-    "placeholders": ["{name}"]
+    "placeholders": [
+      "{name}"
+    ]
   },
   "ct_imp_dup_mode": {
     "where": "a label or sentence in the console. English: Already saved",
@@ -1287,7 +1327,9 @@
   "ct_imp_dup_name": {
     "where": "a label or sentence in the console. English: Same name as {name}",
     "who": "the owner",
-    "placeholders": ["{name}"]
+    "placeholders": [
+      "{name}"
+    ]
   },
   "ct_imp_formats": {
     "where": "a label or sentence in the console. English: vCard, CSV, Excel, Word and text files all work. PDFs and pictures are read by Gemini, ...",
@@ -1305,7 +1347,9 @@
   "ct_imp_go": {
     "where": "a label or sentence in the console. English: Import {n}",
     "who": "the owner",
-    "placeholders": ["{n}"]
+    "placeholders": [
+      "{n}"
+    ]
   },
   "ct_imp_merge": {
     "where": "a label or sentence in the console. English: Merge (add new numbers and notes)",
@@ -1325,12 +1369,16 @@
   "ct_imp_reading": {
     "where": "a label or sentence in the console. English: Reading {file}…",
     "who": "the owner",
-    "placeholders": ["{file}"]
+    "placeholders": [
+      "{file}"
+    ]
   },
   "ct_imp_saving": {
     "where": "a label or sentence in the console. English: Saving {n}…",
     "who": "the owner",
-    "placeholders": ["{n}"]
+    "placeholders": [
+      "{n}"
+    ]
   },
   "ct_imp_skip": {
     "where": "a label or sentence in the console. English: Skip",
@@ -1340,7 +1388,9 @@
   "ct_imp_skipped": {
     "where": "a label or sentence in the console. English: {n} entries without a name or number were left out.",
     "who": "the owner",
-    "placeholders": ["{n}"]
+    "placeholders": [
+      "{n}"
+    ]
   },
   "ct_imp_title": {
     "where": "a label or sentence in the console. English: Import contacts",
@@ -1560,7 +1610,9 @@
   "d_appt_sms_failed": {
     "where": "a label or sentence in the console. English: text not sent ({code})",
     "who": "the owner",
-    "placeholders": ["{code}"]
+    "placeholders": [
+      "{code}"
+    ]
   },
   "d_appt_sms_none": {
     "where": "a label or sentence in the console. English: number can't take texts",
@@ -1585,7 +1637,9 @@
   "d_block_done": {
     "where": "a label or sentence in the console. English: {num} is now on the Blacklist",
     "who": "the owner",
-    "placeholders": ["{num}"]
+    "placeholders": [
+      "{num}"
+    ]
   },
   "d_block_ok": {
     "where": "a label or sentence in the console. English: Add to Blacklist",
@@ -1595,12 +1649,16 @@
   "d_block_title": {
     "where": "a label or sentence in the console. English: Block {num}?",
     "who": "the owner",
-    "placeholders": ["{num}"]
+    "placeholders": [
+      "{num}"
+    ]
   },
   "d_blocked_already": {
     "where": "a label or sentence in the console. English: {num} is already on the Blacklist",
     "who": "the owner",
-    "placeholders": ["{num}"]
+    "placeholders": [
+      "{num}"
+    ]
   },
   "d_cal": {
     "where": "a label or sentence in the console. English: Calendar suggestion",
@@ -1890,7 +1948,9 @@
   "er_attempt": {
     "where": "a label or sentence in the console. English: Attempt {n}",
     "who": "the owner",
-    "placeholders": ["{n}"]
+    "placeholders": [
+      "{n}"
+    ]
   },
   "er_cancel_q": {
     "where": "a label or sentence in the console. English: Cancel",
@@ -2030,7 +2090,9 @@
   "er_fu_h": {
     "where": "a label or sentence in the console. English: The AI calls {who} again and replies with this.",
     "who": "the owner",
-    "placeholders": ["{who}"]
+    "placeholders": [
+      "{who}"
+    ]
   },
   "er_fu_title": {
     "where": "a label or sentence in the console. English: Reply, and have the AI call again",
@@ -2055,12 +2117,16 @@
   "er_hist_row": {
     "where": "a label or sentence in the console. English: Attempt {n}",
     "who": "the owner",
-    "placeholders": ["{n}"]
+    "placeholders": [
+      "{n}"
+    ]
   },
   "er_history": {
     "where": "a label or sentence in the console. English: Earlier attempts ({n})",
     "who": "the owner",
-    "placeholders": ["{n}"]
+    "placeholders": [
+      "{n}"
+    ]
   },
   "er_hung_up": {
     "where": "a label or sentence in the console. English: Hung up",
@@ -2070,7 +2136,9 @@
   "er_id_assistant": {
     "where": "a label or sentence in the console. English: {name}'s assistant",
     "who": "the owner",
-    "placeholders": ["{name}"]
+    "placeholders": [
+      "{name}"
+    ]
   },
   "er_id_assistant_anon": {
     "where": "a label or sentence in the console. English: Your assistant",
@@ -2095,7 +2163,9 @@
   "er_id_owner": {
     "where": "a label or sentence in the console. English: {name} in person",
     "who": "the owner",
-    "placeholders": ["{name}"]
+    "placeholders": [
+      "{name}"
+    ]
   },
   "er_id_owner_anon": {
     "where": "a label or sentence in the console. English: You in person",
@@ -2233,7 +2303,9 @@
   "er_phone_normal": {
     "where": "a label or sentence in the console. English: {name} (normal phone mode, the AI can't use it)",
     "who": "the owner",
-    "placeholders": ["{name}"]
+    "placeholders": [
+      "{name}"
+    ]
   },
   "er_pre_d": {
     "where": "a label or sentence in the console. English: Add them so the AI doesn't have to stop and ask during the call.",
@@ -2283,7 +2355,9 @@
   "er_q_left": {
     "where": "a label or sentence in the console. English: {n} s left",
     "who": "the owner",
-    "placeholders": ["{n}"]
+    "placeholders": [
+      "{n}"
+    ]
   },
   "er_q_over": {
     "where": "a label or sentence in the console. English: Time's up, the AI will decide",
@@ -2446,7 +2520,9 @@
   "er_via": {
     "where": "a label or sentence in the console. English: From {phone}",
     "who": "the owner",
-    "placeholders": ["{phone}"]
+    "placeholders": [
+      "{phone}"
+    ]
   },
   "er_watching": {
     "where": "a label or sentence in the console. English: You're watching: when unsure, the AI asks you first.",
@@ -2517,12 +2593,16 @@
   "err_bad_url": {
     "where": "an error the console shows. English: “{field}” must start with http:// or https://.",
     "who": "the owner",
-    "placeholders": ["{field}"]
+    "placeholders": [
+      "{field}"
+    ]
   },
   "err_bad_value": {
     "where": "an error the console shows. English: “{field}” does not look right.",
     "who": "the owner",
-    "placeholders": ["{field}"]
+    "placeholders": [
+      "{field}"
+    ]
   },
   "err_blocked_address": {
     "where": "an error the console shows. English: Bageo won't send to this address. Enter your notification service's own address.",
@@ -2612,12 +2692,16 @@
   "err_load": {
     "where": "an error the console shows. English: Could not load: {msg}",
     "who": "the owner",
-    "placeholders": ["{msg}"]
+    "placeholders": [
+      "{msg}"
+    ]
   },
   "err_missing_field": {
     "where": "an error the console shows. English: Fill in “{field}”.",
     "who": "the owner",
-    "placeholders": ["{field}"]
+    "placeholders": [
+      "{field}"
+    ]
   },
   "err_need_gemini_key": {
     "where": "an error the console shows. English: This kind of file is read by Gemini: add the Gemini API key in Settings first.",
@@ -2974,6 +3058,83 @@
     "who": "the owner",
     "placeholders": []
   },
+  "ex_deleting": {
+    "where": "a label or sentence in the console. English: Deleting…",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ex_desc": {
+    "where": "a label or sentence in the console. English: All 70 languages work for calls right away. Download a language pack to also ...",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ex_download": {
+    "where": "a label or sentence in the console. English: Download",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ex_downloading": {
+    "where": "a label or sentence in the console. English: Downloading…",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ex_empty": {
+    "where": "a label or sentence in the console. English: No matching languages",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ex_in_use": {
+    "where": "a label or sentence in the console. English: In use in settings",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ex_lvl_basic": {
+    "where": "a label or sentence in the console. English: Calls only",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ex_lvl_console": {
+    "where": "a label or sentence in the console. English: Console & notifications",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ex_lvl_notify": {
+    "where": "a label or sentence in the console. English: Notifications & summaries",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ex_more": {
+    "where": "a label or sentence in the console. English: More languages…",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ex_r_in_use": {
+    "where": "a label or sentence in the console. English: Can't delete while selected in settings.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ex_search_ph": {
+    "where": "a label or sentence in the console. English: Search language",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ex_switched": {
+    "where": "a label or sentence in the console. English: Switched console to {lang}.",
+    "who": "the owner",
+    "placeholders": [
+      "{lang}"
+    ]
+  },
+  "ex_title": {
+    "where": "a label or sentence in the console. English: Other languages",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ex_use": {
+    "where": "a label or sentence in the console. English: Use",
+    "who": "the owner",
+    "placeholders": []
+  },
   "export_csv": {
     "where": "a label or sentence in the console. English: Export as CSV",
     "who": "the owner",
@@ -3076,6 +3237,16 @@
   },
   "f_er_identity_h": {
     "where": "a label or sentence in the console. English: Who the AI says it is when it calls for you. Each errand can still pick its own.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "f_extras_auto": {
+    "where": "a label or sentence in the console. English: Download matching languages automatically",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "f_extras_auto_h": {
+    "where": "a label or sentence in the console. English: Downloads your browser or SIM languages and local artwork straight from GitHu...",
     "who": "the owner",
     "placeholders": []
   },
@@ -3263,7 +3434,9 @@
   "f_prompt_h": {
     "where": "a label or sentence in the console. English: Filled in, it replaces the talk style and local habits. Each answer style keeps its own...",
     "who": "the owner",
-    "placeholders": ["{owner}"]
+    "placeholders": [
+      "{owner}"
+    ]
   },
   "f_prompt_ph": {
     "where": "a label or sentence in the console. English: Empty: the built-in prompt is used",
@@ -3912,6 +4085,11 @@
     "who": "the owner",
     "placeholders": []
   },
+  "lang_help_fix": {
+    "where": "a link next to the line above that opens the public page where anyone can correct this language. English: Help fix it",
+    "who": "the owner",
+    "placeholders": []
+  },
   "lang_label": {
     "where": "the language menu and its notes. English: Language of this page",
     "who": "the owner",
@@ -3937,11 +4115,6 @@
     "who": "the owner",
     "placeholders": []
   },
-  "lang_help_fix": {
-    "where": "a link next to the line above that opens the public page where anyone can correct this language. English: Help fix it",
-    "who": "the owner",
-    "placeholders": []
-  },
   "list_count": {
     "where": "a label or sentence in the console. English: Showing {a} of {b}",
     "who": "the owner",
@@ -3963,12 +4136,16 @@
   "live_n": {
     "where": "a label or sentence in the console. English: Calls in progress: {n}",
     "who": "the owner",
-    "placeholders": ["{n}"]
+    "placeholders": [
+      "{n}"
+    ]
   },
   "live_to": {
     "where": "a label or sentence in the console. English: to {line}",
     "who": "the owner",
-    "placeholders": ["{line}"]
+    "placeholders": [
+      "{line}"
+    ]
   },
   "load_more": {
     "where": "a label or sentence in the console. English: Show more",
@@ -4131,21 +4308,25 @@
     "placeholders": []
   },
   "n_ctl_users_ph": {
+    "same_ok": true,
     "where": "a label or sentence in the console. English: Telegram user IDs, e.g. 123456789",
     "who": "the owner",
     "placeholders": []
   },
   "n_ctl_users_ph_discord": {
+    "same_ok": true,
     "where": "a label or sentence in the console. English: Discord user IDs, e.g. 123456789012345678",
     "who": "the owner",
     "placeholders": []
   },
   "n_ctl_users_ph_matrix": {
+    "same_ok": true,
     "where": "a label or sentence in the console. English: Matrix IDs, e.g. @lee:example.org",
     "who": "the owner",
     "placeholders": []
   },
   "n_ctl_users_ph_slack": {
+    "same_ok": true,
     "where": "a label or sentence in the console. English: Slack member IDs, e.g. U0123ABCD",
     "who": "the owner",
     "placeholders": []
@@ -4193,7 +4374,9 @@
   "n_test_fail": {
     "where": "a label or sentence in the console. English: Failed: {msg}",
     "who": "the owner",
-    "placeholders": ["{msg}"]
+    "placeholders": [
+      "{msg}"
+    ]
   },
   "n_test_ok": {
     "where": "a label or sentence in the console. English: Sent. Check that it arrived.",
@@ -4412,6 +4595,7 @@
     "placeholders": []
   },
   "nf_line_target": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: User or group ID",
     "who": "the owner",
     "placeholders": []
@@ -4453,6 +4637,7 @@
     "placeholders": []
   },
   "nf_nextcloud_target": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Conversation token",
     "who": "the owner",
     "placeholders": []
@@ -4480,6 +4665,7 @@
     "placeholders": []
   },
   "nf_ntfy_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Access token (optional)",
     "who": "the owner",
     "placeholders": []
@@ -4611,6 +4797,7 @@
     "placeholders": []
   },
   "nf_slack_app_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: App-level token (for chat commands)",
     "who": "the owner",
     "placeholders": []
@@ -4721,6 +4908,7 @@
     "placeholders": []
   },
   "nf_webhook_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Bearer token (optional)",
     "who": "the owner",
     "placeholders": []
@@ -4771,6 +4959,7 @@
     "placeholders": []
   },
   "nf_zulip_token": {
+    "same_ok": true,
     "where": "a notification-service name or field. English: Bot email:API key",
     "who": "the owner",
     "placeholders": []
@@ -4798,7 +4987,9 @@
   "notify_follows_ui": {
     "where": "a label or sentence in the console. English: Notifications are now in {lang} too (settings: Notification language).",
     "who": "the owner",
-    "placeholders": ["{lang}"]
+    "placeholders": [
+      "{lang}"
+    ]
   },
   "off": {
     "where": "a label or sentence in the console. English: Off",
@@ -4853,7 +5044,9 @@
   "ph_app": {
     "where": "a label or sentence in the console. English: App {v}",
     "who": "the owner",
-    "placeholders": ["{v}"]
+    "placeholders": [
+      "{v}"
+    ]
   },
   "ph_forget": {
     "where": "a label or sentence in the console. English: Delete",
@@ -4868,12 +5061,16 @@
   "ph_forget_t": {
     "where": "a label or sentence in the console. English: Delete “{name}”?",
     "who": "the owner",
-    "placeholders": ["{name}"]
+    "placeholders": [
+      "{name}"
+    ]
   },
   "ph_forgot": {
     "where": "a label or sentence in the console. English: Deleted “{name}”",
     "who": "the owner",
-    "placeholders": ["{name}"]
+    "placeholders": [
+      "{name}"
+    ]
   },
   "ph_incall": {
     "where": "a label or sentence in the console. English: On a call",
@@ -4888,7 +5085,9 @@
   "ph_last_seen": {
     "where": "a label or sentence in the console. English: Last connected {time}",
     "who": "the owner",
-    "placeholders": ["{time}"]
+    "placeholders": [
+      "{time}"
+    ]
   },
   "ph_link_bad": {
     "where": "a label or sentence in the console. English: The USB link is not set up yet. Wait a few seconds.",
@@ -4913,7 +5112,9 @@
   "ph_mode_fail": {
     "where": "a label or sentence in the console. English: Switch failed: {why}",
     "who": "the owner",
-    "placeholders": ["{why}"]
+    "placeholders": [
+      "{why}"
+    ]
   },
   "ph_mode_normal": {
     "where": "a label or sentence in the console. English: Normal phone: calls ring, the AI does not answer",
@@ -4988,7 +5189,9 @@
   "ph_state": {
     "where": "a label or sentence in the console. English: State: {state}",
     "who": "the owner",
-    "placeholders": ["{state}"]
+    "placeholders": [
+      "{state}"
+    ]
   },
   "ph_switching": {
     "where": "a label or sentence in the console. English: Switching…",
@@ -5013,7 +5216,9 @@
   "ph_to_normal_t": {
     "where": "a label or sentence in the console. English: Make {name} a normal phone?",
     "who": "the owner",
-    "placeholders": ["{name}"]
+    "placeholders": [
+      "{name}"
+    ]
   },
   "ph_unauth": {
     "where": "a label or sentence in the console. English: Waiting for permission: unlock the phone and accept the “Allow USB debugging?” prompt.",
@@ -5043,7 +5248,9 @@
   "pill_ready": {
     "where": "the status pill in the top bar. English: Phones ready: {n}",
     "who": "the owner",
-    "placeholders": ["{n}"]
+    "placeholders": [
+      "{n}"
+    ]
   },
   "pill_title": {
     "where": "the status pill in the top bar. English: Open the System view",
@@ -5128,12 +5335,16 @@
   "pk_ver_builtin": {
     "where": "a label or sentence in the console. English: In use: {date} (built in)",
     "who": "the owner",
-    "placeholders": ["{date}"]
+    "placeholders": [
+      "{date}"
+    ]
   },
   "pk_ver_updated": {
     "where": "a label or sentence in the console. English: In use: {date} (updated)",
     "who": "the owner",
-    "placeholders": ["{date}"]
+    "placeholders": [
+      "{date}"
+    ]
   },
   "pm_err_bad_request": {
     "where": "a label or sentence in the console. English: the request was not understood",
@@ -5228,12 +5439,16 @@
   "pv_failed": {
     "where": "a label or sentence in the console. English: Preview failed: {msg}",
     "who": "the owner",
-    "placeholders": ["{msg}"]
+    "placeholders": [
+      "{msg}"
+    ]
   },
   "pv_playing": {
     "where": "a label or sentence in the console. English: Playing: {what}",
     "who": "the owner",
-    "placeholders": ["{what}"]
+    "placeholders": [
+      "{what}"
+    ]
   },
   "pv_preparing": {
     "where": "a label or sentence in the console. English: Preparing…",
@@ -5397,7 +5612,9 @@
   "save_bar": {
     "where": "the save bar. English: Unsaved changes: {n}",
     "who": "the owner",
-    "placeholders": ["{n}"]
+    "placeholders": [
+      "{n}"
+    ]
   },
   "save_btn": {
     "where": "the save bar. English: Save changes",
@@ -5407,7 +5624,9 @@
   "save_failed": {
     "where": "the save bar. English: Could not save: {msg}",
     "who": "the owner",
-    "placeholders": ["{msg}"]
+    "placeholders": [
+      "{msg}"
+    ]
   },
   "save_region": {
     "where": "the save bar. English: Unsaved changes",
@@ -5627,7 +5846,9 @@
   "sms_count": {
     "where": "the text-message page. English: {n} messages",
     "who": "the owner",
-    "placeholders": ["{n}"]
+    "placeholders": [
+      "{n}"
+    ]
   },
   "sms_del": {
     "where": "the text-message page. English: Delete",
@@ -5647,7 +5868,9 @@
   "sms_del_thread_t": {
     "where": "the text-message page. English: Delete all messages with {name}?",
     "who": "the owner",
-    "placeholders": ["{name}"]
+    "placeholders": [
+      "{name}"
+    ]
   },
   "sms_earlier": {
     "where": "the text-message page. English: Show earlier messages",
@@ -5767,7 +5990,9 @@
   "sms_sim_n": {
     "where": "the text-message page. English: SIM {n}",
     "who": "the owner",
-    "placeholders": ["{n}"]
+    "placeholders": [
+      "{n}"
+    ]
   },
   "sms_to": {
     "where": "the text-message page. English: To",
@@ -5857,7 +6082,9 @@
   "sys_calls_now": {
     "where": "the System page. English: Calls in progress: {n}",
     "who": "the owner",
-    "placeholders": ["{n}"]
+    "placeholders": [
+      "{n}"
+    ]
   },
   "sys_connected": {
     "where": "the System page. English: Connected to Bageo",
@@ -5872,7 +6099,9 @@
   "sys_updated": {
     "where": "the System page. English: Updated {time}",
     "who": "the owner",
-    "placeholders": ["{time}"]
+    "placeholders": [
+      "{time}"
+    ]
   },
   "sys_usb": {
     "where": "the System page. English: Plugged in by USB",
@@ -6158,7 +6387,9 @@
   "use_this_url": {
     "where": "a label or sentence in the console. English: Use the address of this page: {url}",
     "who": "the owner",
-    "placeholders": ["{url}"]
+    "placeholders": [
+      "{url}"
+    ]
   },
   "v_custom": {
     "where": "a label or sentence in the console. English: custom",

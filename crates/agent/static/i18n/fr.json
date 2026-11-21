@@ -1276,6 +1276,23 @@
     "lang_fallback": "Cette langue n'est pas disponible pour l'instant : les appels se feront en anglais en attendant.",
     "lang_load_failed": "Impossible de charger cette langue. La langue actuelle est conservée.",
     "lang_unreviewed_note": "Cette langue n'a pas encore été relue par un locuteur natif.",
-    "lang_help_fix": "Aider à la corriger"
+    "lang_help_fix": "Aider à la corriger",
+    "f_extras_auto": "Télécharger automatiquement les langues nécessaires",
+    "f_extras_auto_h": "À la connexion, télécharge depuis GitHub les langues du navigateur ou de la SIM et les illustrations locales.",
+    "ex_more": "Plus de langues…",
+    "ex_title": "Autres langues",
+    "ex_desc": "Les 70 langues fonctionnent déjà pour les appels. Téléchargez un pack pour afficher aussi les menus ou alertes. Téléchargé directement depuis GitHub.",
+    "ex_search_ph": "Rechercher une langue",
+    "ex_download": "Télécharger",
+    "ex_downloading": "Téléchargement…",
+    "ex_deleting": "Suppression…",
+    "ex_use": "Utiliser",
+    "ex_in_use": "Utilisée dans les réglages",
+    "ex_lvl_console": "Console et notifications",
+    "ex_lvl_notify": "Notifications et résumés",
+    "ex_lvl_basic": "Appels uniquement",
+    "ex_switched": "Console passée en {lang}.",
+    "ex_r_in_use": "Impossible de supprimer tant qu'elle est utilisée.",
+    "ex_empty": "Aucune langue correspondante"
   }
 }

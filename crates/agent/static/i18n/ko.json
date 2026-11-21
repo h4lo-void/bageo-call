@@ -1276,6 +1276,23 @@
     "lang_fallback": "이 언어는 지금 쓸 수 없어서 통화는 당분간 영어로 합니다.",
     "lang_load_failed": "이 언어를 불러오지 못했습니다. 지금 언어를 그대로 씁니다.",
     "lang_unreviewed_note": "이 언어는 아직 원어민 확인을 거치지 않았습니다.",
-    "lang_help_fix": "고치는 데 도움 주기"
+    "lang_help_fix": "고치는 데 도움 주기",
+    "f_extras_auto": "필요한 언어 자동 다운로드",
+    "f_extras_auto_h": "로그인할 때 브라우저나 SIM에 맞는 언어와 지역 그림을 GitHub에서 자동으로 내려받습니다.",
+    "ex_more": "더 많은 언어…",
+    "ex_title": "다른 언어",
+    "ex_desc": "70개 언어 모두 바로 통화할 수 있습니다. 언어 팩을 내려받으면 화면과 알림도 바뀝니다. GitHub에서 직접 내려받습니다.",
+    "ex_search_ph": "언어 검색",
+    "ex_download": "다운로드",
+    "ex_downloading": "다운로드 중…",
+    "ex_deleting": "삭제 중…",
+    "ex_use": "사용",
+    "ex_in_use": "설정에서 사용 중",
+    "ex_lvl_console": "콘솔과 알림",
+    "ex_lvl_notify": "알림과 요약",
+    "ex_lvl_basic": "통화만 지원",
+    "ex_switched": "콘솔을 {lang}(으)로 바꿨습니다.",
+    "ex_r_in_use": "설정에서 사용 중이라 삭제할 수 없습니다.",
+    "ex_empty": "일치하는 언어가 없습니다"
   }
 }

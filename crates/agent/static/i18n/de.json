@@ -1276,6 +1276,23 @@
     "lang_fallback": "Diese Sprache ist gerade nicht verfügbar, deshalb laufen Anrufe vorerst auf Englisch.",
     "lang_load_failed": "Diese Sprache konnte nicht geladen werden. Die aktuelle bleibt.",
     "lang_unreviewed_note": "Diese Sprache wurde noch nicht von Muttersprachlern geprüft.",
-    "lang_help_fix": "Beim Korrigieren helfen"
+    "lang_help_fix": "Beim Korrigieren helfen",
+    "f_extras_auto": "Passende Sprachen automatisch herunterladen",
+    "f_extras_auto_h": "Lädt beim Anmelden fehlende Sprachen von Browser oder SIM sowie regionale Bilder direkt von GitHub.",
+    "ex_more": "Weitere Sprachen…",
+    "ex_title": "Weitere Sprachen",
+    "ex_desc": "Alle 70 Sprachen funktionieren sofort für Anrufe. Mit einem Sprachpaket erscheinen auch Menüs oder Meldungen darin. Direkt von GitHub.",
+    "ex_search_ph": "Sprache suchen",
+    "ex_download": "Laden",
+    "ex_downloading": "Wird geladen…",
+    "ex_deleting": "Wird gelöscht…",
+    "ex_use": "Nutzen",
+    "ex_in_use": "In Einstellungen aktiv",
+    "ex_lvl_console": "Konsole & Meldungen",
+    "ex_lvl_notify": "Meldungen & Kurzfassungen",
+    "ex_lvl_basic": "Nur Anrufe",
+    "ex_switched": "Konsole auf {lang} umgestellt.",
+    "ex_r_in_use": "Kann nicht gelöscht werden, solange in Einstellungen aktiv.",
+    "ex_empty": "Keine passenden Sprachen"
   }
 }
