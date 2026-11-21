@@ -1474,7 +1474,7 @@ pub fn names_for(store: &ContactStore, calls: &[crate::calls::CallRecord]) -> Va
 /// `0912345678（王小明）`, `+12025550143 (Amy)`.
 pub fn named_number(number: &str, name: Option<&str>) -> String {
     match name.map(str::trim).filter(|n| !n.is_empty()) {
-        Some(n) => crate::locale::notify_zh_or(&format!("{number}（{n}）"), &format!("{number} ({n})")),
+        Some(n) => crate::locale::notify_fill(&crate::locale::notify_words().n_named_number, &[("number", number), ("name", n)]),
         None => number.to_string(),
     }
 }

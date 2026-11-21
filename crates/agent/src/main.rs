@@ -5087,12 +5087,9 @@ fn call_waiting_summary(caller: &str, sim_country: Option<&str>) -> String {
         "{}{sep}{number}\n{}{sep}{}\n{}{sep}{}",
         p.s_caller,
         p.s_matter,
-        locale::notify_zh_or(
-            &format!("通話中插播，手機忙線拒接{sim}"),
-            &format!("came in during another call; the phone turned it away as busy{sim}"),
-        ),
+        locale::notify_fill(&p.cw_matter, &[("sim", sim.as_str())]),
         p.s_todo,
-        locale::notify_zh_or("要聯絡的話自己回電", "call back if needed"),
+        p.s_call_back_if_needed,
     )
 }
 
@@ -5130,10 +5127,7 @@ fn on_call_waiting_rejected(state: &AppState, conn_serial: &str, parsed: &Value)
             let record = state.calls.finalize(call, "ended").await;
             let notes = calls::CallNotes {
                 summary: call_waiting_summary(&caller, sim_country.as_deref()),
-                end_hint: locale::notify_zh_or(
-                    "通話中插播：手機忙線拒接（沒有用 AI）",
-                    "call waiting: the phone was on another call and turned it away (no AI)",
-                ),
+                end_hint: locale::notify_words().cw_end_hint.clone(),
                 source: "call_waiting".to_string(),
                 updated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
                 ..Default::default()
@@ -5845,20 +5839,16 @@ fn save_reject_list_notes(state: &AppState, record: &CallRecord) {
             p.s_matter,
             p.n_blocked,
             p.s_reply,
-            locale::notify_zh_or(
-                "響鈴時直接拒接，沒有接起來（沒用 AI）",
-                "declined while it rang: not picked up (no AI)",
-            )
+            p.bl_declined_reply
         )
     } else if lang.is_zh() {
+        // Chinese records keep their own wording of the matter and the reply.
         let reason = reason.map(|r| format!("\n原因：{r}")).unwrap_or_default();
-        locale::zh_or_in(
-            lang,
-            &format!(
-                "對方：{number}{reason}\n事情：黑名單來電，播「{announce}」後掛斷\nAI 回覆：沒有接（沒用 AI）\n要處理：要聯絡的話自己回電"
-            ),
-            "",
-        )
+        let text = format!(
+            "對方：{number}{reason}\n事情：黑名單來電，播「{announce}」後掛斷\nAI 回覆：沒有接（沒用 AI）\n要處理：{}",
+            p.s_call_back_if_needed
+        );
+        if lang == locale::Lang::ZhCn { zh_convert::to_cn(&text) } else { text }
     } else {
         let reason = reason
             .map(|r| format!("\n{}{}{r}", p.n_reason, p.sep))
@@ -5879,15 +5869,9 @@ fn save_reject_list_notes(state: &AppState, record: &CallRecord) {
         dialogue_translations: Vec::new(),
         recording_text: String::new(),
         end_hint: if declined {
-            locale::notify_zh_or(
-                "黑名單：響鈴時直接拒接（沒有用 AI）",
-                "blocked number: declined while it rang (no AI)",
-            )
+            p.bl_declined_hint.clone()
         } else {
-            locale::notify_zh_or(
-                "黑名單：播無法接通語音後掛斷（沒有用 AI）",
-                "blocked number: the announcement was played, then hung up (no AI)",
-            )
+            p.bl_announced_hint.clone()
         },
         source: "reject_list".to_string(),
         updated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
@@ -11196,10 +11180,7 @@ fn clip_dialogue_for_summary(dialogue: &str) -> String {
     }
     let head: String = dialogue.chars().take(HEAD).collect();
     let tail: String = dialogue.chars().skip(n - TAIL).collect();
-    format!(
-        "{head}\n{}\n{tail}",
-        locale::notify_zh_or("…（中間省略）…", "… (middle left out) …")
-    )
+    format!("{head}\n{}\n{tail}", locale::notify_words().h_clip_mark)
 }
 
 /// The kind of call a sales / scam judgement names, in the notification
@@ -11218,47 +11199,33 @@ fn scam_topic(j: &calls::ScamJudgement) -> Option<String> {
 fn summary_end_hint(events: &[String], scam: Option<&calls::ScamJudgement>) -> String {
     let has = |e: &str| events.iter().any(|x| x == e);
     let topic = scam.and_then(scam_topic);
+    let w = locale::notify_words();
     if has("persona_ai_fail_hangup") {
-        locale::notify_zh_or("AI 連不上，系統直接掛斷，對方沒聽到任何回應", "the AI could not connect; the system hung up and the caller heard nothing")
+        w.h_ai_fail_hangup.clone()
     } else if has("gemini_fail_to_voicemail") || has("gemini_zero_delivery_to_voicemail") {
-        locale::notify_zh_or("AI 失敗，改走語音留言", "the AI failed; the call went to voicemail")
+        w.h_ai_fail_voicemail.clone()
     } else if has("reject_unknown_caller") {
-        locale::notify_zh_or("未顯示號碼，播拒接語音後掛斷（AI 沒有接）", "hidden number: the refusal announcement was played, then hung up (the AI did not answer)")
+        w.h_reject_hidden.clone()
     } else if has("reject_list") {
-        locale::notify_zh_or("黑名單：播無法接通語音後掛斷（AI 沒有接）", "blocked number: the unavailable announcement was played, then hung up (the AI did not answer)")
+        w.h_reject_list.clone()
     } else if has("whitelist_urgent_call_merged") {
-        locale::notify_zh_or(
-            "來電者說有急事：手機打給主人，主人接起來後直接跟來電者通話，AI 退出；這通沒有被當成推銷或詐騙陪聊拖時間",
-            "the caller said it was urgent: the phone called the owner, who picked up and was put through to the caller, and the AI left; this call was not treated as a sales or scam call to stall",
-        )
+        w.h_urgent_merged.clone()
     } else if events.iter().any(|e| e.starts_with("whitelist_urgent_call_failed") || e == "whitelist_urgent_call_ai_ended") {
-        locale::notify_zh_or(
-            "來電者說有急事：手機打給主人但沒接通，AI 跟對方說主人會盡快回電；這通沒有被當成推銷或詐騙陪聊拖時間，「要處理」寫盡快回電給對方",
-            "the caller said it was urgent: the phone called the owner but did not get through, and the AI told the caller the owner would call back soon; this call was not treated as a sales or scam call to stall, so the to-do is to call them back as soon as possible",
-        )
+        w.h_urgent_failed.clone()
     } else if has("whitelist_urgent_transfer") {
-        locale::notify_zh_or(
-            "來電者說有急事，系統已馬上通知主人；這通沒有被當成推銷或詐騙陪聊拖時間，「要處理」寫盡快回電給對方",
-            "the caller said it was urgent and the owner was alerted at once; this call was not treated as a sales or scam call to stall, so the to-do is to call them back as soon as possible",
-        )
+        w.h_urgent_transfer.clone()
     } else if has("persona_stall_released") {
-        locale::notify_zh_or("系統一度以為是推銷／詐騙，再確認一次是正常電話，AI 回到正常應對", "the system first took it for a sales / scam call; a second check found an ordinary call and the AI went back to talking normally")
+        w.h_stall_released.clone()
     } else if has("persona_stall_spam") {
         match topic {
-            Some(t) => locale::notify_zh_or(
-                &format!("系統判斷是推銷／詐騙（{t}），AI 改成故意陪他聊、拖時間"),
-                &format!("the system judged it a sales / scam call ({t}), so the AI deliberately kept the caller talking to waste their time"),
-            ),
-            None => locale::notify_zh_or("系統判斷像推銷／詐騙，AI 改成故意陪他聊、拖時間", "the system judged it a sales / scam call, so the AI deliberately kept the caller talking to waste their time"),
+            Some(t) => locale::notify_fill(&w.h_stall_spam, &[("t", t.as_str())]),
+            None => w.h_stall_spam_nokind.clone(),
         }
     } else if has("persona_scam_detected") {
-        let t = topic.unwrap_or_else(|| locale::notify_words().s_stall_topic.to_string());
-        locale::notify_zh_or(
-            &format!("系統判斷是推銷／詐騙（{t}）；陪聊功能關著，AI 照一般方式應對"),
-            &format!("the system judged it a sales / scam call ({t}); stalling is off, so the AI answered as usual"),
-        )
+        let t = topic.unwrap_or_else(|| w.s_stall_topic.to_string());
+        locale::notify_fill(&w.h_scam_stalling_off, &[("t", t.as_str())])
     } else if has("ai_segment_end") || has("gemini_unmute_after_greet") {
-        locale::notify_zh_or("AI 接聽並對話後結束（AI 說掰掰掛斷，或對方先掛）", "the AI answered and talked; the call ended normally (the AI said goodbye and hung up, or the caller hung up first)")
+        w.h_ai_ended.clone()
     } else {
         String::new()
     }
