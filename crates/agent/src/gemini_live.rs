@@ -346,6 +346,25 @@ pub async fn speak_lines_heard(
     phone_sr: u32,
     transcribe: bool,
 ) -> Result<Vec<(Vec<u8>, String)>> {
+    speak_lines_coded(lang, system, api_key, model, thinking_level, voice, lines, phone_sr, transcribe.then(|| crate::locale::phrases(lang).stt)).await
+}
+
+/// [`speak_lines_heard`] with the language code the transcription is asked for
+/// (`None` = no transcription): the recordings of voice packs pass an official
+/// Gemini Live code ([bageo_packs::data::OFFICIAL_LANGS]).
+#[allow(clippy::too_many_arguments)]
+pub async fn speak_lines_coded(
+    lang: crate::locale::Lang,
+    system: &str,
+    api_key: &str,
+    model: &str,
+    thinking_level: &str,
+    voice: &str,
+    lines: &[&str],
+    phone_sr: u32,
+    transcribe_in: Option<&str>,
+) -> Result<Vec<(Vec<u8>, String)>> {
+    let transcribe = transcribe_in.is_some();
     let key = api_key.trim();
     if key.is_empty() {
         bail!("Gemini API key is not set");
@@ -393,11 +412,11 @@ pub async fn speak_lines_heard(
             gc.insert("thinkingConfig".into(), json!({ "thinkingLevel": level }));
         }
     }
-    if transcribe {
+    if let Some(code) = transcribe_in {
         if let Some(s) = setup.pointer_mut("/setup").and_then(|x| x.as_object_mut()) {
             s.insert(
                 "outputAudioTranscription".into(),
-                json!({ "languageCodes": [crate::locale::phrases(lang).stt] }),
+                json!({ "languageCodes": [code] }),
             );
         }
     }

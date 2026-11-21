@@ -11,7 +11,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use tracing::{info, warn};
 
 use crate::ambience::AmbienceMixer;
@@ -338,15 +338,21 @@ pub async fn prepare_reject_clip(
 /// `agent make-voice-samples [dir]`: record every voice's preview lines and
 /// blocked-number announcement in every language into `dir` (default
 /// `assets/voices`) — the samples the program ships with, so nobody spends their
-/// own Gemini quota on a preview. Needs `GEMINI_API_KEY`; optional
+/// own Gemini quota on a preview. Needs `GEMINI_API_KEY` (or `GEMINI_API_KEYS`,
+/// a comma list used in turn; see [KeyRing]); optional
 /// `GEMINI_LIVE_MODEL`, `SAMPLE_RATE` (16000), `VOICE_SAMPLE_JOBS` (voices at once, 4),
 /// `VOICE_SAMPLE_LANGS` / `VOICE_SAMPLE_VOICES` (comma lists). Files already there are
 /// kept, so a stopped run carries on where it was. Every recording is checked
 /// against Gemini's own transcript of it and made again when it strays.
+///
+/// `VOICE_SAMPLE_REGION` (comma list of region codes, e.g. `tw,us`) records the
+/// lines of those regions instead ([crate::voice_lines]), told the region's local
+/// ways of talking and the middle talk style ([region_system]), into
+/// `dir/<lang>-<region>/` — what `agent pack-voices` zips. Without it nothing changes.
 pub async fn make_bundle(out: &Path) -> Result<()> {
     use futures_util::StreamExt;
-    let key = std::env::var("GEMINI_API_KEY").unwrap_or_default();
-    anyhow::ensure!(!key.trim().is_empty(), "set GEMINI_API_KEY");
+    let ring = KeyRing::from_env();
+    anyhow::ensure!(ring.live() > 0, "set GEMINI_API_KEY");
     let model = std::env::var("GEMINI_LIVE_MODEL")
         .ok()
         .filter(|m| !m.trim().is_empty())
@@ -362,26 +368,59 @@ pub async fn make_bundle(out: &Path) -> Result<()> {
             .filter(|s| !s.is_empty())
             .collect()
     };
-    let (langs, voices) = (list("VOICE_SAMPLE_LANGS"), list("VOICE_SAMPLE_VOICES"));
-    let todo: Vec<(Lang, &str)> = crate::locale::ALL
-        .iter()
-        .filter(|l| langs.is_empty() || langs.iter().any(|c| c == l.code()))
-        .flat_map(|l| VOICES.iter().map(move |v| (*l, v.0)))
-        .filter(|(_, v)| voices.is_empty() || voices.iter().any(|x| x == v))
+    let (langs, voices, regions) = (list("VOICE_SAMPLE_LANGS"), list("VOICE_SAMPLE_VOICES"), list("VOICE_SAMPLE_REGION"));
+    // What to record: (language, region's code or none).
+    let mut targets: Vec<(Lang, Option<String>)> = Vec::new();
+    if regions.is_empty() {
+        targets.extend(crate::locale::ALL.iter().map(|l| (*l, None)));
+    } else {
+        for code in &regions {
+            let lines = crate::voice_lines::for_region(code).with_context(|| format!("no lines for the region {code} in voices/lines.json"))?;
+            let lang = lines.lang().with_context(|| format!("{code}: the language {}", lines.lang))?;
+            anyhow::ensure!(crate::country_profile::Region::of_code(code).is_some(), "{code} is not a region of the data pack");
+            targets.push((lang, Some(code.trim().to_ascii_lowercase())));
+        }
+    }
+    let todo: Vec<(Lang, Option<String>, &str)> = targets
+        .into_iter()
+        .filter(|(l, _)| langs.is_empty() || langs.iter().any(|c| c == l.code()))
+        .flat_map(|(l, r)| VOICES.iter().map(move |v| (l, r.clone(), v.0)))
+        .filter(|(_, _, v)| voices.is_empty() || voices.iter().any(|x| x == v))
         .collect();
-    info!("voice samples: {} voice×language to check, model={model} sr={sr} jobs={jobs} → {}", todo.len(), out.display());
-    let (key, model) = (&key, &model);
+    info!(
+        "voice samples: {} voice×language to check, model={model} sr={sr} jobs={jobs} keys={} → {}",
+        todo.len(),
+        ring.live(),
+        out.display()
+    );
+    let (ring, model) = (&ring, &model);
+    let stop = std::sync::atomic::AtomicBool::new(false);
+    let stop = &stop;
     let failed: Vec<String> = futures_util::stream::iter(todo)
-        .map(|(lang, voice)| async move {
+        .map(|(lang, region, voice)| async move {
             let mut last = String::new();
             for attempt in 0..5u64 {
                 if attempt > 0 {
                     tokio::time::sleep(std::time::Duration::from_secs(4 * attempt)).await;
                 }
-                match make_voice(out, key, model, lang, voice, sr).await {
-                    Ok(()) => return None,
+                if stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    return Some(format!("{}/{voice}: stopped, every key is used up", lang.code()));
+                }
+                let Some((slot, key)) = ring.pick() else {
+                    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+                    return Some(format!("{}/{voice}: every key is used up", lang.code()));
+                };
+                match make_voice(out, key, model, lang, region.as_deref(), voice, sr).await {
+                    Ok(()) => {
+                        ring.worked(slot);
+                        return None;
+                    }
                     Err(e) => {
-                        last = format!("{}/{voice}: {e:#}", lang.code());
+                        let at = region.as_deref().map(|r| format!("-{r}")).unwrap_or_default();
+                        last = ring.mask(&format!("{}{at}/{voice}: {e:#}", lang.code()));
+                        if quota_error(&last) {
+                            ring.refused(slot);
+                        }
                         warn!("voice sample try {} failed {last}", attempt + 1);
                     }
                 }
@@ -392,28 +431,157 @@ pub async fn make_bundle(out: &Path) -> Result<()> {
         .filter_map(|r| async move { r })
         .collect()
         .await;
+    if stop.load(std::sync::atomic::Ordering::Relaxed) {
+        anyhow::bail!("every Gemini key is used up; {} not made", failed.len());
+    }
     anyhow::ensure!(failed.is_empty(), "{} not made:\n{}", failed.len(), failed.join("\n"));
     info!("voice samples: all there");
     Ok(())
 }
 
-/// The missing samples of one voice in one language.
-async fn make_voice(out: &Path, key: &str, model: &str, lang: Lang, voice: &str, sr: u32) -> Result<()> {
-    let dir = out.join(lang.base().code());
+/// The keys of a recording run, used in turn. A key Gemini refuses
+/// [QUOTA_STRIKES] times in a row with its limit ([quota_error]) is laid aside;
+/// with none left the run stops (no other key is ever tried). Keys are never
+/// printed: [Self::mask] takes them out of any text.
+struct KeyRing {
+    keys: Vec<String>,
+    strikes: Vec<std::sync::atomic::AtomicU32>,
+    next: std::sync::atomic::AtomicUsize,
+}
+
+const QUOTA_STRIKES: u32 = 3;
+
+impl KeyRing {
+    /// `GEMINI_API_KEYS` (comma, space or line separated), then `GEMINI_API_KEY`; each once.
+    fn from_env() -> Self {
+        let mut keys: Vec<String> = Vec::new();
+        for var in ["GEMINI_API_KEYS", "GEMINI_API_KEY"] {
+            for k in std::env::var(var).unwrap_or_default().split(|c: char| c == ',' || c.is_whitespace()) {
+                if !k.is_empty() && !keys.iter().any(|x| x == k) {
+                    keys.push(k.to_string());
+                }
+            }
+        }
+        Self::new(keys)
+    }
+
+    fn new(keys: Vec<String>) -> Self {
+        let strikes = keys.iter().map(|_| std::sync::atomic::AtomicU32::new(0)).collect();
+        Self { keys, strikes, next: std::sync::atomic::AtomicUsize::new(0) }
+    }
+
+    fn laid_aside(&self, i: usize) -> bool {
+        self.strikes[i].load(std::sync::atomic::Ordering::Relaxed) >= QUOTA_STRIKES
+    }
+
+    /// How many keys can still be used.
+    fn live(&self) -> usize {
+        (0..self.keys.len()).filter(|i| !self.laid_aside(*i)).count()
+    }
+
+    /// The next key in turn that is not laid aside, with its place; None when all are.
+    fn pick(&self) -> Option<(usize, &str)> {
+        for _ in 0..self.keys.len() {
+            let i = self.next.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % self.keys.len();
+            if !self.laid_aside(i) {
+                return Some((i, self.keys[i].as_str()));
+            }
+        }
+        None
+    }
+
+    /// The key at `i` did its work: its refusals so far do not count.
+    fn worked(&self, i: usize) {
+        self.strikes[i].store(0, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Gemini refused the key at `i` with its limit.
+    fn refused(&self, i: usize) {
+        self.strikes[i].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// `text` without any of the keys.
+    fn mask(&self, text: &str) -> String {
+        self.keys.iter().fold(text.to_string(), |t, k| t.replace(k.as_str(), "***"))
+    }
+}
+
+/// An error that says Gemini's limit (rate, quota) is reached.
+fn quota_error(text: &str) -> bool {
+    let t = text.to_ascii_lowercase();
+    ["429", "quota", "resource_exhausted", "resource exhausted", "rate limit", "too many requests"].iter().any(|w| t.contains(w))
+}
+
+/// The language code Gemini is given when a recording is transcribed: the
+/// official Gemini Live code of the language (the settings' own speech codes
+/// `zh-TW`, `cmn-CN` and `es-ES` are not on the list; Chinese is `cmn`).
+fn official_stt(lang: Lang) -> &'static str {
+    match lang {
+        Lang::ZhTw | Lang::ZhCn => "cmn",
+        Lang::En => "en-US",
+        Lang::Ja => "ja-JP",
+        Lang::Ko => "ko-KR",
+        Lang::Es => "es-US",
+        Lang::Fr => "fr-FR",
+        Lang::De => "de-DE",
+        Lang::Pt => "pt-BR",
+        Lang::Ext(e) => e.official(),
+    }
+}
+
+/// The instruction a region's preview lines are recorded with: the language's own
+/// ([crate::prompts::Pack::preview_system]), then the region's local ways of talking
+/// and the middle cell of the talk-style slider, the same texts a call's prompt
+/// takes from the data pack. Situation and tone only; the line stays as given.
+fn region_system(base: &str, region: crate::country_profile::Region, lang: Lang) -> String {
+    const NOTE_TW: &str = "以上只影響語氣、節奏和客氣程度，台詞本身一個字都不改。";
+    let owner = crate::prompts::owner_label(lang, "");
+    let ways = crate::country_profile::habits_block(region, lang);
+    let style = crate::country_profile::style_line(region, lang, false, 3, &owner);
+    if ways.is_empty() && style.is_empty() {
+        return base.to_string();
+    }
+    let note = match lang {
+        Lang::ZhTw => NOTE_TW.to_string(),
+        Lang::ZhCn => crate::zh_convert::to_cn(NOTE_TW),
+        _ => "This only shapes your tone, pace and politeness; the line itself stays word for word.".to_string(),
+    };
+    format!("{base}{ways}{style}\n{note}")
+}
+
+/// The missing samples of one voice in one language (of one region's lines when `region` is given).
+async fn make_voice(out: &Path, key: &str, model: &str, lang: Lang, region: Option<&str>, voice: &str, sr: u32) -> Result<()> {
+    let pack = crate::prompts::pack(lang);
+    let (dir, previews, preview_system, reject, code_in) = match region {
+        None => {
+            let phrases = crate::locale::phrases(lang);
+            let previews: Vec<String> = phrases.preview.iter().map(|l| l.to_string()).collect();
+            (out.join(lang.base().code()), previews, pack.preview_system.clone(), phrases.unavailable.to_string(), official_stt(lang).to_string())
+        }
+        Some(code) => {
+            let lines = crate::voice_lines::for_region(code).with_context(|| format!("no lines for the region {code}"))?;
+            let r = crate::country_profile::Region::of_code(code).with_context(|| format!("{code} is not a region of the data pack"))?;
+            (
+                out.join(crate::voice_packs::folder_id(lang.code(), Some(code))),
+                lines.preview.clone(),
+                region_system(&pack.preview_system, r, lang),
+                lines.reject.clone(),
+                lines.gemini_lang.clone(),
+            )
+        }
+    };
     std::fs::create_dir_all(&dir)?;
-    let (phrases, pack) = (crate::locale::phrases(lang), crate::prompts::pack(lang));
-    let parts = phrases
-        .preview
+    let parts = previews
         .iter()
         .enumerate()
-        .map(|(i, line)| (i.to_string(), pack.preview_system.as_str(), *line))
-        .chain(std::iter::once(("reject".to_string(), pack.announce_system.as_str(), phrases.unavailable)));
+        .map(|(i, line)| (i.to_string(), preview_system.as_str(), line.as_str()))
+        .chain(std::iter::once(("reject".to_string(), pack.announce_system.as_str(), reject.as_str())));
     for (part, system, line) in parts {
         let path = dir.join(format!("{voice}_{part}.wav"));
         if path.exists() {
             continue;
         }
-        let (pcm, heard) = crate::gemini_live::speak_lines_heard(lang, system, key, model, "", voice, &[line], sr, true)
+        let (pcm, heard) = crate::gemini_live::speak_lines_coded(lang, system, key, model, "", voice, &[line], sr, Some(code_in.as_str()))
             .await?
             .into_iter()
             .next()
@@ -430,7 +598,7 @@ async fn make_voice(out: &Path, key: &str, model: &str, lang: Lang, voice: &str,
         }
         anyhow::ensure!((0.4..=14.0).contains(&secs), "{part}: {secs:.1} s for {line:?}");
         write_atomic(&path, &crate::adpcm::encode_wav(&pcm, sr))?;
-        info!("voice sample {}/{voice}_{part} {secs:.1}s heard={heard:?}", lang.code());
+        info!("voice sample {}/{voice}_{part} {secs:.1}s heard={heard:?}", dir.file_name().and_then(|n| n.to_str()).unwrap_or(""));
     }
     Ok(())
 }
@@ -678,6 +846,85 @@ mod tests {
         let bundled_len = crate::adpcm::decode_wav(&std::fs::read(bundled.join("ja").join("Kore_1.wav")).unwrap()).unwrap().1.len();
         assert_eq!(plain.clip_in(Lang::Ja, Some("jp"), "Kore", "1", 16_000).map(|c| c.len()), Some(bundled_len));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn keys_are_used_in_turn_and_laid_aside_after_their_limit() {
+        for l in crate::locale::ALL {
+            assert!(bageo_packs::data::is_official_lang(official_stt(l)), "{l:?}");
+        }
+        assert_eq!((official_stt(Lang::ZhTw), official_stt(Lang::Es)), ("cmn", "es-US"));
+        let ring = KeyRing::new(vec!["k-one".into(), "k-two".into(), "k-three".into()]);
+        let order: Vec<usize> = (0..4).map(|_| ring.pick().unwrap().0).collect();
+        assert_eq!(order, [0, 1, 2, 0]);
+        // Two refusals in a row are not enough, and a good recording clears them.
+        ring.refused(1);
+        ring.refused(1);
+        assert_eq!(ring.live(), 3);
+        ring.worked(1);
+        ring.refused(1);
+        ring.refused(1);
+        assert_eq!(ring.live(), 3);
+        ring.refused(1);
+        assert_eq!(ring.live(), 2);
+        for _ in 0..6 {
+            assert_ne!(ring.pick().unwrap().0, 1);
+        }
+        for i in [0, 2] {
+            for _ in 0..QUOTA_STRIKES {
+                ring.refused(i);
+            }
+        }
+        assert!(ring.pick().is_none());
+        assert_eq!(ring.live(), 0);
+    }
+
+    #[test]
+    fn keys_never_show_in_a_message_and_a_limit_is_told_from_other_failures() {
+        let ring = KeyRing::new(vec!["AIzaFakeKeyOne".into(), "AQ.FakeKeyTwo".into()]);
+        let m = ring.mask("cannot reach wss://x?key=AIzaFakeKeyOne and AQ.FakeKeyTwo: 429");
+        assert!(!m.contains("Fake") && m.contains("429"), "{m}");
+        assert!(quota_error("HTTP error: 429 Too Many Requests"));
+        assert!(quota_error("Gemini setup error: {\"status\":\"RESOURCE_EXHAUSTED\"}"));
+        assert!(quota_error("You exceeded your current quota"));
+        // A recording that strays, in any language, is not a limit.
+        assert!(!quota_error("1: asked for \"もしもし？\", Gemini said \"はい、どちらさまですか\""));
+        assert!(!quota_error("0: asked for \"Hola, buenas tardes.\", Gemini said \"Hola\""));
+        assert!(!quota_error("reject: only 0.3 s for \"您撥的電話目前無法接聽，請稍後再撥，謝謝。\""));
+        assert!(!quota_error("connecting to Gemini timed out"));
+    }
+
+    #[test]
+    fn a_regions_recording_instruction_has_its_ways_and_talk_style_and_keeps_the_line_fixed() {
+        use crate::country_profile::{habits_block, style_line, Region};
+        let cases = [
+            ("tw", Lang::ZhTw),
+            ("cn", Lang::ZhCn),
+            ("us", Lang::En),
+            ("jp", Lang::Ja),
+            ("kr", Lang::Ko),
+            ("latam", Lang::Es),
+            ("br", Lang::Pt),
+            ("fr", Lang::Fr),
+            ("de", Lang::De),
+        ];
+        for (code, lang) in cases {
+            let r = Region::of_code(code).unwrap_or_else(|| panic!("region {code}"));
+            let base = crate::prompts::pack(lang).preview_system.clone();
+            let s = region_system(&base, r, lang);
+            assert!(s.starts_with(&base), "{code}");
+            let owner = crate::prompts::owner_label(lang, "");
+            for part in [habits_block(r, lang), style_line(r, lang, false, 3, &owner)] {
+                assert!(s.contains(part.trim()), "{code}: {part:?}");
+            }
+            assert!(!s.contains('{') && !s.contains('}'), "{code}");
+            // Only tone: the last word is that the line is not changed.
+            assert!(s.ends_with(if lang.is_zh() { "不改。" } else { "word for word." }) || s.ends_with("一个字都不改。"), "{code}: {s}");
+        }
+        // Chinese of the two scripts.
+        let r = Region::of_code("tw").unwrap();
+        assert!(region_system("x", r, Lang::ZhTw).contains("一個字"));
+        assert!(region_system("x", r, Lang::ZhCn).contains("一个字"));
     }
 
     #[test]

@@ -87,6 +87,7 @@ mod vad;
 mod voice_preview;
 mod voice_packs;
 mod extras;
+mod voice_lines;
 mod wyoming;
 mod zh_convert;
 mod zh_tw;
@@ -1065,6 +1066,13 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("make-voice-samples") {
         let out = args.get(2).map(PathBuf::from).unwrap_or_else(|| config::assets_dir().join("voices"));
         return voice_preview::make_bundle(&out).await;
+    }
+    // `agent pack-voices <samples dir> <out dir>`: zip the recorded regions into release files and exit.
+    if args.get(1).map(String::as_str) == Some("pack-voices") {
+        let (Some(samples), Some(out)) = (args.get(2), args.get(3)) else {
+            anyhow::bail!("usage: agent pack-voices <samples dir> <out dir>");
+        };
+        return voice_packs::make_packs(std::path::Path::new(samples), std::path::Path::new(out));
     }
 
     let settings = Settings::from_env();

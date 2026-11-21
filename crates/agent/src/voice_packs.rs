@@ -92,12 +92,7 @@ pub(crate) struct Entry {
 impl Entry {
     /// `<lang>` or `<lang>-<region>`: the folder and the setting dismissed_pack_prompts use it.
     pub(crate) fn id(&self) -> String {
-        // Lowercase: "zh-TW" and "zh" in region "tw" are one folder where case does not count.
-        let id = match &self.region {
-            Some(r) => format!("{}-{r}", self.lang),
-            None => self.lang.clone(),
-        };
-        id.to_ascii_lowercase()
+        folder_id(&self.lang, self.region.as_deref())
     }
 
     /// The files the zip holds, and nothing else.
@@ -304,6 +299,89 @@ pub(crate) fn pack_dirs(root: &Path, lang: &str, region: Option<&str>) -> Vec<Pa
     }
     out.push(root.join(lang.to_ascii_lowercase()));
     out
+}
+
+/// `<lang>` or `<lang>-<region>` in lowercase: a pack's id, its folder and its
+/// file name (`voices-<id>.zip`). Lowercase: "zh-TW" and "zh" in region "tw" are
+/// one folder where case does not count.
+pub(crate) fn folder_id(lang: &str, region: Option<&str>) -> String {
+    match region {
+        Some(r) => format!("{lang}-{r}"),
+        None => lang.to_string(),
+    }
+    .to_ascii_lowercase()
+}
+
+/// `agent pack-voices <samples dir> <out dir>`: the recordings of
+/// `make-voice-samples` with VOICE_SAMPLE_REGION (comma list; default every
+/// region of [crate::voice_lines]) as release files: `voices-<id>.zip` per
+/// region and the index [INDEX_NAME] (an existing one in the out dir keeps its
+/// other packs; its version goes up). The zips come out byte for byte the same
+/// from the same recordings. Each pack is then installed into a temporary folder the
+/// way a download is, so a pack Bageo would refuse is found here.
+pub(crate) fn make_packs(samples: &Path, out: &Path) -> anyhow::Result<()> {
+    let regions: Vec<String> = std::env::var("VOICE_SAMPLE_REGION")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let regions = if regions.is_empty() { crate::voice_lines::codes().into_iter().map(str::to_string).collect() } else { regions };
+    make_packs_for(samples, out, &regions)
+}
+
+fn make_packs_for(samples: &Path, out: &Path, regions: &[String]) -> anyhow::Result<()> {
+    use anyhow::Context as _;
+    std::fs::create_dir_all(out)?;
+    let old = std::fs::read_to_string(out.join(INDEX_NAME)).ok().map(|t| parse_index(&t).map_err(|e| anyhow::anyhow!("{e:?}"))).transpose()?;
+    let mut entries: Vec<Entry> = old.as_ref().map(|i| i.voices.clone()).unwrap_or_default();
+    let at = chrono::NaiveDate::from_ymd_opt(2026, 1, 1).and_then(|d| d.and_hms_opt(0, 0, 0)).context("a date")?;
+    let mut made = Vec::new();
+    for code in regions {
+        let lines = crate::voice_lines::for_region(code).with_context(|| format!("no lines for the region {code}"))?;
+        let lang = lines.lang().with_context(|| format!("{code}: the language {}", lines.lang))?;
+        let id = folder_id(lang.code(), Some(code));
+        let dir = samples.join(&id);
+        let present = |v: &str| PARTS.iter().all(|p| dir.join(format!("{v}_{p}.wav")).is_file());
+        let voices: Vec<String> = crate::voice_preview::VOICES.iter().map(|v| v.0).filter(|v| present(v)).map(str::to_string).collect();
+        anyhow::ensure!(!voices.is_empty(), "{id}: no voice with all its recordings in {}", dir.display());
+        let mut zip = crate::backup::ZipOut::new(std::io::Cursor::new(Vec::new()), at);
+        for v in &voices {
+            for p in PARTS {
+                let name = format!("{v}_{p}.wav");
+                let body = std::fs::read(dir.join(&name)).with_context(|| name.clone())?;
+                zip.add(&name, &mut &body[..], body.len() as u64)?;
+            }
+        }
+        let bytes = zip.finish()?.into_inner();
+        let entry = Entry {
+            lang: lang.code().to_string(),
+            region: Some(code.clone()),
+            file: format!("voices-{id}.zip"),
+            bytes: bytes.len() as u64,
+            sha256: format!("{:x}", Sha256::digest(&bytes)),
+            voices,
+        };
+        std::fs::write(out.join(&entry.file), &bytes)?;
+        entries.retain(|e| e.id() != id);
+        made.push(entry.clone());
+        entries.push(entry);
+    }
+    entries.sort_by_key(Entry::id);
+    let today: u64 = chrono::Local::now().format("%Y%m%d01").to_string().parse().unwrap_or(1).max(builtin().version);
+    let version = old.map_or(today, |i| (i.version + 1).max(today));
+    let text = serde_json::to_string_pretty(&json!({"format": FORMAT, "version": version, "voices": entries}))? + "\n";
+    parse_index(&text).map_err(|e| anyhow::anyhow!("the index made here is refused: {e:?}"))?;
+    std::fs::write(out.join(INDEX_NAME), &text)?;
+    // Install each as a download does, into a folder of its own.
+    let check = std::env::temp_dir().join(format!("bageo-pack-check-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&check);
+    for e in &made {
+        let n = install_zip(&check, &out.join(&e.file), e).map_err(|f| anyhow::anyhow!("{} is refused: {f:?}", e.file))?;
+        tracing::info!("voice pack {}: {} voices, {} bytes of recordings, {} bytes zipped, sha256 {}", e.id(), e.voices.len(), n, e.bytes, e.sha256);
+    }
+    let _ = std::fs::remove_dir_all(&check);
+    Ok(())
 }
 
 /// The setting dismissed_pack_prompts as stored: pack ids, each once.
@@ -901,7 +979,7 @@ mod tests {
     }
 
     fn index_text(entries: &[Entry]) -> String {
-        serde_json::to_string(&json!({"format": FORMAT, "version": 2026112101u64, "voices": entries})).unwrap()
+        serde_json::to_string(&json!({"format": FORMAT, "version": builtin().version + 1, "voices": entries})).unwrap()
     }
 
     /// A zip whose files are deflated (the zips Bageo writes keep recordings as they are).
@@ -1008,10 +1086,10 @@ mod tests {
     #[test]
     fn the_builtin_index_is_empty_and_valid() {
         let ix = parse_index(BUILTIN_INDEX).expect("built-in voice index");
-        assert!(ix.voices.is_empty());
+        assert_eq!(ix.voices.len(), crate::voice_lines::codes().len());
         let d = tmp();
         let v = list_json(&d.0, &d.0.join("bundled"), &[]);
-        assert_eq!((v["packs"].as_array().map(Vec::len), v["downloaded"].as_array().map(Vec::len)), (Some(0), Some(0)));
+        assert_eq!((v["packs"].as_array().map(Vec::len), v["downloaded"].as_array().map(Vec::len)), (Some(ix.voices.len()), Some(0)));
     }
 
     #[test]
@@ -1326,6 +1404,54 @@ mod tests {
     }
 
     #[test]
+    fn region_packs_are_made_from_recordings_and_installed_like_a_download() {
+        let d = tmp();
+        let (samples, out) = (d.0.join("samples"), d.0.join("out"));
+        let w = wav();
+        for (id, voices) in [("zh-tw-tw", &TWO[..]), ("en-us", &TWO[..1])] {
+            let dir = samples.join(id);
+            std::fs::create_dir_all(&dir).unwrap();
+            for v in voices {
+                for p in PARTS {
+                    std::fs::write(dir.join(format!("{v}_{p}.wav")), &w).unwrap();
+                }
+            }
+        }
+        // A voice with only some of its recordings is left out.
+        std::fs::write(samples.join("en-us").join("Puck_0.wav"), &w).unwrap();
+        let regions = ["tw".to_string(), "us".to_string()];
+        make_packs_for(&samples, &out, &regions).unwrap();
+        let text = std::fs::read_to_string(out.join(INDEX_NAME)).unwrap();
+        let ix = parse_index(&text).unwrap();
+        assert_eq!(ix.voices.iter().map(Entry::id).collect::<Vec<_>>(), ["en-us", "zh-tw-tw"]);
+        let (us, tw) = (&ix.voices[0], &ix.voices[1]);
+        assert_eq!((us.lang.as_str(), us.region.as_deref(), us.file.as_str()), ("en", Some("us"), "voices-en-us.zip"));
+        assert_eq!((tw.lang.as_str(), tw.region.as_deref(), tw.file.as_str()), ("zh-TW", Some("tw"), "voices-zh-tw-tw.zip"));
+        assert_eq!(us.voices, ["Kore"]);
+        let mut two = tw.voices.clone();
+        two.sort();
+        assert_eq!(two, ["Charon", "Kore"]);
+        // The zip is what the index says, and Bageo installs it from there; the
+        // preview finds it where the region's folder is looked for.
+        let zip = std::fs::read(out.join(&tw.file)).unwrap();
+        assert_eq!((zip.len() as u64, format!("{:x}", Sha256::digest(&zip))), (tw.bytes, tw.sha256.clone()));
+        let root = d.0.join("voices");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join(INDEX_NAME), &text).unwrap();
+        assert_eq!(import_bytes(&root, &d.0.join("cache"), &zip), Outcome::Installed);
+        let dirs = pack_dirs(&root, Lang::ZhTw.code(), Some("tw"));
+        assert!(dirs[0].join("Kore_reject.wav").is_file(), "{dirs:?}");
+        // The same recordings give the same file; the index goes up a version.
+        make_packs_for(&samples, &out, &regions).unwrap();
+        let again = parse_index(&std::fs::read_to_string(out.join(INDEX_NAME)).unwrap()).unwrap();
+        assert_eq!(again.voices, ix.voices);
+        assert!(again.version > ix.version);
+        // A region without lines or without recordings is an error, not an empty pack.
+        assert!(make_packs_for(&samples, &out, &["zz".to_string()]).is_err());
+        assert!(make_packs_for(&d.0.join("none"), &out, &["tw".to_string()]).is_err());
+    }
+
+    #[test]
     fn an_import_must_match_the_index() {
         let d = tmp();
         let root = d.0.join("voices");
@@ -1406,14 +1532,14 @@ mod tests {
         let bad = release(index_text(std::slice::from_ref(&e)), vec![(e.file.clone(), changed)]);
         assert_eq!(run(&bad.source(), &d.0, "fr").await, Outcome::BadPack);
         assert_eq!(run(&bad.source(), &d.0, "ko").await, Outcome::NotListed);
-        assert!(!kept_index(&d.0) && known_index(&d.0).voices.is_empty(), "a list nothing was installed from is not kept");
+        assert!(!kept_index(&d.0) && known_index(&d.0) == *builtin(), "a list nothing was installed from is not kept");
         let good = release(index_text(std::slice::from_ref(&e)), vec![(e.file.clone(), zip)]);
         assert_eq!(run(&good.source(), &d.0, "fr").await, Outcome::Installed);
         assert!(kept_index(&d.0));
-        assert_eq!((known_index(&d.0).version, known_index(&d.0).voices.len()), (2026112101, 1));
+        assert_eq!((known_index(&d.0).version, known_index(&d.0).voices.len()), (builtin().version + 1, 1));
         // "Restore the built-in version" of the local data puts the built-in list back.
         assert_eq!(crate::pack_update::restore_all(&d.0), "restored");
-        assert!(!kept_index(&d.0) && known_index(&d.0).voices.is_empty());
+        assert!(!kept_index(&d.0) && known_index(&d.0) == *builtin());
         assert!(d.0.join("fr").is_dir(), "the downloaded voices stay");
         restore_builtin_index(&d.0).unwrap();
     }
