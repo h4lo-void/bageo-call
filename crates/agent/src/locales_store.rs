@@ -726,8 +726,10 @@ mod tests {
         install_file_counted(count, packs, &staged, in_use, None)
     }
 
-    /// The ten languages of the first translations Bageo ships.
-    const SHIPPED: [&str; 10] = ["ar", "hi", "id", "it", "nl", "pl", "ru", "th", "tr", "vi"];
+    /// The twenty languages of the translations Bageo ships.
+    const SHIPPED: [&str; 20] = [
+        "ar", "cs", "da", "el", "fi", "he", "hi", "hu", "id", "it", "ms", "nl", "pl", "ro", "ru", "sv", "th", "tr", "uk", "vi",
+    ];
 
     #[test]
     fn builtin_translations_read_with_their_languages_and_no_test_ones() {
@@ -743,9 +745,9 @@ mod tests {
     }
 
     #[test]
-    fn the_shipped_translations_bring_ten_languages_to_notifications() {
+    fn the_shipped_translations_bring_twenty_languages_to_notifications() {
         let (loc, dropped) = parse_from(BUILTIN, Origin::Builtin, 0).unwrap_or_else(|i| panic!("{}", i[0]));
-        assert_eq!(loc.version, 2026112102);
+        assert_eq!(loc.version, 2026112103);
         assert!(dropped.is_empty(), "{:?}", dropped.iter().map(|i| i.to_string()).collect::<Vec<_>>());
         let t = builtin();
         let codes: Vec<&str> = t.langs().map(|(e, _)| e.code()).collect();
@@ -760,13 +762,15 @@ mod tests {
         }
         // Farewells are used for the AI's goodbye only when their examples pass.
         // Vietnamese's "Thôi chào em nhé." is no closing to Bageo's classifier,
-        // so its farewells are left out (the core word lists still know them).
-        let left_out: Vec<&str> = t.langs().filter(|(e, _)| t.phrases(*e).is_some_and(|p| p.farewells.is_empty())).map(|(e, _)| e.code()).collect();
-        assert_eq!(left_out, ["vi"]);
-        assert_eq!(t.ai_farewells().len(), 9);
+        // so its farewells are left out (the core word lists still know them);
+        // the same holds for Danish, Greek and Swedish.
+        let mut left_out: Vec<&str> = t.langs().filter(|(e, _)| t.phrases(*e).is_some_and(|p| p.farewells.is_empty())).map(|(e, _)| e.code()).collect();
+        left_out.sort_unstable();
+        assert_eq!(left_out, ["da", "el", "sv", "vi"]);
+        assert_eq!(t.ai_farewells().len(), SHIPPED.len() - left_out.len());
         testing::use_builtin();
         let menu = menu();
-        assert_eq!(menu.len(), 19);
+        assert_eq!(menu.len(), 9 + SHIPPED.len());
         assert!(menu[9..].iter().all(|x| x["stage"] == "notify" && x["reviewed"] == false));
     }
 
@@ -774,7 +778,7 @@ mod tests {
     fn a_clock_that_is_behind_keeps_the_builtin_translations_and_refuses_later_downloads() {
         // Today is 1970-01-01: the built-in file is still read...
         assert!(parse_from(BUILTIN, Origin::Builtin, 0).is_ok());
-        assert_eq!(builtin().langs().count(), 10);
+        assert_eq!(builtin().langs().count(), SHIPPED.len());
         // ...and the same bytes as a download are refused for their date.
         let e = parse_from(BUILTIN, Origin::Downloaded, 0).unwrap_err();
         assert!(e.iter().any(|i| i.detail.contains("later than tomorrow")), "{}", e[0]);
