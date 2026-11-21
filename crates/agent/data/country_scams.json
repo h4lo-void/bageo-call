@@ -35,7 +35,28 @@
     "PL",
     "RO",
     "MD",
-    "UA"
+    "UA",
+    "BE",
+    "LU",
+    "CZ",
+    "SK",
+    "HU",
+    "BG",
+    "GR",
+    "CY",
+    "HR",
+    "RS",
+    "BA",
+    "ME",
+    "SI",
+    "MK",
+    "AL",
+    "XK",
+    "SE",
+    "NO",
+    "DK",
+    "FI",
+    "IS"
   ],
   "countries": {
     "TW": {
@@ -743,6 +764,68 @@
             "Ofcom",
             "Hiya"
           ]
+        },
+        {
+          "id": "gb_tax_arrest_warrant",
+          "typology": "fake_official",
+          "name": "Fake HMRC or police: arrest warrant and bailiffs",
+          "name_en": "Fake tax office or police threatening arrest",
+          "prevalence": "high",
+          "lang": "en",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "immediate arrest warrant",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "send bailiffs to your address",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as HMRC or the police says there is an arrest warrant over unpaid tax or a compromised National Insurance number and demands immediate payment.",
+          "legit_en": "HMRC and the police never threaten immediate arrest by phone or ask for payment in vouchers.",
+          "bait_tactics": [
+            "Say the reading glasses are upstairs and ask which tax year it is about",
+            "Ask how the amount was worked out"
+          ],
+          "sources": [
+            "HMRC",
+            "Action Fraud"
+          ]
+        },
+        {
+          "id": "gb_broadband_cut_off",
+          "typology": "fake_telecom",
+          "name": "Fake broadband provider: line cut off today",
+          "name_en": "Fake broadband provider threatening to cut the line",
+          "prevalence": "medium",
+          "lang": "en",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "broadband will be cut off",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "install remote support software",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from a broadband provider or the regulator says the line will be cut off today and asks to install remote support software or confirm bank details.",
+          "legit_en": "Broadband providers never cut a line the same day by phone or ask for remote access.",
+          "bait_tactics": [
+            "Say the router is in another room and ask what light should be showing",
+            "Ask what time the cut-off is planned"
+          ],
+          "sources": [
+            "Ofcom",
+            "Action Fraud"
+          ]
         }
       ]
     },
@@ -1107,6 +1190,43 @@
             "BKA",
             "Bundesnetzagentur 2025-2026"
           ]
+        },
+        {
+          "id": "de_falsche_polizeibeamte",
+          "typology": "fake_official",
+          "name": "Falsche Polizeibeamte holen Wertsachen ab",
+          "name_en": "Fake police officers collecting valuables",
+          "prevalence": "very_high",
+          "lang": "de",
+          "context_keywords": [
+            "kriminalpolizei"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "zivilbeamter holt",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "wertsachen abholen",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "strengste geheimhaltung",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a police officer says burglars or a corrupt bank employee threaten the owner's savings, asks for secrecy and says a plain-clothes officer will collect cash and valuables.",
+          "legit_en": "German police never collect money or valuables at the door and never ask people to keep a call secret from their bank.",
+          "bait_tactics": [
+            "Sagen, dass der Schlüssel zum Schrank bei der Nachbarin liegt, und fragen, wann der Kollege kommen will",
+            "Ruhig fragen, wie der Kollege aussieht"
+          ],
+          "sources": [
+            "Polizeiliche Kriminalprävention"
+          ]
         }
       ]
     },
@@ -1194,6 +1314,36 @@
           "sources": [
             "INCIBE",
             "Banco de España"
+          ]
+        },
+        {
+          "id": "es_falso_soporte_tecnico",
+          "typology": "tech_support_remote",
+          "name": "Falso soporte técnico: control remoto",
+          "name_en": "Fake tech support with remote control",
+          "prevalence": "medium",
+          "lang": "es",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "programa de control remoto",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "alertas de virus",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from a software company says the computer sends virus alerts and asks to install a remote-control program and pay for a security renewal.",
+          "legit_en": "Software companies never call about viruses and never ask to control a computer.",
+          "bait_tactics": [
+            "Decir que el ordenador arranca muy lento y preguntar qué debería salir en la pantalla",
+            "Preguntar qué mensaje de error han recibido"
+          ],
+          "sources": [
+            "INCIBE"
           ]
         }
       ]
@@ -1287,6 +1437,103 @@
           "sources": [
             "Enedis",
             "DGCCRF",
+            "Cybermalveillance.gouv.fr"
+          ]
+        },
+        {
+          "id": "fr_cpf_droits_formation",
+          "typology": "training_fund_scam",
+          "name": "Faux conseiller CPF : débloquer vos droits",
+          "name_en": "Fake training account adviser",
+          "prevalence": "high",
+          "lang": "fr",
+          "context_keywords": [
+            "compte formation"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "débloquer vos droits",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "vos droits cpf",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller says the owner's training account rights expire and asks for the social security number or FranceConnect login to unlock them.",
+          "legit_en": "The training account service never calls to unlock rights and never asks for FranceConnect logins.",
+          "bait_tactics": [
+            "Dire qu'on cherche ses lunettes et demander combien il reste sur le compte",
+            "Demander quelle formation ils proposent"
+          ],
+          "sources": [
+            "Cybermalveillance.gouv.fr"
+          ]
+        },
+        {
+          "id": "fr_ameli_carte_vitale",
+          "typology": "fake_health_insurance",
+          "name": "Fausse Assurance maladie : renouveler la carte Vitale",
+          "name_en": "Fake health insurance card renewal",
+          "prevalence": "high",
+          "lang": "fr",
+          "context_keywords": [
+            "assurance maladie"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "renouveler votre carte vitale",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "identifiants ameli",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller or text from the health insurance says the Vitale card must be renewed or a refund is waiting and asks for ameli logins or card details for a small fee.",
+          "legit_en": "The health insurance never asks for ameli logins or card details by phone and the Vitale card is free.",
+          "bait_tactics": [
+            "Dire que la carte est dans le portefeuille dans l'autre pièce et demander pourquoi il faut la renouveler",
+            "Demander combien coûtent les frais"
+          ],
+          "sources": [
+            "Assurance Maladie",
+            "Cybermalveillance.gouv.fr"
+          ]
+        },
+        {
+          "id": "fr_faux_support_technique",
+          "typology": "tech_support_remote",
+          "name": "Faux support technique : contrôle à distance",
+          "name_en": "Fake tech support with remote control",
+          "prevalence": "medium",
+          "lang": "fr",
+          "context_keywords": [
+            "ordinateur infecté"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "prendre le contrôle à distance",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "dépannage payant",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from a software company says the computer is infected and asks to install AnyDesk or TeamViewer, then charges for a fake repair.",
+          "legit_en": "Software companies never call about viruses and never ask to control a computer.",
+          "bait_tactics": [
+            "Dire que l'ordinateur démarre très lentement et demander ce qu'il faut voir à l'écran",
+            "Demander quel message d'erreur ils ont reçu"
+          ],
+          "sources": [
             "Cybermalveillance.gouv.fr"
           ]
         }
@@ -1423,6 +1670,99 @@
             "Polícia Judiciária",
             "Banco de Portugal",
             "SIBS"
+          ]
+        },
+        {
+          "id": "pt_falso_banco_codigo",
+          "typology": "fake_bank_account_alert",
+          "name": "Falso banco: código recebido por SMS",
+          "name_en": "Fake bank asking for the SMS code",
+          "prevalence": "very_high",
+          "lang": "pt",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "código que recebeu por sms",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "credenciais de homebanking",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank says the account is blocked or a payment is suspicious and asks for the code received by SMS or the homebanking credentials.",
+          "legit_en": "Portuguese banks never ask for SMS codes or homebanking credentials by phone.",
+          "bait_tactics": [
+            "Dizer que a aplicação do banco está a atualizar e pedir para explicar outra vez",
+            "Perguntar de que pagamento se trata"
+          ],
+          "sources": [
+            "Banco de Portugal"
+          ]
+        },
+        {
+          "id": "pt_mbway_engano",
+          "typology": "otp_theft",
+          "name": "MB Way: dinheiro enviado por engano",
+          "name_en": "MB Way money sent by mistake",
+          "prevalence": "high",
+          "lang": "pt",
+          "context_keywords": [
+            "mb way"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "enviei dinheiro por engano",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "introduza o pin para receber",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller says they sent money by mistake and asks the owner to return it to another number or to enter a PIN in MB Way to receive it.",
+          "legit_en": "No one needs a PIN to receive money in MB Way.",
+          "bait_tactics": [
+            "Dizer que o telemóvel está a carregar e perguntar quanto foi enviado",
+            "Perguntar a que horas foi"
+          ],
+          "sources": [
+            "SIBS",
+            "PSP"
+          ]
+        },
+        {
+          "id": "pt_ola_pai_ola_mae",
+          "typology": "fake_relative_money",
+          "name": "Olá pai, olá mãe: número novo e pagamento urgente",
+          "name_en": "Child with a new number asking for an urgent payment",
+          "prevalence": "high",
+          "lang": "pt",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "este é o meu número novo",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "o meu telemóvel avariou",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller or message says it is a son or daughter whose phone broke and who has a new number, and asks for an urgent payment.",
+          "legit_en": "Children who change numbers can be reached on the old one; an urgent payment request is the warning sign.",
+          "bait_tactics": [
+            "Dizer que os óculos ficaram no carro e perguntar de que pagamento se trata",
+            "Perguntar quanto é exatamente"
+          ],
+          "sources": [
+            "PSP"
           ]
         }
       ]
@@ -1603,6 +1943,36 @@
           "sources": [
             "CERTFin Italia",
             "Banca d'Italia"
+          ]
+        },
+        {
+          "id": "it_teleselling_energia",
+          "typology": "telecom_energy_sales",
+          "name": "Teleselling energia: codice POD e consenso vocale",
+          "name_en": "Energy teleselling asking for the POD code and voice consent",
+          "prevalence": "medium",
+          "lang": "it",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "codice pod",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "registrare il consenso",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from an energy supplier asks to read the POD code from the bill and to record a voice consent, sometimes threatening a supply cut.",
+          "legit_en": "Suppliers cannot switch a contract without written confirmation and never threaten a cut during a sales call.",
+          "bait_tactics": [
+            "Dire che la bolletta è nell'altra stanza e chiedere quanto si risparmia al mese",
+            "Chiedere quanto dura l'offerta"
+          ],
+          "sources": [
+            "ARERA"
           ]
         }
       ]
@@ -2337,6 +2707,105 @@
             "Bundeskriminalamt",
             "Watchlist Internet"
           ]
+        },
+        {
+          "id": "at_falsche_kriminalpolizei",
+          "typology": "fake_official",
+          "name": "Falsche Kriminalpolizei: Sicherheitsverwahrung",
+          "name_en": "Fake criminal police taking valuables into safekeeping",
+          "prevalence": "very_high",
+          "lang": "de",
+          "context_keywords": [
+            "kriminalpolizei"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "sicherheitsverwahrung",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "zivilbeamter holt",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "kaution sofort bezahlen",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as the criminal police says a relative is arrested or burglars are near and asks for bail at once or for cash and jewellery to be handed to a plain-clothes officer for safekeeping.",
+          "legit_en": "Austrian police never collect bail, cash or jewellery at the door.",
+          "bait_tactics": [
+            "Sagen, dass man sich erst hinsetzen muss, und bitten, alles noch einmal langsam zu erklären",
+            "Fragen, wann der Kollege vorbeikommen will"
+          ],
+          "sources": [
+            "Bundeskriminalamt"
+          ]
+        },
+        {
+          "id": "at_finanzonline_id_austria",
+          "typology": "tax_refund_scam",
+          "name": "Falsches Finanzamt: ID Austria Freigabe",
+          "name_en": "Fake tax office asking for an ID Austria approval",
+          "prevalence": "medium",
+          "lang": "de",
+          "context_keywords": [
+            "finanzonline"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "id austria freigabe",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "steuergutschrift verfällt",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller or text from the tax office says a tax credit expires today and asks for login details or to approve a request in ID Austria.",
+          "legit_en": "The tax office never asks for ID Austria approvals or login details by phone.",
+          "bait_tactics": [
+            "Sagen, dass die Brille im Auto liegt, und fragen, um welches Jahr es geht",
+            "Fragen, wie hoch die Gutschrift sein soll"
+          ],
+          "sources": [
+            "BMF"
+          ]
+        },
+        {
+          "id": "at_bank_tan_freigabe",
+          "typology": "otp_theft",
+          "name": "Falsche Bank: TAN vorlesen oder Freigabe bestätigen",
+          "name_en": "Fake bank asking to read out a TAN or confirm an approval",
+          "prevalence": "high",
+          "lang": "de",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "tan-code vorlesen",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "freigabe in der banking-app",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security team reports a suspicious payment and asks to read out the TAN code or confirm an approval in the banking app to stop it.",
+          "legit_en": "Austrian banks never ask customers to read out TAN codes or confirm approvals to stop a payment.",
+          "bait_tactics": [
+            "Sagen, dass die Banking-App gerade lädt, und bitten, es noch einmal zu erklären",
+            "Fragen, welche Zahlung es war und an welchem Tag"
+          ],
+          "sources": [
+            "Bundeskriminalamt"
+          ]
         }
       ]
     },
@@ -2454,6 +2923,38 @@
           ],
           "sources": [
             "fedpol"
+          ]
+        },
+        {
+          "id": "ch_falscher_techsupport",
+          "typology": "tech_support_remote",
+          "name": "Falscher technischer Support",
+          "name_en": "Fake technical support",
+          "prevalence": "medium",
+          "lang": "de",
+          "context_keywords": [
+            "microsoft-support"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "anydesk installieren",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "teamviewer öffnen",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from a software company says the computer is infected and asks to install AnyDesk or open TeamViewer, then to log in to e-banking.",
+          "legit_en": "Software companies never call about viruses and never ask to control a computer or watch e-banking.",
+          "bait_tactics": [
+            "Sagen, dass der Computer sehr langsam startet, und fragen, was auf dem Bildschirm stehen soll",
+            "Fragen, welche Fehlermeldung sie bekommen haben"
+          ],
+          "sources": [
+            "NCSC"
           ]
         }
       ]
@@ -3057,6 +3558,38 @@
           "sources": [
             "Politie"
           ]
+        },
+        {
+          "id": "nl_helpdeskfraude_meekijken",
+          "typology": "tech_support_remote",
+          "name": "Helpdeskfraude: meekijken op uw computer",
+          "name_en": "Fake helpdesk watching the computer",
+          "prevalence": "high",
+          "lang": "nl",
+          "context_keywords": [
+            "helpdesk van microsoft"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "meekijken op uw computer",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "anydesk of teamviewer",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from a helpdesk says the computer has a virus and asks to install AnyDesk or TeamViewer so they can watch while the owner logs in to online banking.",
+          "legit_en": "Software companies and banks never ask to watch while a customer logs in to online banking.",
+          "bait_tactics": [
+            "Zeggen dat de computer heel traag opstart en vragen wat er op het scherm moet staan",
+            "Vragen welke foutmelding ze hebben gekregen"
+          ],
+          "sources": [
+            "Fraudehelpdesk"
+          ]
         }
       ]
     },
@@ -3143,6 +3676,39 @@
           ],
           "sources": [
             "Policja"
+          ]
+        },
+        {
+          "id": "pl_falszywy_zus_dodatek",
+          "typology": "fake_government_subsidy",
+          "name": "Fałszywy ZUS: dodatek i opłata weryfikacyjna",
+          "name_en": "Fake social insurance allowance with a verification fee",
+          "prevalence": "medium",
+          "lang": "pl",
+          "context_keywords": [
+            "zakład ubezpieczeń społecznych"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "opłata weryfikacyjna",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "dane logowania do banku",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as ZUS or another office says the owner is entitled to an allowance and asks for a small verification fee or bank login details.",
+          "legit_en": "ZUS never asks for fees or bank login details to pay an allowance.",
+          "bait_tactics": [
+            "Powiedzieć, że trzeba znaleźć okulary, i zapytać, o jaki dodatek chodzi",
+            "Zapytać, ile ma wynosić ten dodatek"
+          ],
+          "sources": [
+            "ZUS",
+            "CERT Polska"
           ]
         }
       ]
@@ -3269,6 +3835,39 @@
             "Poliția Română",
             "DNSC"
           ]
+        },
+        {
+          "id": "ro_broker_fals_investitii",
+          "typology": "investment_group_scam",
+          "name": "Broker fals: câștig rapid garantat",
+          "name_en": "Fake broker promising quick guaranteed gains",
+          "prevalence": "high",
+          "lang": "ro",
+          "context_keywords": [
+            "platformă de tranzacționare"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "taxă de retragere",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "câștig rapid garantat",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a broker promises guaranteed quick gains, asks to install AnyDesk and later demands a withdrawal fee to release the profit.",
+          "legit_en": "Licensed brokers never promise guaranteed gains or charge fees to release money.",
+          "bait_tactics": [
+            "Spune că își notează și întreabă cât e prima depunere",
+            "Întreabă cât durează o retragere"
+          ],
+          "sources": [
+            "ASF",
+            "DNSC"
+          ]
         }
       ]
     },
@@ -3363,6 +3962,70 @@
           ],
           "sources": [
             "IGP Moldova"
+          ]
+        },
+        {
+          "id": "md_spoofing_banca_politie",
+          "typology": "fake_official",
+          "name": "Apel falsificat de la bancă sau poliție: cont de siguranță",
+          "name_en": "Spoofed bank or police call about a safe account",
+          "prevalence": "high",
+          "lang": "ro",
+          "context_keywords": [
+            "serviciul de securitate"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "cont de siguranță",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "aplicație de acces la distanță",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank, the police or a cybersecurity agency says a loan was taken in the owner's name and asks for the PIN or CVV, a remote access app or a transfer to a safe account.",
+          "legit_en": "Banks and the police never ask for PIN or CVV codes or transfers to a safe account.",
+          "bait_tactics": [
+            "Spune că aplicația băncii se încarcă și roagă-l să explice încă o dată",
+            "Întreabă de ce zi este creditul"
+          ],
+          "sources": [
+            "Poliția Republicii Moldova"
+          ]
+        },
+        {
+          "id": "md_broker_fals_investitii",
+          "typology": "investment_group_scam",
+          "name": "Broker fals: câștig rapid garantat",
+          "name_en": "Fake broker promising quick guaranteed gains",
+          "prevalence": "high",
+          "lang": "ro",
+          "context_keywords": [
+            "platformă de tranzacționare"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "taxă de retragere",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "câștig rapid garantat",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a broker promises guaranteed quick gains, asks to install AnyDesk and later demands a withdrawal fee to release the profit.",
+          "legit_en": "Licensed brokers never promise guaranteed gains or charge fees to release money.",
+          "bait_tactics": [
+            "Spune că își notează și întreabă cât e prima depunere",
+            "Întreabă cât durează o retragere"
+          ],
+          "sources": [
+            "CNPF"
           ]
         }
       ]
@@ -3498,6 +4161,3014 @@
           ],
           "sources": [
             "Kiberpolitsiia"
+          ]
+        },
+        {
+          "id": "ua_zamina_esim",
+          "typology": "fake_telecom",
+          "name": "Шахрайська заміна eSIM",
+          "name_en": "Fake operator switching to a new eSIM",
+          "prevalence": "high",
+          "lang": "uk",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "код від оператора",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "нову esim",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from a mobile operator says the SIM is outdated and asks for the code from the operator to switch to a new eSIM, which hands the number to the caller.",
+          "legit_en": "Operators never ask for codes by phone to switch a SIM or eSIM.",
+          "bait_tactics": [
+            "Сказати, що телефон заряджається, і попросити пояснити ще раз повільно",
+            "Запитати, до якого числа треба замінити"
+          ],
+          "sources": [
+            "Кіберполіція"
+          ]
+        },
+        {
+          "id": "ua_falshyva_politsiia_prohrama",
+          "typology": "fake_official",
+          "name": "Фальшива поліція: програма для перевірки",
+          "name_en": "Fake police asking to install a checking program",
+          "prevalence": "high",
+          "lang": "uk",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "програму для перевірки",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "гроші для експертизи",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as the police says a criminal case was opened over the owner's account and asks to install a program to check the device or transfer money for an examination.",
+          "legit_en": "The police never ask to install programs or transfer money for an examination.",
+          "bait_tactics": [
+            "Сказати, що треба знайти окуляри, і попросити повторити повільно",
+            "Запитати, з якого відділку дзвонять"
+          ],
+          "sources": [
+            "Національна поліція"
+          ]
+        }
+      ]
+    },
+    "BE": {
+      "name": "Belgium",
+      "name_local": "België / Belgique",
+      "iso": "be",
+      "calling_code": "+32",
+      "languages": [
+        "nl",
+        "fr",
+        "de"
+      ],
+      "prevalence_note": "Safeonweb and Febelfin warnings 2025-2026: fake bank or Card Stop staff asking for card reader codes or collecting cards, itsme approval tricks, and fake tax office threats.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "be_cardstop_kaartlezer",
+          "typology": "fake_bank_account_alert",
+          "name": "Valse bankmedewerker of Card Stop: code van de kaartlezer",
+          "name_en": "Fake bank or Card Stop staff asking for card reader codes",
+          "prevalence": "very_high",
+          "lang": "nl",
+          "context_keywords": [
+            "card stop"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "code van uw kaartlezer",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "uw bankkaart ophalen",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "kluisrekening",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security service or Card Stop reports a suspicious payment and asks for card reader codes, sends a courier for the bank card or moves money to a vault account.",
+          "legit_en": "Belgian banks and Card Stop never ask for card reader codes by phone and never send anyone to collect a bank card.",
+          "bait_tactics": [
+            "Zeggen dat de kaartlezer in een andere kamer ligt en rustig laten uitleggen welke betaling het was",
+            "Vragen op welke dag en voor welk bedrag de betaling was"
+          ],
+          "sources": [
+            "Febelfin",
+            "Safeonweb"
+          ]
+        },
+        {
+          "id": "be_itsme_bevestigen",
+          "typology": "otp_theft",
+          "name": "Valse helpdesk laat een itsme-aanvraag bevestigen",
+          "name_en": "Fake helpdesk asking to confirm an itsme request",
+          "prevalence": "high",
+          "lang": "nl",
+          "context_keywords": [
+            "itsme"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "bevestig in de itsme-app",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "uw itsme-code",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller says the owner's access is blocked or needs a security update and asks to confirm a request in the itsme app or to give the itsme code.",
+          "legit_en": "Banks and government services never ask anyone to approve an itsme request they did not start themselves.",
+          "bait_tactics": [
+            "Zeggen dat de telefoon net opnieuw opstart en vragen wat er precies op het scherm zou moeten staan",
+            "Rustig vragen voor welke dienst de aanvraag is"
+          ],
+          "sources": [
+            "Safeonweb",
+            "Febelfin"
+          ]
+        },
+        {
+          "id": "be_fod_financien_beslag",
+          "typology": "tax_refund_scam",
+          "name": "Valse FOD Financiën: onmiddellijk betalen of beslag",
+          "name_en": "Fake tax office demanding immediate payment or seizure",
+          "prevalence": "medium",
+          "lang": "nl",
+          "context_keywords": [
+            "fod financiën"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "beslaglegging vandaag",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "onmiddellijk overschrijven",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as the federal tax office or a bailiff claims an unpaid tax debt and threatens seizure today unless money is transferred at once.",
+          "legit_en": "The Belgian tax office sends letters and never demands immediate transfers by phone under threat of seizure the same day.",
+          "bait_tactics": [
+            "Zeggen dat de briefwisseling bij de boekhouder ligt en vragen om welk jaar het gaat",
+            "Vragen hoe het bedrag precies berekend is"
+          ],
+          "sources": [
+            "FOD Financiën"
+          ]
+        },
+        {
+          "id": "be_carte_lecteur_code",
+          "typology": "fake_bank_account_alert",
+          "name": "Faux service de sécurité bancaire : codes du lecteur de carte",
+          "name_en": "Fake bank security asking for card reader codes (French)",
+          "prevalence": "high",
+          "lang": "fr",
+          "context_keywords": [
+            "card stop"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "code de votre lecteur de carte",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "chercher votre carte bancaire",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security service or Card Stop reports a suspicious payment, asks for codes from the card reader or announces a courier to pick up the bank card.",
+          "legit_en": "Belgian banks never ask for card reader codes by phone and never send a courier to collect a bank card.",
+          "bait_tactics": [
+            "Dire que le lecteur de carte est dans une autre pièce et demander calmement de quel paiement il s'agit",
+            "Demander à quelle date et pour quel montant"
+          ],
+          "sources": [
+            "Febelfin"
+          ]
+        }
+      ]
+    },
+    "LU": {
+      "name": "Luxembourg",
+      "name_local": "Luxembourg / Lëtzebuerg",
+      "iso": "lu",
+      "calling_code": "+352",
+      "languages": [
+        "fr",
+        "de"
+      ],
+      "prevalence_note": "Police grand-ducale warnings 2025-2026: fake bank security staff using LuxTrust approvals, messages and calls from a relative with a new number, and fake technical support.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "lu_luxtrust_securite",
+          "typology": "fake_bank_account_alert",
+          "name": "Faux service de sécurité : validation LuxTrust",
+          "name_en": "Fake bank security asking for a LuxTrust approval",
+          "prevalence": "high",
+          "lang": "fr",
+          "context_keywords": [
+            "luxtrust"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "confirmer dans l'application luxtrust",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "remettre votre carte bancaire",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security service reports a suspicious transaction and asks the owner to approve a request in the LuxTrust app or to hand the bank card to a courier.",
+          "legit_en": "Banks in Luxembourg never ask customers to approve a LuxTrust request they did not start or to hand over their card.",
+          "bait_tactics": [
+            "Dire que l'application LuxTrust se met à jour et demander de réexpliquer lentement",
+            "Demander de quelle transaction il s'agit et à quelle date"
+          ],
+          "sources": [
+            "Police grand-ducale",
+            "LuxTrust"
+          ]
+        },
+        {
+          "id": "lu_proche_nouveau_numero",
+          "typology": "fake_relative_money",
+          "name": "Faux proche avec un nouveau numéro qui demande un virement",
+          "name_en": "Fake relative with a new number asking for an urgent transfer",
+          "prevalence": "high",
+          "lang": "fr",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "n'en parle à personne",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "fais-moi un virement",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller says they are a son or daughter with a broken phone and a new number, needs an urgent transfer for a bill and asks the owner to tell nobody.",
+          "legit_en": "Relatives who change numbers can be reached on the old one or met in person; a request for an urgent secret transfer is the warning sign.",
+          "bait_tactics": [
+            "Dire que les lunettes sont restées dans la voiture et demander de répéter le montant",
+            "Demander tranquillement de quelle facture il s'agit"
+          ],
+          "sources": [
+            "Police grand-ducale"
+          ]
+        },
+        {
+          "id": "lu_support_technique",
+          "typology": "tech_support_remote",
+          "name": "Faux support technique : logiciel de téléassistance",
+          "name_en": "Fake technical support installing remote-assistance software",
+          "prevalence": "medium",
+          "lang": "fr",
+          "context_keywords": [
+            "ordinateur infecté"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "logiciel de téléassistance",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "prendre la main sur votre ordinateur",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from a software or security company says the computer is infected or the licence has expired and asks to install remote-assistance software.",
+          "legit_en": "Software companies do not call people about viruses or licences and never ask to control their computer.",
+          "bait_tactics": [
+            "Dire que l'ordinateur démarre très lentement et demander ce qu'il faut voir à l'écran",
+            "Demander quel message d'erreur ils ont reçu"
+          ],
+          "sources": [
+            "Police grand-ducale"
+          ]
+        }
+      ]
+    },
+    "CZ": {
+      "name": "Czechia",
+      "name_local": "Česko",
+      "iso": "cz",
+      "calling_code": "+420",
+      "languages": [
+        "cs"
+      ],
+      "prevalence_note": "Police ČR and ČNB warnings 2025-2026: fake bankers and police moving savings to a 'safe account' or a courier, crypto investment calls with remote access, and fake Citizen Portal fines.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "cz_falesny_banker_bezpecny_ucet",
+          "typology": "fake_bank_account_alert",
+          "name": "Falešný bankéř nebo policista: převod na bezpečný účet",
+          "name_en": "Fake banker or police moving money to a safe account",
+          "prevalence": "very_high",
+          "lang": "cs",
+          "context_keywords": [
+            "bezpečnostní oddělení"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "bezpečný účet",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "napadený účet",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "předat kurýrovi",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security department, the central bank or the police says the account was attacked and asks to move money to a safe account, take a pre-approved loan or hand cash to a courier.",
+          "legit_en": "Banks and the police never ask customers to move money to another account, take a loan or hand cash to a courier to protect it.",
+          "bait_tactics": [
+            "Říct, že bankovní aplikace se ještě načítá, a poprosit, ať to vysvětlí ještě jednou pomalu",
+            "Zeptat se, která platba to byla a kterého dne"
+          ],
+          "sources": [
+            "Policie ČR",
+            "ČNB"
+          ]
+        },
+        {
+          "id": "cz_krypto_investice",
+          "typology": "crypto_scam",
+          "name": "Falešný investiční poradce: kryptoměny a vzdálená správa",
+          "name_en": "Fake investment adviser with crypto and remote access",
+          "prevalence": "high",
+          "lang": "cs",
+          "context_keywords": [
+            "investiční poradce"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "kryptoměnové peněženky",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "výplatu zisku",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as an investment adviser promises crypto profits, asks to send money to a crypto wallet or install a remote-control program, then demands fees to pay out profits.",
+          "legit_en": "Licensed advisers never ask clients to install remote-control programs or pay fees before paying out profits.",
+          "bait_tactics": [
+            "Říct, že si to musí zapsat, a zeptat se, kolik se platí na začátku",
+            "Zeptat se, jak dlouho trvá výplata"
+          ],
+          "sources": [
+            "ČNB",
+            "Policie ČR"
+          ]
+        },
+        {
+          "id": "cz_portal_obcana_pokuta",
+          "typology": "fake_official",
+          "name": "Falešný Portál občana: nezaplacená pokuta",
+          "name_en": "Fake Citizen Portal unpaid fine",
+          "prevalence": "medium",
+          "lang": "cs",
+          "context_keywords": [
+            "portál občana"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "nezaplacenou pokutu",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "potvrdit bankovní identitu",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller or text says there is an unpaid fine or enforcement and asks to log in through a link or confirm the bank identity.",
+          "legit_en": "Czech authorities never ask anyone to confirm their bank identity through a link from a call or text.",
+          "bait_tactics": [
+            "Říct, že hledá brýle, a zeptat se, za jaký přestupek ta pokuta je",
+            "Zeptat se, kterého dne se to stalo"
+          ],
+          "sources": [
+            "Policie ČR"
+          ]
+        }
+      ]
+    },
+    "SK": {
+      "name": "Slovakia",
+      "name_local": "Slovensko",
+      "iso": "sk",
+      "calling_code": "+421",
+      "languages": [
+        "sk"
+      ],
+      "prevalence_note": "Police and NBS warnings 2025-2026: fake police investigators and fake central bank staff moving savings to 'safe' or 'investigation' accounts, and the grandchild accident method.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "sk_falosna_policia_vysetrovanie",
+          "typology": "fake_official",
+          "name": "Falošný policajt: tajné vyšetrovanie a vyšetrovací účet",
+          "name_en": "Fake police secret investigation and investigation account",
+          "prevalence": "very_high",
+          "lang": "sk",
+          "context_keywords": [
+            "kriminálna polícia"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "vyšetrovací účet",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "tajné vyšetrovanie",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "pranie špinavých peňazí",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a police investigator speaks of money laundering or identity misuse, asks for secrecy and tells the owner to move savings to an investigation or safe account.",
+          "legit_en": "The Slovak police never ask anyone to move money to an account or keep an investigation secret from their bank.",
+          "bait_tactics": [
+            "Povedať, že si musí sadnúť, a poprosiť, nech to zopakuje pomaly",
+            "Opýtať sa, odkedy sa to deje"
+          ],
+          "sources": [
+            "Policajný zbor SR"
+          ]
+        },
+        {
+          "id": "sk_falosna_nbs",
+          "typology": "fake_bank_account_alert",
+          "name": "Falošný pracovník banky alebo NBS: záchrana peňazí",
+          "name_en": "Fake bank or central bank staff saving the money",
+          "prevalence": "high",
+          "lang": "sk",
+          "context_keywords": [
+            "národná banka slovenska"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "účet nbs",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "záchranu peňazí",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "overovací kód",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security department or the central bank reports a suspicious transaction or an unpaid loan and asks for card details, the SMS code or a transfer to an NBS account.",
+          "legit_en": "The central bank holds no accounts for citizens and banks never ask for SMS codes or transfers to save money.",
+          "bait_tactics": [
+            "Povedať, že aplikácia banky sa aktualizuje, a nechať si to vysvetliť ešte raz",
+            "Opýtať sa, o akú sumu ide"
+          ],
+          "sources": [
+            "NBS",
+            "Policajný zbor SR"
+          ]
+        },
+        {
+          "id": "sk_vnuk_nehoda",
+          "typology": "fake_relative_money",
+          "name": "Vnuk po nehode: príde kolega po peniaze",
+          "name_en": "Grandchild after an accident, a colleague comes for the money",
+          "prevalence": "high",
+          "lang": "sk",
+          "context_keywords": [
+            "dopravná nehoda"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "pripraviť hotovosť",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "príde kolega pre peniaze",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "mimosúdne vyrovnanie",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a grandchild, doctor or police officer says a relative caused an accident and needs cash for a settlement or surgery; a colleague will come to collect it.",
+          "legit_en": "The police and hospitals never collect cash from relatives at the door.",
+          "bait_tactics": [
+            "Povedať, že nepočuje dobre, a poprosiť, nech zopakuje, kde sa to stalo",
+            "Opýtať sa, v ktorej nemocnici leží"
+          ],
+          "sources": [
+            "Policajný zbor SR"
+          ]
+        }
+      ]
+    },
+    "HU": {
+      "name": "Hungary",
+      "name_local": "Magyarország",
+      "iso": "hu",
+      "calling_code": "+36",
+      "languages": [
+        "hu"
+      ],
+      "prevalence_note": "Police and MNB (KiberPajzs) warnings 2025-2026: fake bank security staff moving money to a 'security account' with remote access apps, fake police secret investigations, and the grandchild method.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "hu_hamis_bankbiztonsag",
+          "typology": "fake_bank_account_alert",
+          "name": "Hamis banki biztonsági munkatárs: biztonsági számla",
+          "name_en": "Fake bank security moving money to a security account",
+          "prevalence": "very_high",
+          "lang": "hu",
+          "context_keywords": [
+            "bankbiztonsági osztály"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "biztonsági számla",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "netbank belépési adatok",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "zárolják a számláját",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security department or the central bank reports a suspicious transfer and asks for netbank login details, an SMS code, remote access or a transfer to a security account.",
+          "legit_en": "Banks never ask for netbank passwords or codes by phone and never move customers' money to a security account.",
+          "bait_tactics": [
+            "Mondani, hogy a banki alkalmazás még töltődik, és kérni, hogy magyarázza el újra lassan",
+            "Megkérdezni, melyik napon és mekkora összegről van szó"
+          ],
+          "sources": [
+            "MNB KiberPajzs",
+            "Rendőrség"
+          ]
+        },
+        {
+          "id": "hu_hamis_rendor_titkos_nyomozas",
+          "typology": "fake_official",
+          "name": "Hamis rendőr: titkos nyomozás és rendőrségi számla",
+          "name_en": "Fake police secret investigation",
+          "prevalence": "high",
+          "lang": "hu",
+          "context_keywords": [
+            "bűnügyi nyomozó"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "titkos nyomozás",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "titoktartási kötelezettség",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "vegye fel a készpénzt",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a police investigator says a corrupt bank employee is stealing money, asks for secrecy and tells the owner to withdraw cash or move it to a police account.",
+          "legit_en": "The Hungarian police never ask citizens to withdraw cash, move money or keep an investigation secret from their bank.",
+          "bait_tactics": [
+            "Mondani, hogy le kell ülnie, és megkérni, hogy ismételje el lassan",
+            "Megkérdezni, mióta tart ez az egész"
+          ],
+          "sources": [
+            "Rendőrség"
+          ]
+        },
+        {
+          "id": "hu_unokazos_csalas",
+          "typology": "fake_relative_money",
+          "name": "Unokázós csalás: baleset, egy ismerős jön a pénzért",
+          "name_en": "Grandchild method, an acquaintance comes for the money",
+          "prevalence": "high",
+          "lang": "hu",
+          "context_keywords": [
+            "autóbaleset"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "egy ismerőst a pénzért",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "ne szólj a szülőknek",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "óvadék",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a grandchild, lawyer or police officer says a relative caused an accident and needs cash for bail or damages; an acquaintance will come to collect it.",
+          "legit_en": "The police and courts never collect bail or damages in cash at the door.",
+          "bait_tactics": [
+            "Mondani, hogy rosszul hall, és megkérni, hogy mondja el újra, hol történt",
+            "Megkérdezni, melyik kórházban van"
+          ],
+          "sources": [
+            "Rendőrség"
+          ]
+        }
+      ]
+    },
+    "BG": {
+      "name": "Bulgaria",
+      "name_local": "България",
+      "iso": "bg",
+      "calling_code": "+359",
+      "languages": [
+        "bg"
+      ],
+      "prevalence_note": "MVR warnings 2025-2026: fake police 'special operations' asking older people to throw or hand over money, relative-accident calls with fake doctors, fake bank security staff, and investment call centres.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "bg_falshiva_politsia_aktsia",
+          "typology": "fake_official",
+          "name": "Фалшива полиция: специализирана акция срещу измамници",
+          "name_en": "Fake police special operation against fraudsters",
+          "prevalence": "very_high",
+          "lang": "bg",
+          "context_keywords": [
+            "специализирана акция"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "хвърлете парите",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "съдействие на полицията",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "залавяне на измамници",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a police officer says an operation to catch fraudsters is under way and asks the owner to throw money from the balcony, leave an envelope or hand cash to an officer.",
+          "legit_en": "The Bulgarian police never ask citizens to hand over or throw money to help with an operation.",
+          "bait_tactics": [
+            "Да каже, че трябва да си намери очилата, и да помоли да повтори бавно",
+            "Да попита от кое управление се обаждат"
+          ],
+          "sources": [
+            "МВР"
+          ]
+        },
+        {
+          "id": "bg_rodnina_katastrofa",
+          "typology": "fake_relative_money",
+          "name": "Роднина в катастрофа: пари за операция",
+          "name_en": "Relative in an accident, money for surgery",
+          "prevalence": "high",
+          "lang": "bg",
+          "context_keywords": [
+            "тежка катастрофа"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "златни пирони",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "предайте парите",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "освобождаване под гаранция",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a doctor, relative or police officer says a relative was in a serious accident and needs cash for surgery or bail, to be handed to someone at the entrance.",
+          "legit_en": "Hospitals and the police never collect cash from relatives at the door.",
+          "bait_tactics": [
+            "Да каже, че не чува добре, и да помоли да повтори в коя болница е",
+            "Да попита как се казва лекарят"
+          ],
+          "sources": [
+            "МВР"
+          ]
+        },
+        {
+          "id": "bg_falshiv_bankov_sluzhitel",
+          "typology": "fake_bank_account_alert",
+          "name": "Фалшив банков служител: защитена сметка",
+          "name_en": "Fake bank staff moving money to a protected account",
+          "prevalence": "high",
+          "lang": "bg",
+          "context_keywords": [
+            "отдел сигурност"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "защитена сметка",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "опит за теглене на кредит",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "продиктувайте кода",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security department reports a suspicious transfer or a loan attempt and asks for the SMS code, a remote access app or a transfer to a protected account.",
+          "legit_en": "Banks never ask for SMS codes by phone and never move customers' money to another account.",
+          "bait_tactics": [
+            "Да каже, че приложението на банката се обновява, и да помоли да обясни пак",
+            "Да попита за каква сума става дума"
+          ],
+          "sources": [
+            "МВР",
+            "БНБ"
+          ]
+        },
+        {
+          "id": "bg_investitsionen_kol_tsentar",
+          "typology": "investment_group_scam",
+          "name": "Инвестиционен кол център: гарантирана печалба",
+          "name_en": "Investment call centre with guaranteed profit",
+          "prevalence": "medium",
+          "lang": "bg",
+          "context_keywords": [
+            "инвестиционна платформа"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "данък печалба предварително",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "гарантирана месечна печалба",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from an investment platform promises guaranteed monthly profit, asks to install a remote access app and later demands a profit tax paid in advance to release the money.",
+          "legit_en": "Licensed brokers never promise guaranteed profit or ask for taxes in advance to pay out.",
+          "bait_tactics": [
+            "Да каже, че си записва, и да попита колко е първата вноска",
+            "Да попита колко време отнема изплащането"
+          ],
+          "sources": [
+            "КФН",
+            "МВР"
+          ]
+        }
+      ]
+    },
+    "GR": {
+      "name": "Greece",
+      "name_local": "Ελλάδα",
+      "iso": "gr",
+      "calling_code": "+30",
+      "languages": [
+        "el"
+      ],
+      "prevalence_note": "Hellenic Police warnings 2025-2026: fake accountants promising allowances, fake police and electricity technicians collecting valuables, relative-accident calls, and fake bank security asking for codes.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "gr_psevdo_logistis_epidoma",
+          "typology": "fake_government_subsidy",
+          "name": "Ψεύτικος λογιστής: κρατικό επίδομα",
+          "name_en": "Fake accountant promising a state allowance",
+          "prevalence": "high",
+          "lang": "el",
+          "context_keywords": [
+            "λογιστικό γραφείο"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "κωδικούς e-banking",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "μετρητά και τα κοσμήματα",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as an accountant or tax office says the owner is entitled to an allowance or tax refund and asks for e-banking codes, the OTP or to gather cash and jewellery for a record.",
+          "legit_en": "Accountants and the tax office never ask for e-banking codes or OTPs and never record cash or jewellery at home.",
+          "bait_tactics": [
+            "Να πει ότι ψάχνει τα γυαλιά του και να ζητήσει να του τα ξαναπεί αργά",
+            "Να ρωτήσει ήρεμα για ποιο επίδομα πρόκειται και πόσα χρήματα είναι"
+          ],
+          "sources": [
+            "Ελληνική Αστυνομία"
+          ]
+        },
+        {
+          "id": "gr_psevdo_astynomia_timalfi",
+          "typology": "fake_official",
+          "name": "Ψεύτικοι αστυνομικοί: φύλαξη τιμαλφών",
+          "name_en": "Fake police collecting valuables for safekeeping",
+          "prevalence": "very_high",
+          "lang": "el",
+          "context_keywords": [
+            "φύλαξη τιμαλφών"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "τα τιμαλφή για φύλαξη",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "αφήστε τα κοσμήματα",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a police officer speaks of a criminal investigation and asks the owner to hand over money and valuables for safekeeping or leave jewellery at a given spot.",
+          "legit_en": "The police never collect money or valuables from citizens for safekeeping.",
+          "bait_tactics": [
+            "Να πει ότι πρέπει να καθίσει και να ζητήσει να του τα εξηγήσει πάλι",
+            "Να ρωτήσει από ποιο τμήμα τηλεφωνούν"
+          ],
+          "sources": [
+            "Ελληνική Αστυνομία"
+          ]
+        },
+        {
+          "id": "gr_syngenis_troxaio",
+          "typology": "fake_relative_money",
+          "name": "Συγγενής σε τροχαίο: μετρητά για χειρουργείο",
+          "name_en": "Relative in a traffic accident, cash for surgery",
+          "prevalence": "high",
+          "lang": "el",
+          "context_keywords": [
+            "τροχαίο ατύχημα"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "μετρητά για το χειρουργείο",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "να παραλάβει τα χρήματα",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a doctor or relative says a family member was in an accident and needs cash at once for surgery; a colleague will come to collect it.",
+          "legit_en": "Hospitals never collect cash from relatives at the door before treatment.",
+          "bait_tactics": [
+            "Να πει ότι δεν ακούει καλά και να ζητήσει να επαναλάβει σε ποιο νοσοκομείο",
+            "Να ρωτήσει πώς λέγεται ο γιατρός"
+          ],
+          "sources": [
+            "Ελληνική Αστυνομία"
+          ]
+        },
+        {
+          "id": "gr_psevdo_texnikos_reymatos",
+          "typology": "fake_utility",
+          "name": "Ψεύτικος τεχνικός ρεύματος: διαρροή και τιμαλφή",
+          "name_en": "Fake electricity technician and valuables",
+          "prevalence": "medium",
+          "lang": "el",
+          "context_keywords": [
+            "διαρροή ρεύματος"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "τυλίξτε τα τιμαλφή",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "σε αλουμινόχαρτο",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as an electricity network technician warns of a dangerous leak and asks the owner to take out cash and jewellery, wrap them in foil and leave them at the door.",
+          "legit_en": "Electricity companies never ask customers to move or hand over valuables.",
+          "bait_tactics": [
+            "Να πει ότι ο πίνακας είναι στο υπόγειο και να ρωτήσει τι ακριβώς να κοιτάξει",
+            "Να ρωτήσει πότε θα έρθει ο τεχνικός"
+          ],
+          "sources": [
+            "ΔΕΔΔΗΕ",
+            "Ελληνική Αστυνομία"
+          ]
+        },
+        {
+          "id": "gr_psevdo_trapeza_asfaleia",
+          "typology": "fake_bank_account_alert",
+          "name": "Ψεύτικο τμήμα ασφαλείας τράπεζας: κωδικός επιβεβαίωσης",
+          "name_en": "Fake bank security asking for a confirmation code",
+          "prevalence": "high",
+          "lang": "el",
+          "context_keywords": [
+            "ύποπτη συναλλαγή"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "εξαψήφιο κωδικό",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "εγκρίνετε την ειδοποίηση",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security department reports a suspicious transaction and asks for the six-digit confirmation code or to approve a notification in the bank app.",
+          "legit_en": "Banks never ask for confirmation codes or approvals by phone to cancel a transaction.",
+          "bait_tactics": [
+            "Να πει ότι η εφαρμογή της τράπεζας ενημερώνεται και να ζητήσει να του το εξηγήσει πάλι",
+            "Να ρωτήσει για ποιο ποσό είναι η συναλλαγή"
+          ],
+          "sources": [
+            "Ελληνική Αστυνομία"
+          ]
+        }
+      ]
+    },
+    "CY": {
+      "name": "Cyprus",
+      "name_local": "Κύπρος",
+      "iso": "cy",
+      "calling_code": "+357",
+      "languages": [
+        "el"
+      ],
+      "prevalence_note": "Cyprus Police warnings 2025-2026 follow the Greek pattern: fake police and technicians collecting valuables, relative-accident calls, and fake bank security asking for codes.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "cy_psevdo_logistis_epidoma",
+          "typology": "fake_government_subsidy",
+          "name": "Ψεύτικος λογιστής: κρατικό επίδομα",
+          "name_en": "Fake accountant promising a state allowance",
+          "prevalence": "high",
+          "lang": "el",
+          "context_keywords": [
+            "λογιστικό γραφείο"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "κωδικούς e-banking",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "μετρητά και τα κοσμήματα",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as an accountant or tax office says the owner is entitled to an allowance or tax refund and asks for e-banking codes, the OTP or to gather cash and jewellery for a record.",
+          "legit_en": "Accountants and the tax office never ask for e-banking codes or OTPs and never record cash or jewellery at home.",
+          "bait_tactics": [
+            "Να πει ότι ψάχνει τα γυαλιά του και να ζητήσει να του τα ξαναπεί αργά",
+            "Να ρωτήσει ήρεμα για ποιο επίδομα πρόκειται και πόσα χρήματα είναι"
+          ],
+          "sources": [
+            "Ελληνική Αστυνομία"
+          ]
+        },
+        {
+          "id": "cy_psevdo_astynomia_timalfi",
+          "typology": "fake_official",
+          "name": "Ψεύτικοι αστυνομικοί: φύλαξη τιμαλφών",
+          "name_en": "Fake police collecting valuables for safekeeping",
+          "prevalence": "very_high",
+          "lang": "el",
+          "context_keywords": [
+            "φύλαξη τιμαλφών"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "τα τιμαλφή για φύλαξη",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "αφήστε τα κοσμήματα",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a police officer speaks of a criminal investigation and asks the owner to hand over money and valuables for safekeeping or leave jewellery at a given spot.",
+          "legit_en": "The police never collect money or valuables from citizens for safekeeping.",
+          "bait_tactics": [
+            "Να πει ότι πρέπει να καθίσει και να ζητήσει να του τα εξηγήσει πάλι",
+            "Να ρωτήσει από ποιο τμήμα τηλεφωνούν"
+          ],
+          "sources": [
+            "Ελληνική Αστυνομία"
+          ]
+        },
+        {
+          "id": "cy_syngenis_troxaio",
+          "typology": "fake_relative_money",
+          "name": "Συγγενής σε τροχαίο: μετρητά για χειρουργείο",
+          "name_en": "Relative in a traffic accident, cash for surgery",
+          "prevalence": "high",
+          "lang": "el",
+          "context_keywords": [
+            "τροχαίο ατύχημα"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "μετρητά για το χειρουργείο",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "να παραλάβει τα χρήματα",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a doctor or relative says a family member was in an accident and needs cash at once for surgery; a colleague will come to collect it.",
+          "legit_en": "Hospitals never collect cash from relatives at the door before treatment.",
+          "bait_tactics": [
+            "Να πει ότι δεν ακούει καλά και να ζητήσει να επαναλάβει σε ποιο νοσοκομείο",
+            "Να ρωτήσει πώς λέγεται ο γιατρός"
+          ],
+          "sources": [
+            "Ελληνική Αστυνομία"
+          ]
+        },
+        {
+          "id": "cy_psevdo_texnikos_reymatos",
+          "typology": "fake_utility",
+          "name": "Ψεύτικος τεχνικός ρεύματος: διαρροή και τιμαλφή",
+          "name_en": "Fake electricity technician and valuables",
+          "prevalence": "medium",
+          "lang": "el",
+          "context_keywords": [
+            "διαρροή ρεύματος"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "τυλίξτε τα τιμαλφή",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "σε αλουμινόχαρτο",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as an electricity network technician warns of a dangerous leak and asks the owner to take out cash and jewellery, wrap them in foil and leave them at the door.",
+          "legit_en": "Electricity companies never ask customers to move or hand over valuables.",
+          "bait_tactics": [
+            "Να πει ότι ο πίνακας είναι στο υπόγειο και να ρωτήσει τι ακριβώς να κοιτάξει",
+            "Να ρωτήσει πότε θα έρθει ο τεχνικός"
+          ],
+          "sources": [
+            "ΔΕΔΔΗΕ",
+            "Ελληνική Αστυνομία"
+          ]
+        },
+        {
+          "id": "cy_psevdo_trapeza_asfaleia",
+          "typology": "fake_bank_account_alert",
+          "name": "Ψεύτικο τμήμα ασφαλείας τράπεζας: κωδικός επιβεβαίωσης",
+          "name_en": "Fake bank security asking for a confirmation code",
+          "prevalence": "high",
+          "lang": "el",
+          "context_keywords": [
+            "ύποπτη συναλλαγή"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "εξαψήφιο κωδικό",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "εγκρίνετε την ειδοποίηση",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security department reports a suspicious transaction and asks for the six-digit confirmation code or to approve a notification in the bank app.",
+          "legit_en": "Banks never ask for confirmation codes or approvals by phone to cancel a transaction.",
+          "bait_tactics": [
+            "Να πει ότι η εφαρμογή της τράπεζας ενημερώνεται και να ζητήσει να του το εξηγήσει πάλι",
+            "Να ρωτήσει για ποιο ποσό είναι η συναλλαγή"
+          ],
+          "sources": [
+            "Ελληνική Αστυνομία"
+          ]
+        }
+      ]
+    },
+    "HR": {
+      "name": "Croatia",
+      "name_local": "Hrvatska",
+      "iso": "hr",
+      "calling_code": "+385",
+      "languages": [
+        "hr"
+      ],
+      "prevalence_note": "Croatian police warnings 2025-2026: fake police checking banknotes, fake doctors after an accident, crypto brokers with remote access, and fake bank security asking for m-token codes.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "hr_lazna_policija_novcanice",
+          "typology": "fake_official",
+          "name": "Lažni policajci: provjera novčanica",
+          "name_en": "Fake police checking banknotes",
+          "prevalence": "very_high",
+          "lang": "hr",
+          "context_keywords": [
+            "krivotvorene novčanice"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "predajte novčanice",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "provjere otisaka",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "službeniku u civilu",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a police officer says counterfeit banknotes are in circulation and asks the owner to withdraw savings and hand banknotes to an officer in plain clothes for checking.",
+          "legit_en": "The Croatian police never collect money from citizens to check banknotes.",
+          "bait_tactics": [
+            "Reći da mora sjesti i zamoliti da ponovi polako",
+            "Pitati iz koje postaje zovu"
+          ],
+          "sources": [
+            "MUP RH"
+          ]
+        },
+        {
+          "id": "hr_lazni_lijecnik_nesreca",
+          "typology": "fake_relative_money",
+          "name": "Lažni liječnik: nesreća i hitna operacija",
+          "name_en": "Fake doctor after an accident",
+          "prevalence": "high",
+          "lang": "hr",
+          "context_keywords": [
+            "teška prometna nesreća"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "gotovinu ili zlato",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "poslat ćemo posrednika",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a hospital doctor says a relative was badly hurt in an accident and asks for cash or gold for urgent surgery; someone will come to collect it.",
+          "legit_en": "Hospitals never ask relatives for cash or gold before treatment.",
+          "bait_tactics": [
+            "Reći da ne čuje dobro i zamoliti da ponovi u kojoj je bolnici",
+            "Pitati kako se zove liječnik"
+          ],
+          "sources": [
+            "MUP RH"
+          ]
+        },
+        {
+          "id": "hr_kripto_broker",
+          "typology": "crypto_scam",
+          "name": "Lažni broker: kriptovalute i AnyDesk",
+          "name_en": "Fake crypto broker with remote access",
+          "prevalence": "high",
+          "lang": "hr",
+          "context_keywords": [
+            "broker za kriptovalute"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "proviziju prije isplate",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "putem m-tokena",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a financial adviser promises crypto profits, asks to install a remote access app and approve payments with the m-token, then demands tax and commission before paying out.",
+          "legit_en": "Licensed brokers never ask clients to install remote access apps or pay commission before paying out.",
+          "bait_tactics": [
+            "Reći da si to zapisuje i pitati koliko je prva uplata",
+            "Pitati koliko traje isplata"
+          ],
+          "sources": [
+            "HANFA",
+            "MUP RH"
+          ]
+        },
+        {
+          "id": "hr_lazna_banka_mtoken",
+          "typology": "fake_bank_account_alert",
+          "name": "Lažna sigurnosna služba banke: kod m-tokena",
+          "name_en": "Fake bank security asking for m-token codes",
+          "prevalence": "high",
+          "lang": "hr",
+          "context_keywords": [
+            "služba za sigurnost banke"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "kod koji generira",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "istek aplikacije",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security service says the m-banking app expires or a transaction is suspicious and asks for the code the m-token generates or the PIN on a link.",
+          "legit_en": "Banks never ask for m-token codes or PINs by phone.",
+          "bait_tactics": [
+            "Reći da se aplikacija banke ažurira i zamoliti da još jednom objasni",
+            "Pitati o kojem iznosu je riječ"
+          ],
+          "sources": [
+            "HNB",
+            "MUP RH"
+          ]
+        }
+      ]
+    },
+    "RS": {
+      "name": "Serbia",
+      "name_local": "Србија / Srbija",
+      "iso": "rs",
+      "calling_code": "+381",
+      "languages": [
+        "sr"
+      ],
+      "prevalence_note": "Serbian police and NBS warnings 2025-2026: fake post parcel fees, fake bank card blocks asking for codes, crypto advisers with remote access, and relatives with a new number.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "rs_posta_paket",
+          "typology": "fake_customs_parcel",
+          "name": "Lažna pošta: plaćanje dostave paketa",
+          "name_en": "Fake post office parcel fee",
+          "prevalence": "high",
+          "lang": "sr",
+          "context_keywords": [
+            "pošta srbije"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "cvv kod",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "link za potvrdu adrese",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller or text from the post or a courier says a parcel is held for an incomplete address and asks for card number, CVV and an SMS code on a link to pay the delivery fee.",
+          "legit_en": "Post offices never ask for card numbers, CVV codes or SMS codes by phone or through a link.",
+          "bait_tactics": [
+            "Reći da traži naočare i pitati odakle je paket",
+            "Pitati koliko tačno košta dostava"
+          ],
+          "sources": [
+            "MUP"
+          ]
+        },
+        {
+          "id": "rs_banka_kartica",
+          "typology": "fake_bank_account_alert",
+          "name": "Lažna banka: blokada kartice i jednokratni kod",
+          "name_en": "Fake bank card block and one-time code",
+          "prevalence": "high",
+          "lang": "sr",
+          "context_keywords": [
+            "nagradni poeni"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "jednokratni kod",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "fotografiju lične karte",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "cvc kod",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security service says the card is blocked or reward points expire and asks for the one-time code, CVC, PIN or a photo of the ID card.",
+          "legit_en": "Banks never ask for one-time codes, CVC, PIN or ID photos by phone.",
+          "bait_tactics": [
+            "Reći da se aplikacija banke učitava i zamoliti da ponovi polako",
+            "Pitati o kojoj transakciji je reč"
+          ],
+          "sources": [
+            "NBS",
+            "MUP"
+          ]
+        },
+        {
+          "id": "rs_kripto_savetnik",
+          "typology": "crypto_scam",
+          "name": "Lažni investicioni savetnik: kripto i daljinski pristup",
+          "name_en": "Fake investment adviser with crypto and remote access",
+          "prevalence": "high",
+          "lang": "sr",
+          "context_keywords": [
+            "kripto novčanik"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "otključavanje profita",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "isplata profita",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as an investment adviser promises safe earnings, asks to install a remote access app and later demands a payment to unlock the profit.",
+          "legit_en": "Licensed advisers never ask for payments to unlock profits or for remote access to a phone.",
+          "bait_tactics": [
+            "Reći da zapisuje i pitati koliko je prva uplata",
+            "Pitati koliko traje isplata"
+          ],
+          "sources": [
+            "MUP"
+          ]
+        },
+        {
+          "id": "rs_whatsapp_rodjak",
+          "typology": "fake_relative_money",
+          "name": "Rođak sa novim brojem: hitna uplata",
+          "name_en": "Relative with a new number asking for an urgent payment",
+          "prevalence": "medium",
+          "lang": "sr",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "hitno prebaci novac",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "uplata na tuđi račun",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller or message from a relative with a new number asks for a verification code or an urgent transfer to someone else's account.",
+          "legit_en": "Relatives who change numbers can be reached on the old one; an urgent transfer to another person's account is the warning sign.",
+          "bait_tactics": [
+            "Reći da je telefon na punjenju i pitati za koji račun je to",
+            "Pitati koliko tačno treba"
+          ],
+          "sources": [
+            "MUP"
+          ]
+        }
+      ]
+    },
+    "BA": {
+      "name": "Bosnia and Herzegovina",
+      "name_local": "Bosna i Hercegovina",
+      "iso": "ba",
+      "calling_code": "+387",
+      "languages": [
+        "sr"
+      ],
+      "prevalence_note": "Police warnings 2025-2026 follow the Serbian pattern: fake parcel fees, fake bank card blocks asking for codes, crypto advisers, and relatives with a new number.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "ba_posta_paket",
+          "typology": "fake_customs_parcel",
+          "name": "Lažna pošta: plaćanje dostave paketa",
+          "name_en": "Fake post office parcel fee",
+          "prevalence": "high",
+          "lang": "sr",
+          "context_keywords": [
+            "bh pošta"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "cvv kod",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "link za potvrdu adrese",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller or text from the post or a courier says a parcel is held for an incomplete address and asks for card number, CVV and an SMS code on a link to pay the delivery fee.",
+          "legit_en": "Post offices never ask for card numbers, CVV codes or SMS codes by phone or through a link.",
+          "bait_tactics": [
+            "Reći da traži naočare i pitati odakle je paket",
+            "Pitati koliko tačno košta dostava"
+          ],
+          "sources": [
+            "MUP"
+          ]
+        },
+        {
+          "id": "ba_banka_kartica",
+          "typology": "fake_bank_account_alert",
+          "name": "Lažna banka: blokada kartice i jednokratni kod",
+          "name_en": "Fake bank card block and one-time code",
+          "prevalence": "high",
+          "lang": "sr",
+          "context_keywords": [
+            "nagradni poeni"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "jednokratni kod",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "fotografiju lične karte",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "cvc kod",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security service says the card is blocked or reward points expire and asks for the one-time code, CVC, PIN or a photo of the ID card.",
+          "legit_en": "Banks never ask for one-time codes, CVC, PIN or ID photos by phone.",
+          "bait_tactics": [
+            "Reći da se aplikacija banke učitava i zamoliti da ponovi polako",
+            "Pitati o kojoj transakciji je reč"
+          ],
+          "sources": [
+            "NBS",
+            "MUP"
+          ]
+        },
+        {
+          "id": "ba_kripto_savetnik",
+          "typology": "crypto_scam",
+          "name": "Lažni investicioni savetnik: kripto i daljinski pristup",
+          "name_en": "Fake investment adviser with crypto and remote access",
+          "prevalence": "high",
+          "lang": "sr",
+          "context_keywords": [
+            "kripto novčanik"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "otključavanje profita",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "isplata profita",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as an investment adviser promises safe earnings, asks to install a remote access app and later demands a payment to unlock the profit.",
+          "legit_en": "Licensed advisers never ask for payments to unlock profits or for remote access to a phone.",
+          "bait_tactics": [
+            "Reći da zapisuje i pitati koliko je prva uplata",
+            "Pitati koliko traje isplata"
+          ],
+          "sources": [
+            "MUP"
+          ]
+        },
+        {
+          "id": "ba_whatsapp_rodjak",
+          "typology": "fake_relative_money",
+          "name": "Rođak sa novim brojem: hitna uplata",
+          "name_en": "Relative with a new number asking for an urgent payment",
+          "prevalence": "medium",
+          "lang": "sr",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "hitno prebaci novac",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "uplata na tuđi račun",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller or message from a relative with a new number asks for a verification code or an urgent transfer to someone else's account.",
+          "legit_en": "Relatives who change numbers can be reached on the old one; an urgent transfer to another person's account is the warning sign.",
+          "bait_tactics": [
+            "Reći da je telefon na punjenju i pitati za koji račun je to",
+            "Pitati koliko tačno treba"
+          ],
+          "sources": [
+            "MUP"
+          ]
+        }
+      ]
+    },
+    "ME": {
+      "name": "Montenegro",
+      "name_local": "Црна Гора / Crna Gora",
+      "iso": "me",
+      "calling_code": "+382",
+      "languages": [
+        "sr"
+      ],
+      "prevalence_note": "Police warnings 2025-2026 follow the Serbian pattern: fake parcel fees, fake bank card blocks asking for codes, crypto advisers, and relatives with a new number.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "me_posta_paket",
+          "typology": "fake_customs_parcel",
+          "name": "Lažna pošta: plaćanje dostave paketa",
+          "name_en": "Fake post office parcel fee",
+          "prevalence": "high",
+          "lang": "sr",
+          "context_keywords": [
+            "pošta crne gore"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "cvv kod",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "link za potvrdu adrese",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller or text from the post or a courier says a parcel is held for an incomplete address and asks for card number, CVV and an SMS code on a link to pay the delivery fee.",
+          "legit_en": "Post offices never ask for card numbers, CVV codes or SMS codes by phone or through a link.",
+          "bait_tactics": [
+            "Reći da traži naočare i pitati odakle je paket",
+            "Pitati koliko tačno košta dostava"
+          ],
+          "sources": [
+            "MUP"
+          ]
+        },
+        {
+          "id": "me_banka_kartica",
+          "typology": "fake_bank_account_alert",
+          "name": "Lažna banka: blokada kartice i jednokratni kod",
+          "name_en": "Fake bank card block and one-time code",
+          "prevalence": "high",
+          "lang": "sr",
+          "context_keywords": [
+            "nagradni poeni"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "jednokratni kod",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "fotografiju lične karte",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "cvc kod",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security service says the card is blocked or reward points expire and asks for the one-time code, CVC, PIN or a photo of the ID card.",
+          "legit_en": "Banks never ask for one-time codes, CVC, PIN or ID photos by phone.",
+          "bait_tactics": [
+            "Reći da se aplikacija banke učitava i zamoliti da ponovi polako",
+            "Pitati o kojoj transakciji je reč"
+          ],
+          "sources": [
+            "NBS",
+            "MUP"
+          ]
+        },
+        {
+          "id": "me_kripto_savetnik",
+          "typology": "crypto_scam",
+          "name": "Lažni investicioni savetnik: kripto i daljinski pristup",
+          "name_en": "Fake investment adviser with crypto and remote access",
+          "prevalence": "high",
+          "lang": "sr",
+          "context_keywords": [
+            "kripto novčanik"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "otključavanje profita",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "isplata profita",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as an investment adviser promises safe earnings, asks to install a remote access app and later demands a payment to unlock the profit.",
+          "legit_en": "Licensed advisers never ask for payments to unlock profits or for remote access to a phone.",
+          "bait_tactics": [
+            "Reći da zapisuje i pitati koliko je prva uplata",
+            "Pitati koliko traje isplata"
+          ],
+          "sources": [
+            "MUP"
+          ]
+        },
+        {
+          "id": "me_whatsapp_rodjak",
+          "typology": "fake_relative_money",
+          "name": "Rođak sa novim brojem: hitna uplata",
+          "name_en": "Relative with a new number asking for an urgent payment",
+          "prevalence": "medium",
+          "lang": "sr",
+          "context_keywords": [],
+          "red_flag_keywords": [
+            {
+              "text": "hitno prebaci novac",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "uplata na tuđi račun",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller or message from a relative with a new number asks for a verification code or an urgent transfer to someone else's account.",
+          "legit_en": "Relatives who change numbers can be reached on the old one; an urgent transfer to another person's account is the warning sign.",
+          "bait_tactics": [
+            "Reći da je telefon na punjenju i pitati za koji račun je to",
+            "Pitati koliko tačno treba"
+          ],
+          "sources": [
+            "MUP"
+          ]
+        }
+      ]
+    },
+    "SI": {
+      "name": "Slovenia",
+      "name_local": "Slovenija",
+      "iso": "si",
+      "calling_code": "+386",
+      "languages": [
+        "sl"
+      ],
+      "prevalence_note": "Slovenian police and SI-CERT warnings 2025-2026: fake crypto exchanges with 'forgotten bitcoins', fake Microsoft support, fake Pošta Slovenije parcel fees and fake bank security asking for passwords.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "si_kripto_pozabljeni_bitcoini",
+          "typology": "crypto_scam",
+          "name": "Lažna kripto borza: pozabljeni bitcoini",
+          "name_en": "Fake crypto exchange with forgotten bitcoins",
+          "prevalence": "high",
+          "lang": "sl",
+          "context_keywords": [
+            "pozabljeni bitcoini"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "dostop do spletne banke",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "sken osebnega dokumenta",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from a crypto exchange says the owner has forgotten bitcoins to pay out and asks for remote access, online banking access, an ID scan or card details.",
+          "legit_en": "Real exchanges never call about forgotten coins and never ask for online banking access or remote control.",
+          "bait_tactics": [
+            "Reči, da mora poiskati očala, in vprašati, koliko naj bi bilo tega denarja",
+            "Vprašati, kdaj naj bi bil račun odprt"
+          ],
+          "sources": [
+            "Policija",
+            "SI-CERT"
+          ]
+        },
+        {
+          "id": "si_microsoft_podpora",
+          "typology": "tech_support_remote",
+          "name": "Lažna Microsoftova tehnična pomoč",
+          "name_en": "Fake Microsoft technical support",
+          "prevalence": "high",
+          "lang": "sl",
+          "context_keywords": [
+            "microsoftova tehnična pomoč"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "potekla licenca",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "okužba računalnika",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from Microsoft support says the computer is infected or the licence has expired and asks to install TeamViewer or similar and give card details.",
+          "legit_en": "Microsoft never calls users about viruses or licences.",
+          "bait_tactics": [
+            "Reči, da se računalnik zelo počasi prižiga, in vprašati, kaj naj bi videl na zaslonu",
+            "Vprašati, katero sporočilo so prejeli"
+          ],
+          "sources": [
+            "SI-CERT"
+          ]
+        },
+        {
+          "id": "si_posta_paket",
+          "typology": "fake_customs_parcel",
+          "name": "Lažna Pošta Slovenije: doplačilo poštnine",
+          "name_en": "Fake post office parcel fee",
+          "prevalence": "high",
+          "lang": "sl",
+          "context_keywords": [
+            "pošta slovenije"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "varnostna koda cvv",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "doplačilo poštnine",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller or text from the post says a parcel waits for a small extra postage and asks for card details and the CVV through a payment link.",
+          "legit_en": "Pošta Slovenije never asks for card details or CVV codes by phone or through links in texts.",
+          "bait_tactics": [
+            "Reči, da išče očala, in vprašati, od kod je paket",
+            "Vprašati, koliko točno stane"
+          ],
+          "sources": [
+            "Pošta Slovenije",
+            "SI-CERT"
+          ]
+        },
+        {
+          "id": "si_banka_varnostna_sluzba",
+          "typology": "fake_bank_account_alert",
+          "name": "Lažna varnostna služba banke: geslo in enkratna koda",
+          "name_en": "Fake bank security asking for password and code",
+          "prevalence": "high",
+          "lang": "sl",
+          "context_keywords": [
+            "varnostna služba banke"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "geslo za spletno banko",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "potrditev transakcije",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security service reports a suspicious payment or a blocked account and asks for the online banking password, the SMS code or to confirm a transaction.",
+          "legit_en": "Banks never ask for online banking passwords or SMS codes by phone.",
+          "bait_tactics": [
+            "Reči, da se aplikacija banke posodablja, in prositi, naj še enkrat razloži",
+            "Vprašati, za kateri znesek gre"
+          ],
+          "sources": [
+            "Banka Slovenije",
+            "SI-CERT"
+          ]
+        }
+      ]
+    },
+    "MK": {
+      "name": "North Macedonia",
+      "name_local": "Северна Македонија",
+      "iso": "mk",
+      "calling_code": "+389",
+      "languages": [
+        "mk"
+      ],
+      "prevalence_note": "MVR warnings 2025-2026: fake doctors after a traffic accident collecting cash, fake central bank staff asking for card data, fake post parcel fees, and crypto trading platforms.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "mk_lazen_doktor_nesreka",
+          "typology": "fake_relative_money",
+          "name": "Лажен доктор: сообраќајна несреќа и пари во готово",
+          "name_en": "Fake doctor after a traffic accident",
+          "prevalence": "very_high",
+          "lang": "mk",
+          "context_keywords": [
+            "сообраќајна несреќа"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "пари за импланти",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "човек ќе дојде пред зграда",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "итно да дадете пари",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a doctor says a relative was in a traffic accident and needs cash for implants or surgery; a man will come to the building to collect it.",
+          "legit_en": "Hospitals never collect cash from relatives in front of their building.",
+          "bait_tactics": [
+            "Да каже дека не слуша добро и да побара да повтори во која болница е",
+            "Да праша како се вика докторот"
+          ],
+          "sources": [
+            "МВР"
+          ]
+        },
+        {
+          "id": "mk_lazna_narodna_banka",
+          "typology": "fake_bank_account_alert",
+          "name": "Лажна Народна банка: податоци од картичка",
+          "name_en": "Fake central bank asking for card data",
+          "prevalence": "high",
+          "lang": "mk",
+          "context_keywords": [
+            "народна банка"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "број на платежна картичка",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "безбедносен код",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as the central bank or a bank says the account is at risk and asks for the card number, PIN, the SMS security code or the personal ID number.",
+          "legit_en": "The central bank and banks never ask for card numbers, PINs or SMS codes by phone.",
+          "bait_tactics": [
+            "Да каже дека апликацијата се ажурира и да побара да објасни уште еднаш",
+            "Да праша за која сума станува збор"
+          ],
+          "sources": [
+            "НБРСМ",
+            "МВР"
+          ]
+        },
+        {
+          "id": "mk_posta_paket",
+          "typology": "fake_customs_parcel",
+          "name": "Лажна пошта: наплата за испорака",
+          "name_en": "Fake post office delivery fee",
+          "prevalence": "high",
+          "lang": "mk",
+          "context_keywords": [
+            "македонска пошта"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "линк за плаќање",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "cvv број",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller or text from the post says a parcel has a wrong address and asks to pay a delivery fee through a link with card data and CVV.",
+          "legit_en": "The post never asks for card data or CVV through links or by phone.",
+          "bait_tactics": [
+            "Да каже дека ги бара очилата и да праша од каде е пакетот",
+            "Да праша колку точно чини"
+          ],
+          "sources": [
+            "Пошта на Северна Македонија"
+          ]
+        },
+        {
+          "id": "mk_kripto_platforma",
+          "typology": "crypto_scam",
+          "name": "Крипто платформа: брза заработка",
+          "name_en": "Crypto trading platform with quick earnings",
+          "prevalence": "medium",
+          "lang": "mk",
+          "context_keywords": [
+            "инвестициска платформа"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "уплата на провизија",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "исплата на добивка",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from an investment platform promises quick crypto earnings, asks to install AnyDesk and send an ID photo, then demands a commission before paying out.",
+          "legit_en": "Licensed brokers never ask for remote access or commissions before paying out.",
+          "bait_tactics": [
+            "Да каже дека запишува и да праша колку е првата уплата",
+            "Да праша колку трае исплатата"
+          ],
+          "sources": [
+            "КХВ",
+            "МВР"
+          ]
+        }
+      ]
+    },
+    "AL": {
+      "name": "Albania",
+      "name_local": "Shqipëria",
+      "iso": "al",
+      "calling_code": "+355",
+      "languages": [
+        "sq"
+      ],
+      "prevalence_note": "Police and Bank of Albania warnings 2025-2026: fake parcel fees, fake bank data checks asking for OTP codes, fake traffic fines, and investment call centres.",
+      "cross_border_note": "Many investment call centres operate from the region and call abroad as well.",
+      "scams": [
+        {
+          "id": "al_posta_pako",
+          "typology": "fake_customs_parcel",
+          "name": "Postë e rreme: pagesë për pakon",
+          "name_en": "Fake post office parcel fee",
+          "prevalence": "high",
+          "lang": "sq",
+          "context_keywords": [
+            "adresa e pasaktë"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "konfirmoni adresën përmes linkut",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "numri i kartës dhe kodi cvv",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller or text from the post or a courier says a parcel has a wrong address and asks to confirm it through a link and pay a fee with card number and CVV.",
+          "legit_en": "The post never asks for card numbers or CVV codes by phone or through links.",
+          "bait_tactics": [
+            "Të thotë se po kërkon syzet dhe të pyesë nga vjen pakoja",
+            "Të pyesë sa kushton saktësisht"
+          ],
+          "sources": [
+            "Policia"
+          ]
+        },
+        {
+          "id": "al_banka_verifikim",
+          "typology": "fake_bank_account_alert",
+          "name": "Bankë e rreme: verifikim i të dhënave",
+          "name_en": "Fake bank data verification",
+          "prevalence": "high",
+          "lang": "sq",
+          "context_keywords": [
+            "përditësim i të dhënave"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "fjalëkalimi i e-banking",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "pin-i i kartës",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "kodi otp",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank says the card or account will be blocked unless data are updated and asks for the OTP code, the e-banking password or the card PIN.",
+          "legit_en": "Banks never ask for OTP codes, e-banking passwords or PINs by phone.",
+          "bait_tactics": [
+            "Të thotë se aplikacioni i bankës po përditësohet dhe të kërkojë ta shpjegojë sërish",
+            "Të pyesë për çfarë shume bëhet fjalë"
+          ],
+          "sources": [
+            "Banka e Shqipërisë",
+            "Policia"
+          ]
+        },
+        {
+          "id": "al_policia_gjobe",
+          "typology": "fake_official",
+          "name": "Policia e rreme: gjobë trafiku",
+          "name_en": "Fake police traffic fine",
+          "prevalence": "medium",
+          "lang": "sq",
+          "context_keywords": [
+            "gjobë trafiku"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "të paguar gjobën përmes linkut",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "të dhënat e kartës në telefon",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller or text posing as the police says there is an unpaid traffic fine and asks to pay through a link or give card details on the phone.",
+          "legit_en": "The police never collect fines through links or card details given by phone.",
+          "bait_tactics": [
+            "Të thotë se po kërkon dokumentet e makinës dhe të pyesë kur ka ndodhur",
+            "Të pyesë për cilën rrugë bëhet fjalë"
+          ],
+          "sources": [
+            "Policia"
+          ]
+        },
+        {
+          "id": "al_qendra_investimi",
+          "typology": "investment_group_scam",
+          "name": "Qendër thirrjesh investimi: fitim i garantuar",
+          "name_en": "Investment call centre with guaranteed profit",
+          "prevalence": "high",
+          "lang": "sq",
+          "context_keywords": [
+            "platformë tregtimi"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "depozitoni shumën fillestare",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "taksën për të tërhequr fitimin",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from a trading platform promises guaranteed profit, asks for a first deposit and AnyDesk, then demands a tax to withdraw the profit.",
+          "legit_en": "Licensed brokers never promise guaranteed profit or ask for a tax before paying out.",
+          "bait_tactics": [
+            "Të thotë se po i shkruan dhe të pyesë sa është depozita e parë",
+            "Të pyesë sa kohë zgjat tërheqja"
+          ],
+          "sources": [
+            "AMF",
+            "Policia"
+          ]
+        }
+      ]
+    },
+    "XK": {
+      "name": "Kosovo",
+      "name_local": "Kosova",
+      "iso": "xk",
+      "calling_code": "+383",
+      "languages": [
+        "sq"
+      ],
+      "prevalence_note": "Kosovo Police warnings 2025-2026 follow the Albanian pattern: fake parcel fees, fake bank data checks asking for OTP codes, fake traffic fines, and investment call centres.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "xk_posta_pako",
+          "typology": "fake_customs_parcel",
+          "name": "Postë e rreme: pagesë për pakon",
+          "name_en": "Fake post office parcel fee",
+          "prevalence": "high",
+          "lang": "sq",
+          "context_keywords": [
+            "adresa e pasaktë"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "konfirmoni adresën përmes linkut",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "numri i kartës dhe kodi cvv",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller or text from the post or a courier says a parcel has a wrong address and asks to confirm it through a link and pay a fee with card number and CVV.",
+          "legit_en": "The post never asks for card numbers or CVV codes by phone or through links.",
+          "bait_tactics": [
+            "Të thotë se po kërkon syzet dhe të pyesë nga vjen pakoja",
+            "Të pyesë sa kushton saktësisht"
+          ],
+          "sources": [
+            "Policia"
+          ]
+        },
+        {
+          "id": "xk_banka_verifikim",
+          "typology": "fake_bank_account_alert",
+          "name": "Bankë e rreme: verifikim i të dhënave",
+          "name_en": "Fake bank data verification",
+          "prevalence": "high",
+          "lang": "sq",
+          "context_keywords": [
+            "përditësim i të dhënave"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "fjalëkalimi i e-banking",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "pin-i i kartës",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "kodi otp",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank says the card or account will be blocked unless data are updated and asks for the OTP code, the e-banking password or the card PIN.",
+          "legit_en": "Banks never ask for OTP codes, e-banking passwords or PINs by phone.",
+          "bait_tactics": [
+            "Të thotë se aplikacioni i bankës po përditësohet dhe të kërkojë ta shpjegojë sërish",
+            "Të pyesë për çfarë shume bëhet fjalë"
+          ],
+          "sources": [
+            "Banka e Shqipërisë",
+            "Policia"
+          ]
+        },
+        {
+          "id": "xk_policia_gjobe",
+          "typology": "fake_official",
+          "name": "Policia e rreme: gjobë trafiku",
+          "name_en": "Fake police traffic fine",
+          "prevalence": "medium",
+          "lang": "sq",
+          "context_keywords": [
+            "gjobë trafiku"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "të paguar gjobën përmes linkut",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "të dhënat e kartës në telefon",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller or text posing as the police says there is an unpaid traffic fine and asks to pay through a link or give card details on the phone.",
+          "legit_en": "The police never collect fines through links or card details given by phone.",
+          "bait_tactics": [
+            "Të thotë se po kërkon dokumentet e makinës dhe të pyesë kur ka ndodhur",
+            "Të pyesë për cilën rrugë bëhet fjalë"
+          ],
+          "sources": [
+            "Policia"
+          ]
+        },
+        {
+          "id": "xk_qendra_investimi",
+          "typology": "investment_group_scam",
+          "name": "Qendër thirrjesh investimi: fitim i garantuar",
+          "name_en": "Investment call centre with guaranteed profit",
+          "prevalence": "high",
+          "lang": "sq",
+          "context_keywords": [
+            "platformë tregtimi"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "depozitoni shumën fillestare",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "taksën për të tërhequr fitimin",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from a trading platform promises guaranteed profit, asks for a first deposit and AnyDesk, then demands a tax to withdraw the profit.",
+          "legit_en": "Licensed brokers never promise guaranteed profit or ask for a tax before paying out.",
+          "bait_tactics": [
+            "Të thotë se po i shkruan dhe të pyesë sa është depozita e parë",
+            "Të pyesë sa kohë zgjat tërheqja"
+          ],
+          "sources": [
+            "AMF",
+            "Policia"
+          ]
+        }
+      ]
+    },
+    "SE": {
+      "name": "Sweden",
+      "name_local": "Sverige",
+      "iso": "se",
+      "calling_code": "+46",
+      "languages": [
+        "sv"
+      ],
+      "prevalence_note": "Polisen and PTS warnings 2025-2026: fake bank security asking for Mobilt BankID or bankdosa codes, fake police collecting cards and jewellery, telecom contract tricks signed with BankID, and investment scams.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "se_bankid_sakerhetsavdelning",
+          "typology": "otp_theft",
+          "name": "Falsk säkerhetsavdelning: BankID och bankdosa",
+          "name_en": "Fake bank security asking for BankID or bankdosa codes",
+          "prevalence": "very_high",
+          "lang": "sv",
+          "context_keywords": [
+            "säkerhetsavdelningen"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "logga in med mobilt bankid",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "koden från bankdosan",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "säkerhetskonto",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security department warns of a loan or card payment the owner did not make and asks to sign in with Mobilt BankID, read codes from the bankdosa or move money to a security account.",
+          "legit_en": "Swedish banks never call and ask customers to sign in with BankID, read bankdosa codes or move money to a security account.",
+          "bait_tactics": [
+            "Säga att mobilen just startar om och be dem förklara en gång till, lugnt",
+            "Fråga vilken dag lånet ska ha tagits och på hur mycket"
+          ],
+          "sources": [
+            "Polisen",
+            "PTS"
+          ]
+        },
+        {
+          "id": "se_falska_poliser_vardesaker",
+          "typology": "fake_official",
+          "name": "Falska poliser hämtar kort och smycken",
+          "name_en": "Fake police collecting bank cards and jewellery",
+          "prevalence": "very_high",
+          "lang": "sv",
+          "context_keywords": [
+            "inbrottsvåg"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "hämtar ditt bankkort",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "guld och smycken",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "legitimera dig med bankid",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a police officer says burglars or identity thieves target the owner, asks for BankID verification and says plain-clothes staff will come to collect bank cards, codes, gold and jewellery.",
+          "legit_en": "The Swedish police never ask people to verify themselves with BankID by phone or collect cards, codes or valuables at home.",
+          "bait_tactics": [
+            "Säga att nycklarna till skåpet ligger hos grannen och fråga när de tänkte komma",
+            "Fråga lugnt hur personen som kommer ser ut"
+          ],
+          "sources": [
+            "Polisen"
+          ]
+        },
+        {
+          "id": "se_telefonforsaljning_bankid",
+          "typology": "fake_telecom",
+          "name": "Falsk mobiloperatör: signera med BankID direkt",
+          "name_en": "Fake mobile operator pushing a BankID signature",
+          "prevalence": "medium",
+          "lang": "sv",
+          "context_keywords": [
+            "sänkt månadskostnad"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "signera avtalet direkt med bankid",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "ditt nummer stängs av idag",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from a mobile operator promises a lower monthly cost or a network update and pushes the owner to sign a contract with BankID at once or lose the number today.",
+          "legit_en": "Operators do not shut numbers off the same day and never require a BankID signature during a cold call.",
+          "bait_tactics": [
+            "Säga att glasögonen ligger i bilen och be dem läsa upp villkoren igen",
+            "Fråga vad det kostar efter första året"
+          ],
+          "sources": [
+            "PTS",
+            "Konsumentverket"
+          ]
+        },
+        {
+          "id": "se_investering_krypto",
+          "typology": "investment_group_scam",
+          "name": "Investeringsbedrägeri med krypto",
+          "name_en": "Crypto investment scam",
+          "prevalence": "high",
+          "lang": "sv",
+          "context_keywords": [
+            "handelsplattform"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "fjärrstyrningsprogram",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "avgift för att få ut vinsten",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a financial adviser promises returns on crypto, asks to install a remote-control program and later demands a tax or fee to pay out the profit.",
+          "legit_en": "Licensed advisers never ask clients to install remote-control programs or pay a fee to get their profit out.",
+          "bait_tactics": [
+            "Säga att man skriver upp allt och fråga hur mycket man ska börja med",
+            "Fråga hur lång tid en utbetalning tar"
+          ],
+          "sources": [
+            "Finansinspektionen",
+            "Polisen"
+          ]
+        }
+      ]
+    },
+    "NO": {
+      "name": "Norway",
+      "name_local": "Norge",
+      "iso": "no",
+      "calling_code": "+47",
+      "languages": [
+        "nb"
+      ],
+      "prevalence_note": "Politiet and Økokrim warnings 2025-2026: fake bank or police staff asking for BankID passwords and one-time codes (the 'Olga' method), fake Microsoft support, fake Skatteetaten refunds and investment scams.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "no_bankid_svindel",
+          "typology": "otp_theft",
+          "name": "BankID-svindel: falsk bank eller politi",
+          "name_en": "BankID fraud by fake bank or police staff",
+          "prevalence": "very_high",
+          "lang": "nb",
+          "context_keywords": [
+            "økokrim"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "bankid-passord",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "trygg konto",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "bekreft med bankid-appen",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security department, the police or Økokrim speaks of a suspicious loan and asks for the BankID password and one-time code, an approval in the BankID app or a transfer to a safe account.",
+          "legit_en": "Banks and the police never ask for BankID passwords or codes and never move money to a safe account.",
+          "bait_tactics": [
+            "Si at telefonen holder på å starte på nytt og be dem forklare en gang til, rolig",
+            "Spørre hvilken dag lånet skal være tatt opp og hvor mye"
+          ],
+          "sources": [
+            "Politiet",
+            "Finans Norge"
+          ]
+        },
+        {
+          "id": "no_falsk_microsoft",
+          "typology": "tech_support_remote",
+          "name": "Falsk Microsoft-support: fjerntilgang",
+          "name_en": "Fake Microsoft support with remote access",
+          "prevalence": "high",
+          "lang": "nb",
+          "context_keywords": [
+            "teknisk support"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "fjerntilgang til pc-en",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "logg inn i nettbanken mens",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from Microsoft or an IT company says the computer has a virus or a licence problem and asks for remote access and to log in to online banking while they watch.",
+          "legit_en": "Microsoft never calls about viruses or licences and never asks to watch online banking.",
+          "bait_tactics": [
+            "Si at PC-en starter veldig sakte og spørre hva som skal stå på skjermen",
+            "Spørre hvilken feilmelding de har fått"
+          ],
+          "sources": [
+            "Politiet",
+            "NorSIS"
+          ]
+        },
+        {
+          "id": "no_falsk_skatteetaten",
+          "typology": "tax_refund_scam",
+          "name": "Falsk Skatteetaten: penger til gode",
+          "name_en": "Fake tax office refund",
+          "prevalence": "medium",
+          "lang": "nb",
+          "context_keywords": [
+            "skatteoppgjør"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "kortnummer og sikkerhetskode",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "klikk på lenken og bekreft",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller or text from Skatteetaten says the owner has money back and asks to click a link and confirm with BankID or give card number and security code for the payout.",
+          "legit_en": "Skatteetaten pays refunds to the registered account and never asks for card numbers or codes.",
+          "bait_tactics": [
+            "Si at brillene ligger i bilen og spørre hvor mye det gjelder",
+            "Spørre hvilket år oppgjøret gjelder"
+          ],
+          "sources": [
+            "Skatteetaten"
+          ]
+        },
+        {
+          "id": "no_investering_krypto",
+          "typology": "investment_group_scam",
+          "name": "Investeringssvindel med krypto",
+          "name_en": "Crypto investment scam",
+          "prevalence": "high",
+          "lang": "nb",
+          "context_keywords": [
+            "aksjehandel"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "gebyr for å få utbetalt",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "sett inn startkapital",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as a broker promises guaranteed returns on crypto or shares, asks for a starting deposit and remote access, then demands a fee to pay out the gain.",
+          "legit_en": "Licensed brokers never promise guaranteed returns or charge fees to release a gain.",
+          "bait_tactics": [
+            "Si at man skriver ned alt og spørre hvor mye man må begynne med",
+            "Spørre hvor lang tid en utbetaling tar"
+          ],
+          "sources": [
+            "Finanstilsynet",
+            "Økokrim"
+          ]
+        }
+      ]
+    },
+    "DK": {
+      "name": "Denmark",
+      "name_local": "Danmark",
+      "iso": "dk",
+      "calling_code": "+45",
+      "languages": [
+        "da"
+      ],
+      "prevalence_note": "Politiet and bank warnings 2025-2026: fake bank security asking for MitID approvals or a move to a security account, fake police or tax staff asking for card details, and fake technical support.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "dk_falsk_bank_mitid",
+          "typology": "fake_bank_account_alert",
+          "name": "Falsk bankrådgiver: godkend med MitID",
+          "name_en": "Fake bank adviser asking for a MitID approval",
+          "prevalence": "very_high",
+          "lang": "da",
+          "context_keywords": [
+            "sikkerhedsafdelingen"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "godkend med mitid",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "sikkerhedskonto",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "udlever din kode",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security department reports a suspicious transfer and asks the owner to approve in MitID, give a code or move money to a security account.",
+          "legit_en": "Danish banks never ask customers to approve MitID requests they did not start or to move money to a security account.",
+          "bait_tactics": [
+            "Sige at telefonen genstarter og bede dem forklare det en gang til, roligt",
+            "Spørge hvilken dag overførslen var og hvor stort beløbet var"
+          ],
+          "sources": [
+            "Politiet",
+            "Finans Danmark"
+          ]
+        },
+        {
+          "id": "dk_falsk_politi_skat",
+          "typology": "fake_official",
+          "name": "Falsk politi eller Skattestyrelsen: identitetsmisbrug",
+          "name_en": "Fake police or tax office about identity misuse",
+          "prevalence": "high",
+          "lang": "da",
+          "context_keywords": [
+            "identitetsmisbrug"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "dine kortoplysninger",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "mitid for politiet",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as the police or the tax agency speaks of identity misuse or an investigation and asks for card details, the CPR number and a MitID approval.",
+          "legit_en": "The police and Skattestyrelsen never ask for card details or MitID approvals by phone.",
+          "bait_tactics": [
+            "Sige at man lige skal finde brillerne og bede dem gentage det langsomt",
+            "Spørge hvornår misbruget skulle være sket"
+          ],
+          "sources": [
+            "Politiet"
+          ]
+        },
+        {
+          "id": "dk_falsk_teknisk_support",
+          "typology": "tech_support_remote",
+          "name": "Falsk teknisk support: overtage kontrollen",
+          "name_en": "Fake tech support taking control of the computer",
+          "prevalence": "medium",
+          "lang": "da",
+          "context_keywords": [
+            "teknisk afdeling"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "overtage kontrollen",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "hent et program",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from a technical department says the computer has a security problem and asks to download a program so they can take control, then to log in to online banking.",
+          "legit_en": "Software companies never call about security problems and never ask to control a computer.",
+          "bait_tactics": [
+            "Sige at computeren starter meget langsomt og spørge hvad der skal stå på skærmen",
+            "Spørge hvilken fejlbesked de har fået"
+          ],
+          "sources": [
+            "Politiet"
+          ]
+        }
+      ]
+    },
+    "FI": {
+      "name": "Finland",
+      "name_local": "Suomi / Finland",
+      "iso": "fi",
+      "calling_code": "+358",
+      "languages": [
+        "fi",
+        "sv"
+      ],
+      "prevalence_note": "Poliisi and Traficom warnings 2025-2026: fake bank security asking for bank credentials and moving money to a 'safe account', fake police or tax staff asking for online bank codes, and fake technical support.",
+      "cross_border_note": "",
+      "scams": [
+        {
+          "id": "fi_valepankki_turvatili",
+          "typology": "fake_bank_account_alert",
+          "name": "Valepankkivirkailija: pankkitunnukset ja turvatili",
+          "name_en": "Fake bank staff asking for credentials and a safe account",
+          "prevalence": "very_high",
+          "lang": "fi",
+          "context_keywords": [
+            "pankin turvallisuusosasto"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "turvatili",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "pankkitunnuksesi",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "vahvistuskoodi",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security department reports a suspicious transfer and asks for bank credentials, a confirmation code or a move of money to a safe account.",
+          "legit_en": "Finnish banks never ask for bank credentials or codes by phone and never move money to a safe account.",
+          "bait_tactics": [
+            "Sanoa, että pankin sovellus päivittyy, ja pyytää selittämään uudestaan rauhassa",
+            "Kysyä, minä päivänä siirto tehtiin ja kuinka suuri summa"
+          ],
+          "sources": [
+            "Poliisi",
+            "Finanssiala"
+          ]
+        },
+        {
+          "id": "fi_valepoliisi_viranomainen",
+          "typology": "fake_official",
+          "name": "Valepoliisi tai -viranomainen: identiteettivarkaus",
+          "name_en": "Fake police or authority about identity theft",
+          "prevalence": "high",
+          "lang": "fi",
+          "context_keywords": [
+            "identiteettivarkaus"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "verkkopankkitunnu",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "kortin tiedot puhelimessa",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller posing as the police, the tax office or Traficom speaks of identity theft or a criminal case and asks for online bank codes, card details or a password.",
+          "legit_en": "The police and other authorities never ask for online bank codes, card details or passwords by phone.",
+          "bait_tactics": [
+            "Sanoa, että pitää etsiä silmälasit, ja pyytää toistamaan hitaasti",
+            "Kysyä, milloin varkauden piti tapahtua"
+          ],
+          "sources": [
+            "Poliisi"
+          ]
+        },
+        {
+          "id": "fi_vale_tekninen_tuki",
+          "typology": "tech_support_remote",
+          "name": "Vale tekninen tuki: etähallintaohjelma",
+          "name_en": "Fake tech support with a remote-control program",
+          "prevalence": "medium",
+          "lang": "fi",
+          "context_keywords": [
+            "tekninen tuki"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "asenna ohjelma",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "etähallintaohjelma",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from technical support says the computer has a virus or a licence problem and asks to install a remote-control program and enter credit card details.",
+          "legit_en": "Software companies never call about viruses or licences and never ask to control a computer.",
+          "bait_tactics": [
+            "Sanoa, että tietokone käynnistyy hitaasti, ja kysyä, mitä ruudulla pitäisi näkyä",
+            "Kysyä, minkä virheilmoituksen he saivat"
+          ],
+          "sources": [
+            "Traficom",
+            "Poliisi"
+          ]
+        }
+      ]
+    },
+    "IS": {
+      "name": "Iceland",
+      "name_local": "Ísland",
+      "iso": "is",
+      "calling_code": "+354",
+      "languages": [
+        "is"
+      ],
+      "prevalence_note": "Lögreglan and bank warnings 2025-2026: fake bank staff asking for an approval in rafræn skilríki or the Auðkenni app, fake technical support with AnyDesk, and crypto investment calls.",
+      "cross_border_note": "Many of these calls come from abroad in English.",
+      "scams": [
+        {
+          "id": "is_falskur_banki_audkenni",
+          "typology": "otp_theft",
+          "name": "Falskur bankastarfsmaður: samþykkja rafræn skilríki",
+          "name_en": "Fake bank staff asking to approve an e-ID request",
+          "prevalence": "very_high",
+          "lang": "is",
+          "context_keywords": [
+            "auðkennisappið"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "samþykkja rafræn skilríki",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "öryggisnúmer",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from the bank's security department reports an unusual payment and asks the owner to approve a request in rafræn skilríki or the Auðkenni app or give a security number.",
+          "legit_en": "Icelandic banks never ask customers to approve an e-ID request they did not start or to give security numbers.",
+          "bait_tactics": [
+            "Segja að síminn sé að endurræsa sig og biðja þá að útskýra aftur í rólegheitum",
+            "Spyrja hvaða dag greiðslan var og hversu há"
+          ],
+          "sources": [
+            "Lögreglan",
+            "SFF"
+          ]
+        },
+        {
+          "id": "is_falsk_taeknithjonusta",
+          "typology": "tech_support_remote",
+          "name": "Fölsk tækniþjónusta: setja upp forrit",
+          "name_en": "Fake tech support installing a program",
+          "prevalence": "medium",
+          "lang": "is",
+          "context_keywords": [
+            "tæknileg aðstoð"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "setja upp forrit",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "fjaraðgang",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller from technical support says the computer has a problem or offers a refund and asks to install AnyDesk or a similar program and enter card details.",
+          "legit_en": "Software companies never call about refunds or viruses and never ask to control a computer.",
+          "bait_tactics": [
+            "Segja að tölvan sé mjög lengi að ræsa sig og spyrja hvað eigi að sjást á skjánum",
+            "Spyrja hvaða villuboð þeir fengu"
+          ],
+          "sources": [
+            "Lögreglan"
+          ]
+        },
+        {
+          "id": "is_rafmynt_fjarfesting",
+          "typology": "crypto_scam",
+          "name": "Rafmyntasvik: óinnleyst inneign",
+          "name_en": "Crypto investment with unclaimed balance",
+          "prevalence": "medium",
+          "lang": "is",
+          "context_keywords": [
+            "viðskiptareikningur"
+          ],
+          "red_flag_keywords": [
+            {
+              "text": "óinnleyst inneign",
+              "weight": 2,
+              "hard": false
+            },
+            {
+              "text": "skrá þig inn í heimabanka",
+              "weight": 2,
+              "hard": false
+            }
+          ],
+          "signals_en": "A caller says the owner has an unclaimed crypto balance or a profitable investment and asks for card details or to log in to online banking to receive it.",
+          "legit_en": "No real exchange calls about unclaimed balances or asks for online banking access.",
+          "bait_tactics": [
+            "Segja að maður skrifi allt niður og spyrja hversu há inneignin sé",
+            "Spyrja hvenær reikningurinn var stofnaður"
+          ],
+          "sources": [
+            "Lögreglan",
+            "Seðlabanki Íslands"
           ]
         }
       ]

@@ -516,6 +516,26 @@ const PRE_CLOSINGS: Lexicon = &[
         "sizi daha fazla tutmayayım", "ben kapatıyorum", "kapatıyorum", "sonra konuşuruz", "sonra ararım",
         "tekrar ararım", "şimdilik bu kadar", "o zaman görüşürüz",
     ]),
+    // Fourth batch. Not "I must go" alone (sl "moram iti", hr "moram ići"): "jutri moram
+    // iti k zdravniku" goes on; not "þá er þetta komið" ("þá er þetta komið inn á skjáinn").
+    ("is", &["takk fyrir símtalið", "við tölum saman síðar", "ég heyri í þér síðar", "hafðu það gott"]),
+    ("sl", &[
+        "ne bom vas več zadrževal", "ne bom vas več zadrževala", "ne bom te več zadrževal", "ne bom te več zadrževala",
+        "to bi bilo vse",
+    ]),
+    ("mk", &["да не те задржувам повеќе", "да не ве задржувам повеќе", "фала што се јави", "толку од мене засега"]),
+    ("sq", &["mos të të mbaj më gjatë", "mos t'ju mbaj më gjatë", "mbetemi në kontakt", "flasim më vonë"]),
+    ("sv", &["jag ska inte hålla dig längre", "jag ska inte uppehålla dig längre", "tack för att du ringde", "jag ringer tillbaka senare"]),
+    ("nb", &["jeg skal ikke holde deg lenger", "takk for at du ringte", "jeg ringer deg opp igjen senere"]),
+    ("da", &["jeg skal ikke holde dig længere", "tak fordi du ringede", "jeg ringer tilbage lidt senere"]),
+    ("fi", &["ei mulla muuta", "kiitos soitosta", "puhutaan myöhemmin lisää", "palataan asiaan"]),
+    ("cs", &["nebudu vás zdržovat", "nebudu vás už zdržovat", "děkuji za zavolání", "zavoláme si později"]),
+    ("sk", &["nebudem vás zdržiavať", "ďakujem za zavolanie", "zavoláme si neskôr"]),
+    ("hu", &["nem tartom fel tovább", "most le kell tennem", "köszönöm a hívást", "később visszahívlak"]),
+    ("bg", &["няма да ви задържам повече", "трябва да затварям", "хайде да не те задържам", "ще се обадя по късно"]),
+    ("el", &["πρέπει να κλείσω", "δεν σας καθυστερώ άλλο", "θα σε πάρω αργότερα", "μιλάμε αργότερα"]),
+    ("hr", &["neću vas više zadržavati", "nazvat ću kasnije", "moram prekinuti"]),
+    ("sr", &["не бих вас више задржавао", "јавићу се касније", "ne bih vas više zadržavao", "javiću se kasnije"]),
 ];
 
 /// Goodbyes said only at the end.
@@ -661,6 +681,31 @@ const FAREWELLS: Lexicon = &[
     ("hr", &["doviđenja", "dovidjenja", "do viđenja", "ajde bok"]),
     ("sr", &["ajde ćao"]),
     ("uk", &["давай бувай", "ну все па па"]),
+    // Fourth batch: Icelandic, Slovenian, Macedonian and Albanian, and goodbyes the
+    // earlier lists did not have. Words that are greetings or everyday words too
+    // ("heyrumst", "se slišimo", "се слушаме", "dëgjohemi": also "we can hear each
+    // other") are in GREETING_BYES.
+    ("is", &["bless bless", "bless", "bæ bæ", "bæ", "bæjó", "vertu sæll", "vertu sæl", "vertu blessaður", "vertu blessuð"]),
+    ("sl", &["nasvidenje", "na svidenje", "adijo", "lepo bodite", "fejst bodite", "se slišimo kasneje", "se slišiva kasneje"]),
+    ("mk", &["ајде пријатно", "ајде се слушаме", "ајде чао", "до гледање", "збогум", "ајде со здравје", "ќе се чуеме"]),
+    ("sq", &["mirupafshim", "mirë u pafshim", "hajde mirupafshim", "kalofsh mirë", "kalofshi mirë", "gjithë të mirat", "shihemi më vonë"]),
+    // "Have a nice rest of the day": "…, ha en fin dag videre", "ha en fortsatt bra dag".
+    ("sv", &["hej så länge", "ha en fortsatt bra dag", "ha en fortsatt trevlig dag", "fortsatt trevlig dag"]),
+    ("nb", &["ha en fin dag videre", "ha en god dag videre", "ha en fin kveld videre", "ha en fortsatt fin dag"]),
+    ("da", &["hej så længe", "kan du have det godt", "hav en fortsat god dag"]),
+    ("fi", &["näkemiin", "kiitos hei"]),
+    ("cs", &["na slyšenou", "měj se"]),
+    ("sk", &["do počutia"]),
+    ("hu", &["viszhall", "pá pá", "puszi"]),
+    ("bg", &["довиждане", "до чуване", "ще се чуем", "чао засега"]),
+    ("el", &["αντίο", "εις το επανιδείν", "τα ξαναλέμε"]),
+    // A wish with "να έχετε" at the end ("Καλό υπόλοιπο ημέρας να έχετε!") is said on leaving.
+    ("el", &[
+        "καλό υπόλοιπο ημέρας να έχετε", "καλό υπόλοιπο να έχετε", "καλή συνέχεια να έχετε", "καλή μέρα να έχετε",
+        "καλό απόγευμα να έχετε", "καλό βράδυ να έχετε",
+    ]),
+    ("hr", &["do slušanja", "čujemo se poslije"]),
+    ("sr", &["довиђења", "ајде здраво", "ајде ћао", "ајд ћао", "ajde zdravo", "чујемо се после", "čujemo se posle"]),
 ];
 
 /// Greetings that also say goodbye: farewells only once the business is done
@@ -739,13 +784,35 @@ const GREETING_BYES: Lexicon = &[
     ]),
     // "Mama šalje lijep pozdrav", "bio je ugodan dan". Not "čujemo se": "ne čujemo se"
     // is "we can't hear each other".
-    ("hr", &["bok", "vidimo se", "ugodan dan", "lijep pozdrav", "pozdrav", "svako dobro", "laku noć", "laku noc"]),
+    // Slovenian "lep pozdrav" sits here, before "pozdrav", so it is read as a whole.
+    ("hr", &["bok", "vidimo se", "ugodan dan", "lijep pozdrav", "lep pozdrav", "pozdrav", "svako dobro", "laku noć", "laku noc"]),
     // "Bilo je prijatno".
     ("sr", &["ćao", "prijatno", "sve najbolje"]),
     // "Ми завтра зідзвонимось", "лікар сказав: бережіть себе". Not "на зв'язку": "I'm on the line".
     ("uk", &[
         "тихого дня", "зідзвонимось", "зідзвонимося", "усього найкращого", "всього найкращого", "бережіть себе", "бережи себе",
     ]),
+    // Fourth batch. "Við heyrumst miklu betur núna", "zdaj se slišiva bolj čisto", "добро
+    // ли се слушаме", "a dëgjohemi": also "we can hear each other". "Bil je lep dan",
+    // "denes vremeto e mnogu prijatno", "sapo i urova ditën e mirë korrierit". Not the
+    // Slovenian "vse dobro": "Kako ste? Hvala, vse dobro" answers "how are you".
+    ("is", &["sæll", "sæl", "blessaður", "blessuð", "heyrumst", "við heyrumst"]),
+    ("sl", &["čao", "živjo", "lep dan", "lahko noč", "se slišimo", "se slišiva", "se vidimo", "se vidiva", "srečno"]),
+    ("mk", &["се слушаме", "се гледаме", "убав ден", "добра ноќ"]),
+    ("sq", &["tung", "tungjatjeta", "çao", "dëgjohemi", "shihemi", "ditën e mirë", "natën e mirë"]),
+    // "Vi tog adjø med bilen", "vi hade en trevlig helg", "selv om vi sees i morgen".
+    ("sv", &["adjö", "trevlig helg"]),
+    ("nb", &["adjø", "god helg", "vi sees", "ha det fint"]),
+    ("da", &["vi tales ved", "god weekend", "godnat"]),
+    ("fi", &["soitellaan", "palaillaan", "kuullaan"]),
+    ("hu", &["jó éjszakát", "majd beszélünk"]),
+    // "Само затварям прозореца", "сега чуваме се по-ясно".
+    ("bg", &["чуваме се", "всичко хубаво", "затварям"]),
+    // Not "να είστε καλά": the older lists keep "Ευχαριστώ, να είστε καλά" open.
+    ("el", &["καλό υπόλοιπο ημέρας", "καλό υπόλοιπο", "καλό μεσημέρι", "κλείνω"]),
+    ("hr", &["drži se", "ugodan ostatak dana"]),
+    // Serbian in Cyrillic letters; "здраво", "пријатно" and "поздрав" are Macedonian too.
+    ("sr", &["ћао", "здраво", "пријатно", "свако добро", "све најбоље", "видимо се", "поздрав", "лаку ноћ", "zdravo"]),
 ];
 
 /// How calls are answered and opened; never a goodbye by themselves.
@@ -826,6 +893,12 @@ const EXTRA_THANKS: &[&str] = &[
     "ευχαριστώ πολύ", "ευχαριστούμε", "ευχαριστώ", "ευχαριστω",
     "hvala lijepa", "hvala lepo", "hvala puno", "puno hvala", "hvala vam", "hvala",
     "дуже дякую", "щиро дякую", "дякую вам", "дякуємо", "дякую",
+    // Icelandic "takk" alone is the Norwegian one above (also "please": "já takk").
+    "kærar þakkir", "takk kærlega", "takk fyrir", "þakka þér kærlega", "þakka þér fyrir",
+    "najlepša hvala", "hvala lepa",
+    "многу благодарам", "ви благодарам", "благодарам", "фала многу", "многу фала", "фала",
+    "хвала лепо", "хвала вам", "хвала",
+    "faleminderit shumë", "ju faleminderit", "faleminderit", "rrofshi", "rrofsh",
 ];
 
 /// Thanks for something, at the very end ("Thanks for your help", "thank you
@@ -838,7 +911,7 @@ const THANKS_FOR: &[&str] = &[
     "obrigado por", "obrigada por", "grazie mille per", "grazie per",
     "tack så mycket för", "tack för", "tusen takk for", "takk for", "tusind tak for", "mange tak for", "tak for", "děkuji za", "děkuju za",
     "díky za", "ďakujem za", "vďaka za", "köszönöm a", "köszönöm az", "mulțumesc mult pentru", "mulțumesc pentru",
-    "hvala na", "hvala za",
+    "hvala na", "hvala za", "takk fyrir", "faleminderit për",
 ];
 const THANKS_FOR_MAX_WORDS: usize = 4;
 
@@ -4399,6 +4472,790 @@ mod review_probe3_recheck_tests {
                 if s.event != ClosingEvent::CallerThanksWrap {
                     bad.push(format!("[{lang}] {t} -> {:?}", s.event));
                 }
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+}
+
+/// Fourth batch: Icelandic, Slovenian, Macedonian and Albanian goodbyes, and the
+/// European goodbyes, pre-closings and greeting-goodbyes the earlier lists did not
+/// have. The sentences that must not close are the research's own counterexamples
+/// (opening greetings, reported speech, a goodbye word with more said after it).
+#[cfg(test)]
+mod regional_closing_words_4_tests {
+    use super::*;
+
+    fn after_talk(lang: &'static str) -> ClosingMachine {
+        let mut m = ClosingMachine::new(lang);
+        m.on_caller("Parcel delivery info", "Parcel delivery info", false, false);
+        m
+    }
+
+    /// The caller's turn as the live session feeds it: with the older check.
+    fn hears(m: &mut ClosingMachine, t: &str) -> ClosingStep {
+        m.on_caller(t, t, crate::locale::caller_wraps_up(t), false)
+    }
+
+    fn closes(s: &ClosingStep) -> bool {
+        s.ends_call || matches!(s.event, ClosingEvent::CallerFarewell | ClosingEvent::CallerPreClosing)
+    }
+
+    fn all_close(cases: &[(&'static str, &str)], m: impl Fn(&'static str) -> ClosingMachine) -> Vec<String> {
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let mut mm = m(lang);
+            let s = hears(&mut mm, t);
+            if s.event != ClosingEvent::CallerFarewell || !s.ends_call {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        bad
+    }
+
+    /// The research's own goodbye sentences that end on a newly added goodbye.
+    const GOODBYES: &[(&str, &str)] = &[
+        ("is", "Takk kærlega fyrir aðstoðina, við heyrumst á morgun, bless bless!"),
+        ("is", "Frábært, ég sendi þér upplýsingarnar í tölvupósti, bless bless."),
+        ("is", "Takk fyrir að láta mig vita, sjáumst í kvöld, bless!"),
+        ("is", "Allt í góðu, við tölum saman síðar, bless."),
+        ("is", "Ókei, þá er þetta klárt, takk fyrir spjallið og bæ bæ!"),
+        ("is", "Ég hringi aftur þegar ég er kominn heim, bæ bæ."),
+        ("is", "Við sjáumst þá klukkan fjögur, bæ!"),
+        ("is", "Takk fyrir þetta, bæ!"),
+        ("is", "Heyrumst þá eftir helgi, bæjó!"),
+        ("is", "Takk fyrir spjallið, bæjó!"),
+        ("is", "Þakka þér kærlega fyrir hjálpina og vertu sæll."),
+        ("is", "Við verðum í bandi í næstu viku, vertu sæll."),
+        ("is", "Takk fyrir upplýsingarnar og góða helgi, vertu sæl."),
+        ("is", "Ég kem þá við á skrifstofunni á morgun, vertu sæl."),
+        ("is", "Takk fyrir greiðann og vertu blessaður!"),
+        ("is", "Við heyrumst fljótlega aftur, vertu blessaður."),
+        ("is", "Þakka þér innilega fyrir símtalið, vertu blessuð."),
+        ("is", "Sjáumst á fimmtudaginn, vertu blessuð!"),
+        ("sl", "Najlepša hvala za vse informacije, nasvidenje!"),
+        ("sl", "Hvala za klic, zdaj pa res hitim na avtobus, adijo!"),
+        ("sl", "Vse je dogovorjeno za jutri, lepo bodite, adijo!"),
+        ("sl", "Nimam več vprašanj, lepo bodite!"),
+        ("sl", "Sva vse zmenjena za vikend, fejst bodite!"),
+        ("sl", "Kličejo me k mizi, se slišiva kasneje!"),
+        ("mk", "Тоа е сѐ за денес, ајде пријатно."),
+        ("mk", "Се гледаме попладне пред влезот, ајде пријатно."),
+        ("mk", "Одам на состанок сега, ајде се слушаме."),
+        ("mk", "Фала ти многу за помошта, ајде се слушаме."),
+        ("mk", "Брзам кон автобусот, ајде чао."),
+        ("mk", "Ќе ти пратам порака вечерва, ајде чао."),
+        ("mk", "Ви посакувам убав остаток од денот, до гледање."),
+        ("mk", "Сѐ е запишано, Ви благодарам и до гледање."),
+        ("mk", "Јави ми кога ќе завршиш со работа, ќе се чуеме."),
+        ("mk", "Добро, да не те задржувам сега, ќе се чуеме."),
+        ("mk", "Се надевам дека сѐ ќе биде во ред, збогум."),
+        ("mk", "Ви посакувам сѐ најдобро понатаму, збогум."),
+        ("mk", "Поздрави ги сите дома, ајде со здравје."),
+        ("mk", "Се гледаме викендов, ајде со здравје."),
+        ("sq", "Faleminderit shumë për ndihmën, mirupafshim."),
+        ("sq", "U morëm vesh për nesër në mëngjes, mirupafshim."),
+        ("sq", "Po nisem tani drejt qytetit, shihemi më vonë."),
+        ("sq", "E lëmë për pasdite atëherë, shihemi më vonë."),
+        ("sq", "Të falënderoj për telefonatën, kalofsh mirë."),
+        ("sq", "Pushim të mbarë gjatë fundjavës, kalofsh mirë."),
+        ("sq", "Ju faleminderit për sqarimin e detajuar, kalofshi mirë."),
+        ("sq", "Do t'ju njoftojmë sapo të jetë gati dokumenti, kalofshi mirë."),
+        ("sq", "Shumë faleminderit për bashkëpunimin, gjithë të mirat."),
+        ("sq", "Ju uroj suksese në detyrën e re, gjithë të mirat."),
+        ("sq", "Po më bie zilja e derës tani, hajde mirupafshim."),
+        ("sq", "U krye kjo punë atëherë, hajde mirupafshim."),
+        ("sv", "Jag återkommer så snart jag vet mer, hej så länge."),
+        ("sv", "Ha en trevlig eftermiddag nu, hej så länge."),
+        ("da", "Tak fordi du lige gav besked, kan du have det godt."),
+        ("da", "Hils mange gange derhjemme, kan du have det godt!"),
+        ("da", "Jeg vender tilbage, så snart jeg har nyt, hej så længe."),
+        ("da", "Tak for snakken indtil videre, hej så længe."),
+        ("fi", "Kiitos yhteydenotosta, palaamme asiaan ensi viikolla, näkemiin."),
+        ("fi", "Ei muuta tällä kertaa, kiitos ja näkemiin."),
+        ("fi", "En ole kiinnostunut tarjouksesta, kiitos hei."),
+        ("fi", "Tuo aika sopii oikein hyvin, kiitos hei!"),
+        ("cs", "Děkuji za upřesnění termínu, na slyšenou."),
+        ("cs", "Budu se těšit na další hovor příští týden, na slyšenou."),
+        ("cs", "Tak jo, uvidíme se večer, měj se."),
+        ("cs", "Musím běžet na vlak, měj se."),
+        ("sk", "Ďakujem za všetky informácie, do počutia."),
+        ("sk", "Ozvem sa vám budúci týždeň s výsledkom, do počutia."),
+        ("hu", "Rendben, köszönöm a gyors választ, viszhall."),
+        ("hu", "Akkor maradunk ennyiben, viszhall."),
+        ("hu", "Rendben, akkor este találkozunk, puszi."),
+        ("hu", "Vigyázz magadra az úton, puszi."),
+        ("bg", "Благодаря ви за съдействието, довиждане!"),
+        ("bg", "Записах си новия час, благодаря и до чуване!"),
+        ("bg", "Ще чакам потвърждение по имейл, до чуване!"),
+        ("bg", "Чухме се и се разбрахме, чао засега!"),
+        ("bg", "Влизам в асансьора и връзката прекъсва, чао засега!"),
+        ("el", "Δεν χρειάζεται κάτι άλλο προς το παρόν, αντίο!"),
+        ("el", "Σας ευχαριστούμε για τη συνεργασία, εις το επανιδείν!"),
+        ("el", "Ραντεβού την επόμενη Τρίτη λοιπόν, εις το επανιδείν!"),
+        ("hr", "Hvala vam na razgovoru, čujemo se idući tjedan, do slušanja!"),
+        ("hr", "Vaš zahtjev je uspješno zaprimljen, do slušanja!"),
+        ("hr", "Zovu me za stolom, čujemo se poslije!"),
+        ("sr", "Хвала вам на свим информацијама, довиђења!"),
+        ("sr", "Журим на аутобус, ајде здраво!"),
+        ("sr", "Улазим у зграду сада, ајд ћао!"),
+        ("sr", "Важи, све је решено, ајд ћао!"),
+        ("sr", "Почиње ми час, чујемо се после!"),
+    ];
+
+    #[test]
+    fn goodbyes_end_the_call() {
+        let bad = all_close(GOODBYES, after_talk);
+        assert!(bad.is_empty(), "goodbyes missed:\n{}", bad.join("\n"));
+    }
+
+    /// The research's pre-closing sentences: the end is announced (the AI's goodbye then ends the call).
+    const PRE_CLOSING_SENTENCES: &[(&str, &str)] = &[
+        ("is", "Ég kem þessum skilaboðum til skila strax, takk fyrir símtalið."),
+        ("is", "Þá er allt komið á hreint hjá okkur, takk fyrir símtalið."),
+        ("is", "Ég er að keyra inn í göng, við tölum saman síðar!"),
+        ("is", "Takk fyrir þetta, ég skoða málið og við tölum saman síðar."),
+        ("is", "Takk kærlega fyrir aðstoðina og hafðu það gott!"),
+        ("is", "Við sjáumst í næstu viku, hafðu það gott."),
+        ("is", "Ég sendi þér staðfestinguna á eftir og ég heyri í þér síðar."),
+        ("sl", "Najlepša hvala za vaš čas, ne bom vas več zadrževal!"),
+        ("mk", "Добро, ми стана јасно сѐ, да не те задржувам повеќе."),
+        ("mk", "Значи се гледаме во петок, да не те задржувам повеќе."),
+        ("mk", "Ќе проверам веднаш и ќе ти пишам, фала што се јави."),
+        ("mk", "Добро е што ме потсети навреме, фала што се јави."),
+        ("mk", "Ти ги пренесов сите новости, толку од мене засега."),
+        ("mk", "Ако испадне нешто друго ќе ти пишам, толку од мене засега."),
+        ("sq", "Jam në rrugë tani dhe ka zhurmë, flasim më vonë."),
+        ("sq", "Po hyj në sallë, të marr unë pas një ore, flasim më vonë."),
+        ("sq", "E kuptova plotësisht tani, mos të të mbaj më gjatë."),
+        ("sq", "E di që ke shumë punë sot, mos të të mbaj më gjatë."),
+        ("sq", "Sapo të kem një përgjigje të njoftoj menjëherë, mbetemi në kontakt."),
+        ("sq", "Faleminderit për bisedën e këndshme, mbetemi në kontakt."),
+        ("sv", "Nu har jag fått svar på allt, jag ska inte hålla dig längre."),
+        ("sv", "Jag hör att du har fullt upp där borta, jag ska inte hålla dig längre."),
+        ("sv", "Jag tar hand om det direkt och skickar en bekräftelse, tack för att du ringde."),
+        ("sv", "Det var fint att höra din röst igen, tack för att du ringde."),
+        ("sv", "Jag sitter mitt i trafiken just nu, jag ringer tillbaka senare."),
+        ("sv", "Låt mig kolla i pärmen först, jag ringer tillbaka senare."),
+        ("nb", "Da har jeg fått svar på alt sammen, jeg skal ikke holde deg lenger."),
+        ("nb", "Jeg hører at du er opptatt nå, jeg skal ikke holde deg lenger."),
+        ("nb", "Jeg sjekker dette med det samme og sender bekreftelse, takk for at du ringte."),
+        ("nb", "Veldig hyggelig å høre fra deg igjen, takk for at du ringte."),
+        ("nb", "Jeg står midt i butikken akkurat nå, jeg ringer deg opp igjen senere."),
+        ("nb", "La meg finne frem papirene først, jeg ringer deg opp igjen senere."),
+        ("da", "Nu har jeg fået svar på det hele, jeg skal ikke holde dig længere."),
+        ("da", "Jeg kan høre, du har travlt lige nu, jeg skal ikke holde dig længere."),
+        ("da", "Jeg undersøger sagen med det samme og vender tilbage, tak fordi du ringede."),
+        ("da", "Det var rigtig hyggeligt at høre nyt fra dig, tak fordi du ringede."),
+        ("da", "Jeg står midt på gaden i støjen lige nu, jeg ringer tilbage lidt senere."),
+        ("da", "Lad mig lige finde tallene frem først, jeg ringer tilbage lidt senere."),
+        ("fi", "Kiitos kun tarkistit sen ajan, ei mulla muuta."),
+        ("fi", "Tässä alkaa nyt tunti, puhutaan myöhemmin lisää!"),
+        ("fi", "Kiitos tiedosta, minä mietin tätä ja puhutaan myöhemmin lisää."),
+        ("fi", "Välitän viestin eteenpäin heti kun hän palaa, kiitos soitosta."),
+        ("fi", "Selvä, laitetaan viestiä ja palataan asiaan."),
+        ("cs", "Už mám všechny informace, nebudu vás zdržovat."),
+        ("cs", "Děkuji za vysvětlení, dál už vás opravdu nebudu, nebudu vás zdržovat."),
+        ("cs", "Vzkaz vyřídím hned po návratu kolegy, děkuji za zavolání."),
+        ("cs", "Vše jsem zapsal do systému, děkuji za zavolání."),
+        ("cs", "Teď řídím v hustém provozu, zavoláme si později."),
+        ("cs", "Jsem u lékaře v čekárně, zavoláme si později."),
+        ("sk", "Už mám všetky informácie, nebudem vás zdržiavať."),
+        ("sk", "Ďakujem za vysvetlenie, ďalej už naozaj nebudem, nebudem vás zdržiavať."),
+        ("sk", "Odkaz hneď odovzdám kolegovi, ďakujem za zavolanie."),
+        ("sk", "Všetko som zaevidoval do systému, ďakujem za zavolanie."),
+        ("sk", "Teraz šoférujem v premávke, zavoláme si neskôr."),
+        ("sk", "Som práve v čakárni u lekára, zavoláme si neskôr."),
+        ("hu", "Mindent feljegyeztem, köszönöm, nem tartom fel tovább."),
+        ("hu", "Látom, hogy sok a dolga, nem tartom fel tovább."),
+        ("hu", "Ne haragudj, hív a felettesem a másik vonalon, most le kell tennem."),
+        ("hu", "Megérkezett a villamosom, most le kell tennem."),
+        ("hu", "Az üzenetet azonnal továbbítom a vezetőnek, köszönöm a hívást."),
+        ("hu", "Rögzítettem a bejelentést a rendszerben, köszönöm a hívást."),
+        ("hu", "Most vezetek a forgalomban, később visszahívlak."),
+        ("hu", "Éppen az ügyfélnél vagyok, később visszahívlak."),
+        ("bg", "На касата съм в магазина, ще се обадя по-късно!"),
+        ("bg", "Благодаря за отделеното време, няма да ви задържам повече!"),
+        ("el", "Είμαι στο ταμείο τώρα, θα σε πάρω αργότερα!"),
+        ("el", "Φτάνω στο ιατρείο τώρα, μιλάμε αργότερα!"),
+        ("hr", "Upravo ulazim u ordinaciju, nazvat ću kasnije!"),
+        ("hr", "Hvala na brzom odgovoru, neću vas više zadržavati!"),
+        ("sr", "Управо улазим код лекара, јавићу се касније!"),
+    ];
+
+    #[test]
+    fn pre_closings_announce_the_end() {
+        let mut bad = Vec::new();
+        for (lang, t) in PRE_CLOSING_SENTENCES {
+            let mut m = after_talk(lang);
+            let s = hears(&mut m, t);
+            if !closes(&s) {
+                bad.push(format!("[{lang}] {t} -> {:?}", s.event));
+                continue;
+            }
+            if s.event == ClosingEvent::CallerPreClosing && m.on_ai_turn("Okay, goodbye!", false, false) != ClosingEvent::FarewellsExchanged {
+                bad.push(format!("[{lang}] the AI's goodbye after {t} did not end it"));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// Greetings or everyday words that also say goodbye close right after thanks.
+    #[test]
+    fn cued_goodbyes_close_after_thanks() {
+        let cases: &[(&'static str, &str)] = &[
+            ("is", "Takk fyrir, sæll!"),
+            ("is", "Takk fyrir, sæl."),
+            ("is", "Takk fyrir, blessaður!"),
+            ("is", "Takk fyrir, blessuð."),
+            ("is", "Takk fyrir, heyrumst!"),
+            ("is", "Takk fyrir, við heyrumst."),
+            ("sl", "Hvala, čao!"),
+            ("sl", "Hvala, živjo!"),
+            ("sl", "Hvala, lep dan!"),
+            ("sl", "Hvala, lahko noč."),
+            ("sl", "Hvala, lep pozdrav!"),
+            ("sl", "Hvala, se slišimo!"),
+            ("sl", "Hvala, se slišiva."),
+            ("sl", "Hvala, se vidimo!"),
+            ("sl", "Hvala, se vidiva."),
+            ("sl", "Najlepša hvala, srečno!"),
+            ("mk", "Фала, се слушаме!"),
+            ("mk", "Фала, се гледаме."),
+            ("mk", "Благодарам, убав ден!"),
+            ("mk", "Фала многу, добра ноќ."),
+            ("mk", "Фала, здраво!"),
+            ("mk", "Ви благодарам, пријатно!"),
+            ("mk", "Фала, поздрав."),
+            ("sq", "Faleminderit, tung!"),
+            ("sq", "Faleminderit, tungjatjeta."),
+            ("sq", "Faleminderit, çao!"),
+            ("sq", "Faleminderit, dëgjohemi!"),
+            ("sq", "Ju faleminderit, shihemi."),
+            ("sq", "Faleminderit shumë, ditën e mirë!"),
+            ("sq", "Faleminderit, natën e mirë."),
+            ("sv", "Tack, adjö!"),
+            ("sv", "Tack så mycket, trevlig helg!"),
+            ("nb", "Takk, adjø!"),
+            ("nb", "Takk, god helg!"),
+            ("nb", "Takk, vi sees."),
+            ("nb", "Tusen takk, ha det fint!"),
+            ("da", "Tusind tak, vi tales ved."),
+            ("da", "Mange tak, god weekend!"),
+            ("da", "Tak for det, godnat."),
+            ("fi", "Kiitos, soitellaan!"),
+            ("fi", "Kiitos, palaillaan."),
+            ("fi", "Kiitos paljon, kuullaan!"),
+            ("hu", "Köszönöm, jó éjszakát!"),
+            ("hu", "Köszi, majd beszélünk."),
+            ("bg", "Благодаря, чуваме се!"),
+            ("bg", "Благодаря, всичко хубаво!"),
+            ("bg", "Благодаря, затварям."),
+            ("el", "Ευχαριστώ, καλό υπόλοιπο!"),
+            ("el", "Ευχαριστώ, καλό μεσημέρι."),
+            ("el", "Ευχαριστώ πολύ, κλείνω."),
+            ("hr", "Hvala, drži se!"),
+            ("hr", "Hvala, ugodan ostatak dana!"),
+            ("sr", "Хвала, ћао!"),
+            ("sr", "Хвала, здраво."),
+            ("sr", "Хвала лепо, пријатно!"),
+            ("sr", "Хвала, свако добро."),
+            ("sr", "Хвала вам, све најбоље!"),
+            ("sr", "Хвала, видимо се."),
+            ("sr", "Хвала, поздрав!"),
+            ("sr", "Хвала, лаку ноћ."),
+            ("sr", "Hvala, zdravo!"),
+        ];
+        let bad = all_close(cases, after_talk);
+        assert!(bad.is_empty(), "cued goodbyes missed:\n{}", bad.join("\n"));
+    }
+
+    const CUED_ALONE: &[(&str, &str)] = &[
+        ("is", "Sæll!"),
+        ("is", "Sæl."),
+        ("is", "Blessaður!"),
+        ("is", "Blessuð."),
+        ("is", "Heyrumst!"),
+        ("is", "Við heyrumst."),
+        ("sl", "Čao!"),
+        ("sl", "Živjo!"),
+        ("sl", "Lep dan!"),
+        ("sl", "Lahko noč."),
+        ("sl", "Lep pozdrav!"),
+        ("sl", "Se slišimo!"),
+        ("sl", "Se slišiva."),
+        ("sl", "Se vidimo!"),
+        ("sl", "Se vidiva."),
+        ("sl", "Srečno!"),
+        ("mk", "Се слушаме!"),
+        ("mk", "Се гледаме."),
+        ("mk", "Убав ден!"),
+        ("mk", "Добра ноќ."),
+        ("mk", "Здраво!"),
+        ("mk", "Пријатно!"),
+        ("mk", "Поздрав."),
+        ("sq", "Tung!"),
+        ("sq", "Tungjatjeta."),
+        ("sq", "Çao!"),
+        ("sq", "Dëgjohemi!"),
+        ("sq", "Shihemi."),
+        ("sq", "Ditën e mirë!"),
+        ("sq", "Natën e mirë."),
+        ("sv", "Adjö!"),
+        ("sv", "Trevlig helg!"),
+        ("nb", "Adjø!"),
+        ("nb", "God helg!"),
+        ("nb", "Vi sees."),
+        ("nb", "Ha det fint!"),
+        ("da", "Vi tales ved."),
+        ("da", "God weekend!"),
+        ("da", "Godnat."),
+        ("fi", "Soitellaan!"),
+        ("fi", "Palaillaan."),
+        ("fi", "Kuullaan!"),
+        ("hu", "Jó éjszakát!"),
+        ("hu", "Majd beszélünk."),
+        ("bg", "Чуваме се!"),
+        ("bg", "Всичко хубаво!"),
+        ("bg", "Затварям."),
+        ("el", "Καλό υπόλοιπο!"),
+        ("el", "Καλό μεσημέρι."),
+        ("el", "Κλείνω."),
+        ("hr", "Drži se!"),
+        ("hr", "Ugodan ostatak dana!"),
+        ("sr", "Ћао!"),
+        ("sr", "Здраво."),
+        ("sr", "Пријатно!"),
+        ("sr", "Свако добро."),
+        ("sr", "Све најбоље!"),
+        ("sr", "Видимо се."),
+        ("sr", "Поздрав!"),
+        ("sr", "Лаку ноћ."),
+        ("sr", "Zdravo!"),
+    ];
+
+    /// Alone, mid-call, they wait: the AI's goodbye before them, or a cue in the same turn.
+    #[test]
+    fn cued_words_alone_close_only_after_the_ais_goodbye() {
+        let mut bad = Vec::new();
+        for (lang, t) in CUED_ALONE {
+            let mut m = after_talk(lang);
+            let s = hears(&mut m, t);
+            if closes(&s) {
+                bad.push(format!("[{lang}] mid-call {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        let bad_after_ai = all_close(CUED_ALONE, |lang| {
+            let mut m = after_talk(lang);
+            m.on_ai_turn("Okay, goodbye!", false, false);
+            m
+        });
+        bad.extend(bad_after_ai.into_iter().map(|b| format!("after the AI's goodbye: {b}")));
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// How these calls open: never a goodbye on the first turn.
+    #[test]
+    fn opening_greetings_do_not_close() {
+        let cases: &[(&'static str, &str)] = &[
+            ("is", "Sæll!"),
+            ("is", "Blessuð!"),
+            ("sl", "Živjo!"),
+            ("sl", "Čao!"),
+            ("mk", "Здраво!"),
+            ("sq", "Tungjatjeta!"),
+            ("sq", "Tung!"),
+            ("sr", "Ћао!"),
+            ("sr", "Здраво!"),
+            ("sv", "Adjö!"),
+            ("bg", "Чуваме се!"),
+            ("el", "Καλό μεσημέρι!"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let mut m = ClosingMachine::new(lang);
+            let s = hears(&mut m, t);
+            if closes(&s) {
+                bad.push(format!("[{lang}] opening {t} -> {:?}", s.event));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// The research's counterexamples for every added word: at the start of a call or mid-call, no goodbye.
+    const LOOKALIKES: &[(&str, &str)] = &[
+        ("is", "Barnið hérna við hliðina var að kalla bless bless á nágrannann, en ég er enn í símanum, haltu bara áfram."),
+        ("is", "Síðasti þjónustufulltrúi sagði bara bless bless áður en ég náði að spyrja um verðið, getur þú athugað það fyrir mig?"),
+        ("is", "Ekki segja bless alveg strax, ég þarf líka að fá póstnúmerið hjá ykkur."),
+        ("is", "Samstarfsmaður minn kastaði bara kveðju og sagði bless í dyrunum, ég er enn að hlusta á þig."),
+        ("is", "Ég heyrði einhvern segja bæ bæ í bakgrunninum hjá þér, ertu nokkuð að fara á fund?"),
+        ("is", "Sendillinn sagði bara bæ bæ við dyrnar og rétti mér kassann, bíddu aðeins á meðan ég skoða innihaldið."),
+        ("is", "Þú sagðir næstum bæ, en má ég spyrja einnar stuttrar spurningar áður en við hættum?"),
+        ("is", "Kunningi minn sagði bæ hérna frammi á gangi, ekkert mál, segðu mér meira um tímasetninguna."),
+        ("is", "Systir mín kallaði bæjó úr forstofunni rétt í þessu, en ég er enn á línunni hjá þér."),
+        ("is", "Hann sagði bæjó í síðasta símtali án þess að staðfesta dagsetninguna, svo ég vil vera alveg viss núna."),
+        ("is", "Ef maður segir vertu sæll við karlmann í lok símtals er það formlegt, en segðu mér fyrst hvort reikningurinn sé greiddur."),
+        ("is", "Hann kvaddi með vertu sæll áðan en gleymdi að gefa mér bókunarnúmerið, getur þú flett því upp?"),
+        ("is", "Áður en ég segi vertu sæl langar mig að ganga úr skugga um að nafnið sé rétt skráð."),
+        ("is", "Konan í móttökunni sagði vertu sæl og gaf mér samband hingað, getur þú aðstoðað mig með tímabókun?"),
+        ("is", "Afi segir alltaf vertu blessaður þegar hann kveður, en við skulum klára að fara yfir listann fyrst."),
+        ("is", "Ekki segja vertu blessaður strax, ég á eftir að lesa upp viðmiðunarnúmerið."),
+        ("is", "Hún sagði vertu blessuð við mig í gær án þess að svara erindinu, svo ég hringi aftur til að fá skýr svör."),
+        ("is", "Áður en við kveðjumst og segjum vertu blessuð, geturðu athugað hvort tíminn klukkan tvö sé laus?"),
+        ("is", "Við sögðum í gær að við heyrumst í dag til að klára samninginn, ertu með skjalið fyrir framan þig?"),
+        ("is", "Við heyrumst miklu betur núna þegar ég fór út úr lyftunni, svo segðu mér hvað kom fram á fundinum."),
+        ("is", "Takk fyrir símtalið annars, ég ætlaði einmitt að spyrja þig út í reikninginn sem barst í morgun."),
+        ("is", "Byrjum á að segja takk fyrir símtalið, og farðu svo rólega yfir það sem þú vildir ræða."),
+        ("is", "Þótt við tölum saman síðar um smáatriðin, getum við þá ekki neglt niður dagsetninguna strax núna?"),
+        ("is", "Þú stakkst upp á að við tölum saman síðar, en ég er laus einmitt núna ef þú hefur tvær mínútur."),
+        ("is", "Ef ég heyri í þér síðar í vikunni verður of seint að breyta pöntuninni, svo klárum það frekar núna."),
+        ("is", "Ég sagði honum að ég heyri í þér síðar, en fyrst þú ert á línunni skulum við leysa þetta strax."),
+        ("is", "Áður en ég segi hafðu það gott, viltu staðfesta hvort sendingin komi fyrir hádegi?"),
+        ("is", "Þjónustufulltrúinn sagði bara hafðu það gott í gær án þess að vista breytinguna, svo athugum það núna."),
+        ("is", "Sæll, mikið er gott að ná loksins í þig, ertu laus í smá stund?"),
+        ("is", "Ég kallaði bara sæll á nágrannann úti á bílastæði, ég er enn að hlusta á þig."),
+        ("is", "Sæl, ég er að hringja til að athuga með bókaðan tíma hjá lækninum."),
+        ("is", "Samstarfskona mín gekk fram hjá og ég sagði bara sæl við hana, haltu endilega áfram."),
+        ("is", "Blessaður, heyrirðu nokkuð í mér núna, ég var að reyna að ná í þig áðan?"),
+        ("is", "Blessaður vertu ekki að flýta þér að leggja á, við eigum eftir að ræða kostnaðinn."),
+        ("is", "Blessuð, ertu með stund til að fara yfir dagskrána fyrir morgundaginn?"),
+        ("is", "Blessuð hafðu engar áhyggjur af bakgrunnshljóðinu, ég heyri mjög skýrt í þér."),
+        ("sl", "Kurir je ravnokar odložil paket pri vratih in rekel nasvidenje, jaz pa sem še na zvezi — povejte naprej."),
+        ("sl", "Preden rečeva nasvidenje v tem klicu, preveriva prosim še točno uro jutrišnjega prihoda."),
+        ("sl", "Sodelavec je skozi vrata zaklical adijo, ampak jaz sem še vedno v pisarni na liniji — kar nadaljujte."),
+        ("sl", "Ne reci mi še adijo, dokler mi ne poveš, katere dokumente moram prinesti s seboj."),
+        ("sl", "Zdaj se slišiva veliko bolj čisto kot prej, tako da mi lahko mirno poveš vse do konca."),
+        ("sl", "Vem, da se slišiva vsak teden, ampak dajva kar zdaj med tem klicem uskladiti še datume."),
+        ("sl", "Ali se slišimo dovolj glasno v sejni sobi, da lahko nadaljujem s predstavitvijo podatkov?"),
+        ("sl", "V sporočilu ste napisali se slišimo kmalu, zato vas kličem, da zdaj skupaj pregledava pogodbo."),
+        ("sl", "Tudi vi lepo bodite, zdaj pa mi prosim na kratko povejte, ali je termin v četrtek še prost."),
+        ("sl", "Receptorka mi je ob izhodu rekla lepo bodite, zdaj sem zunaj na mirnem in vas dobro slišim."),
+        ("sl", "Sosed mi je na dvorišču zaklical fejst bodite, oprostite za kratek šum — še vedno vas poslušam."),
+        ("sl", "Vedno rad reče fejst bodite ob koncu, ampak midva imava danes na telefonu še dve pomembni točki."),
+        ("sl", "Prenesite lep pozdrav vsem sodelavcem v ekipi, meni pa zdaj povejte, kdaj začnemo s projektom."),
+        ("sl", "Na koncu dopisa je stal samo lep pozdrav brez ure, zato vas kličem, da se natančno dogovorimo."),
+        ("sl", "Srečno sva prispela v hotel pred nekaj minutami, zato imava zdaj čas, da se v miru pogovoriva po telefonu."),
+        ("sl", "Zaželel sem mu srečno pred odhodom na pot, zdaj pa sem spet pri mizi — povejte, kaj ste želeli."),
+        ("sl", "Ker se vidiva šele prihodnji mesec v živo, morava zdaj po telefonu urediti vse podrobnosti."),
+        ("sl", "Če se vidiva zvečer na treningu, mi že zdaj povej, ali naj vzamem dodatno opremo."),
+        ("sl", "Po tem zadnjem vprašanju ne bom vas več zadrževal, povejte mi prosim samo še rok dobave."),
+        ("sl", "Obljubim, da ne bom vas več zadrževal kot dve minuti, zato preidiva kar k bistvu klica."),
+        ("sl", "Glede prvega dela naročila to bi bilo vse, zdaj pa bi vas na zvezi vprašal še glede dostave."),
+        ("sl", "Mislil sem, da to bi bilo vse za danes, pa sem ravnokar opazil še eno odprto postavko na seznamu."),
+        ("sl", "Napisal sem mu se slišiva kasneje, da naju ne bi motil med tem najinim pogovorom."),
+        ("sl", "Lahko rečeva se slišiva kasneje za ostale malenkosti, ampak glavno uro odhoda določiva kar zdaj."),
+        ("sl", "Oj, čao, lepo da si se oglasil — imaš minutko za kratko vprašanje?"),
+        ("sl", "Samo sosedu na hodniku sem rekel čao, še vedno sem na zvezi in te poslušam."),
+        ("sl", "Halo, živjo, kličeva se glede jutrišnjega izleta — imaš malo časa?"),
+        ("sl", "Ravno sem rekel živjo receptorju ob vstopu, zdaj sem v tihi pisarni in lahko nadaljuješ."),
+        ("sl", "Pozdravljeni in lep dan vam želim, kličem glede rezervacije termina v prihodnjem tednu."),
+        ("sl", "Prodajalka mi je pravkar zaželela lep dan ob izhodu, zdaj pa vas na ulici spet dobro slišim."),
+        ("sl", "Otrokom sem ravnokar zaželel lahko noč in zaprl vrata, tako da se zdaj lahko v miru pogovoriva."),
+        ("sl", "Preden bo čas za lahko noč, mi na kratko povej, kdaj se jutri dobiva pred postajo."),
+        ("mk", "Денес времето надвор е многу пријатно, туку кажи ми дали стаса пратката?"),
+        ("mk", "Ми беше пријатно кога разговаравме минатата недела, па сега сакам да прашам уште нешто."),
+        ("mk", "Ми рече само ајде пријатно и веднаш излезе од канцеларијата, па сакав да те прашам тебе што се случи."),
+        ("mk", "Помислив дека ќе кажеш ајде пријатно пред да ти го кажам најважниот дел од планот."),
+        ("mk", "Добро ли се слушаме сега кога излегов во ходникот?"),
+        ("mk", "Ретко се слушаме во последно време, па раскажи ми што има ново кај вас."),
+        ("mk", "Прееска ми пиша само ајде се слушаме, ама еве уште не ми објасни што треба да понесам."),
+        ("mk", "Таман реков ајде се слушаме на колегата во собава, туку продолжи ти со прашањето."),
+        ("mk", "Со соседите се гледаме секое утро во лифтот, туку кажи ми за сметката за вода."),
+        ("mk", "Одамна не се гледаме со друштвото, па сакав да видам кој ден ви одговара."),
+        ("mk", "Тој само рече ајде чао среде состанокот вчера, а јас сега сакам да ги провериме бројките."),
+        ("mk", "Малото од другата соба вика ајде чао на сите, не обрнувај внимание, кажи ми за терминот."),
+        ("mk", "На шалтерот никој не ни рече ни до гледање, туку да ти кажам што ми одговорија за барањето."),
+        ("mk", "Пред да дојдеме до гледање, морам да ги проверам уште податоците од формуларот."),
+        ("mk", "Само да им кажам добра ноќ на децата во собата и веднаш продолжуваме со разговорот."),
+        ("mk", "Вчера не ни стигнав да ти посакам добра ноќ по порака, туку кажи ми како помина денес."),
+        ("mk", "Денес конечно имаме убав ден без дожд, па сакав да те прашам дали ќе одиме пеш."),
+        ("mk", "Ти посакувам убав ден за роденденот, а сега кажи ми во колку часот почнува прославата."),
+        ("mk", "Си ветивме дека почесто ќе се чуеме оваа година, па кажи ми прво како си со обврските."),
+        ("mk", "Ако се прекине линијава во тунелот пак ќе се чуеме, но засега кажи ми ги деталите."),
+        ("mk", "Се пошегува дека му кажал збогум на стариот велосипед, туку кажи ми кога пристигнува новиот."),
+        ("mk", "Зборот збогум звучи премногу сериозно за обичен разговор, па подобро кажи ми што правиш вечерва."),
+        ("mk", "Дедо секогаш велеше ајде со здравје кога испраќаше гости, туку да те прашам за рецептот."),
+        ("mk", "Му реков ајде со здравје на мајсторот штотуку на врата, извини, продолжи што ми кажуваше."),
+        ("mk", "Само една минута да не те задржувам повеќе од потребното, кажи ми кој број треба да го внесам овде?"),
+        ("mk", "Знам дека реков да не те задржувам повеќе прееска, ама ми текна уште едно важно прашање за договорот."),
+        ("mk", "Еј, баш фала што се јави во вистински момент, таман сакав да те прашам за распоредот!"),
+        ("mk", "Фала што се јави толку брзо, ајде сега да ги поминеме сите точки една по една."),
+        ("mk", "Во првиот дел од извештајот напишав толку од мене засега, ама ти кажи ми што би додал ти."),
+        ("mk", "Толку од мене засега за првата тема, па сега ја слушам твојата идеја за следниот чекор."),
+        ("mk", "Здраво, се јавувам во врска со резервацијата за следната недела."),
+        ("mk", "Многу е здраво да се пешачи секое утро, туку кажи ми дали си слободен попладне."),
+        ("mk", "Голем поздрав ти праќаат сите од дома, а сега кажи ми што реши за патувањето."),
+        ("mk", "Поздрав до тебе, дали имаш две минути да ми објасниш како се вклучува опцијата?"),
+        ("sq", "Doli nga mbledhja dje pa thënë as mirupafshim, por më thuaj ti çfarë vendosët më pas."),
+        ("sq", "Para se të themi mirupafshim, duhet të verifikojmë edhe një herë orarin e saktë."),
+        ("sq", "A dëgjohemi më qartë tani që dola pranë dritares?"),
+        ("sq", "Rrallë dëgjohemi gjatë javës për shkak të punës, ndaj më trego si je me shëndet."),
+        ("sq", "Me fqinjët shihemi pothuajse çdo mëngjes në shkallë, por doja të të pyesja për çelësin rezervë."),
+        ("sq", "Kur nuk shihemi për një kohë të gjatë kemi shumë për të folur, prandaj më trego çdo detaj."),
+        ("sq", "Më shkroi vetëm shihemi më vonë në mesazh dhe nuk sqaroi orën, ndaj po të pyes ty çfarë di."),
+        ("sq", "Edhe pse shihemi më vonë në darkë, duhet të ta them që tani këtë lajm të rëndësishëm."),
+        ("sq", "I urova të kalofsh mirë kur u nis për pushime dje, por tani më thuaj kur kthehet."),
+        ("sq", "Shpresoj të kalofsh mirë në festë sonte, veç më thuaj më parë a të duhet ndonjë gjë."),
+        ("sq", "Kur i thashë kalofshi mirë sportelistes, ajo më kujtoi edhe një formular, ndaj po ju pyes për të."),
+        ("sq", "Uroj të kalofshi mirë me familjen këtë javë, por më lejoni t'ju pyes edhe për adresën e dërgesës."),
+        ("sq", "Ai gjithmonë e fillon letrën duke uruar gjithë të mirat, por le të shohim tani pikën e dytë të kontratës."),
+        ("sq", "Meriton gjithë të mirat për punën që ke bërë, dhe tani dua të të pyes si do të vazhdojmë nesër."),
+        ("sq", "Nga mëngjesi e kupton ditën e mirë, po më thuaj a e ke lexuar njoftimin që erdhi sot?"),
+        ("sq", "Sapo i urova ditën e mirë korrierit te dera, më fal për shkëputjen, vazhdo të lutem."),
+        ("sq", "Vetëm një sekondë t'u them natën e mirë fëmijëve në dhomën tjetër dhe kthehem menjëherë në linjë."),
+        ("sq", "Dje harrova të të uroj natën e mirë me mesazh, po më trego si fjete."),
+        ("sq", "Ai e ka zakon të thotë hajde mirupafshim sa herë ngutet, por ne kemi ende dy çështje për të diskutuar."),
+        ("sq", "Mos më thuaj hajde mirupafshim pa më treguar më parë si shkoi mbledhja e mëngjesit."),
+        ("sq", "Për pjesën e buxhetit mund të flasim më vonë gjatë javës, kurse tani më thuaj për orarin e nesërm."),
+        ("sq", "Sa herë themi flasim më vonë e harrojmë, prandaj më mirë ta vendosim që tani në telefon."),
+        ("sq", "Që mos të të mbaj më gjatë se pesë minuta, më thuaj shkurt cilat dokumente duhen nesër."),
+        ("sq", "Thashë mos të të mbaj më gjatë pak më parë, por m'u kujtua edhe një pyetje e vogël."),
+        ("sq", "Me ekipin tjetër mbetemi në kontakt çdo ditë, por dua të di mendimin tënd tani për planin."),
+        ("sq", "Është mirë që mbetemi në kontakt kaq rregullisht, më trego tani çfarë të reje ka nga projekti."),
+        ("sq", "Tung, a ke dy minuta kohë të të pyes diçka për orarin e sotëm?"),
+        ("sq", "Sapo i thashë tung fqinjit në korridor, vazhdo të lutem me atë që po më tregoje."),
+        ("sq", "Tungjatjeta, po ju marr në lidhje me njoftimin që më erdhi sot në mëngjes."),
+        ("sq", "Gjyshi im thoshte gjithmonë tungjatjeta kur hynte në shtëpi, po më thuaj ti çfarë bëtë dje."),
+        ("sq", "Çao, më dëgjon mirë tani, desha të të pyes ku do të takohemi?"),
+        ("sq", "Më tha vetëm çao kur kaloi me vrap në rrugë, por tani më trego çfarë ke planifikuar ti."),
+        ("sv", "Jag sa bara hej så länge till budet vid dörren, förlåt avbrottet, vad var det du sa om leveransen?"),
+        ("sv", "Uttrycket hej så länge låter alltid lite roligt, men innan vi avslutar måste jag fråga om nycklarna."),
+        ("sv", "Det kändes skönt att ta adjö av den gamla soffan i går, och nu funderar jag på vilken färg vi ska välja."),
+        ("sv", "Ingen säger väl adjö i telefon längre bland ungdomar, men vad skulle du svara på frågan jag ställde?"),
+        ("sv", "Vi hade en riktigt trevlig helg på landet senast, och nu undrar jag om ni vill följa med nästa gång."),
+        ("sv", "För att få en lugn och trevlig helg behöver vi lösa de här två frågorna i samtalet först."),
+        ("sv", "Jag ska inte hålla dig längre än två minuter, jag behöver bara stämma av en siffra först."),
+        ("sv", "Jag sa visst jag ska inte hålla dig längre nyss, men jag kom precis på en viktig detalj till."),
+        ("sv", "Tack för att du ringde tillbaka så snabbt, jag tänkte höra om vi kan gå igenom hela tidsplanen nu?"),
+        ("sv", "Förresten, tack för att du ringde och påminde mig, vad mer stod det i kallelsen?"),
+        ("sv", "Jag lovade grannen nyss att jag ringer tillbaka senare till honom så att jag kan prata klart med dig nu."),
+        ("sv", "I stället för att säga att jag ringer tillbaka senare kan jag lika gärna leta fram uppgiften medan du väntar."),
+        ("nb", "Vi tok endelig adjø med den gamle bilen i forrige uke, og nå lurer jeg på hva vi bør se etter."),
+        ("nb", "Det er nesten ingen som sier adjø i telefonen lenger, men hva tenkte du egentlig om forslaget mitt?"),
+        ("nb", "Vi hadde en veldig god helg på fjellet sist, og nå lurte jeg på om vi skal leie samme hytte igjen."),
+        ("nb", "For at alle skal få en rolig og god helg, må vi bli enige om vaktlisten nå med en gang."),
+        ("nb", "Selv om vi sees på møtet i morgen, trenger jeg svar på dette spørsmålet allerede nå i telefonen."),
+        ("nb", "Siden vi sees så sjelden til vanlig, ville jeg gjerne høre litt mer om planene dine fremover."),
+        ("nb", "Vi pleier å ha det fint når hele gruppen samles, så hvilken helg passer egentlig best for deg?"),
+        ("nb", "Det ser ut til å være greit å ha det fint ryddet før visningen, men hva gjør vi med boden?"),
+        ("nb", "Jeg skal ikke holde deg lenger enn et par minutter, jeg må bare spørre om én viktig detalj."),
+        ("nb", "Jeg sa nettopp jeg skal ikke holde deg lenger i sted, men det dukket akkurat opp et spørsmål til."),
+        ("nb", "Takk for at du ringte tilbake så raskt, passer det at vi går gjennom hele avtalen nå med en gang?"),
+        ("nb", "Forresten, takk for at du ringte og minnet meg på fristen, hvilke vedlegg var det som manglet?"),
+        ("nb", "Jeg ga bare beskjed på den andre linjen om at jeg ringer deg opp igjen senere, så nå kan vi to snakke ferdig."),
+        ("nb", "I stedet for å si at jeg ringer deg opp igjen senere, kan jeg sjekke kalenderen mens du venter et sekund."),
+        ("da", "Jeg sagde kun hej så længe til kollegaen ved døren, så nu har jeg god ro til at høre dit forslag."),
+        ("da", "Udtrykket hej så længe lyder næsten som en kort pause, men inden vi slutter skal jeg lige spørge om noget."),
+        ("da", "Jeg sagde lige kan du have det godt til postbuddet i døren, undskyld afbrydelsen, fortsæt endelig."),
+        ("da", "Man spørger tit hvordan kan du have det godt med så meget travlhed, men fortæl mig om dit nye skema."),
+        ("da", "Vi tales ved alt for sjældent i hverdagen, så fortæl mig endelig, hvordan det går hos jer."),
+        ("da", "Selvom vi tales ved igen på fredag, har jeg brug for dit svar på dette spørgsmål allerede nu."),
+        ("da", "Vi havde en rigtig god weekend i sommerhuset sidst, og nu ville jeg høre om I er ledige i næste måned."),
+        ("da", "For at vi alle kan få en rolig og god weekend, skal vi lige have styr på tidsplanen nu."),
+        ("da", "Giv mig lige ti sekunder til at sige godnat til børnene inde ved siden af, så er jeg tilbage i røret."),
+        ("da", "Jeg glemte helt at skrive godnat i aftes, men fortæl mig lige hvordan mødet gik her til morgen."),
+        ("da", "Jeg skal ikke holde dig længere end to minutter, jeg mangler bare lige at tjekke én dato med dig."),
+        ("da", "Jeg sagde lige jeg skal ikke holde dig længere før, men jeg kom i tanke om et vigtigt spørgsmål."),
+        ("da", "Tak fordi du ringede tilbage så hurtigt, har du tid til at vi gennemgår punkterne nu med det samme?"),
+        ("da", "For resten, tak fordi du ringede og mindede mig om aftalen, hvad tid var det præcis vi skulle mødes?"),
+        ("da", "Jeg gav bare kort besked på den anden linje om, at jeg ringer tilbage lidt senere, så vi to kan tale færdig nu."),
+        ("da", "I stedet for at sige, at jeg ringer tilbage lidt senere, kan jeg lige slå det op på skærmen mens du venter."),
+        ("fi", "Kollega sanoi tuossa käytävällä näkemiin lähtiessään kotiin, mutta minä olen yhä linjalla, jatketaan vain."),
+        ("fi", "Viimeksi minulle sanottiin vain näkemiin ilman selitystä, joten haluaisin nyt kuulla tarkat ehdot."),
+        ("fi", "Jos sanon myyjälle heti kiitos hei, hän soittaa silti uudestaan, mutta miten teidän palvelussanne esto toimii?"),
+        ("fi", "Lähetti sanoi ovella kiitos hei ja antoi paketin, mutta odota hetki niin avaan sen tässä puhelun aikana."),
+        ("fi", "Sovimme eilen että soitellaan tänään tästä sopimuksesta, joten käydäänkö kohdat nyt rauhassa läpi?"),
+        ("fi", "Hän sanoi aina vain että soitellaan myöhemmin, mutta nyt haluaisin hoitaa tämän varauksen heti valmiiksi."),
+        ("fi", "Älä sano vielä että palaillaan myöhemmin, sillä tarvitsen vastauksen tähän kysymykseen jo tämän puhelun aikana."),
+        ("fi", "Meidän piti katsoa hintaa jo viimeksi kun sanottiin että palaillaan, joten mikä se loppusumma nyt on?"),
+        ("fi", "Kuullaan kyllä ihan hyvin nyt kun siirryin ikkunan viereen, joten kerro vain asiasi."),
+        ("fi", "Täällä kuullaan taustalta vähän liikennettä, mutta kuulen sinut silti selvästi, jatka vain."),
+        ("fi", "Luulin jo että ei mulla muuta, mutta hetkinen, pitikö lomake sittenkin allekirjoittaa etukäteen?"),
+        ("fi", "Sanoin äsken että ei mulla muuta, mutta kysyn vielä nopeasti pysäköinnistä."),
+        ("fi", "Kiitos soitosta muuten, olinkin juuri aikeissa kysyä sinulta muutamaa tarkennusta tähän hakemukseen."),
+        ("fi", "Sanotaan ensin kiitos soitosta, ja kerro sitten ihan rauhassa mitä asunnolle kuuluu."),
+        ("fi", "Jos puhutaan myöhemmin lisää yksityiskohdista, niin sovitaanko kuitenkin jo nyt alustava päivämäärä?"),
+        ("fi", "Ehdotit että puhutaan myöhemmin lisää, mutta minulla on kalenteri auki juuri nyt, kävisikö keskiviikko?"),
+        ("fi", "Palataan asiaan numero yksi ihan kohta, mutta katsotaanko ensin tämä toimitusmaksu?"),
+        ("fi", "Ennen kuin palataan asiaan ensi viikolla, voisitko lukea minulle sen viitenumeron nyt heti?"),
+        ("cs", "Předchozí operátor řekl na slyšenou dřív, než jsem stihl nahlásit změnu adresy."),
+        ("cs", "Někdo v telefonu říká výhradně na slyšenou, ale než skončíme, proberme ještě ceník."),
+        ("cs", "Měj se mnou prosím ještě chvilku trpělivost, hned ten dokument v počítači najdu."),
+        ("cs", "Kamarád u vchodu zavolal měj se, ale já jsem pořád na drátě a poslouchám tě."),
+        ("cs", "Nebudu vás zdržovat dlouho, jen potřebuji rychle ověřit dvě položky ve vyúčtování."),
+        ("cs", "Nebudu vás zdržovat víc než minutu, řekněte mi prosím aktuální stav objednávky."),
+        ("cs", "Dobrý den, děkuji za zavolání na naši podporu, s čím vám mohu pomoci?"),
+        ("cs", "Děkuji za zavolání, než přejdeme k věci, povězte mi prosím, čeho se dotaz týká."),
+        ("cs", "S účetním to vyřeším potom, zavoláme si později odpoledne, teď ale potřebuji slyšet tvůj názor."),
+        ("cs", "Kdyby se spojení přerušilo, zavoláme si později, ale zatím tě slyším výborně, pokračuj."),
+        ("sk", "Predchádzajúci pracovník povedal do počutia skôr, než som stihol nadiktovať adresu doručenia."),
+        ("sk", "Niekto v telefóne používa zásadne do počutia, ale predtým ešte preberme podmienky zmluvy."),
+        ("sk", "Nebudem vás zdržiavať dlho, potrebujem si len rýchlo overiť dve položky v rozpise."),
+        ("sk", "Nebudem vás zdržiavať viac než minútu, poviete mi prosím aktuálny stav reklamácie?"),
+        ("sk", "Dobrý deň, ďakujem za zavolanie na našu zákaznícku linku, s čím vám môžem pomôcť?"),
+        ("sk", "Ďakujem za zavolanie, povedzte mi prosím najskôr, akej služby sa vaša otázka týka."),
+        ("sk", "S účtovníkom to doriešim potom, zavoláme si neskôr popoludní, teraz však potrebujem počuť tvoj názor."),
+        ("sk", "Ak by nám vypadol signál, zavoláme si neskôr, ale zatiaľ ťa počujem výborne, pokračuj."),
+        ("hu", "A futár az előbb csak annyit mondott, hogy viszhall, de nem árulta el, melyik kapuhoz jön, ön látja a rendszerben?"),
+        ("hu", "Sokan vitatják, mennyire udvarias a viszhall kifejezés, mindenesetre most még lenne egy kérdésem önhöz."),
+        ("hu", "A nagymama üzeni, hogy sok puszi mindenkinek, most pedig mondd el, mit hozzak a boltból."),
+        ("hu", "Az üzenet végén csak annyi állt, hogy puszi, de az időpontot elfelejtetted megírni, mikor érkezel?"),
+        ("hu", "A gyerekeknek már mondtam jó éjszakát, úgyhogy most nyugodtan átbeszélhetjük a holnapi programot."),
+        ("hu", "Az őr épp jó éjszakát kívánt a kapuban, ne zavartasd magad, mondd tovább."),
+        ("hu", "A könyvelővel majd beszélünk a jövő héten, most viszont veled szeretném tisztázni a határidőt."),
+        ("hu", "Erről a részletről majd beszélünk személyesen is, de előbb mondd el telefonon a lényeget."),
+        ("hu", "Ígérem, hogy nem tartom fel tovább egy percnél, csak még egy adatot ellenőrizzünk le."),
+        ("hu", "Hogy később már biztosan ne zavarjam és mondhassam, nem tartom fel tovább, kérdeznék még valamit most."),
+        ("hu", "Azt hittem, most le kell tennem a csengő miatt, de tévedés volt, nyugodtan mondd tovább."),
+        ("hu", "Írtál, hogy most le kell tennem a másik hívás miatt, de látom, még vonalban vagy, beszéljük át gyorsan."),
+        ("hu", "Jó napot kívánok, köszönöm a hívást, miben segíthetek önnek ma?"),
+        ("hu", "Köszönöm a hívást, kérjük, mondja el röviden, milyen ügyben keresi ügyfélszolgálatunkat."),
+        ("hu", "Írtál egy üzenetet, hogy később visszahívlak, ezért most én hívtalak fel, ráérsz?"),
+        ("hu", "Ha megszakadna a vonal az alagútban, később visszahívlak, de amíg hallasz, mondd gyorsan a híreket."),
+        ("bg", "Куриерът току-що остави пратката на входа и каза довиждане, но аз още съм на линия — кажете ми за часа."),
+        ("bg", "На бележката пишеше само довиждане, затова ви се обаждам сега да разбера какво следва по графика."),
+        ("bg", "В края на писмото беше написал до чуване, но аз ти звъня още сега за няколко уточнения."),
+        ("bg", "Когато операторът каже до чуване твърде рано, винаги остават въпроси, затова нека ги минем подред."),
+        ("bg", "Знам, че ще се чуем и другата седмица, но нека още сега в този разговор проверим списъка."),
+        ("bg", "Колегата написа, че ще се чуем следобед, а междувременно искам да те питам още два въпроса."),
+        ("bg", "Той ми прати съобщение с чао засега, обаче аз искам да останеш на линия още минута."),
+        ("bg", "Не ми казвай чао засега, преди да сме проверили дали адресът в заявката е точен."),
+        ("bg", "Сега чуваме се много по-ясно, така че спокойно ми разкажете останалите подробности."),
+        ("bg", "Ние винаги чуваме се сутрин преди смяната, но кажи ми още нещо важно, докато сме на телефона."),
+        ("bg", "Пожелавам ти всичко хубаво за празника, а сега ми разкажи как мина сутрешната среща."),
+        ("bg", "Тук в новия офис всичко хубаво тепърва започва, но кажи ми първо кога пристига доставката."),
+        ("bg", "Само затварям прозореца в стаята заради шума от улицата, останете на линия и продължете."),
+        ("bg", "Сега затварям папката на компютъра и веднага ви чета следващия въпрос по телефона."),
+        ("bg", "След тази последна тема няма да ви задържам повече, но първо ми кажете какъв е срокът за доставка."),
+        ("bg", "Обещавам, че няма да ви задържам повече от пет минути, така че нека започнем с основния въпрос."),
+        ("bg", "Ако дойде куриерът, ще трябва да затварям, но докато го чакам ми разкажи всичко подробно."),
+        ("bg", "Казах на съседа, че скоро трябва да затварям магазина, но с теб спокойно можем да поговорим още малко."),
+        ("bg", "След още две минути ще кажа хайде да не те задържам, но първо ми продиктувай точния час."),
+        ("bg", "Той веднага рече хайде да не те задържам, а аз всъщност имам време — кажи ми какво мислиш по въпроса."),
+        ("bg", "На колегата му казах, че ще се обадя по-късно, за да мога сега спокойно говоря с вас."),
+        ("bg", "Ако случайно прекъсне обхватът в тунела, ще се обадя по-късно, но засега ме чувате добре, нали?"),
+        ("el", "Στην ταινία είπε αντίο χωρίς εξήγηση, αλλά εμείς έχουμε ακόμα ώρα να συζητήσουμε το πρόγραμμα."),
+        ("el", "Πριν πούμε αντίο σε αυτή την κλήση, θέλω οπωσδήποτε να επιβεβαιώσουμε τη διεύθυνση αποστολής."),
+        ("el", "Το μήνυμα έκλεινε επίσημα με εις το επανιδείν, αλλά σας τηλεφωνώ τώρα για να διευκρινίσουμε την ώρα."),
+        ("el", "Είπαμε εις το επανιδείν με τους επισκέπτες στη ρεσεψιόν και μόλις γύρισα στο γραφείο — σας ακούω."),
+        ("el", "Σίγουρα θα τα ξαναλέμε μέσα στην εβδομάδα, αλλά πες μου από τώρα αν συμφωνείς με το σχέδιο."),
+        ("el", "Κάθε φορά λέμε ότι θα τα ξαναλέμε αργότερα, οπότε ας λύσουμε το ζήτημα τώρα που μιλάμε."),
+        ("el", "Χαίρομαι πολύ που ακούω ότι είστε καλύτερα — να είστε καλά πάντα, και πείτε μου τώρα για τα έγγραφα."),
+        ("el", "Μου είπε απλώς να είστε καλά στην είσοδο, αλλά εμείς συνεχίζουμε κανονικά τη συζήτησή μας στο τηλέφωνο."),
+        ("el", "Σας εύχομαι καλό υπόλοιπο εβδομάδας εκ των προτέρων, αλλά ας δούμε πρώτα μαζί τις τρεις εκκρεμότητες."),
+        ("el", "Μας είπε καλό υπόλοιπο ο υπάλληλος στο γκισέ μόλις βγήκα, οπότε τώρα μπορώ να σου μιλήσω άνετα."),
+        ("el", "Γεια σας και καλό μεσημέρι, σας καλώ σχετικά με την παραγγελία που καταχωρίστηκε σήμερα το πρωί."),
+        ("el", "Μου ευχήθηκαν καλό μεσημέρι στην είσοδο του κτιρίου, είμαι στη γραμμή και μπορούμε να συνεχίσουμε."),
+        ("el", "Περιμένετε ένα δευτερόλεπτο, κλείνω μόνο το παράθυρο γιατί έχει φασαρία στον δρόμο — συνεχίστε παρακαλώ."),
+        ("el", "Τώρα κλείνω τον φάκελο στον υπολογιστή και ανοίγω το ημερολόγιο, είμαι ακόμα στη γραμμή μαζί σας."),
+        ("el", "Σε δέκα λεπτά πρέπει να κλείσω για ένα ραντεβού, άρα προλαβαίνουμε άνετα να τα πούμε τώρα."),
+        ("el", "Νόμιζα ότι πρέπει να κλείσω νωρίτερα, τελικά όμως αναβλήθηκε η συνάντηση και σε ακούω κανονικά."),
+        ("el", "Υπόσχομαι ότι δεν σας καθυστερώ άλλο μετά από αυτή την τελευταία ερώτηση για το ωράριο."),
+        ("el", "Μου είπατε να μην ανησυχώ, οπότε δεν σας καθυστερώ άλλο με τα παλιά και μπαίνω κατευθείαν στο θέμα."),
+        ("el", "Έστειλα μήνυμα στον συνάδελφο ότι θα σε πάρω αργότερα αν χρειαστεί, αλλά τώρα έχω χρόνο — πες μου."),
+        ("el", "Αν κοπεί η γραμμή στο ασανσέρ θα σε πάρω αργότερα, προς το παρόν όμως με ακούς καθαρά, σωστά;"),
+        ("el", "Του είπα ότι μιλάμε αργότερα για να μην μας διακόψει όσο συζητάμε εμείς οι δύο τώρα."),
+        ("el", "Αν θέλεις μιλάμε αργότερα και για το ταξίδι, αλλά πρώτα πες μου τώρα τι ώρα θα συναντηθούμε."),
+        ("hr", "Voditelj u emisiji upravo je rekao do slušanja, stišao sam radio pa mi sada mirno sve ispričajte."),
+        ("hr", "Na kraju govorne poruke rekao je do slušanja, pa vas zovem natrag da prođemo kroz sva pitanja."),
+        ("hr", "Napisao sam mu u poruci čujemo se poslije da nas ne ometa dok mi sada razgovaramo."),
+        ("hr", "Lako ćemo reći čujemo se poslije, nego daj da odmah sada provjerimo jesu li svi brojevi točni."),
+        ("hr", "Samo drži se teme o kojoj sada pričamo na telefonu da ne zaboravimo najvažniji dio plana."),
+        ("hr", "Ma drži se ti svog rasporeda, a sada mi na liniji reci odgovara li ti utorak ujutro."),
+        ("hr", "Želim i vama ugodan ostatak dana, a prije svega molim vas da mi provjerite status rezervacije."),
+        ("hr", "Blagajnica mi je upravo poželjela ugodan ostatak dana, izašao sam iz trgovine i sada vas dobro čujem."),
+        ("hr", "Nakon ovog zadnjeg pitanja neću vas više zadržavati, samo mi još recite rok isporuke."),
+        ("hr", "Obećavam da neću vas više zadržavati od tri minute, pa krenimo odmah na glavni razlog poziva."),
+        ("hr", "Rekao sam kolegi da nazvat ću kasnije njega kako bih sada mogao bez žurbe razgovarati s vama."),
+        ("hr", "Ako nam slučajno pukne veza u vlaku, nazvat ću kasnije, ali zasad me čujete dobro, zar ne?"),
+        ("hr", "Ako naiđe nadređeni, moram prekinuti na kratko, ali dok sam sam u uredu slobodno mi sve ispričaj."),
+        ("hr", "Mislio sam da moram prekinuti zbog druge obveze, no ipak je odgođena pa možemo nastaviti razgovor."),
+        ("sr", "Курир је само оставио пакет на вратима и рекао довиђења, али ја сам још на вези — реците ми за распоред."),
+        ("sr", "Пре него што кажемо довиђења у овом разговору, хајде да проверимо још једном тачну адресу."),
+        ("sr", "Комшија је у пролазу само добацио ајде здраво, не прекидај везу, ту сам и слушам те."),
+        ("sr", "Немој одмах да ми кажеш ајде здраво док ми не потврдиш у колико сати се налазимо."),
+        ("sr", "Другар ми је махнуо са врата уз брзо ајд ћао, али ја имам времена — испричај ми све до краја."),
+        ("sr", "Мрзим кад неко усред приче каже ајд ћао, зато хајде на миру да завршимо ову тему."),
+        ("sr", "Еј, ћао, добро је да си се јавио — имаш ли два минута да те нешто питам?"),
+        ("sr", "Само сам рекао ћао комшији у ходнику, ту сам на вези и слушам те пажљиво."),
+        ("sr", "Хало, здраво, зовем да проверим када вам одговара да преузмете документа."),
+        ("sr", "Управо сам рекао здраво портиру на улазу, сада сам у тихој сали па наставите."),
+        ("sr", "Баш ми је пријатно што сте се јавили тако брзо, па ми сада реците који вам термин одговара."),
+        ("sr", "Колега у канцеларији ми је управо пожелео пријатно за ручак, али нисам прекинуо — слушам вас."),
+        ("sr", "Желим вам свако добро у даљем раду, а пре него што наставимо реците ми рок за предају документације."),
+        ("sr", "Службеник на шалтеру ми је рекао свако добро кад сам изашао, па сада могу мирно да причам са вама."),
+        ("sr", "Желим ти све најбоље за празнике, а док смо још на вези реци ми када ти почиње одмор."),
+        ("sr", "Поручили су нам све најбоље на почетку састанка, него реци ми сада шта мислиш о новом предлогу."),
+        ("sr", "Пошто видимо се тек следећег месеца уживо, хајде сада преко телефона да пређемо цео списак."),
+        ("sr", "Ако видимо се вечерас у граду, реци ми одмах сада шта треба да понесем са собом."),
+        ("sr", "Срдачан поздрав и вама, зовем да проверим да ли је пошиљка већ кренула данас."),
+        ("sr", "Послао је само кратак поздрав у поруци, зато сам те позвао да се лепо испричамо сада."),
+        ("sr", "Пожелео сам деци лаку ноћ и затворио врата собе, па сада можемо на миру да причамо."),
+        ("sr", "Пре него што дође време за лаку ноћ, реци ми само у колико сати крећемо ујутру."),
+        ("sr", "Рекао сам му кратко чујемо се после само да нас не прекида док ми сада разговарамо."),
+        ("sr", "Лако ћемо рећи чујемо се после, него хајде одмах сада да проверимо да ли су сви подаци тачни."),
+        ("sr", "После овог последњег питања не бих вас више задржавао, само ми још реците цену доставе."),
+        ("sr", "Обећавам да не бих вас више задржавао дуже од два минута, па да пређемо одмах на ствар."),
+        ("sr", "Написао сам колеги јавићу се касније како бих сада могао без журбе да разговарам са вама."),
+        ("sr", "Ако случајно пукне веза у лифту јавићу се касније, али засад ме чујете добро, зар не?"),
+    ];
+
+    #[test]
+    fn lookalikes_do_not_close() {
+        let mut bad = Vec::new();
+        for (lang, t) in LOOKALIKES {
+            for opening in [true, false] {
+                let mut m = if opening { ClosingMachine::new(lang) } else { after_talk(lang) };
+                let s = hears(&mut m, t);
+                if closes(&s) {
+                    bad.push(format!("[{lang}] opening={opening} {t} -> {:?} ends={}", s.event, s.ends_call));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// A Greek wish with "να έχετε" and a Norwegian "ha en fin dag videre" close (the
+    /// simulated clinic and landlord calls ended on them); the same wish told about, or
+    /// with more said after it, does not.
+    #[test]
+    fn greek_wishes_on_leaving() {
+        let bye: &[(&'static str, &str)] = &[
+            ("el", "Θα σας δούμε την Παρασκευή λοιπόν. Καλό υπόλοιπο ημέρας να έχετε!"), ("el", "Ευχαριστώ, καλή συνέχεια να έχετε."),
+            ("el", "Εντάξει, καλό βράδυ να έχετε!"),
+            ("nb", "Supert, tusen takk skal du ha, og ha en fin dag videre."), ("sv", "Tack för samtalet, ha en fortsatt bra dag."),
+            ("da", "Mange tak, hav en fortsat god dag!"),
+        ];
+        let mut bad = all_close(bye, after_talk);
+        let go_on: &[(&'static str, &str)] = &[
+            ("el", "Καλό υπόλοιπο ημέρας να έχετε, αλλά πρώτα πείτε μου την ώρα"),
+            ("el", "Μου είπε καλό υπόλοιπο ημέρας να έχετε και μετά με έβαλε σε αναμονή, τι γίνεται με το ραντεβού;"),
+            ("el", "Καλό υπόλοιπο ημέρας"),
+            ("nb", "Han sa ha en fin dag videre og la på, men jeg har fortsatt et spørsmål"),
+        ];
+        for (lang, t) in go_on {
+            let mut m = after_talk(lang);
+            let s = hears(&mut m, t);
+            if closes(&s) {
+                bad.push(format!("[{lang}] {t} -> {:?}", s.event));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// Thanks in the new languages alone is thanks, not a goodbye.
+    #[test]
+    fn bare_thanks_does_not_close() {
+        let cases: &[(&'static str, &str)] = &[
+            ("is", "Takk fyrir."), ("is", "Takk kærlega."), ("sl", "Najlepša hvala."), ("mk", "Благодарам."), ("mk", "Фала многу."),
+            ("sq", "Faleminderit."), ("sq", "Faleminderit shumë."), ("sr", "Хвала вам."),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let mut m = after_talk(lang);
+            let s = hears(&mut m, t);
+            if s.ends_call || s.event == ClosingEvent::CallerFarewell {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={}", s.event, s.ends_call));
             }
         }
         assert!(bad.is_empty(), "{}", bad.join("\n"));

@@ -1873,9 +1873,10 @@ mod tests {
     use crate::locale::Lang;
 
     /// The 27 languages the database covers.
-    const LANGS: [&str; 27] = [
+    const LANGS: [&str; 42] = [
         "zh-TW", "zh-CN", "en", "es", "fr", "de", "pt", "it", "vi", "id", "ms", "tl", "tr", "ru", "ja", "ko", "hi", "ar", "th",
-        "nl", "pl", "ro", "uk", "bn", "mr", "ta", "te",
+        "nl", "pl", "ro", "uk", "bn", "mr", "ta", "te", "sv", "nb", "da", "fi", "is", "cs", "sk", "hu", "bg", "el", "hr", "sr",
+        "sl", "mk", "sq",
     ];
 
     fn temp_dir(tag: &str) -> PathBuf {
@@ -4023,6 +4024,570 @@ mod review_probe3_recheck_tests {
             println!("RECHECK [{iso}] engaged={e} without_new={e0} score={s} hits={h:?} new={new_hits:?}");
             if e {
                 bad.push(format!("[{iso}] engaged (without the new words: {e0}) score={s} hits={h:?}: {t}"));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+}
+
+/// Fourth batch: European countries (Belgium, Luxembourg, the Czech Republic,
+/// Slovakia, Hungary, Bulgaria, Greece, Cyprus, Croatia, Serbia, Bosnia,
+/// Montenegro, Slovenia, North Macedonia, Albania, Kosovo, Sweden, Norway,
+/// Denmark, Finland, Iceland) and the scam types the older European countries
+/// were missing. Run through the live engage rule.
+#[cfg(test)]
+mod added_countries_4_tests {
+    use super::*;
+
+    const NEW_COUNTRIES: [&str; 21] = ["be", "lu", "cz", "sk", "hu", "bg", "gr", "cy", "hr", "rs", "ba", "me", "si", "mk", "al", "xk", "se", "no", "dk", "fi", "is"];
+    const NEW_LANGS: [&str; 15] = ["sv", "nb", "da", "fi", "is", "cs", "sk", "hu", "bg", "el", "hr", "sr", "sl", "mk", "sq"];
+
+    /// gemini_live::stall_score_add + stall_engages, step by step: a keyword inside a
+    /// longer one heard with it counts once, as the longer one.
+    fn live(text: &str) -> (bool, u32, Vec<&'static str>) {
+        let found: Vec<(&'static str, u32)> = keyword_hits(text).into_iter().map(|h| (h.text, h.weight)).collect();
+        let longer = |kw: &str, k: &str| k.len() > kw.len() && k.contains(kw);
+        let mut hits: Vec<&'static str> = Vec::new();
+        let mut score = 0;
+        for &(kw, w) in &found {
+            if hits.contains(&kw) || found.iter().any(|&(k, _)| longer(kw, k)) || hits.iter().any(|&h| longer(kw, h)) {
+                continue;
+            }
+            hits.push(kw);
+            score += w;
+        }
+        let engaged = hits.iter().any(|h| is_hard(h)) || (score >= 3 && hits.iter().any(|h| keyword(h).map_or(0, |k| k.weight) >= 2));
+        (engaged, score, hits)
+    }
+
+    fn from_country(iso: &str, text: &str) -> bool {
+        keyword_hits(text).iter().any(|h| {
+            db().country_kw_map
+                .get(&normalized_hit_key(h.text))
+                .is_some_and(|pairs| pairs.iter().any(|(i, _)| i == iso))
+        })
+    }
+
+    type Row = (&'static str, &'static [&'static str], &'static [&'static str]);
+
+    /// Country, typical scams in its language, ordinary calls (bank, courier, clinic).
+    const ROWS: &[Row] = &[
+        (
+            "be",
+            &[
+                "Goedendag, hier Card Stop, we zagen een verdachte betaling, geef me de code van uw kaartlezer en zet het geld op een kluisrekening",
+                "U moet nu bevestig in de itsme-app drukken en mij uw itsme-code geven, anders wordt uw toegang geblokkeerd",
+                "Bonjour, ici Card Stop, donnez-moi le code de votre lecteur de carte, un coursier viendra chercher votre carte bancaire",
+            ],
+            &[
+                "Goedendag, met de bank, uw nieuwe bankkaart ligt klaar in het kantoor, u kunt ze ophalen met uw identiteitskaart",
+                "Hallo, met de koerier van bpost, ik sta morgen tussen tien en twaalf bij u met een pakje",
+                "Goedemiddag, de praktijk van de huisarts, we willen uw afspraak van donderdag verzetten naar vrijdag",
+            ],
+        ),
+        (
+            "lu",
+            &[
+                "Bonjour, service de sécurité, vous devez confirmer dans l'application LuxTrust et remettre votre carte bancaire au coursier",
+                "Bonjour, votre ordinateur infecté envoie des alertes, installez le logiciel de téléassistance pour qu'on puisse prendre la main sur votre ordinateur",
+            ],
+            &[
+                "Bonjour, votre banque, votre nouvelle carte est arrivée à l'agence, vous pouvez passer la chercher",
+                "Bonjour, le cabinet médical, nous vous rappelons votre rendez-vous de mardi à neuf heures",
+            ],
+        ),
+        (
+            "cz",
+            &[
+                "Dobrý den, tady bezpečnostní oddělení vaší banky, váš napadený účet musíme zachránit, převeďte peníze na bezpečný účet",
+                "Jsem investiční poradce, pošlete peníze do kryptoměnové peněženky a pak vám pošleme výplatu zisku",
+                "Dobrý den, Portál občana, máte nezaplacenou pokutu, musíte potvrdit bankovní identitu přes odkaz",
+            ],
+            &[
+                "Dobrý den, tady vaše banka, nová platební karta je připravená na pobočce, můžete si ji vyzvednout s občankou",
+                "Dobrý den, kurýr, mám pro vás balík, budete zítra dopoledne doma",
+                "Dobrý den, ordinace praktického lékaře, chceme vám přesunout termín ze čtvrtka na pátek",
+            ],
+        ),
+        (
+            "sk",
+            &[
+                "Dobrý deň, tu kriminálna polícia, vediem tajné vyšetrovanie, peniaze musíte presunúť na vyšetrovací účet",
+                "Volám z Národnej banky Slovenska, ide o záchranu peňazí, povedzte mi overovací kód a presuňte peniaze na účet NBS",
+                "Babka, mal som dopravnú nehodu, musíte pripraviť hotovosť, príde kolega pre peniaze",
+            ],
+            &[
+                "Dobrý deň, tu vaša banka, nová platobná karta je pripravená na pobočke",
+                "Dobrý deň, kuriér, mám pre vás balík, budete zajtra doma",
+                "Dobrý deň, ambulancia, výsledky vašich krvných testov sú hotové",
+            ],
+        ),
+        (
+            "hu",
+            &[
+                "Jó napot, a bankbiztonsági osztálytól hívom, zárolják a számláját, utalja át a pénzt a biztonsági számlára",
+                "A bűnügyi nyomozó beszél, titkos nyomozás folyik, titoktartási kötelezettsége van, vegye fel a készpénzt",
+                "Mama, autóbaleset volt, kell az óvadék, küldök egy ismerőst a pénzért, ne szólj a szülőknek",
+            ],
+            &[
+                "Jó napot, a bankból hívom, az új bankkártyája megérkezett a fiókba, átveheti személyivel",
+                "Jó napot, futár vagyok, holnap délelőtt hozom a csomagját, otthon lesz",
+                "Jó napot, a háziorvosi rendelőből hívom, a vérvétel eredménye megjött",
+            ],
+        ),
+        (
+            "bg",
+            &[
+                "Обаждам се от полицията, тече специализирана акция за залавяне на измамници, хвърлете парите от терасата",
+                "Синът ви е в тежка катастрофа, трябват пари за златни пирони, предайте парите на санитаря",
+                "Обаждам се от отдел сигурност на банката, имаше опит за теглене на кредит, прехвърлете сумата по защитена сметка",
+            ],
+            &[
+                "Здравейте, от банката сме, новата ви карта е готова в клона",
+                "Здравейте, куриер съм, утре сутринта ще ви донеса пратката",
+                "Здравейте, от личния лекар, резултатите от изследванията са готови",
+            ],
+        ),
+        (
+            "gr",
+            &[
+                "Καλημέρα, είμαι από το λογιστικό γραφείο, για το επίδομα δώστε μου τους κωδικούς e-banking και τον κωδικό OTP",
+                "Σας παίρνω από την αστυνομία, πρέπει να παραδώσετε τα τιμαλφή για φύλαξη, αφήστε τα κοσμήματα στην είσοδο",
+                "Από τη ΔΕΔΔΗΕ, έχετε διαρροή ρεύματος, τυλίξτε τα τιμαλφή σε αλουμινόχαρτο και αφήστε τα στην πόρτα",
+            ],
+            &[
+                "Καλημέρα, από την τράπεζα, η νέα σας κάρτα έφτασε στο κατάστημα",
+                "Γεια σας, κούριερ, θα φέρω το δέμα σας αύριο το πρωί",
+                "Καλημέρα, από το ιατρείο, σας θυμίζουμε το ραντεβού της Πέμπτης στις δέκα",
+            ],
+        ),
+        (
+            "cy",
+            &[
+                "Ο γιος σας είχε τροχαίο ατύχημα, χρειάζονται μετρητά για το χειρουργείο, θα έρθει συνεργάτης να παραλάβει τα χρήματα",
+            ],
+            &[
+                "Καλησπέρα, από την τράπεζα, η κάρτα σας ανανεώθηκε και θα σας σταλεί ταχυδρομικά",
+            ],
+        ),
+        (
+            "hr",
+            &[
+                "Dobar dan, policija, kruže krivotvorene novčanice, predajte novčanice službeniku u civilu radi provjere otisaka",
+                "Ovdje liječnik, vaš sin je u teškoj prometnoj nesreći, pripremite gotovinu ili zlato, poslat ćemo posrednika",
+                "Služba za sigurnost banke, istek aplikacije je danas, pročitajte kod koji generira vaš m-token",
+            ],
+            &[
+                "Dobar dan, vaša banka, nova kartica je stigla u poslovnicu",
+                "Dobar dan, dostavljač, sutra ujutro donosim vaš paket",
+                "Dobar dan, ordinacija obiteljske medicine, nalazi su gotovi",
+            ],
+        ),
+        (
+            "rs",
+            &[
+                "Dobar dan, Pošta Srbije, paket čeka, unesite broj kartice i CVV kod na link za potvrdu adrese",
+                "Ovde bezbednost banke, vaši nagradni poeni ističu, recite mi jednokratni kod i pošaljite fotografiju lične karte",
+                "Ćao, novi broj, hitno prebaci novac, uplata na tuđi račun je samo do sutra",
+            ],
+            &[
+                "Dobar dan, vaša banka, nova kartica je stigla u ekspozituru",
+                "Dobar dan, kurir, sutra pre podne donosim paket",
+                "Dobar dan, dom zdravlja, nalazi su gotovi",
+            ],
+        ),
+        (
+            "ba",
+            &[
+                "Dobar dan, BH pošta, za paket nam treba CVV kod preko linka za potvrdu adrese",
+            ],
+            &[
+                "Dobar dan, banka, vaša nova kartica čeka u poslovnici",
+            ],
+        ),
+        (
+            "me",
+            &[
+                "Investicioni savetnik ovde, vaš kripto novčanik ima zaradu, potrebna je uplata za otključavanje profita",
+            ],
+            &[
+                "Dobar dan, Pošta Crne Gore, paket stiže sjutra prije podne",
+            ],
+        ),
+        (
+            "si",
+            &[
+                "Dober dan, vaši pozabljeni bitcoini čakajo, potrebujemo dostop do spletne banke in sken osebnega dokumenta",
+                "Varnostna služba banke, sumljivo nakazilo, povejte mi geslo za spletno banko za potrditev transakcije",
+                "Pošta Slovenije, za paket je doplačilo poštnine, vpišite varnostno kodo CVV, varnostna koda CVV je na hrbtni strani",
+            ],
+            &[
+                "Dober dan, vaša banka, nova kartica je prispela v poslovalnico",
+                "Dober dan, dostava, jutri dopoldne vam prinesem paket",
+                "Dober dan, ambulanta, izvidi so pripravljeni",
+            ],
+        ),
+        (
+            "mk",
+            &[
+                "Ве бара лекар, вашиот син имаше сообраќајна несреќа, треба пари за импланти, човек ќе дојде пред зграда",
+                "Од Народна банка, ни треба број на платежна картичка и безбедносен код од смс",
+                "Од инвестициска платформа, за исплата на добивка потребна е уплата на провизија",
+            ],
+            &[
+                "Добар ден, од банката, новата картичка е подготвена во филијалата",
+                "Добар ден, курир, утре наутро ви го носам пакетот",
+                "Добар ден, од амбулантата, резултатите се готови",
+            ],
+        ),
+        (
+            "al",
+            &[
+                "Përshëndetje, nga banka, për përditësim i të dhënave na duhet kodi OTP dhe fjalëkalimi i e-banking",
+                "Nga platformë tregtimi, depozitoni shumën fillestare dhe pastaj paguani taksën për të tërhequr fitimin",
+            ],
+            &[
+                "Përshëndetje, nga banka, karta juaj e re ka mbërritur në degë",
+                "Përshëndetje, korrieri, nesër në mëngjes ju sjell pakon",
+                "Përshëndetje, nga klinika, rezultatet e analizave janë gati",
+            ],
+        ),
+        (
+            "xk",
+            &[
+                "Policia, keni një gjobë trafiku, duhet të paguar gjobën përmes linkut ose të dhënat e kartës në telefon",
+            ],
+            &[
+                "Përshëndetje, nga banka, karta juaj e re është gati",
+            ],
+        ),
+        (
+            "se",
+            &[
+                "Hej, säkerhetsavdelningen på banken, du måste logga in med Mobilt BankID och läsa upp koden från bankdosan",
+                "Polisen här, det är en inbrottsvåg, en kollega hämtar ditt bankkort och tar guld och smycken i förvar",
+                "Du får sänkt månadskostnad, men ditt nummer stängs av idag om du inte vill signera avtalet direkt med BankID",
+            ],
+            &[
+                "Hej, det är från banken, ditt nya bankkort har skickats och kommer med posten i veckan",
+                "Hej, det är budet, jag kommer med paketet i morgon förmiddag",
+                "Hej, det är vårdcentralen, vi behöver flytta din tid på torsdag till fredag",
+            ],
+        ),
+        (
+            "no",
+            &[
+                "Hei, dette er Økokrim, oppgi BankID-passord og engangskode, vi flytter pengene til en trygg konto",
+                "Teknisk support her, gi oss fjerntilgang til PC-en din og logg inn i nettbanken mens vi ser på",
+                "Fra Skatteetaten om skatteoppgjør, klikk på lenken og bekreft med BankID, eller oppgi kortnummer og sikkerhetskode",
+            ],
+            &[
+                "Hei, det er banken, det nye bankkortet ditt er sendt i posten",
+                "Hei, det er budet, jeg kommer med pakken i morgen formiddag",
+                "Hei, det er legekontoret, vi må flytte timen din på torsdag",
+            ],
+        ),
+        (
+            "dk",
+            &[
+                "Hej, sikkerhedsafdelingen i banken, du skal godkend med MitID og flytte pengene til en sikkerhedskonto",
+                "Politiet her om identitetsmisbrug, giv mig dine kortoplysninger og godkend MitID for politiet",
+                "Teknisk afdeling, hent et program så vi kan overtage kontrollen med din computer",
+            ],
+            &[
+                "Hej, det er banken, dit nye betalingskort er sendt med posten",
+                "Hej, det er budet, jeg kommer med pakken i morgen formiddag",
+                "Hej, det er lægen, vi skal flytte din tid på torsdag",
+            ],
+        ),
+        (
+            "fi",
+            &[
+                "Hei, pankin turvallisuusosasto, kerro pankkitunnuksesi ja vahvistuskoodi, siirrämme rahat turvatilille",
+                "Poliisi, identiteettivarkaus, tarvitsen verkkopankkitunnuksesi ja kortin tiedot puhelimessa",
+                "Tekninen tuki, asenna ohjelma, etähallintaohjelma korjaa viruksen",
+            ],
+            &[
+                "Hei, täällä pankista, uusi pankkikorttisi on lähetetty postissa",
+                "Hei, kuriiri tässä, tuon paketin huomenna aamupäivällä",
+                "Hei, terveysasemalta, siirretään torstain aikanne perjantaille",
+            ],
+        ),
+        (
+            "is",
+            &[
+                "Halló, öryggisdeild bankans, þú þarft að samþykkja rafræn skilríki í Auðkennisappið og gefa öryggisnúmer",
+                "Tæknileg aðstoð, þú þarft að setja upp forrit svo við fáum fjaraðgang að tölvunni",
+                "Þú átt óinnleyst inneign á viðskiptareikningur, skráðu þig, skrá þig inn í heimabanka til að fá hana",
+            ],
+            &[
+                "Halló, þetta er frá bankanum, nýja kortið þitt er komið í útibúið",
+                "Halló, sendill hér, ég kem með pakkann á morgun fyrir hádegi",
+                "Halló, heilsugæslan, við þurfum að færa tímann þinn á fimmtudag",
+            ],
+        ),
+        (
+            "de",
+            &[
+                "Hier ist die Kriminalpolizei, ein Zivilbeamter holt heute Ihr Bargeld, es gilt strengste Geheimhaltung",
+            ],
+            &[
+                "Guten Tag, Ihre Bank, die neue Karte liegt in der Filiale zur Abholung bereit",
+            ],
+        ),
+        (
+            "at",
+            &[
+                "Kriminalpolizei, Ihr Sohn ist verhaftet, Sie müssen die Kaution sofort bezahlen, ein Zivilbeamter holt das Geld",
+            ],
+            &[
+                "Grüß Gott, Ihre Bank, Ihre neue Karte ist in der Filiale angekommen",
+            ],
+        ),
+        (
+            "ch",
+            &[
+                "Microsoft-Support hier, Ihr Computer ist infiziert, bitte AnyDesk installieren und TeamViewer öffnen",
+            ],
+            &[
+                "Grüezi, Ihre Bank, die neue Karte ist unterwegs",
+            ],
+        ),
+        (
+            "fr",
+            &[
+                "Bonjour, Assurance maladie, il faut renouveler votre carte Vitale, donnez-moi vos identifiants ameli",
+            ],
+            &[
+                "Bonjour, votre pharmacie, votre commande est prête",
+            ],
+        ),
+        (
+            "nl",
+            &[
+                "Hallo, helpdesk van Microsoft, installeer AnyDesk of TeamViewer zodat we kunnen meekijken op uw computer",
+            ],
+            &[
+                "Goedendag, uw bank, de nieuwe pas is onderweg",
+            ],
+        ),
+        (
+            "pl",
+            &[
+                "Dzień dobry, Zakład Ubezpieczeń Społecznych, należy się pani dodatek, potrzebna jest opłata weryfikacyjna i dane logowania do banku",
+            ],
+            &[
+                "Dzień dobry, kurier, będę jutro rano z paczką",
+            ],
+        ),
+        (
+            "ro",
+            &[
+                "Bună ziua, de la platformă de tranzacționare, câștig rapid garantat, dar pentru bani plătiți o taxă de retragere",
+            ],
+            &[
+                "Bună ziua, curierul, ajung mâine dimineață cu coletul",
+            ],
+        ),
+        (
+            "md",
+            &[
+                "Serviciul de securitate al băncii, mutați banii în cont de siguranță și instalați aplicație de acces la distanță",
+            ],
+            &[
+                "Bună ziua, de la policlinică, analizele sunt gata",
+            ],
+        ),
+        (
+            "it",
+            &[
+                "Buongiorno, per la nuova offerta luce mi legge il codice POD e poi dobbiamo registrare il consenso",
+            ],
+            &[
+                "Buongiorno, la farmacia, il suo ordine è pronto",
+            ],
+        ),
+        (
+            "pt",
+            &[
+                "Olá mãe, este é o meu número novo, o meu telemóvel avariou, preciso de um pagamento urgente",
+            ],
+            &[
+                "Bom dia, a farmácia, a sua encomenda já chegou",
+            ],
+        ),
+        (
+            "es",
+            &[
+                "Le llamamos de soporte, su ordenador envía alertas de virus, instale este programa de control remoto",
+            ],
+            &[
+                "Buenos días, la farmacia, su pedido ya está listo",
+            ],
+        ),
+        (
+            "gb",
+            &[
+                "This is HMRC, there is an immediate arrest warrant in your name, we will send bailiffs to your address",
+            ],
+            &[
+                "Hello, it's the pharmacy, your prescription is ready to collect",
+            ],
+        ),
+        (
+            "ua",
+            &[
+                "Добрий день, ваш оператор, щоб перейти на нову eSIM, назвіть код від оператора",
+            ],
+            &[
+                "Добрий день, аптека, ваше замовлення готове",
+            ],
+        ),
+    ];
+
+    #[test]
+    fn every_new_country_has_a_profile_in_its_languages() {
+        for iso in NEW_COUNTRIES {
+            let cp = db().countries.get(iso).unwrap_or_else(|| panic!("missing {iso}"));
+            assert!(!cp.scams.is_empty(), "{iso}");
+            for sc in &cp.scams {
+                assert!(cp.languages.contains(&sc.lang), "{iso}/{}: {} not among {:?}", sc.id, sc.lang, cp.languages);
+            }
+        }
+        for lang in NEW_LANGS {
+            assert!(db().languages().contains(&lang), "{lang} has no keywords");
+        }
+    }
+
+    #[test]
+    fn scams_are_caught_by_their_own_countrys_words() {
+        let mut bad = Vec::new();
+        for (iso, scams, _) in ROWS {
+            for t in scams.iter() {
+                let (e, s, h) = live(t);
+                if !e || !from_country(iso, t) {
+                    bad.push(format!("{iso}: scam not caught (engaged={e} score={s} hits={h:?}): {t}"));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    #[test]
+    fn ordinary_bank_courier_and_clinic_calls_stay_quiet() {
+        let mut bad = Vec::new();
+        for (iso, _, ordinary) in ROWS {
+            for t in ordinary.iter() {
+                let (e, s, h) = live(t);
+                // A post office or a bank may name itself (a weight-1 context word); no
+                // weight-2 country word may turn up.
+                let strong = keyword_hits(t).iter().any(|k| k.weight >= 2 && from_country(iso, k.text));
+                if e || strong {
+                    bad.push(format!("{iso}: ordinary call hit (engaged={e} score={s} hits={h:?}): {t}"));
+                }
+            }
+            let all = ordinary.join(" ");
+            let (e, s, h) = live(&all);
+            if e {
+                bad.push(format!("{iso}: ordinary calls together engaged (score={s} hits={h:?})"));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// Country words are weight 2 at most and never scam-only on their own; the
+    /// scam-only words of the new languages live in data/scam_db.json.
+    #[test]
+    fn new_country_keywords_are_weight_two_at_most_and_never_hard() {
+        let mut bad = Vec::new();
+        for iso in NEW_COUNTRIES {
+            for sc in &db().countries[iso].scams {
+                for rf in &sc.red_flag_keywords {
+                    if rf.hard || rf.weight != 2 {
+                        bad.push(format!("{iso}/{}: {:?} weight {} hard {}", sc.id, rf.text, rf.weight, rf.hard));
+                    }
+                }
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// Each new language: a scam-only demand engages at once; a common word of
+    /// the same field (bank, parcel, clinic) does not, alone or together.
+    #[test]
+    fn new_language_lists_catch_demands_but_not_everyday_words() {
+        let demands: &[(&str, &str)] = &[
+            ("sv", "Flytta pengarna till ett säkerhetskonto nu"), ("sv", "Läs upp din verifieringskod för mig"),
+            ("nb", "Vi flytter pengene til en trygg konto"), ("nb", "Oppgi engangskode fra BankID"),
+            ("da", "Flyt pengene til en sikkerhedskonto"), ("da", "Læs din engangskode op for mig"),
+            ("fi", "Siirrä rahat turvatilille heti"), ("fi", "Kerro minulle vahvistuskoodi"),
+            ("is", "Færðu peningana á öryggisreikning"), ("is", "Lestu upp staðfestingarkóðann"),
+            ("cs", "Převeďte peníze na bezpečný účet"), ("cs", "Řekněte mi ověřovací kód"),
+            ("sk", "Presuňte peniaze na bezpečný účet"), ("sk", "Povedzte mi overovací kód"),
+            ("hu", "Utalja át a pénzt a biztonsági számlára"), ("hu", "Mondja meg a megerősítő kódot"),
+            ("bg", "Прехвърлете парите по защитена сметка"), ("bg", "Продиктувайте кода от съобщението"),
+            ("el", "Μεταφέρετε τα χρήματα σε ασφαλή λογαριασμό"), ("el", "Πείτε μου τον κωδικό OTP"),
+            ("hr", "Prebacite novac na siguran račun"), ("hr", "Recite mi jednokratni kod"),
+            ("sr", "Prebacite novac na bezbedan račun"), ("sr", "Реците ми једнократни код"),
+            ("sl", "Denar nakažite na varen račun"), ("sl", "Povejte mi enkratno kodo"),
+            ("mk", "Префрлете ги парите на безбедна сметка"), ("mk", "Кажете ми го кодот од смс"),
+            ("sq", "Kaloni paratë në një llogari të sigurt"), ("sq", "Më thoni kodin OTP"),
+        ];
+        let everyday: &[(&str, &str)] = &[
+            ("sv", "Banken ringer om ditt bankkonto, paketet kommer i morgon, din tid på vårdcentralen är flyttad"),
+            ("nb", "Banken ringer om bankkontoen din, pakken kommer i morgen, timen hos legen er flyttet"),
+            ("da", "Banken ringer om din bankkonto, pakken kommer i morgen, din tid hos lægen er flyttet"),
+            ("fi", "Pankista soitetaan pankkitilisi takia, paketti tulee huomenna, lääkäriaika siirtyi"),
+            ("is", "Bankinn hringir út af bankareikninginn þinn, pakkinn kemur á morgun, tíminn hjá lækninum er færður"),
+            ("cs", "Volá banka kvůli váš bankovní účet, balík přijde zítra, termín u lékaře se posouvá"),
+            ("sk", "Volá banka kvôli váš bankový účet, balík príde zajtra, termín u lekára sa posúva"),
+            ("hu", "A bank hív az ön bankszámlája miatt, a csomag holnap jön, az orvosi időpont változott"),
+            ("bg", "Банката се обажда за вашата банкова сметка, пратката идва утре, часът при лекаря е преместен"),
+            ("el", "Η τράπεζα καλεί για τον τραπεζικό σας λογαριασμό, το δέμα έρχεται αύριο, το ραντεβού στον γιατρό άλλαξε"),
+            ("hr", "Banka zove zbog vaš bankovni račun, paket stiže sutra, termin kod liječnika je pomaknut"),
+            ("sr", "Banka zove zbog vaš bankovni račun, paket stiže sutra, termin kod lekara je pomeren"),
+            ("sl", "Banka kliče glede vaš bančni račun, paket pride jutri, termin pri zdravniku je prestavljen"),
+            ("mk", "Банката се јавува за вашата банкарска сметка, пакетот доаѓа утре, терминот кај докторот е поместен"),
+            ("sq", "Banka telefonon për llogarinë tuaj bankare, pakoja vjen nesër, takimi te mjeku u shty"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in demands {
+            let (e, s, h) = live(t);
+            if !e || !h.iter().any(|x| is_hard(x)) {
+                bad.push(format!("[{lang}] demand missed (score={s} hits={h:?}): {t}"));
+            }
+        }
+        for (lang, t) in everyday {
+            let (e, s, h) = live(t);
+            if e {
+                bad.push(format!("[{lang}] everyday words engaged (score={s} hits={h:?}): {t}"));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// The new words must not change how the core languages' ordinary calls score.
+    #[test]
+    fn core_language_ordinary_calls_stay_quiet() {
+        let calls = [
+            "您好，這裡是銀行，您的新卡已經寄出，請注意查收",
+            "你好，快递到了，放门口可以吗",
+            "Hi, this is the clinic, your appointment moved to Friday, and your insurance policies are on file",
+            "Hola, le llamo del banco, su tarjeta nueva ya está en la oficina, la policía local cortó la calle",
+            "Bonjour, la pharmacie, votre commande est prête, la police municipale a fermé la rue",
+            "Guten Tag, Ihre Bank, die neue Karte ist da, die Polizei hat die Straße gesperrt",
+            "Olá, é da clínica, a sua consulta passou para sexta, a polícia fechou a rua",
+            "もしもし、病院です、予約が金曜日に変わりました",
+            "여보세요, 택배입니다, 내일 오전에 도착합니다",
+        ];
+        let mut bad = Vec::new();
+        for t in calls {
+            let (e, s, h) = live(t);
+            if e {
+                bad.push(format!("engaged (score={s} hits={h:?}): {t}"));
+            }
+            if keyword_hits(t).iter().any(|k| NEW_LANGS.contains(&db().keyword(k.text).map_or("", |kw| kw.lang.as_str()))) {
+                bad.push(format!("a new-language word heard in: {t} {h:?}"));
             }
         }
         assert!(bad.is_empty(), "{}", bad.join("\n"));
