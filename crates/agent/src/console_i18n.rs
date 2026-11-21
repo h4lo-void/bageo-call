@@ -270,7 +270,9 @@ mod tests {
                 scenes.push(v);
             }
         }
-        assert!(codes.len() >= 73, "only {} regions in TS_REGIONS", codes.len());
+        let mut sorted = codes.clone();
+        sorted.sort();
+        assert_eq!(sorted, ["br", "de", "fr", "gulf", "jp", "kr", "tr", "tw", "us"]);
         assert_eq!(codes.len(), scenes.len());
         for (i, code) in codes.iter().enumerate() {
             assert!(regions.contains_key(code), "{code}: not a region of the built-in pack");
@@ -285,9 +287,14 @@ mod tests {
                 }
             }
         }
-        for code in regions.keys().filter(|c| *c != "default") {
-            assert!(codes.contains(code), "pack region {code} has no mascot");
+        assert!(!TEMPLATE.contains("<!-- regions:begin"));
+        for slot in [
+            "bts-ext-prop0", "bts-ext-prop1", "bts-ext-prop2", "bts-ext-print",
+            "bts-ext-outfit3", "bts-ext-outfit4", "bts-ext-outfit5", "bts-ext-neck", "bts-ext-head", "bts-ext-item",
+        ] {
+            assert!(TEMPLATE.contains(&format!("id=\"{slot}\"")), "missing {slot}");
         }
+        assert!(TEMPLATE.contains("tsLoadArt") && TEMPLATE.contains("/calls/extras/art/art-"));
     }
 
     #[test]
