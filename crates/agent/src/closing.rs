@@ -318,9 +318,21 @@ impl ClosingMachine {
         if h.lang == "ja" && ja_opening_apology(&h.before) && !cue_before(&h.before) {
             return false;
         }
+        if h.lang == "vi" && self.substance && vi_parting(&h.before) {
+            return true;
+        }
         (self.substance || !greeting_only(&h.before))
             && (self.state != ClosingState::Talking || cue_before(&h.before))
     }
+}
+
+/// Vietnamese opens and parts with the same 「chào」. After the caller's own words in a
+/// later turn (「…cho anh nhé. Em chào anh ạ」) it is the parting: what comes before it,
+/// without the speaker's own pronoun, is more than greetings and short replies.
+fn vi_parting(before: &str) -> bool {
+    let b = before.trim_end();
+    let b = ["em", "cháu", "con", "tôi", "mình"].iter().find_map(|p| ends_with_phrase(b, p)).unwrap_or(b);
+    !b.is_empty() && !greeting_only(b)
 }
 
 fn stall_trigger(t: &'static str) -> &'static str {
@@ -536,6 +548,65 @@ const PRE_CLOSINGS: Lexicon = &[
     ("el", &["πρέπει να κλείσω", "δεν σας καθυστερώ άλλο", "θα σε πάρω αργότερα", "μιλάμε αργότερα"]),
     ("hr", &["neću vas više zadržavati", "nazvat ću kasnije", "moram prekinuti"]),
     ("sr", &["не бих вас више задржавао", "јавићу се касније", "ne bih vas više zadržavao", "javiću se kasnije"]),
+    // Fifth batch: Asian, Middle Eastern, African and Baltic languages, and the
+    // Bengali and Tamil ones the earlier lists did not have.
+    ("he", &[
+        "לא אעכב אותך יותר", "תודה על הזמן שלך", "זה הכול בינתיים", "אני חייבת לזוז", "זה הכל בינתיים",
+        "אני חייב לזוז", "תודה על השיחה", "לא אעכב אותך", "תודה על הכול", "אחזור אלייך", "תודה על הכל", "אחזור אליך",
+        "נהיה בקשר", "נמשיך מחר",
+    ]),
+    ("ms", &[
+        "nanti saya hubungi semula", "nanti saya telefon balik", "itu sahaja daripada saya", "baiklah kalau macam tu",
+        "saya ada kerja sikit", "saya minta diri dulu", "nanti kita sambung", "itu sahaja",
+    ]),
+    ("tl", &[
+        "kailangan ko nang umalis", "tatawag ako ulit mamaya", "tawag na lang ulit", "usap tayo mamaya",
+        "tatawag ako ulit", "mamaya na lang", "iyon lang muna", "yun lang muna",
+    ]),
+    ("bn", &["এই পর্যন্তই থাক তাহলে", "তাহলে এখন রাখি", "পরে ফোন করছি"]),
+    ("ur", &[
+        "میں آپ کا مزید وقت نہیں لیتا", "میں آپ کا مزید وقت نہیں لیتی", "دعاؤں میں یاد رکھیے گا", "میں اجازت چاہوں گا",
+        "میں اجازت چاہوں گی", "میں فون رکھتا ہوں", "میں فون رکھتی ہوں", "سلام کہیے گا",
+    ]),
+    ("ne", &["म अहिले राख्छु ल", "अहिलेलाई यति नै", "पछि फोन गर्छु", "यति नै गरौँ"]),
+    ("si", &["දැන් තියන්නම්", "පස්සේ ගන්නම්", "හරි එහෙනම්"]),
+    ("my", &["နောက်မှဆက်ပြောကြတာပေါ့", "အခုတော့ဒီလောက်ပဲ", "ဒီလောက်ပဲနော်", "ဒါပါပဲ"]),
+    ("lo", &["ຂ້ອຍຕ້ອງໄປກ່ອນແລ້ວ", "ມີແຕ່ເທົ່ານີ້ແຫຼະ", "ບໍ່ລົບກວນແລ້ວເດີ້", "ດຽວໂທຫາໃໝ່ເດີ້", "ບໍ່ລົບກວນແລ້ວ"]),
+    ("mn", &["би одоо явах хэрэгтэй байна", "утсаа тасалъя даа", "утсаа тасалъя", "орой залгая", "за ингээд"]),
+    ("fa", &[
+        "بیشتر از این وقتتون رو نمی‌گیرم", "من دیگه باید برم", "مزاحمتون نمیشم", "به کارهایت برس", "مزاحمت نمیشم",
+        "سلام برسونید", "به کارات برس",
+    ]),
+    ("ps", &["په کور کې سلام ووایاست", "زه نور اجازه غواړم", "زه باید اوس لاړ شم", "نور مو نه مصروفوم"]),
+    ("az", &[
+        "sonra əlaqə saxlayarıq", "yaxşı mən bağlayıram", "başqa sualım yoxdur", "mən getməliyəm", "sizi yormayım",
+        "zəngləşərik",
+    ]),
+    ("hy", &["էլ չխանգարեմ", "հետո կզանգեմ", "պետք է գնամ", "այսքանը"]),
+    ("ka", &["კარგი გავთიშავ", "აღარ მოგაცდენ", "უნდა წავიდე", "სულ ეს იყო"]),
+    ("sw", &[
+        "nikuache uendelee na kazi", "sina swali lingine", "wacha nikate simu", "wacha nikuache", "basi inatosha",
+        "ni hayo tu", "haya basi", "sawa basi",
+    ]),
+    ("am", &["ሌላ ጥያቄ የለኝም", "በኋላ እደውላለሁ", "ነገ እንቀጥላለን", "መሄድ አለብኝ", "ለዛሬ ይበቃል", "እሺ በቃ"]),
+    ("af", &["ek moet nou gaan", "dis al"]),
+    ("et", &[
+        "rohkem küsimusi pole", "hea küll ma lõpetan", "pean nüüd minema", "tänan kõne eest", "ma lõpetan nüüd",
+        "räägime hiljem",
+    ]),
+    ("lv", &[
+        "tas arī viss no manas puses", "paldies par zvanu", "es jums atzvanīšu", "man tagad jāiet", "parunāsim vēlāk",
+        "tas arī viss",
+    ]),
+    ("lt", &[
+        "daugiau klausimų neturiu", "aš jums perskambinsiu", "pasikalbėsime vėliau", "ačiū už skambutį", "turiu bėgti",
+    ]),
+    ("be", &[
+        "не буду вас больш затрымліваць", "пазней табе ператэлефаную", "дзякуй вам за дапамогу",
+        "мушу класці слухаўку", "вялікі дзякуй за час", "пазней ператэлефаную", "дзякуй за дапамогу",
+        "пазней пагаворым", "мне трэба бегчы", "мне пара ісці", "дзякуй за час", "на гэтым усё",
+    ]),
+    ("ta", &["நான் அப்புறம் கூப்பிடுறேன்", "வேற ஒண்ணும் இல்ல"]),
 ];
 
 /// Goodbyes said only at the end.
@@ -704,8 +775,97 @@ const FAREWELLS: Lexicon = &[
         "καλό υπόλοιπο ημέρας να έχετε", "καλό υπόλοιπο να έχετε", "καλή συνέχεια να έχετε", "καλή μέρα να έχετε",
         "καλό απόγευμα να έχετε", "καλό βράδυ να έχετε",
     ]),
+    // "Σας ευχαριστώ πολύ και καλή σας μέρα!": a wish joined to thanks with "και" is said on leaving.
+    ("el", &[
+        "και καλή σας μέρα", "και καλή σας ημέρα", "και καλή μέρα", "και καλή ημέρα", "και καλό σας απόγευμα",
+        "και καλό απόγευμα", "και καλό σας βράδυ", "και καλό βράδυ", "και καλή σας συνέχεια", "και καλή συνέχεια",
+    ]),
     ("hr", &["do slušanja", "čujemo se poslije"]),
     ("sr", &["довиђења", "ајде здраво", "ајде ћао", "ајд ћао", "ajde zdravo", "чујемо се после", "čujemo se posle"]),
+    // Fifth batch. Greetings, wishes and everyday words that also say goodbye are in
+    // GREETING_BYES: Hebrew "שלום" and "נדבר", Swahili "salama" ("nimefika salama"),
+    // Georgian "კარგად" ("well"), Lithuanian "ate" and "iki" (English "ate", "until").
+    ("he", &[
+        "שיהיה לילה טוב", "ושיהיה יום טוב", "והמשך יום נעים", "שיהיה יום טוב", "שיהיה ערב טוב", "המשך יום נעים",
+        "המשך ערב נעים", "המשך יום טוב", "נדבר אחר כך", "יאללה ביי", "ולילה טוב", "ושבת שלום", "ויום טוב", "וערב טוב",
+        "ולהתראות", "טוב ביי", "ביי ביי", "להתראות", "וכל טוב", "להשתמע", "וביי", "ביי",
+    ]),
+    ("ms", &[
+        "nanti kita sembang lagi", "selamat tinggal", "saya letak dulu", "jumpa lagi", "ok lah bye", "gerak dulu",
+        "jaga diri", "babai",
+    ]),
+    ("tl", &[
+        "hanggang sa muli", "sige na bye", "ibaba ko na", "baba ko na", "una na ako", "paalam po", "kita kits",
+        "sige bye", "bye na", "paalam",
+    ]),
+    ("bn", &[
+        "ঠিক আছে রাখছি", "পরে কথা হবে", "আচ্ছা রাখছি", "খোদা হাফেজ", "তাহলে রাখি", "ভালো থেকো", "শুভরাত্রি", "টাটা",
+        "বাই",
+    ]),
+    ("ur", &[
+        "بعد میں بات کرتے ہیں", "اپنا خیال رکھیے گا", "اپنا خیال رکھنا", "فی امان اللہ", "پھر بات ہوگی",
+        "پھر ملتے ہیں", "اللہ حافظ", "اچھا بائے", "خدا حافظ", "رب راکھا",
+    ]),
+    ("ne", &[
+        "पछि कुरा गरौँला", "पछी कुरा गरौँला", "फोन राखेँ ल", "पछि बोलम्ला", "पछी बोलम्ला", "शुभ रात्री", "राखेँ है",
+        "ल म गएँ", "टाटा", "बाइ",
+    ]),
+    ("si", &[
+        "එහෙනම් මං කැපුනා", "ගිහිල්ලා එන්නම්", "එහෙනම් අපි ගියා", "එහෙනම් මං ගියා", "පස්සේ කතා කරමු", "ගිහින් එන්නම්",
+        "ආයෙ සෙට් වෙමු", "බුදු සරණයි", "සුභ ගමන්", "බායි", "ටටා",
+    ]),
+    ("my", &[
+        "ဖုန်းချလိုက်တော့မယ်နော်", "နောက်မှပြန်ဆက်လိုက်မယ်", "နောက်မှစကားပြောကြမယ်", "သွားတော့မယ်နော်", "ကောင်းသောညပါ",
+        "ဘိုင်ဘိုင်", "ဒါပဲနော်", "တာ့တာ",
+    ]),
+    ("lo", &["ຊ່ຳນີ້ກ່ອນເດີ້", "ວາງສາຍກ່ອນເດີ້", "ໄປກ່ອນເດີ້", "ລົມກັນໃໝ່", "ພົບກັນໃໝ່", "ຝັນດີເດີ້", "ບ່າຍໆ"]),
+    ("mn", &[
+        "сайн сууж байгаарай", "сайхан амраарай", "дараа холбогдьё", "эргээд залгая", "дараа уулзъя", "түр баяртай",
+        "эргээд ярья", "за баяртай", "дараа ярья", "баяртай",
+    ]),
+    ("fa", &[
+        "مواظب خودتون باشید", "مراقب خودت باش", "مواظب خودت باش", "به امید دیدار", "خدا به همراهت", "خدانگهدار",
+        "خداحافظ", "روز خوش", "شب خوش",
+    ]),
+    ("ps", &[
+        "د خدای په امان", "خدای دې مل شه", "په مخه مو ښه", "په مخه دې ښه", "بیا به غږیږو", "په خیر اوسئ", "خدای پامان",
+        "الله پامان", "ژوندي اوسئ", "مخه ښه",
+    ]),
+    ("az", &[
+        "gecəniz xeyrə qalsın", "özünüzə yaxşı baxın", "sonra danışarıq", "özünə yaxşı bax", "sağlıqla qalın",
+        "salamat qalın", "görüşərik", "xudahafiz", "hələlik",
+    ]),
+    ("hy", &["ցտեսություն", "լավ մնացեք", "կհանդիպենք", "բարի գիշեր", "լավ մնա"]),
+    ("ka", &[
+        "მოგვიანებით დაგირეკავ", "კარგად ბრძანდებოდეთ", "მერე ვილაპარაკოთ", "ღამე მშვიდობისა", "კარგად იყავით",
+        "კარგად იყავი", "აბა დროებით", "აბა კარგად", "ნახვამდის",
+    ]),
+    ("sw", &[
+        "tutazungumza baadaye", "tutaonana baadaye", "tutaongea kesho", "nenda salama", "usiku mwema", "baki salama",
+        "tutaonana", "kwaheri",
+    ]),
+    ("am", &["በኋላ እንገናኝ", "ነገ እንገናኝ", "ደህና እደሩ", "በሰላም ሁኑ", "ደህና ሁኑ", "ደህና ሁን", "ደህና ሁኚ", "ደህና ዋሉ", "ደህና ዋል", "ቻው"]),
+    ("af", &[
+        "lekker aand verder", "lekker dag verder", "sien jou later", "praat later", "mooi loop", "tot later",
+        "totsiens", "mooi bly", "goeienag", "tatta", "baai",
+    ]),
+    ("et", &[
+        "kena päeva jätku", "jääme kuuldele", "kuulmiseni", "nägemiseni", "kõike head", "head aega", "nägemist",
+        "homseni", "tšauki", "pakaa",
+    ]),
+    ("lv", &[
+        "uz sadzirdēšanos", "uz saredzēšanos", "līdz rītdienai", "uz redzēšanos", "ar labu nakti", "jauku dienu",
+        "visu labu", "atā",
+    ]),
+    ("lt", &["susiskambinsime", "iki pasimatymo", "iki malonaus", "geros dienos", "iki greito", "viso gero"]),
+    ("be", &[
+        "да хуткай сустрэчы", "усяго найлепшага", "усяго добрага", "да пабачэння", "да сустрэчы", "да заўтра",
+        "дабранач", "бывайце",
+    ]),
+    ("ta", &[
+        "பத்திரமா போயிட்டு வாங்க", "உடம்பை பார்த்துக்கோங்க", "சரிங்க வச்சிடறேன்", "அப்புறம் பேசலாம்",
+        "நாளைக்கு பேசலாம்", "சரி வைக்கிறேன்", "போயிட்டு வாங்க", "சரி பாய்",
+    ]),
 ];
 
 /// Greetings that also say goodbye: farewells only once the business is done
@@ -810,9 +970,41 @@ const GREETING_BYES: Lexicon = &[
     ("bg", &["чуваме се", "всичко хубаво", "затварям"]),
     // Not "να είστε καλά": the older lists keep "Ευχαριστώ, να είστε καλά" open.
     ("el", &["καλό υπόλοιπο ημέρας", "καλό υπόλοιπο", "καλό μεσημέρι", "κλείνω"]),
+    // "Καλή σας μέρα, είμαι από την τράπεζα…" opens a call.
+    ("el", &[
+        "καλή σας μέρα", "καλή σας ημέρα", "καλό σας απόγευμα", "καλό σας βράδυ", "καλή σας συνέχεια", "καλή μέρα", "καλή ημέρα",
+        "καλημέρα σας",
+    ]),
     ("hr", &["drži se", "ugodan ostatak dana"]),
     // Serbian in Cyrillic letters; "здраво", "пријатно" and "поздрав" are Macedonian too.
     ("sr", &["ћао", "здраво", "пријатно", "свако добро", "све најбоље", "видимо се", "поздрав", "лаку ноћ", "zdravo"]),
+    // Fifth batch: greetings and wishes ("יום טוב", "magandang araw", "روز بخیر") and everyday
+    // words ("ingat": careful, "baadaye": later, "დროებით": for now, "dag": day).
+    ("he", &["לילה טוב", "שבת שלום", "יום טוב", "ערב טוב", "כל טוב", "שלום", "נדבר"]),
+    ("ms", &["salam sejahtera", "selamat jalan", "hati hati"]),
+    ("tl", &[
+        "magandang umaga", "magandang hapon", "magandang araw", "magandang gabi", "ingat po kayo", "ingat kayo",
+        "ingat po", "ingat ka", "ingat",
+    ]),
+    ("bn", &["আসসালামু আলাইকুম", "দেখা হবে", "নমস্কার"]),
+    ("ur", &["السلام علیکم", "خوش رہیں", "شب بخیر", "آداب"]),
+    ("si", &["ආයුබෝවන්", "ජය වේවා"]),
+    ("my", &["နားတော့မယ်နော်", "ဂရုစိုက်နော်"]),
+    ("lo", &["ໂຊກດີເດີ້", "ສະບາຍດີ", "ໂຊກດີ"]),
+    ("mn", &["амжилт хүсье"]),
+    ("fa", &["قربان شما", "روز بخیر", "عصر بخیر", "شب بخیر", "قربانت", "فعلاً", "فعلا"]),
+    ("ps", &["شپه مو پخیر"]),
+    ("az", &["uğurlar"]),
+    ("hy", &["հաջողություն", "կխոսենք", "առայժմ", "հաջող"]),
+    ("ka", &["დროებით", "კარგად", "მაგრად"]),
+    ("sw", &["siku njema", "kwaherini", "baadaye", "salama", "salaam"]),
+    ("am", &["ጤና ይስጥልኝ", "መልካም ቀን", "ሰላም"]),
+    ("af", &["goeiedag", "dag"]),
+    ("et", &["tšau", "tsau", "hei"]),
+    ("lv", &["sazvanāmies", "tiekamies", "sveiki", "čau"]),
+    ("lt", &["sėkmės", "čiau", "viso", "iki", "ate"]),
+    ("be", &["добрага вечара", "стэлефануемся", "беражы сябе", "добрага дня", "шчасліва", "пакуль"]),
+    ("ta", &["வணக்கம்"]),
 ];
 
 /// How calls are answered and opened; never a goodbye by themselves.
@@ -899,6 +1091,17 @@ const EXTRA_THANKS: &[&str] = &[
     "многу благодарам", "ви благодарам", "благодарам", "фала многу", "многу фала", "фала",
     "хвала лепо", "хвала вам", "хвала",
     "faleminderit shumë", "ju faleminderit", "faleminderit", "rrofshi", "rrofsh",
+    // Fifth batch.
+    "תודה רבה", "תודה", "maraming salamat po", "maraming salamat", "salamat po", "salamat", "অনেক ধন্যবাদ", "ধন্যবাদ",
+    "بہت بہت شکریہ", "بہت شکریہ", "شکریہ", "බොහොම ස්තූතියි", "ස්තූතියි", "ස්තුතියි", "ကျေးဇူးအများကြီးတင်ပါတယ်",
+    "ကျေးဇူးတင်ပါတယ်", "ကျေးဇူးပါ", "ကျေးဇူးပဲ", "ຂອບໃຈຫຼາຍໆເດີ້", "ຂອບໃຈຫຼາຍໆ", "ຂອບໃຈຫຼາຍ", "ຂອບໃຈເດີ້", "ຂອບໃຈ",
+    "их баярлалаа", "баярлалаа", "خیلی ممنونم", "خیلی ممنون", "ممنونم", "ممنون", "متشکرم", "مرسی", "سپاسگزارم",
+    "دستت درد نکنه", "ډېره مننه", "ډیره مننه", "مننه", "çox təşəkkür edirəm", "təşəkkür edirəm", "təşəkkürlər",
+    "çox sağ olun", "çox sağ ol", "շատ շնորհակալ եմ", "շնորհակալություն", "շնորհակալ եմ", "մերսի", "დიდი მადლობა",
+    "მადლობა", "გმადლობთ", "asante sana", "asanteni", "asante", "በጣም አመሰግናለሁ", "አመሰግናለሁ", "እናመሰግናለን", "baie dankie",
+    "dankie", "suur aitäh", "aitäh", "tänan väga", "tänan", "aitüma", "liels paldies", "paldies", "labai ačiū", "ačiū",
+    "dėkoju", "dėkui", "вялікі дзякуй", "дзякуй вам", "дзякуй", "ரொம்ப நன்றிங்க", "ரொம்ப நன்றி", "மிக்க நன்றி",
+    "நன்றிங்க", "நன்றி",
 ];
 
 /// Thanks for something, at the very end ("Thanks for your help", "thank you
@@ -912,6 +1115,8 @@ const THANKS_FOR: &[&str] = &[
     "tack så mycket för", "tack för", "tusen takk for", "takk for", "tusind tak for", "mange tak for", "tak for", "děkuji za", "děkuju za",
     "díky za", "ďakujem za", "vďaka za", "köszönöm a", "köszönöm az", "mulțumesc mult pentru", "mulțumesc pentru",
     "hvala na", "hvala za", "takk fyrir", "faleminderit për",
+    "asante sana kwa", "asante kwa", "terima kasih atas", "terima kasih kerana", "maraming salamat sa", "salamat po sa",
+    "salamat sa", "baie dankie vir", "dankie vir", "liels paldies par", "paldies par", "labai ačiū už", "ačiū už", "dėkoju už",
 ];
 const THANKS_FOR_MAX_WORDS: usize = 4;
 
@@ -956,6 +1161,8 @@ const TAIL_WORDS: &[&str] = &[
     "pak", "bu", "bapak", "ibu", "kak", "señor", "señora", "senhor", "senhora", "monsieur", "madame",
     "signore", "signora", "lei", "mucho", "ya", "you", "जी", "nhé", "nhe",
     "efendim", "hanım", "bey",
+    // Fifth batch: Filipino "po" and "ha", Malay "encik", Urdu "جی", Swahili "bwana", Latvian "jums".
+    "po", "ha", "encik", "cik", "puan", "tuan", "جی", "bwana", "jums",
 ];
 
 /// Only the end of a long window is looked at.
@@ -982,14 +1189,14 @@ fn is_spaced(p: &str) -> bool {
 
 /// Ends a sentence: the speech-to-text's own full stop, question or exclamation mark.
 fn ends_sentence(text: &str) -> bool {
-    text.trim_end().ends_with(|c: char| "。！？!?.…～~।؟".contains(c))
+    text.trim_end().ends_with(|c: char| "。！？!?.…～~।؟۔။።፧։՜".contains(c))
 }
 
 fn is_punct(c: char) -> bool {
     if c.is_ascii() {
         return !(c.is_ascii_alphanumeric() || c == '\'');
     }
-    c.is_whitespace() || "，。！？、～〜…．；：「」『』（）【】《》〈〉·・—–“”‘¡¿«»｡｢｣،؛؟।॥".contains(c)
+    c.is_whitespace() || "，。！？、～〜…．；：「」『』（）【】《》〈〉·・—–“”‘¡¿«»｡｢｣،؛؟।॥۔။၊።፣፤፡፧։՝՜՞".contains(c)
 }
 
 /// Lower case, the end of it only, punctuation as single spaces.
@@ -1132,7 +1339,12 @@ fn peel(t: &str) -> Option<(&str, Peel)> {
 
 fn ends_as_question(text: &str) -> bool {
     let t = text.trim_end();
-    if t.ends_with(['?', '？', '؟']) || t.ends_with("까요") || t.ends_with("か。") {
+    if t.ends_with(['?', '？', '؟', '፧']) || t.ends_with("까요") || t.ends_with("か。") {
+        return true;
+    }
+    // Armenian marks a question on the asked word itself: 「Իրո՞ք」「Ե՞րբ ես գալու։」.
+    let marked = t.trim_end_matches(|c: char| !c.is_alphanumeric());
+    if marked.rsplit(['.', '։', '!', '?']).next().is_some_and(|s| s.contains('՞')) {
         return true;
     }
     let core = t
@@ -5256,6 +5468,1316 @@ mod regional_closing_words_4_tests {
             let s = hears(&mut m, t);
             if s.ends_call || s.event == ClosingEvent::CallerFarewell {
                 bad.push(format!("[{lang}] {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+}
+
+/// Fifth batch: goodbyes, pre-closings and greeting-goodbyes for 23 languages of
+/// Asia, the Middle East, Africa and the Baltics (he, ms, tl, bn, ur, ne, si, my, lo, mn, fa, ps, az, hy, ka, sw, am, af, et, lv, lt, be, ta).
+/// The sentences are the research's own examples; the ones that must not close are its
+/// counterexamples (a goodbye told about, said at the start, or with more after it).
+#[cfg(test)]
+mod regional_closing_words_5_tests {
+    use super::*;
+
+    fn after_talk(lang: &'static str) -> ClosingMachine {
+        let mut m = ClosingMachine::new(lang);
+        m.on_caller("Parcel delivery info", "Parcel delivery info", false, false);
+        m
+    }
+
+    fn after_ai_goodbye(lang: &'static str) -> ClosingMachine {
+        let mut m = after_talk(lang);
+        m.on_ai_turn("Okay, goodbye!", false, false);
+        m
+    }
+
+    fn hears(m: &mut ClosingMachine, t: &str) -> ClosingStep {
+        m.on_caller(t, t, crate::locale::caller_wraps_up(t), false)
+    }
+
+    fn closes(s: &ClosingStep) -> bool {
+        s.ends_call || matches!(s.event, ClosingEvent::CallerFarewell | ClosingEvent::CallerPreClosing)
+    }
+
+    fn all_close(cases: &[(&'static str, &str)], m: impl Fn(&'static str) -> ClosingMachine) -> Vec<String> {
+        let mut bad = Vec::new();
+        for (lang, t) in cases {
+            let mut mm = m(lang);
+            let s = hears(&mut mm, t);
+            if s.event != ClosingEvent::CallerFarewell || !s.ends_call {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        bad
+    }
+
+    /// Goodbyes said only at the end.
+    const GOODBYES: &[(&str, &str)] = &[
+        ("he", "מעולה, תודה על העדכון, יאללה ביי."),
+        ("he", "סגרנו את כל הפרטים למחר, טוב ביי."),
+        ("he", "תודה רבה על העזרה, ביי."),
+        ("he", "הכול ברור לגמרי, תודה, ביי ביי."),
+        ("he", "תודה על השירות המהיר, להתראות."),
+        ("he", "שמחתי לשוחח איתך, שיהיה המשך שבוע נעים, להשתמע."),
+        ("he", "אני באמצע נהיגה באזור רועש, נדבר אחר כך."),
+        ("he", "תודה על המענה המדויק, שיהיה יום טוב."),
+        ("ms", "Terima kasih banyak atas bantuan tadi, jumpa lagi."),
+        ("ms", "Baiklah, sampai di sini sahaja perbualan kita, selamat tinggal."),
+        ("ms", "Ada panggilan lain masuk pula, saya letak dulu ya."),
+        ("ms", "Waktu rehat dah nak habis ni, nanti kita sembang lagi."),
+        ("ms", "Baiklah, hati-hati di sana dan jaga diri."),
+        ("ms", "Ok lah, terima kasih banyak, bye!"),
+        ("ms", "Ok lah awak, saya nak tidur dah ni, babai."),
+        ("ms", "Semua dah jelas rasanya, ok lah, bye."),
+        ("ms", "Ok geng, dah sampai masa ni, aku gerak dulu."),
+        ("tl", "Salamat sa pagtawag ha, sige, bye!"),
+        ("tl", "Maraming salamat po sa inyong oras, paalam po."),
+        ("tl", "Aalis na ang sinasakyan naming bus, sige, bye na!"),
+        ("tl", "Maraming salamat po sa inyong pagtawag, hanggang sa muli!"),
+        ("tl", "Papunta na ako riyan sa tagpuan natin, sige, kita-kits!"),
+        ("tl", "Marami pa akong tatapusing gawain sa mesa, sige na, bye!"),
+        ("tl", "Magsisimula na ang klase namin ngayon, sige, una na ako!"),
+        ("bn", "অনেক ধন্যবাদ আপনাকে, ভালো থাকবেন।"),
+        ("bn", "সাবধানে বাড়ি যেও, ভালো থেকো।"),
+        ("bn", "আচ্ছা ভাই, দোয়া করবেন, আল্লাহ হাফেজ।"),
+        ("bn", "আজকের মতো তাহলে বিদায় নিচ্ছি, খোদা হাফেজ।"),
+        ("bn", "এখন একটু কাজে ঢুকছি, পরে কথা হবে।"),
+        ("bn", "ধন্যবাদ সময় দেওয়ার জন্য, আবার কথা হবে।"),
+        ("bn", "ওকে তাহলে এখন রাখছি, বাই।"),
+        ("bn", "আচ্ছা আজ রাখি রে, টাটা।"),
+        ("bn", "অনেক রাত হলো, এবার ঘুমিয়ে পড়ুন, শুভরাত্রি।"),
+        ("ur", "بہت شکریہ آپ کی رہنمائی کا، اللہ حافظ۔"),
+        ("ur", "ساری تفصیل نوٹ کر لی ہے، بہت شکریہ، خدا حافظ۔"),
+        ("ur", "آپ سے بات کر کے بہت اچھا لگا، فی امان اللہ۔"),
+        ("ur", "ابھی میں راستے میں ہوں، شام کو پھر بات ہوگی۔"),
+        ("ur", "دروازے پر کوئی آیا ہے، بعد میں بات کرتے ہیں۔"),
+        ("ur", "بہت شکریہ وقت دینے کا، اچھا جی، اپنا خیال رکھیے گا۔"),
+        ("ur", "چلو ٹھیک ہے، گھر پہنچ کر میسج کرنا، اپنا خیال رکھنا۔"),
+        ("ur", "چلیں کل دفتر میں آمنے سامنے بات کریں گے، پھر ملتے ہیں۔"),
+        ("ur", "چلیں جی بہت مہربانی آپ کی، رب راکھا۔"),
+        ("ur", "میری بس آ گئی ہے، میں چلتا ہوں، اچھا بائے۔"),
+        ("ne", "ल त, सबै कुरा बुझियो, मैले फोन राखेँ है।"),
+        ("ne", "अब ढिलो भयो, म फोन राखेँ ल।"),
+        ("ne", "अहिले बाटोमा छु, पछी कुरा गरौँला।"),
+        ("ne", "ल यार, काम पर्यो, पछी बोलम्ला।"),
+        ("ne", "बस आयो जस्तो छ, ल म गएँ।"),
+        ("ne", "ल त, पछि फोन गर्छु, बाइ।"),
+        ("ne", "ल है साथी, आजलाई टाटा।"),
+        ("ne", "धेरै अबेर भइसक्यो, आराम गर्नुस्, शुभ रात्री।"),
+        ("si", "හරි එහෙනම් මම තියන්නම්, බුදු සරණයි."),
+        ("si", "හරි මල්ලි, එහෙනම් මම ගිහින් එන්නම්."),
+        ("si", "එහෙනම් අක්කේ මම දැන් ගිහිල්ලා එන්නම්."),
+        ("si", "වැඩ ටික හරි නේද, එහෙනම් මං ගියා."),
+        ("si", "හොඳයි, හැමදේම කතා කරගත්තානේ, එහෙනම් අපි ගියා."),
+        ("si", "හරි බං, පොඩි වැඩක් ආවා, එහෙනම් මං කැපුනා."),
+        ("si", "එහෙනම් මම තියන්නම් මචං, නිවාඩු දවසක ආයෙ සෙට් වෙමු."),
+        ("si", "දැන් පොඩි වැඩක ඉන්නේ, අපි පස්සේ කතා කරමු."),
+        ("si", "හරි එහෙනම් පරිස්සමින් යන්න, සුභ ගමන්."),
+        ("si", "හරි එහෙනම් මම තියන්නම්, බායි."),
+        ("si", "එහෙනම් අපි ගියා හොඳේ, ටටා."),
+        ("my", "ဟုတ်ကဲ့ အားလုံးရှင်းပါပြီ၊ အဲဒါဆို ဒါပဲနော်။"),
+        ("my", "အလုပ်လေး ပေါ်လာလို့ ဖုန်းချလိုက်တော့မယ်နော်။"),
+        ("my", "ကောင်းပါပြီ၊ မနက်ဖြန် စောစောတွေ့ကြမယ်၊ ဒါဆို ဒါပဲနော်။"),
+        ("my", "အခု လမ်းသွားနေလို့ အိမ်ရောက်မှ နောက်မှ ပြန်ဆက်လိုက်မယ်။"),
+        ("my", "အခု အစည်းအဝေး ဝင်ရတော့မှာမို့လို့ နောက်မှ စကားပြောကြမယ်။"),
+        ("my", "ကားရောက်နေပြီမို့လို့ ကျွန်တော် သွားတော့မယ်နော်။"),
+        ("my", "ကဲ ဒါပဲနော် သူငယ်ချင်း၊ တာ့တာ။"),
+        ("my", "အိုကေနော်၊ နောက်နေ့မှ ပြန်ဆက်မယ်၊ ဘိုင်ဘိုင်။"),
+        ("my", "အချိန်လည်း လင့်နေပြီဆိုတော့ အေးအေးဆေးဆေး အနားယူပါ၊ ကောင်းသောညပါ။"),
+        ("lo", "ໂອເຄ ຊ່ຳນີ້ກ່ອນເດີ້ ມື້ອື່ນຈັ່ງລົມກັນໃໝ່."),
+        ("lo", "ຮອດໂມງປະຊຸມແລ້ວ ໄປກ່ອນເດີ້."),
+        ("lo", "ແບັດເຕີຣີໃກ້ຈະໝົດແລ້ວ ວາງສາຍກ່ອນເດີ້."),
+        ("lo", "ຕອນນີ້ຄາວຽກໜ້ອຍໜຶ່ງ ຄ່ອຍລົມກັນໃໝ່."),
+        ("lo", "ຄ່ຳແລ້ວ ພັກຜ່ອນເດີ້ ມື້ໜ້າລົມກັນໃໝ່."),
+        ("lo", "ໂດຍ ຂອບໃຈຫຼາຍໆ ພົບກັນໃໝ່."),
+        ("lo", "ໂອເຄ ພົບກັນມື້ອື່ນເດີ້ ບ່າຍໆ."),
+        ("lo", "ເດິກແລ້ວ ນອນຫຼັບຝັນດີເດີ້."),
+        ("mn", "Мэдээлэл өгсөнд баярлалаа, баяртай."),
+        ("mn", "Ойлголоо, тэгвэл маргааш холбогдьё, за баяртай."),
+        ("mn", "Орой эргээд залгая, түр баяртай."),
+        ("mn", "Одоо жаахан завгүй байна, дараа ярья."),
+        ("mn", "Одоо гадуур явж байна, гэртээ ороод эргээд залгая."),
+        ("mn", "За тэгье, амралтын өдөр дараа уулзъя."),
+        ("mn", "Орой болчихлоо, сайхан амраарай."),
+        ("mn", "За би явлаа, сайн сууж байгаарай."),
+        ("mn", "За ингээд дуусгая, дараа холбогдьё."),
+        ("mn", "Би гэртээ харьчхаад тэгээд эргээд ярья."),
+        ("fa", "خیلی ممنون از راهنمایی شما، خداحافظ."),
+        ("fa", "سپاسگزارم که پیگیری کردید، روز خوش، خدانگهدار."),
+        ("fa", "الان باید وارد جلسه بشوم، فعلاً خداحافظ."),
+        ("fa", "از گفتگوی امروز بسیار خوشحال شدم، به امید دیدار."),
+        ("fa", "خیلی خب عزیزم، فردا بهت زنگ می‌زنم، مراقب خودت باش."),
+        ("fa", "ممنون از زحمات شما، شب خوش، مواظب خودتون باشید."),
+        ("fa", "ممنون از پاسخگویی دقیق شما، روز خوش."),
+        ("fa", "مزاحم استراحتتان نمی‌شوم، ممنون و شب خوش."),
+        ("fa", "راهت بی‌خطر باشد، رسیدی پیام بده، خدا به همراهت."),
+        ("ps", "ستاسو له مرستې ډېره مننه، خدای پامان."),
+        ("ps", "پیغام مو ثبت شو، ورځ مو نېکمرغه، د خدای په امان."),
+        ("ps", "له معلوماتو مو نړۍ مننه، په مخه مو ښه."),
+        ("ps", "ښه نو زه اوس ځم، سبا به وینو، په مخه دې ښه."),
+        ("ps", "ټولې خبرې روښانه شوې، مننه او مخه ښه."),
+        ("ps", "له وخت راکولو مو ډېره مننه، په خیر اوسئ."),
+        ("ps", "ستاسو له لارښوونې مننه، شپه مو پخیر، الله پامان."),
+        ("ps", "سمه ده ګرانه، پر لاره پام کوه، خدای دې مل شه."),
+        ("ps", "اوس په موټر کې شور دی، ماښام بیا به غږیږو."),
+        ("ps", "ستاسو له همکارۍ ډېره مننه، خوشحاله او ژوندي اوسئ."),
+        ("az", "Yaxşı, axşam danışarıq, hələlik."),
+        ("az", "Oldu, sabah ofisdə görüşərik."),
+        ("az", "İndi iclasdayam, sonra danışarıq."),
+        ("az", "Oldu, gecikməyim, özünə yaxşı bax."),
+        ("az", "Çox təşəkkür edirəm, özünüzə yaxşı baxın."),
+        ("az", "Artıq gecdir, gecəniz xeyrə qalsın."),
+        ("az", "Oldu, növbəti həftəyə qədər, xudahafiz."),
+        ("az", "Yardımınız üçün minnətdaram, sağlıqla qalın."),
+        ("hy", "Շնորհակալություն տեղեկության համար, ցտեսություն։"),
+        ("hy", "Դե լավ, հետո կխոսենք, լավ մնա։"),
+        ("hy", "Ամեն ինչ պարզ է, շնորհակալություն, լավ մնացեք։"),
+        ("hy", "Պայմանավորվեցինք, շաբաթ օրը կհանդիպենք։"),
+        ("hy", "Արդեն ուշ է, քնիր, բարի գիշեր։"),
+        ("hy", "Հարցս լուծվեց, շնորհակալություն, ցտեսություն։"),
+        ("ka", "ყველაფერი გასაგებია, გმადლობთ, ნახვამდის."),
+        ("ka", "აბა წავედი ახლა, კარგად იყავი."),
+        ("ka", "დიდი მადლობა ყურადღებისთვის, კარგად ბრძანდებოდეთ."),
+        ("ka", "კარგი, აღარ მოგაცდენ, აბა დროებით."),
+        ("ka", "კარგი, სახლში მივედი უკვე, აბა კარგად."),
+        ("ka", "ახლა საჭესთან ვარ, მოგვიანებით დაგირეკავ."),
+        ("ka", "ახლა ხმაურია და მერე ვილაპარაკოთ."),
+        ("ka", "უკვე გვიანია, დაისვენე, ღამე მშვიდობისა."),
+        ("ka", "ყველაფერი ჩავინიშნე, მადლობა, ნახვამდის."),
+        ("sw", "Asante sana kwa msaada wako, kwaheri."),
+        ("sw", "Asante kwa taarifa, tutaonana!"),
+        ("sw", "Niko njiani sasa hivi, asante na tutaonana baadaye!"),
+        ("sw", "Ninaingia kwenye kikao sasa, tutazungumza baadaye."),
+        ("sw", "Kwa leo inatosha, asante sana, tutaongea kesho."),
+        ("sw", "Asante kwa taarifa, tutawasiliana asubuhi, usiku mwema."),
+        ("sw", "Asante sana kwa mazungumzo mazuri, baki salama!"),
+        ("sw", "Asante kwa kunipigia kabla ya safari, nenda salama!"),
+        ("am", "ስለ ትብብርዎ በጣም አመሰግናለሁ፣ ቻው።"),
+        ("am", "መልዕክቱን በትክክል አስተላልፋለሁ፣ አመሰግናለሁ፣ ደህና ሁኑ።"),
+        ("am", "ስለ እርዳታህ በጣም አመሰግናለሁ፣ ደህና ሁን።"),
+        ("am", "ስለ ደወልሽልኝ አመሰግናለሁ፣ ደህና ሁኚ።"),
+        ("am", "ስለ መረጃው እጅግ አመሰግናለሁ፣ ደህና ዋሉ።"),
+        ("am", "እሺ ሁሉም ተስተካክሏል፣ አመሰግናለሁ፣ ደህና ዋል።"),
+        ("am", "ነገ ጠዋት መልሼ እደውልልዎታለሁ፣ ደህና እደሩ።"),
+        ("am", "አሁን ስብሰባ ልገባ ስለሆነ በኋላ እንገናኝ።"),
+        ("am", "ለዛሬ እዚህ ላይ ይብቃን፣ ነገ እንገናኝ።"),
+        ("am", "ስለ ሁሉም ነገር አመሰግናለሁ፣ በሰላም ሁኑ።"),
+        ("af", "Baie dankie vir al die hulp, totsiens."),
+        ("af", "Dankie vir jou tyd vandag, mooi bly!"),
+        ("af", "Geniet die reis en mooi loop, ons praat later!"),
+        ("af", "Ek moet nou ongelukkig gaan, praat later!"),
+        ("af", "Alles is nou uitgesorteer, lekker dag verder!"),
+        ("af", "Dankie dat jy laat weet het, slaap gerus en goeienag."),
+        ("af", "Oukei, dankie vir die oproep, tatta!"),
+        ("af", "Reg so, ek stuur die boodskap aan, baai!"),
+        ("af", "Ek bel jou vanmiddag terug, tot later!"),
+        ("af", "Ek is oor 'n rukkie daar, sien jou later!"),
+        ("af", "Baie dankie vir die hulp vanaand, lekker aand verder!"),
+        ("et", "Suur tänu teile info eest ja head aega!"),
+        ("et", "Aitäh abi eest, kena päeva jätku ja nägemist!"),
+        ("et", "Helistan teile tagasi kohe, kui saan vastuse, kuulmiseni!"),
+        ("et", "Tänan teid koostöö eest ja peatse nägemiseni!"),
+        ("et", "Olgu, saadan sulle kohe sõnumi, tšauki!"),
+        ("et", "Tänan kiire lahenduse eest, soovin teile kõike head!"),
+        ("et", "Suur aitäh selgituse eest ja kena päeva jätku!"),
+        ("et", "Uurin hinnapakkumise järele ja jääme kuuldele!"),
+        ("et", "Kõik on kokku lepitud, aitäh ja homseni!"),
+        ("et", "Olgu nii, ma jooksen nüüd bussi peale, pakaa!"),
+        ("lv", "Liels paldies par informāciju, uz redzēšanos!"),
+        ("lv", "Es jums atzvanīšu tiklīdz saņemšu atbildi, uz sadzirdēšanos!"),
+        ("lv", "Labi, es tagad skrienu uz vilcienu, sazvanāmies vakarā, atā!"),
+        ("lv", "Paldies par palīdzību un visu labu jums!"),
+        ("lv", "Liels paldies par ātro risinājumu, jauku dienu!"),
+        ("lv", "Sarunāts, tad tiekamies birojā deviņos, līdz rītdienai!"),
+        ("lv", "Paldies par laipno apkalpošanu un uz saredzēšanos!"),
+        ("lv", "Paldies ka piezvanīji tik vēlu un nomierināji, ar labu nakti!"),
+        ("lt", "Labai ačiū už informaciją, viso gero!"),
+        ("lt", "Dėkoju už išsamų paaiškinimą ir iki malonaus!"),
+        ("lt", "Puiku, tuomet lauksiu jūsų biure trečiadienį, iki pasimatymo!"),
+        ("lt", "Atsiųsiu dokumentus už kelių minučių, iki greito!"),
+        ("lt", "Viskas aišku, labai ačiū jums ir geros dienos!"),
+        ("lt", "Dabar turiu eiti į posėdį, vėliau susiskambinsime!"),
+        ("be", "Вялікі дзякуй за дапамогу, да пабачэння!"),
+        ("be", "Дзякуй за размову, бывайце!"),
+        ("be", "Дзякуй за размову, убачымся ў офісе, да сустрэчы!"),
+        ("be", "Добрага адпачынку табе, да заўтра!"),
+        ("be", "Вялікі дзякуй за ўвагу, да хуткай сустрэчы!"),
+        ("be", "Дзякуй за ваш зварот, усяго добрага!"),
+        ("be", "Вялікі дзякуй за супрацоўніцтва, усяго найлепшага!"),
+        ("be", "Дзякуй за познюю размову, салодкіх сноў, дабранач!"),
+        ("ta", "எல்லா விவரமும் புரிஞ்சது, ரொம்ப நன்றி, சரி, வைக்கிறேன்."),
+        ("ta", "தகவலுக்கு ரொம்ப நன்றி, சரிங்க, வச்சிடறேன்."),
+        ("ta", "சரி, எனக்கு கிளம்ப நேரமாச்சு, போயிட்டு வரேன்."),
+        ("ta", "ரொம்ப சந்தோஷம், பத்திரமா போயிட்டு வாங்க."),
+        ("ta", "இப்போ மீட்டிங் உள்ள போறேன், அப்புறம் பேசலாம்."),
+        ("ta", "இப்போ ரொம்ப நேரமாச்சு, நாளைக்கு பேசலாம்."),
+        ("ta", "ஓகே, எல்லாமே தெளிவாயிடுச்சு, சரி, பாய்!"),
+        ("he", "בסדר גמור, נחכה לעדכון ממך. תודה ויום טוב."),
+        ("he", "מעולה, תודה רבה ושבת שלום!"),
+        ("he", "הכול סגור, תודה ולהתראות."),
+    ];
+
+    #[test]
+    fn goodbyes_end_the_call() {
+        let bad = all_close(GOODBYES, after_talk);
+        assert!(bad.is_empty(), "goodbyes missed:\n{}", bad.join("\n"));
+    }
+
+    /// The end announced: the AI's goodbye after it ends the call.
+    const PRE_CLOSING_SENTENCES: &[(&str, &str)] = &[
+        ("he", "טוב, לא אעכב אותך יותר, תודה על הזמן שלך."),
+        ("he", "טוב, אני חייב לזוז עכשיו, נמשיך מחר."),
+        ("he", "תודה שבדקת, אעדכן אחרי שאקבל תשובה, נהיה בקשר."),
+        ("he", "באמת עזרת לי מאוד היום, תודה על הכול."),
+        ("he", "אני נכנס למעלית ואין קליטה, אחזור אליך."),
+        ("he", "אין לי עוד שאלות להיום, זה הכול בינתיים."),
+        ("ms", "Bateri telefon saya dah nak habis, nanti saya telefon balik."),
+        ("ms", "Rasanya tiada soalan lain, itu sahaja daripada saya, terima kasih."),
+        ("ms", "Maaf ya, saya ada kerja sikit sekarang, nanti saya hubungi semula."),
+        ("ms", "Tetamu dah sampai depan rumah, nanti kita sambung ya."),
+        ("ms", "Baiklah kalau macam tu, terima kasih atas maklumatnya, saya minta diri dulu."),
+        ("tl", "Kailangan ko nang bumalik sa trabaho, sige, usap tayo mamaya."),
+        ("tl", "Pasensya na pero dumating na ang sundo ko, kailangan ko nang umalis, bye!"),
+        ("tl", "Nasa kahera na ako ngayon, sige, tatawag ako ulit mamaya!"),
+        ("tl", "Nakuha ko na po ang bagong petsa, salamat po, yun lang muna at paalam!"),
+        ("bn", "সব ঠিক হয়ে গেছে, আজ এই পর্যন্তই থাক তাহলে।"),
+        ("bn", "আমি এখন রাস্তায় আছি, বাড়ি ফিরে পরে ফোন করছি।"),
+        ("ur", "آپ کا قیمتی وقت لیا، اچھا جی، میں اجازت چاہوں گا۔"),
+        ("ur", "بہت شکریہ معلومات دینے کا، چلیں، میں آپ کا مزید وقت نہیں لیتا۔"),
+        ("ur", "بہت شکریہ رابطہ کرنے کا، اچھا پھر، دعاؤں میں یاد رکھیے گا۔"),
+        ("ur", "بہت اچھا لگا بات کر کے، گھر میں سب کو سلام کہیے گا۔"),
+        ("ur", "بیٹری ختم ہونے والی ہے، چلیں میں فون رکھتا ہوں۔"),
+        ("ne", "मेरो अर्को काम सुरु हुन लाग्यो, म अहिले राख्छु ल।"),
+        ("ne", "सबै जानकारी टिपोट गरेँ, अहिलेलाई यति नै गरौँ।"),
+        ("ne", "अहिले आवाज राम्ररी आएन, म एकछिनमा पछि फोन गर्छु।"),
+        ("si", "බස් එක ආවා, මම දැන් තියන්නම්."),
+        ("si", "මම දැන් රැස්වීමකට යනවා, ඔයාට පස්සේ ගන්නම්."),
+        ("my", "ကျွန်တော် ပြောချင်တာကတော့ ဒါပါပဲ၊ ဖုန်းချလိုက်တော့မယ်နော်။"),
+        ("my", "အခု အပြင်ထွက်ရတော့မှာမို့ နောက်မှ ဆက်ပြောကြတာပေါ့။"),
+        ("my", "မှတ်ထားစရာတွေ စုံပါပြီ၊ အခုတော့ ဒီလောက်ပဲ နော်။"),
+        ("lo", "ເຂົ້າໃຈແຈ້ງແລ້ວ ບໍ່ລົບກວນແລ້ວເດີ້."),
+        ("lo", "ຫົວໜ້າເອີ້ນເຂົ້າປະຊຸມ ຂ້ອຍຕ້ອງໄປກ່ອນແລ້ວ."),
+        ("lo", "ສິ່ງທີ່ຢາກຖາມກໍມີແຕ່ເທົ່ານີ້ແຫຼະ ຂອບໃຈເດີ້."),
+        ("lo", "ຕອນນີ້ສັນຍານບໍ່ຄ່ອຍດີ ດຽວໂທຫາໃໝ່ເດີ້."),
+        ("mn", "За ингээд утсаа тасалъя даа."),
+        ("mn", "Уучлаарай, би одоо явах хэрэгтэй байна, орой залгая."),
+        ("fa", "خب دیگه، مزاحمت نمیشم، به کارهایت برس."),
+        ("fa", "ممنون از توضیحات کاملتان، بیشتر از این وقتتون رو نمی‌گیرم."),
+        ("fa", "ممنون که تماس گرفتید، به خانواده محترم سلام برسونید."),
+        ("fa", "ببخشید صدای زنگ در می‌آید، خب، من دیگه باید برم."),
+        ("ps", "ټول معلومات مې ترلاسه کړل، ښه نو، نور مو نه مصروفوم."),
+        ("ps", "ستاسو پیغام مې ولیکه، زه نور اجازه غواړم."),
+        ("ps", "له اړیکې مو مننه، په کور کې سلام ووایاست."),
+        ("ps", "بخښنه غواړم دروازه ټکېږي، زه باید اوس لاړ شم."),
+        ("az", "Hər şey aydın oldu, daha sizi yormayım."),
+        ("az", "Bağışla, indi mən getməliyəm, axşam zəngləşərik."),
+        ("az", "Çox aydın izah etdiniz, başqa sualım yoxdur."),
+        ("az", "İndi yoldayam, sonra əlaqə saxlayarıq."),
+        ("az", "Həkim növbəm çatdı, yaxşı, mən bağlayıram."),
+        ("hy", "Տեսնում եմ զբաղված ես, էլ չխանգարեմ։"),
+        ("hy", "Կներես, հանդիպումս սկսվում է, պետք է գնամ։"),
+        ("hy", "Իմ հարցերը հենց այսքանը, շնորհակալություն։"),
+        ("hy", "Հիմա հարմար չէ խոսել, հետո կզանգեմ։"),
+        ("ka", "ვხედავ მუშაობ, აღარ მოგაცდენ, კარგად."),
+        ("ka", "ბოდიში, შეხვედრა მეწყება და უნდა წავიდე."),
+        ("ka", "რისი კითხვაც მინდოდა, სულ ეს იყო, მადლობა."),
+        ("ka", "ელემენტი მიჯდება, კარგი, გავთიშავ."),
+        ("sw", "Haya basi, sina swali lingine, asante sana."),
+        ("sw", "Sawa basi, nimekuelewa vizuri, wacha nikate simu."),
+        ("sw", "Kwa upande wangu ni hayo tu, asante sana kwa msaada."),
+        ("sw", "Maelezo hayo yako wazi kabisa, basi inatosha, asante."),
+        ("sw", "Naona una shughuli nyingi, wacha nikuache uendelee na kazi."),
+        ("am", "እሺ በቃ፣ ሌላ ጥያቄ የለኝም፣ አመሰግናለሁ።"),
+        ("am", "ሁሉም ግልጽ ነው፣ ሌላ ጥያቄ የለኝም፣ አመሰግናለሁ።"),
+        ("am", "ይቅርታ አሁን መሄድ አለብኝ፣ በኋላ እደውላለሁ።"),
+        ("am", "እሺ በጣም ጥሩ፣ ለዛሬ ይበቃል፣ ነገ እንቀጥላለን።"),
+        ("af", "Jammer, my volgende vergadering begin, ek moet nou gaan."),
+        ("et", "Buss tuleb juba ette, hea küll, ma lõpetan nüüd."),
+        ("et", "Vabandust, koosolek algab, ma pean nüüd minema."),
+        ("et", "Mul algab praegu loeng, räägime hiljem!"),
+        ("et", "Edastan teie teate kohe, tänan kõne eest!"),
+        ("et", "Kõik sai väga selgeks, mul rohkem küsimusi pole, aitäh."),
+        ("lv", "Es šobrīd esmu pie stūres, parunāsim vēlāk!"),
+        ("lv", "Es noteikti nodošu jūsu ziņu vadītājam, paldies par zvanu."),
+        ("lv", "Man viss ir pilnīgi skaidrs, tas arī viss no manas puses, paldies."),
+        ("lv", "Es pārbaudīšu noliktavas atlikumu un pēc desmit minūtēm es jums atzvanīšu."),
+        ("lt", "Atleisk, jau prasideda paskaita, turiu bėgti."),
+        ("lt", "Šiuo metu vairuoju, pasikalbėsime vėliau!"),
+        ("lt", "Būtinai perduosiu jūsų žinutę, ačiū už skambutį."),
+        ("lt", "Viskas visiškai aišku, daugiau klausimų neturiu, dėkui."),
+        ("lt", "Patikrinsiu duomenis sistemoje ir po penkių minučių aš jums perskambinsiu."),
+        ("be", "Добра, не буду вас больш затрымліваць, вялікі дзякуй за час."),
+        ("be", "Прабач, мне трэба бегчы, пазней табе ператэлефаную."),
+        ("be", "Дзякуй за гутарку, але мне пара ісці, стэлефануемся."),
+        ("be", "Зараз вельмі шумна вакол, давай пазней пагаворым, бывай."),
+        ("be", "З майго боку на гэтым усё, дзякуй вам за дапамогу."),
+        ("ta", "நீங்க வேலையா இருந்தா சொல்லுங்க, நான் அப்புறம் கூப்பிடுறேன்."),
+        ("ta", "அவ்வளவுதான், வேற ஒண்ணும் இல்ல, ரொம்ப நன்றி."),
+    ];
+
+    #[test]
+    fn pre_closings_announce_the_end() {
+        let mut bad = Vec::new();
+        for (lang, t) in PRE_CLOSING_SENTENCES {
+            let mut m = after_talk(lang);
+            let s = hears(&mut m, t);
+            if !closes(&s) {
+                bad.push(format!("[{lang}] {t} -> {:?}", s.event));
+                continue;
+            }
+            if s.event == ClosingEvent::CallerPreClosing && m.on_ai_turn("Okay, goodbye!", false, false) != ClosingEvent::FarewellsExchanged {
+                bad.push(format!("[{lang}] the AI's goodbye after {t} did not end it"));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// Greetings and everyday words that also say goodbye: they close once the AI said goodbye.
+    const AFTER_AI_GOODBYE: &[(&str, &str)] = &[
+        ("he", "מעולה, אני נכנס לשיעור עכשיו, נדבר."),
+        ("he", "תודה רבה על הבדיקה, שיהיה ערב טוב."),
+        ("he", "תודה על העזרה לפני כניסת השבת, שבת שלום."),
+        ("he", "אני מודה לך מאוד על הסבלנות, כל טוב."),
+        ("he", "תודה על המענה, אני מסיים את השיחה, שלום."),
+        ("he", "תודה רבה על הטיפול המהיר, יום טוב."),
+        ("ms", "Dah lewat sangat ni, pergilah berehat, selamat malam."),
+        ("ms", "Hujan lebat dekat luar tu, memandu nanti hati-hati ya."),
+        ("ms", "Terima kasih banyak bang, kita jumpa esok, assalamualaikum."),
+        ("ms", "Terima kasih atas kerjasama tuan, sekian dahulu, salam sejahtera."),
+        ("tl", "Maraming salamat po sa impormasyon, ingat po kayo!"),
+        ("tl", "Maraming salamat po sa inyong tulong, magandang umaga po at paalam!"),
+        ("tl", "Wala na po akong ibang tanong, maraming salamat at magandang araw po!"),
+        ("tl", "Naitala ko na po ang lahat ng detalye, maraming salamat at magandang gabi po."),
+        ("bn", "আচ্ছা তাহলে রাখি, আগামীকাল সরাসরি দেখা হবে।"),
+        ("bn", "ঠিক আছে ভাই, ভালো থাকবেন, আসসালামু আলাইকুম।"),
+        ("bn", "অনেক ধন্যবাদ আপনাকে, আজ রাখছি, নমস্কার।"),
+        ("ur", "آپ نے میرا بڑا مسئلہ حل کر دیا، بہت شکریہ، خوش رہیں۔"),
+        ("ur", "بہت شکریہ آپ کے تعاون کا، اچھا جی، السلام علیکم۔"),
+        ("ur", "آپ کی نوازش، پھر جلد نیاز حاصل ہوگا، آداب۔"),
+        ("ur", "رات کافی ہو گئی ہے، اب آرام کیجیے، شب بخیر۔"),
+        ("ne", "हस् त, धेरै धन्यवाद, आजलाई राखेँ, नमस्ते।"),
+        ("ne", "तपाईंको समयको लागि धन्यवाद, बिदा चाहन्छु, नमस्कार।"),
+        ("si", "බොහොම ස්තූතියි උදව්වට, එහෙනම් ජය වේවා!"),
+        ("si", "ඔබගේ කාලයට බොහොම ස්තූතියි, සමුගන්නම්, ආයුබෝවන්."),
+        ("my", "ညဉ့်နက်နေပြီဆိုတော့ အိပ်ရာဝင်ပြီး နားတော့မယ်နော်။"),
+        ("my", "မိုးရွာနေတယ်၊ လမ်းမှာ သေချာ ဂရုစိုက်နော်။"),
+        ("lo", "ເດີນທາງປອດໄພ ໂຊກດີເດີ້."),
+        ("lo", "ຂອບໃຈທີ່ໃຊ້ບໍລິການ ສະບາຍດີ."),
+        ("mn", "Маргаашийн шалгалтад нь амжилт хүсье, баяртай."),
+        ("fa", "باشه پس منتظر خبرت می‌مانم، فعلاً."),
+        ("fa", "دستت درد نکند بابت هماهنگی، قربانت."),
+        ("fa", "بسیار سپاسگزارم از لطفتان، قربان شما."),
+        ("fa", "از همراهی شما سپاسگزارم، روز بخیر."),
+        ("fa", "ممنون از تماستان، استراحت خوبی داشته باشید، شب بخیر."),
+        ("fa", "سپاس از راهنمایی دقیقتان، عصر بخیر."),
+        ("ps", "ستاسو له همکارۍ ډېره مننه، اجازه راکړئ، السلام علیکم."),
+        ("ps", "ښه نو سبا به بیا خبرې وکړو، مننه، سلام."),
+        ("ps", "ډېره مننه، اوس آرام وکړئ، شپه مو پخیر."),
+        ("az", "Sabahkı görüşdə sənə uğurlar, hələlik."),
+        ("hy", "Շնորհակալ եմ օգնության համար, հաջողություն։"),
+        ("hy", "Դե լավ, վաղը կզանգեմ, հաջող։"),
+        ("hy", "Հիմա դասի եմ, երեկոյան կխոսենք, առայժմ։"),
+        ("hy", "Հասա տուն, մի քիչ հետո կխոսենք։"),
+        ("ka", "კარგი, ხვალ დაგირეკავ, კარგად."),
+        ("ka", "კარგი, საღამოს შეგეხმიანები, დროებით."),
+        ("ka", "კარგი ძმაო, ხვალ გნახავ, მაგრად."),
+        ("sw", "Asanteni sana kwa ushirikiano wenu, kwaherini."),
+        ("sw", "Haya asante, tutawasiliana, baadaye!"),
+        ("sw", "Asante kwa kupiga simu, uwe na siku njema!"),
+        ("sw", "Haya asante sana kwa kila kitu, salama!"),
+        ("sw", "Shukrani sana kwa muda wako, salaam."),
+        ("am", "ስለ ደወሉ እናመሰግናለን፣ መልካም ቀን!"),
+        ("am", "እሺ በጣም አመሰግናለሁ፣ ሁሉም ተይዟል፣ ሰላም!"),
+        ("am", "ስለ ትብብርዎ ከልብ አመሰግናለሁ፣ ጤና ይስጥልኝ።"),
+        ("af", "Baie dankie vir u tyd en navraag, goeiedag."),
+        ("af", "Dankie vir die vinnige terugvoer, dag!"),
+        ("et", "Olgu, näeme siis homme hommikul, tšau!"),
+        ("et", "Ma lähen nüüd poodi, helistame õhtul, tsau!"),
+        ("et", "Aitäh info eest, hoiame ühendust, hei!"),
+        ("lv", "Man tagad jādodas sapulcē, bet vakarā noteikti sazvanāmies!"),
+        ("lv", "Lieliski, gaidīšu tevi pie ieejas sešos, tiekamies!"),
+        ("lv", "Labi, tad tiekamies vakarā pēc darba, čau!"),
+        ("lv", "Paldies par sadarbību, lai izdodas darbi, sveiki!"),
+        ("lt", "Gerai, susitiksime rytoj ryte prie įėjimo, iki!"),
+        ("lt", "Supratau, lauksiu tavo žinutės po pietų, viso!"),
+        ("lt", "Gerai, aš jau lipu į autobusą, susirašysime, ate!"),
+        ("lt", "Labai padėjote, ačiū jums ir didžiausios sėkmės!"),
+        ("lt", "Gerai, tai susitinkame vakare šeštą valandą, čiau!"),
+        ("be", "Добра, стэлефануемся заўтра, бывай!"),
+        ("be", "Добра, пабег я на сустрэчу, пакуль!"),
+        ("be", "Дзякуй за званок, шчасліва!"),
+        ("be", "Добра, абдымаю моцна, беражы сябе!"),
+        ("be", "Вялікі дзякуй за дапамогу, жадаю вам добрага дня!"),
+        ("be", "Дзякуй за адказ, спакойнага і добрага вечара!"),
+        ("ta", "உங்க தகவலுக்கு மிக்க நன்றி, வணக்கம்."),
+    ];
+
+    #[test]
+    fn greeting_goodbyes_close_after_the_ais_goodbye() {
+        let bad = all_close(AFTER_AI_GOODBYE, after_ai_goodbye);
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// Right after thanks they close too.
+    const CUED: &[(&str, &str)] = &[
+        ("he", "תודה, לילה טוב."),
+        ("he", "תודה, שבת שלום."),
+        ("he", "תודה, יום טוב."),
+        ("he", "תודה, ערב טוב."),
+        ("he", "תודה, כל טוב."),
+        ("he", "תודה, שלום."),
+        ("he", "תודה, נדבר."),
+        ("ms", "terima kasih, salam sejahtera."),
+        ("ms", "terima kasih, selamat jalan."),
+        ("ms", "terima kasih, hati hati."),
+        ("tl", "salamat po, magandang umaga."),
+        ("tl", "salamat po, magandang hapon."),
+        ("tl", "salamat po, magandang araw."),
+        ("tl", "salamat po, magandang gabi."),
+        ("tl", "salamat po, ingat po kayo."),
+        ("tl", "salamat po, ingat kayo."),
+        ("tl", "salamat po, ingat po."),
+        ("tl", "salamat po, ingat ka."),
+        ("tl", "salamat po, ingat."),
+        ("bn", "ধন্যবাদ, আসসালামু আলাইকুম."),
+        ("bn", "ধন্যবাদ, দেখা হবে."),
+        ("bn", "ধন্যবাদ, নমস্কার."),
+        ("ur", "شکریہ, السلام علیکم."),
+        ("ur", "شکریہ, خوش رہیں."),
+        ("ur", "شکریہ, شب بخیر."),
+        ("ur", "شکریہ, آداب."),
+        ("si", "ස්තූතියි, ආයුබෝවන්."),
+        ("si", "ස්තූතියි, ජය වේවා."),
+        ("my", "ကျေးဇူးတင်ပါတယ် နားတော့မယ်နော်"),
+        ("my", "ကျေးဇူးတင်ပါတယ် ဂရုစိုက်နော်"),
+        ("lo", "ຂອບໃຈ ໂຊກດີເດີ້"),
+        ("lo", "ຂອບໃຈ ສະບາຍດີ"),
+        ("lo", "ຂອບໃຈ ໂຊກດີ"),
+        ("mn", "баярлалаа, амжилт хүсье."),
+        ("fa", "ممنون, قربان شما."),
+        ("fa", "ممنون, روز بخیر."),
+        ("fa", "ممنون, عصر بخیر."),
+        ("fa", "ممنون, شب بخیر."),
+        ("fa", "ممنون, قربانت."),
+        ("fa", "ممنون, فعلاً."),
+        ("fa", "ممنون, فعلا."),
+        ("ps", "مننه, شپه مو پخیر."),
+        ("az", "təşəkkür edirəm, uğurlar."),
+        ("hy", "շնորհակալություն, հաջողություն."),
+        ("hy", "շնորհակալություն, կխոսենք."),
+        ("hy", "շնորհակալություն, առայժմ."),
+        ("hy", "շնորհակալություն, հաջող."),
+        ("ka", "მადლობა, დროებით."),
+        ("ka", "მადლობა, კარგად."),
+        ("ka", "მადლობა, მაგრად."),
+        ("sw", "asante, siku njema."),
+        ("sw", "asante, kwaherini."),
+        ("sw", "asante, baadaye."),
+        ("sw", "asante, salama."),
+        ("sw", "asante, salaam."),
+        ("am", "አመሰግናለሁ, ጤና ይስጥልኝ."),
+        ("am", "አመሰግናለሁ, መልካም ቀን."),
+        ("am", "አመሰግናለሁ, ሰላም."),
+        ("af", "dankie, goeiedag."),
+        ("af", "dankie, dag."),
+        ("et", "aitäh, tšau."),
+        ("et", "aitäh, tsau."),
+        ("et", "aitäh, hei."),
+        ("lv", "paldies, sazvanāmies."),
+        ("lv", "paldies, tiekamies."),
+        ("lv", "paldies, sveiki."),
+        ("lv", "paldies, čau."),
+        ("lt", "ačiū, sėkmės."),
+        ("lt", "ačiū, čiau."),
+        ("lt", "ačiū, viso."),
+        ("lt", "ačiū, iki."),
+        ("lt", "ačiū, ate."),
+        ("be", "дзякуй, добрага вечара."),
+        ("be", "дзякуй, стэлефануемся."),
+        ("be", "дзякуй, беражы сябе."),
+        ("be", "дзякуй, добрага дня."),
+        ("be", "дзякуй, шчасліва."),
+        ("be", "дзякуй, пакуль."),
+        ("ta", "நன்றி, வணக்கம்."),
+    ];
+
+    #[test]
+    fn greeting_goodbyes_close_after_thanks() {
+        let bad = all_close(CUED, after_talk);
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// The same words alone open a call: no goodbye on the first turn, nor alone mid-call.
+    const OPENINGS: &[(&str, &str)] = &[
+        ("he", "לילה טוב!"),
+        ("he", "שבת שלום!"),
+        ("he", "יום טוב!"),
+        ("he", "ערב טוב!"),
+        ("he", "כל טוב!"),
+        ("he", "שלום!"),
+        ("he", "נדבר!"),
+        ("ms", "salam sejahtera!"),
+        ("ms", "selamat jalan!"),
+        ("ms", "hati hati!"),
+        ("tl", "magandang umaga!"),
+        ("tl", "magandang hapon!"),
+        ("tl", "magandang araw!"),
+        ("tl", "magandang gabi!"),
+        ("tl", "ingat po kayo!"),
+        ("tl", "ingat kayo!"),
+        ("tl", "ingat po!"),
+        ("tl", "ingat ka!"),
+        ("tl", "ingat!"),
+        ("bn", "আসসালামু আলাইকুম!"),
+        ("bn", "দেখা হবে!"),
+        ("bn", "নমস্কার!"),
+        ("ur", "السلام علیکم!"),
+        ("ur", "خوش رہیں!"),
+        ("ur", "شب بخیر!"),
+        ("ur", "آداب!"),
+        ("si", "ආයුබෝවන්!"),
+        ("si", "ජය වේවා!"),
+        ("my", "နားတော့မယ်နော်"),
+        ("my", "ဂရုစိုက်နော်"),
+        ("lo", "ໂຊກດີເດີ້"),
+        ("lo", "ສະບາຍດີ"),
+        ("lo", "ໂຊກດີ"),
+        ("mn", "амжилт хүсье!"),
+        ("fa", "قربان شما!"),
+        ("fa", "روز بخیر!"),
+        ("fa", "عصر بخیر!"),
+        ("fa", "شب بخیر!"),
+        ("fa", "قربانت!"),
+        ("fa", "فعلاً!"),
+        ("fa", "فعلا!"),
+        ("ps", "شپه مو پخیر!"),
+        ("az", "uğurlar!"),
+        ("hy", "հաջողություն!"),
+        ("hy", "կխոսենք!"),
+        ("hy", "առայժմ!"),
+        ("hy", "հաջող!"),
+        ("ka", "დროებით!"),
+        ("ka", "კარგად!"),
+        ("ka", "მაგრად!"),
+        ("sw", "siku njema!"),
+        ("sw", "kwaherini!"),
+        ("sw", "baadaye!"),
+        ("sw", "salama!"),
+        ("sw", "salaam!"),
+        ("am", "ጤና ይስጥልኝ!"),
+        ("am", "መልካም ቀን!"),
+        ("am", "ሰላም!"),
+        ("af", "goeiedag!"),
+        ("af", "dag!"),
+        ("et", "tšau!"),
+        ("et", "tsau!"),
+        ("et", "hei!"),
+        ("lv", "sazvanāmies!"),
+        ("lv", "tiekamies!"),
+        ("lv", "sveiki!"),
+        ("lv", "čau!"),
+        ("lt", "sėkmės!"),
+        ("lt", "čiau!"),
+        ("lt", "viso!"),
+        ("lt", "iki!"),
+        ("lt", "ate!"),
+        ("be", "добрага вечара!"),
+        ("be", "стэлефануемся!"),
+        ("be", "беражы сябе!"),
+        ("be", "добрага дня!"),
+        ("be", "шчасліва!"),
+        ("be", "пакуль!"),
+        ("ta", "வணக்கம்!"),
+    ];
+
+    #[test]
+    fn greeting_goodbyes_alone_do_not_close() {
+        let mut bad = Vec::new();
+        for (lang, t) in OPENINGS {
+            for first in [true, false] {
+                let mut m = if first { ClosingMachine::new(lang) } else { after_talk(lang) };
+                let s = hears(&mut m, t);
+                if closes(&s) {
+                    bad.push(format!("[{lang}] first={first} {t} -> {:?}", s.event));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// The research's counterexamples: at the start of a call or mid-call, no goodbye.
+    const LOOKALIKES: &[(&str, &str)] = &[
+        ("he", "השותף שלי לחדר בדיוק אמר יאללה ביי ויצא, אז עכשיו נוכל לדבר בשקט."),
+        ("he", "בשיחה הקודמת הוא פשוט זרק טוב ביי וניתק בלי להקשיב להסבר."),
+        ("he", "הילד אמר ביי בדלת ויצא להסעה, סליחה על הרעש, אפשר להמשיך."),
+        ("he", "שמעת איך הקטנה צעקה ביי ביי ברקע? אני עדיין איתך על הקו."),
+        ("he", "השליח בדיוק אמר להתראות והלך, עכשיו אפשר לעבור על ההודעה בנחת."),
+        ("he", "ברדיו תמיד מסיימים שיחות במילה להשתמע, אבל אנחנו רק בתחילת הבירור."),
+        ("he", "אמרת אתמול נדבר בבוקר, ולכן חייגתי עכשיו לשמוע מה התחדש."),
+        ("he", "חשבתי שתגיד נדבר אחר כך, איזה יופי שיש לך זמן עכשיו לעבור על הכול."),
+        ("he", "איחלתי לשומר בכניסה שיהיה יום טוב, סליחה, אני מקשיב לך."),
+        ("he", "ערב טוב גם לך, רציתי לברר אם נשאר מקום פנוי מחר בבוקר."),
+        ("he", "רק רציתי לאחל שבת שלום מראש ולשאול שאלה קצרה לגבי ההזמנה."),
+        ("he", "בסוף המכתב הקודם היה כתוב כל טוב, אבל חסר שם תאריך היעד המדויק."),
+        ("he", "אתה תמיד אומר טוב, לא אעכב אותך, אבל באמת שיש לי פנאי לדבר עכשיו."),
+        ("he", "בעוד עשר דקות אצטרך להגיד טוב, אני חייב לזוז, אז בוא ננצל את הזמן."),
+        ("he", "חשוב שנהיה בקשר רציף לאורך כל החודש הקרוב, אז בוא נתאם כעת מועדים."),
+        ("he", "קודם כול תודה על הכול עד עכשיו, ויש לי עוד שאלה אחת לגבי ההמשך."),
+        ("he", "אמרת קודם אחזור אליך תוך דקה והנה חזרת, אז מה גילית בבדיקה?"),
+        ("he", "לגבי החלק הראשון זה הכול בינתיים, ועכשיו נעבור לנושא השני שרציתי לשאול."),
+        ("he", "שלום, אני מתקשר כדי להשאיר הודעה לגבי הפגישה של מחר."),
+        ("he", "יום טוב, רציתי לשאול מתי המשרד פתוח לקבלת קהל השבוע."),
+        ("ms", "Semalam dia cuma cakap jumpa lagi tanpa bagi tarikh tepat, sebab itu sekarang saya tanya awak."),
+        ("ms", "Dia terus ucap selamat tinggal dalam mesyuarat tadi, jadi sekarang saya mahu bincang kesannya dengan awak."),
+        ("ms", "Jangan risau, saya belum cakap saya letak dulu, saya cuma letak beg di atas meja tadi."),
+        ("ms", "Pasal hal sampingan itu nanti kita sembang lagi, sekarang kita fokus selesaikan urusan utama ini dahulu."),
+        ("ms", "Saya baru beritahu rakan sebelah bahawa nanti saya telefon balik kepadanya supaya saya boleh terus bercakap dengan awak sekarang."),
+        ("ms", "Ibu selalu pesan supaya jaga diri semasa musim hujan, ngomong-ngomong bagaimana pula jadual kita esok?"),
+        ("ms", "Saya baru melambai dan cakap bye dekat anak buah di luar pintu, ya saya masih mendengar, sila teruskan."),
+        ("ms", "Tadi saya cakap babai dekat anak kecil yang nak pergi tadika, maaf ya, sila sambung apa awak cakap tadi."),
+        ("ms", "Tadi kawan saya terus sebut ok lah, bye tanpa sempat dengar jawapan, jadi sekarang biar saya jelaskan semuanya kepada awak."),
+        ("ms", "Saya baru masuk bilik anak untuk ucap selamat malam, sekarang barulah kita boleh berbincang dengan tenang."),
+        ("ms", "Kita memang perlu hati-hati semasa menyemak dokumen ini, jadi mari kita baca syarat seterusnya bersama-sama."),
+        ("ms", "Biar rakan-rakan lain gerak dulu ke dewan, sementara itu kita berdua bincang habis-habis di telefon sekarang."),
+        ("ms", "Ok lah, saya setuju dengan tarikh tersebut, sekarang mari kita bincang tentang masa pula."),
+        ("ms", "Dah lah jangan risau lagi pasal kesilapan lama itu, sekarang beritahu saya rancangan baharu awak."),
+        ("ms", "Untuk bahagian pertama memang itu sahaja syaratnya, sekarang mari kita semak bahagian kedua pula."),
+        ("ms", "Petang nanti saya ada kerja sikit, sebab itulah saya mahu bincangkan semuanya dengan awak sekarang juga."),
+        ("ms", "Topik bajet itu nanti kita sambung pada hujung perbualan, sekarang ceritakan dahulu cadangan jadual awak."),
+        ("ms", "Baiklah kalau macam tu, cadangan pertama kita terima, sekarang bagaimana pula dengan pilihan kedua?"),
+        ("ms", "Assalamualaikum, maaf mengganggu, boleh saya bercakap sebentar berkenaan jadual esok?"),
+        ("ms", "Salam sejahtera, saya menghubungi puan untuk mengesahkan masa temu janji minggu hadapan."),
+        ("tl", "Bigla na lang siyang nagsabi ng sige, bye kanina sa pinto kaya tinawagan kita ngayon para itanong kung bakit."),
+        ("tl", "Baba ko na lang muna itong mabigat na bag sa mesa habang nag-uusap tayo, teka lang."),
+        ("tl", "Sandali lang sa linya ha, ibaba ko na muna itong mga pinamili sa kusina habang nagkukuwento ka."),
+        ("tl", "Umalis ang kasama namin kaninang umaga nang walang paalam kaya tinawagan kita ngayon—may balita ka ba?"),
+        ("tl", "Malakas ang ulan diyan kaya ingat sa paglalakad habang kausap mo ako—ano nga pala ang nakalagay sa sulat?"),
+        ("tl", "Madulas po ang daan ngayon kaya ingat po habang naglalakad kayo—ituloy lang po ninyo ang sinasabi ninyo."),
+        ("tl", "Akala ko sasabihin mo agad ay bye na, mabuti na lang may oras ka pa para pag-usapan natin ang plano."),
+        ("tl", "Nagtapos ang sulat niya sa salitang hanggang sa muli nang walang petsa, kaya tumawag ako ngayon para linawin."),
+        ("tl", "Kahit may usapan na tayong kita-kits mamayang gabi, sabihin mo na sa akin ngayon kung ano ang dapat kong dalhin."),
+        ("tl", "Narinig kong nagsabi ng sige na, bye ang katabi mo sa silid, pero tayong dalawa ay may pag-uusapan pa, hindi ba?"),
+        ("tl", "Una na ako sa pila rito sa tanggapan pero matagal pa ang usad, kaya kuwentuhan mo muna ako habang naghihintay."),
+        ("tl", "Mamaya na lang natin lutuin ang hapunan, pero pag-usapan muna natin ngayon ang plano para bukas."),
+        ("tl", "Akala ko sasabihin mo tawag na lang ulit, mabuti na lang libre ka na ngayon kaya ituloy na natin ang usapan."),
+        ("tl", "Nagpadala siya ng mensaheng usap tayo mamaya, kaya gusto kong itanong sa iyo ngayon kung ano ang ibig niyang sabihin."),
+        ("tl", "Mamayang hapon pa naman kailangan ko nang umalis papuntang estasyon, kaya mahaba pa ang oras natin para mag-usap ngayon."),
+        ("tl", "Sinabi ko sa kanya kanina na tatawag ako ulit sa kanya bukas para ikaw muna ang makausap ko nang maayos ngayon."),
+        ("tl", "Para sa unang bahagi ng ulat ay yun lang muna, at ngayon naman ay pag-usapan natin sa linya ang ikalawang paksa."),
+        ("tl", "Hello, magandang umaga po! Tumatawag po ako upang kumpirmahin ang ating nakatakdang pulong."),
+        ("tl", "Hello po, magandang hapon! Maaari po bang magtanong tungkol sa kalagayan ng aming padala?"),
+        ("tl", "Hello, magandang araw po! Nais ko po sanang itanong kung bukas ang inyong tanggapan bukas."),
+        ("tl", "Hello, magandang gabi po! Tumatawag po ako tungkol sa nakatakdang iskedyul bukas ng umaga."),
+        ("bn", "আমি কাগজটা টেবিলে রাখি, তারপর আপনার বাকি কথাগুলো মন দিয়ে শুনছি।"),
+        ("bn", "আমি কলমটা হাতে রাখছি যাতে আপনার বলা সব তথ্য এখনই লিখে নিতে পারি।"),
+        ("bn", "আপনি নিশ্চয়ই নতুন জায়গায় গিয়ে ভালো থাকবেন, তবে তার আগে চলুন ভ্রমণের তারিখটা ঠিক করে নিই।"),
+        ("bn", "তুমি ওখানে গিয়ে ভালো থেকো এটাই চাই, কিন্তু এখন বলো আগামীকাল কখন দেখা হচ্ছে।"),
+        ("bn", "উনি তখন তাড়াহুড়ো করে আল্লাহ হাফেজ বলে চলে গিয়েছিলেন, তাই এখন আপনাকে পুরো ব্যাপারটা খুলে বলছি।"),
+        ("bn", "দরজায় দাঁড়িয়ে অতিথিকে খোদা হাফেজ বলছিলাম, লাইনে থাকার জন্য ধন্যবাদ, এবার বলুন।"),
+        ("bn", "ওই বিষয়ে পরে কথা হবে, কিন্তু তার আগে এখনকার জরুরি প্রশ্নটার উত্তর দিন।"),
+        ("bn", "ওনার সাথে আগামী সপ্তাহে আবার কথা হবে, কিন্তু এখন আপনার মতামতটা বিস্তারিত জানতে চাই।"),
+        ("bn", "কাল তো আমাদের দেখা হবে, তাই আজ ফোনেই আগেভাগে সব নিয়মকানুন বুঝে নিতে চাই।"),
+        ("bn", "পাশের ঘর থেকে ছোট বোনকে বাই বলছিলাম, হ্যাঁ আমি লাইনে আছি, আপনি বলুন।"),
+        ("bn", "ভাতিজাকে বারান্দা থেকে টাটা দিচ্ছিলাম, হ্যাঁ এবার আপনার পরের পয়েন্টটা বলুন।"),
+        ("bn", "বাচ্চাদের শুভরাত্রি বলে ঘরে পাঠিয়ে দিলাম, এবার আমরা নিরিবিলিতে পুরো বিষয়টা নিয়ে কথা বলতে পারি।"),
+        ("bn", "আপনি একটু আগেই বললেন তাহলে এখন রাখি, কিন্তু তার আগে দয়া করে ঠিকানাটা আরেকবার বলুন।"),
+        ("bn", "ক্লাসের পড়া আজ এই পর্যন্তই ছিল, এবার ফোনে বলুন আগামীকালের পরীক্ষার প্রস্তুতি কেমন চলছে।"),
+        ("bn", "পাশের সহকর্মীকে বললাম অন্য গ্রাহককে পরে ফোন করছি, আপনি লাইনে থাকুন এবং বলতে থাকুন।"),
+        ("bn", "বিকেলে আমার একটু কাজ আছে, তাই এখনই ফোনে সব বিস্তারিত কথা সেরে নিতে চাচ্ছি।"),
+        ("bn", "ঠিক আছে তাহলে, প্রথম শর্তটা মানা গেল, এবার দ্বিতীয় শর্তটা নিয়ে একটু আলোচনা করি।"),
+        ("bn", "ওই বিষয়ে আপনার কি আর কিছু বলার আছে, নাকি আমরা পরের বিষয়ে চলে যাব?"),
+        ("bn", "আসসালামু আলাইকুম, আমি একটু জরুরি তথ্যের জন্য আপনাকে ফোন করেছি।"),
+        ("bn", "নমস্কার, আগামীকালের সময়সূচি সম্পর্কে একটু জানার জন্য ফোন করলাম।"),
+        ("ur", "میرے ساتھی نے ابھی اللہ حافظ کہہ کر کمرہ چھوڑا ہے، اب ہم اطمینان سے بات کر سکتے ہیں۔"),
+        ("ur", "پچھلی کال پر آپریٹر نے جلدی سے خدا حافظ کہا اور لائن کٹ گئی، اس لیے دوبارہ فون کیا۔"),
+        ("ur", "بزرگ نے مہمان کو دروازے پر فی امان اللہ کہا ہے، معذرت، میں آپ کی بات سن رہا ہوں۔"),
+        ("ur", "آپ نے کل کہا تھا کہ آج صبح پھر بات ہوگی، اسی لیے میں نے ابھی رابطہ کیا ہے۔"),
+        ("ur", "مجھے لگا آپ کہیں گے بعد میں بات کرتے ہیں، اچھا ہوا آپ کے پاس ابھی وقت ہے۔"),
+        ("ur", "سب سے پہلے تو اس موسم میں اپنا خیال رکھیے گا، اور اب بتائیں کہ آج کا کیا پروگرام ہے۔"),
+        ("ur", "بھائی کو ابھی سمجھایا ہے کہ سفر میں اپنا خیال رکھنا، ہاں جی، آپ آگے بتائیے۔"),
+        ("ur", "اس نے کل جاتے ہوئے کہا تھا پھر ملتے ہیں مگر آج دفتر نہیں آیا، آپ کو کچھ علم ہے؟"),
+        ("ur", "گاؤں سے چچا نے فون پر رب راکھا کہہ کر بات ختم کی اور اب میں نے سیدھا آپ کو ملایا ہے۔"),
+        ("ur", "اللہ کرے آپ ہمیشہ خوش رہیں، میں نے آج ایک ضروری مشورے کے لیے فون کیا ہے۔"),
+        ("ur", "بچے نے پیچھے سے اچھا بائے بولا ہے، آپ پریشان نہ ہوں میں لائن پر ہی ہوں۔"),
+        ("ur", "پانچ منٹ بعد مجھے میٹنگ کے لیے نکلنا ہے تب کہوں گا اچھا جی، میں اجازت چاہوں گا، ابھی بتائیے۔"),
+        ("ur", "یہ مت کہیں کہ چلیں، میں آپ کا مزید وقت نہیں لیتا، میں بالکل فارغ ہوں، تفصیل سے بتائیں۔"),
+        ("ur", "سب سے پہلے تو دعاؤں میں یاد رکھیے گا، اور اب بتائیے کہ نئے شیڈول کا کیا فیصلہ ہوا۔"),
+        ("ur", "والد صاحب نے کہا پہلے آپ کو سلام کہیے گا اور پھر رسید کے بارے میں دریافت کیجیے گا۔"),
+        ("ur", "جب نمائندہ جلدی سے پوچھتا ہے کوئی اور حکم؟ تو اکثر اصل سوال ذہن سے نکل جاتا ہے۔"),
+        ("ur", "پچھلی بار آپ نے اچانک کہا چلیں میں فون رکھتا ہوں اور میں پتہ نہیں لکھوا سکا تھا۔"),
+        ("ur", "السلام علیکم، میں کل کی ملاقات کے سلسلے میں بات کرنا چاہتا ہوں۔"),
+        ("ur", "آداب عرض ہے، فرمائیے میں آپ کی کیا خدمت کر سکتا ہوں؟"),
+        ("ur", "شب بخیر، معذرت اس وقت زحمت دے رہا ہوں، ایک ضروری اطلاع دینی تھی۔"),
+        ("ne", "मैले कागज टेबलमा राखेँ है, अब तपाईंको बाँकी कुरा भन्नुहोस् म टिप्छु।"),
+        ("ne", "उहाँले अघि अचानक फोन राखेँ ल भनेर काट्नुभयो, त्यसैले अहिले तपाईंलाई सोध्दै छु।"),
+        ("ne", "ल है त, पहिलो विषय त टुङ्गियो, अब दोस्रो विषयमा पनि कुरा गरौँ न।"),
+        ("ne", "हस् त, त्यो मिति मलाई मिल्छ, अब समय र ठाउँको बारेमा पनि बताउनुहोस् न।"),
+        ("ne", "हुन्छ ल, तपाईंले भन्नुभएको शर्त मानियो, अब अगाडिको योजना सुन्नुहोस्।"),
+        ("ne", "त्यो पुरानो विषयमा पछी कुरा गरौँला, तर अहिलेको जरुरी काम चाहिँ टुङ्ग्याइहालौँ।"),
+        ("ne", "साथीसँग त पछी बोलम्ला, अहिले तपाईं नै सबै विवरण भन्नुहोस् न।"),
+        ("ne", "उहाँले हिजो मिटिङमा एक्कासि ल म गएँ भन्नुभयो, त्यसकै बारेमा त म अहिले सुनाउँदै छु।"),
+        ("ne", "आमाले ढोकाबाट राम्रो सित जाउ है भन्नुभयो, अँ अब भन्नुहोस् तपाईं के भन्दै हुनुहुन्थ्यो।"),
+        ("ne", "ढोकामा भाइलाई हात हल्लाएर बाइ भन्दै थिएँ, हजुर म सुन्दै छु भन्नुहोस्।"),
+        ("ne", "नानीलाई स्कुल पठाउँदा टाटा गरेर फर्किएँ, ल अब हाम्रो बाँकी कुरा गरौँ।"),
+        ("ne", "बच्चाहरूलाई शुभ रात्री भनेर सुताइसकेँ, अब हामी शान्तसँग सल्लाह गर्न सक्छौँ।"),
+        ("ne", "मैले अघि म अहिले राख्छु ल भन्न लागेको थिएँ, तर एउटा महत्त्वपूर्ण प्रश्न याद आयो।"),
+        ("ne", "पहिलो भागको चर्चा अहिलेलाई यति नै राखेर अब दोस्रो भागतिर लागौँ।"),
+        ("ne", "ल त, तपाईंको कुरा सुनेँ, अब मेरो तर्फको प्रस्ताव पनि ध्यान दिएर सुन्नुहोस्।"),
+        ("ne", "हुन्छ त हस्, त्यो कागजबारे बुझेँ, अब अर्को फाराम कसरी भर्ने त्यो पनि सिकाइदिनुस् न।"),
+        ("ne", "दिउँसो मेरो अर्को काम छ, त्यसैले अहिले नै फोनमा सबै कुरा टुङ्ग्याउन खोजेको हुँ।"),
+        ("ne", "मैले अर्को साथीलाई पछि फोन गर्छु भनेर म्यासेज पठाइदिएँ, अब तपाईंसँगै कुरा गरौँ।"),
+        ("ne", "नमस्ते, भोलिको कार्यक्रमबारे अलिकति बुझ्न फोन गरेको हुँ।"),
+        ("ne", "नमस्कार, म एउटा जरूरी जानकारी सोध्न फोन गर्दै छु।"),
+        ("si", "අම්මා ගෙදරින් එළියට බහිද්දී බුදු සරණයි කිව්වා විතරයි, ඔව් දැන් ඔයා කියන්නකෝ."),
+        ("si", "මම කඩේට ගිහින් එන්නම් කියලා ගෙදර අයට කිව්වේ, ඔයා ලයින් එකේ ඉන්න දිගටම කියන්න."),
+        ("si", "මම බැංකුවට ගිහිල්ලා එන්නම් කියලා හිතාගෙන ඉන්නේ, ඒ ගැන ඔයාගෙන් දැන් අහන්න ඕනේ."),
+        ("si", "එයා ඊයේ රැස්වීම මැද්දේ එහෙනම් මං ගියා කියලා නැගිට්ටා, ඒ ගැනයි මම දැන් කියන්නේ."),
+        ("si", "අමුත්තන්ට එහෙනම් අපි ගියා කියලා කාමරේට ආවා, දැන් නිදහසේ ඔයාගේ විස්තරේ කියන්න."),
+        ("si", "යාළුවා එකපාරටම එහෙනම් මං කැපුනා කිව්ව නිසා මට ඉතිරි ටික ඔයාගෙන් අහන්න වුණා."),
+        ("si", "කණ්ඩායමට ජය වේවා කියලා සුබ පතලා දැන් අපි හෙට වැඩසටහන ගැන කතා කරමු."),
+        ("si", "අපි ළඟදීම ආයෙ සෙට් වෙමු, හැබැයි ඊට කලින් දැන් මේ ගමනේ දිනය හරියටම දාගමු."),
+        ("si", "ඒ අතුරු ප්‍රශ්නේ ගැන පස්සේ කතා කරමු, දැන් මුලින්ම මේ හදිසි කාරණාව විසඳගමු."),
+        ("si", "මල්ලිට දොර ළඟදී සුභ ගමන් කිව්වා විතරයි, ඔව් මම අහගෙන ඉන්නේ දිගටම කියන්න."),
+        ("si", "පොඩි එකාට අත වනලා බායි කිව්වේ, මම ලයින් එකේ ඉන්නවා ඔයා කියන්න."),
+        ("si", "දුව ඉස්කෝලේ වෑන් එකට නැග්ගම ටටා කියලා ආවා, ඔව් දැන් කියන්නකෝ."),
+        ("si", "එහෙනම් අපි මුලින්ම දිනය තීරණය කරලා ඊළඟට වෙලාව ගැන කතා කරමු."),
+        ("si", "මම දැන් තියන්නම් කියන්න හැදුවේ, ඒත් තව පොඩි දෙයක් අහන්න මතක් වුණා."),
+        ("si", "වෙන කෙනෙක් කෝල් කළ නිසා එයාට පස්සේ ගන්නම් කියලා මැසේජ් කළා, ඔයා දිගටම කියන්න."),
+        ("si", "හවසට මට තව පොඩි වැඩක් තියෙනවා, ඒ නිසා දැන්ම මේ විස්තර ඔක්කොම කතා කරගමු."),
+        ("si", "හරි එහෙනම්, පළවෙනි කොටස හරි, දැන් දෙවෙනි කොටස ගැනත් ටිකක් බලමු."),
+        ("si", "පළවෙනි ලැයිස්තුවේ තියෙන්නේ එච්චරයි නේද, දැන් දෙවෙනි ලැයිස්තුව කියවන්න."),
+        ("si", "ආයුබෝවන්, හෙට දින වෙන්කිරීම ගැන පොඩි විස්තරයක් දැනගන්න කතා කළේ."),
+        ("my", "မှာချင်တဲ့ ပစ္စည်းအမျိုးအစားက ဒါပဲနော်၊ အရောင်နဲ့ အရွယ်အစားကိုလည်း ဆက်ပြောပြပေးပါဦး။"),
+        ("my", "စောစောက သူက ရုတ်တရက် ဖုန်းချလိုက်တော့မယ်နော် ဆိုပြီး ချသွားလို့ အခု အသေးစိတ် ပြန်မေးနေတာပါ။"),
+        ("my", "ပထမအချက်အနေနဲ့ ပြင်ဆင်ရမှာက ဒါဆို ဒါပဲနော်၊ အခု ဒုတိယအချက်ကို ဆက်ဆွေးနွေးကြရအောင်။"),
+        ("my", "တခြားဖုန်းဝင်လာလို့ သူ့ကို နောက်မှ ပြန်ဆက်လိုက်မယ် လို့ စာပို့လိုက်ပြီ၊ ကဲ ဆက်ပြောပါဦး။"),
+        ("my", "အဲဒီကိစ္စအသေးစိတ်ကို နောက်မှ စကားပြောကြမယ်၊ အခု လောလောဆယ် အရေးကြီးတဲ့ ရက်ချိန်းကို အရင်ညှိရအောင်။"),
+        ("my", "အိမ်ကညီလေး အပြင်ထွက်ခါနီး သွားတော့မယ်နော် လို့ လာနှုတ်ဆက်နေတာပါ၊ ဟုတ်ကဲ့ ဆက်ပြောပါဗျာ။"),
+        ("my", "အလုပ်ပြီးရင် စောစော နားတော့မယ်နော် လို့ စိတ်ကူးထားတာ၊ ဒါကြောင့် အခု ဖုန်းထဲမှာ အပြီးတိုင်ပင်ချင်လို့ပါ။"),
+        ("my", "ဒီစာရင်းကို တွက်တဲ့အခါ သေချာ ဂရုစိုက်နော်၊ ကဲ အခု နောက်ထပ် ကုန်ကျစရိတ်တွေကို ဆက်ကြည့်ရအောင်။"),
+        ("my", "အိမ်ရှေ့က တူမလေးကို လက်ပြပြီး တာ့တာ လုပ်နေတာပါ၊ ဖုန်းမချသေးပါဘူး ဆက်ပြောပါ။"),
+        ("my", "ကလေးက ဘေးနားကနေ ဘိုင်ဘိုင် လို့ လှမ်းအော်နေတာပါ၊ ကျွန်မ နားထောင်နေပါတယ် ဆက်ပြောပါရှင်။"),
+        ("my", "ကလေးတွေကို ကောင်းသောညပါ လို့ ပြောပြီး သိပ်လိုက်ပြီမို့ အခု အေးအေးဆေးဆေး ဆွေးနွေးလို့ ရပါပြီ။"),
+        ("my", "ပထမအပိုင်းအတွက် လိုအပ်ချက်ကတော့ ဒါပါပဲ၊ အခု ဒုတိယအပိုင်းကို ဆက်ရှင်းပြပေးပါဦး။"),
+        ("my", "ကဲ ဒါဆိုရင် ရက်စွဲကို အတည်ပြုပြီးပြီဆိုတော့ တွေ့မယ့်နေရာကို အခု ဆက်ရွေးကြရအောင်။"),
+        ("my", "ညနေကျရင် အလုပ်လေး ရှိသေးလို့ အခုတည်းက ဖုန်းနဲ့ အသေးစိတ် ကြိုမေးထားချင်တာပါ။"),
+        ("my", "အသေးအဖွဲ ကိစ္စတွေကို နောက်မှ ဆက်ပြောကြတာပေါ့၊ အခု အဓိက အချက်ကိုပဲ အရင်ဆုံးဖြတ်ရအောင်။"),
+        ("my", "မနက်ပိုင်း အစီအစဉ်က အခုတော့ ဒီလောက်ပဲ ရှိသေးတယ်၊ နေ့လယ်ပိုင်း အစီအစဉ်ကို ဆက်ပြောပြပါဦး။"),
+        ("my", "ဟုတ်ပြီ ဒါဆို အချိန်က အဆင်ပြေသွားပြီ၊ လာရမယ့် လမ်းကြောင်းကိုလည်း တစ်ခါတည်း ပြောပြပေးပါဦး။"),
+        ("lo", "ຫົວຂໍ້ທຳອິດເອົາຊ່ຳນີ້ກ່ອນເດີ້ ບາດນີ້ມາລົມເລື່ອງທີສອງຕໍ່."),
+        ("lo", "ໃຫ້ເພິ່ນອອກໄປກ່ອນເດີ້ ແລ້ວເຮົາຈັ່ງລົມກັນຕໍ່ໃນສາຍ."),
+        ("lo", "ຢ່າຟ້າວວາງສາຍກ່ອນເດີ້ ຂ້ອຍກຳລັງຊອກເອກະສານໃຫ້ຢູ່."),
+        ("lo", "ເລື່ອງງົບປະມານໄວ້ຄ່ອຍລົມກັນໃໝ່ ແຕ່ຕອນນີ້ຂໍຖາມເລື່ອງເວລານັດກ່ອນ."),
+        ("lo", "ລາຍລະອຽດສ່ວນເຫຼືອໄວ້ມື້ໜ້າລົມກັນໃໝ່ ຕອນນີ້ມາກວດລາຍການຫຼັກກ່ອນ."),
+        ("lo", "ມື້ອື່ນເສັງຂໍໃຫ້ໂຊກດີເດີ້ ແລ້ວມື້ນີ້ເຈົ້າກຽມປຶ້ມຄົບແລ້ວບໍ່?"),
+        ("lo", "ຕອນເພິ່ນເວົ້າວ່າພົບກັນໃໝ່ ຂ້ອຍກໍຍັງບໍ່ທັນເຂົ້າໃຈ ເຈົ້າຄິດແນວໃດ?"),
+        ("lo", "ຂອບໃຈຫຼາຍໆເດີ້ທີ່ຊ່ວຍກວດໃຫ້ ບາດນີ້ຂ້ອຍຂໍຖາມຕໍ່ອີກໜ້ອຍໜຶ່ງ."),
+        ("lo", "ລູກນ້ອຍຢູ່ຂ້າງໆໂບກມືບ່າຍໆໃສ່ຂ້ອຍຊື່ໆ ເຈົ້າເວົ້າຕໍ່ໂລດ."),
+        ("lo", "ຂ້ອຍຫາກໍສົ່ງລູກເຂົ້ານອນແລ້ວບອກຝັນດີເດີ້ ບາດນີ້ເຮົາລົມກັນໄດ້ສະບາຍແລ້ວ."),
+        ("lo", "ສຽງລົດຢູ່ທາງນອກມິດໄປແລ້ວ ບໍ່ລົບກວນແລ້ວ ເວົ້າຕໍ່ໄດ້ເລີຍ."),
+        ("lo", "ມື້ວານນີ້ຂ້ອຍບອກເພິ່ນວ່າຂ້ອຍຕ້ອງໄປກ່ອນແລ້ວ ແຕ່ເພິ່ນຍັງຊວນລົມຕໍ່ຕັ້ງດົນ."),
+        ("lo", "ບັນຫາທຳອິດມີແຕ່ເທົ່ານີ້ແຫຼະ ບາດນີ້ມາເບິ່ງບັນຫາທີສອງນຳກັນ."),
+        ("lo", "ມື້ເຊົ້ານີ້ລາວບອກວ່າດຽວໂທຫາໃໝ່ເດີ້ ແຕ່ຈົນຮອດດຽວນີ້ກໍຍັງບໍ່ໂທມາເລີຍ."),
+        ("lo", "ມື້ເຊົ້າຂ້ອຍຟ້າວວຽກໜ້ອຍໜຶ່ງເລີຍບໍ່ໄດ້ຕອບ ດຽວນີ້ວ່າງແລ້ວ ເວົ້າມາໂລດ."),
+        ("lo", "ວຽກສ່ວນນັ້ນເອົາໄວ້ມື້ອື່ນເນາະ ແຕ່ຕອນນີ້ຂໍຕົກລົງເລື່ອງເວລານັດໝາຍກ່ອນ."),
+        ("lo", "ອາໂຫຼ ສະບາຍດີ ມື້ນີ້ມີຫຍັງໃຫ້ຊ່ວຍບໍ່?"),
+        ("mn", "Өчигдөр тэр хүн баяртай ч гэлгүй гараад явчихсан, чи сонссон уу?"),
+        ("mn", "Тэр утсаа таслахдаа шууд л за баяртай гээд хаячихсан, одоо би чамд учрыг нь ярья."),
+        ("mn", "Өглөө би түр баяртай гээд гарсан болохоор одоо үлдсэн асуудлаа чамтай ярилцъя."),
+        ("mn", "Үнийн асуудлыг дараа ярья, харин одоо хүргэлтийн цагаа тохиръё."),
+        ("mn", "Өглөө эргээд залгая гэж амласан болохоор одоо чам руу залгаж байна, сонсож байна уу?"),
+        ("mn", "Тэр надад дараа уулзъя гэж бичсэн байсан, гэхдээ би одоо чамаас өөр зүйл асуух гэсэн юм."),
+        ("mn", "Ээж маань сая орж ирээд сайхан амраарай гэж хэлчхээд гарлаа, за чи цааш нь ярь даа."),
+        ("mn", "Өвөө маань дандаа сайн сууж байгаарай гэж захидаг юм, харин чиний ажил юу болж байна?"),
+        ("mn", "Шинэ ажилд орсонд баяр хүргэж амжилт хүсье, ингэхэд эхний өдөр ямархуу байв?"),
+        ("mn", "За баярлалаа, тэгвэл хоёр дахь асуултаа одоо асууж болох уу?"),
+        ("mn", "Нөгөө хэлтэстэй дараа холбогдьё, харин одоо хоёулаа энэ тайлангаа дуусгая."),
+        ("mn", "За ингээд эхний хэсгээ дуусгалаа, одоо хоёр дахь хэсэг рүүгээ оръё."),
+        ("mn", "Тэр сая би одоо явах хэрэгтэй байна гээд өрөөнөөс гарсан тул одоо би чөлөөтэй ярьж болно."),
+        ("mn", "Тэр надад ажлаа бод доо гэж зөвлөсөн юм, чи үүнтэй санал нийлэх үү?"),
+        ("mn", "Тэр өчигдөр тэгээд эргээд ярья гэсэн ч өнөөдөр хүртэл чимээгүй л байна."),
+        ("mn", "Эхний жагсаалтыг ингээд болох уу, одоо дараагийн хуудсыг нь уншъя."),
+        ("mn", "За за, ойлголоо, тэгээд цааш нь юу болсон бэ?"),
+        ("fa", "همکارم همین الان گفت خداحافظ و از اتاق بیرون رفت، حالا راحت می‌توانیم صحبت کنیم."),
+        ("fa", "پاسخگوی قبلی وسط توضیح من گفت خدانگهدار و تماس قطع شد، برای همین دوباره زنگ زدم."),
+        ("fa", "فکر کردم می‌خواهید بگویید فعلاً خداحافظ، خوشحالم که هنوز چند دقیقه وقت دارید."),
+        ("fa", "من فعلاً پشت خط منتظر هستم تا پرونده را باز کنید، عجله‌ای ندارم."),
+        ("fa", "در پایان نامه نوشته بودند به امید دیدار، اما هنوز ساعت جلسه را مشخص نکرده‌اند."),
+        ("fa", "به راننده گفتم در این باران مراقب خودت باش، ببخشید، حواسم با شماست."),
+        ("fa", "فقط خواستم اول تماس بگویم در این هوای سرد مواظب خودتون باشید و یک سؤال بپرسم."),
+        ("fa", "قربانت، من هنوز سر خط هستم، لطفاً بقیه جزئیات سفارش را هم بگو."),
+        ("fa", "قربان شما، اختیار دارید، خواهش می‌کنم بفرمایید دقیقاً چه مدارکی لازم است."),
+        ("fa", "به نگهبان ورودی گفتم روز خوش، عذر می‌خواهم، صدای شما را واضح می‌شنوم."),
+        ("fa", "به همسایه در راهرو گفتم شب خوش، بفرمایید، هنوز با شما هستم."),
+        ("fa", "مادربزرگم بدرقه‌اش کرد و گفت خدا به همراهت، الان خانه خلوت است و می‌توانیم حرف بزنیم."),
+        ("fa", "اصلاً نگو خب دیگه، مزاحمت نمیشم، امروز کاملاً وقت دارم و گوش می‌دهم."),
+        ("fa", "می‌دانم همیشه می‌گویید بیشتر از این وقتتون رو نمی‌گیرم، اما لطفاً همه جزئیات را کامل بگویید."),
+        ("fa", "همیشه وسط حرف‌هایم می‌پرسی کاری باری نداری؟ صبر کن تازه به اصل ماجرا رسیدم!"),
+        ("fa", "منشی در پذیرش از مراجع قبلی پرسید امری نیست؟ من هنوز پای تلفن به شما گوش می‌دهم."),
+        ("fa", "گفتند حتماً اول تماس به شما سلام برسونید و بعد درباره برنامه فردا سؤال کنم."),
+        ("fa", "ده دقیقه دیگر مجبورم بگویم خب، من دیگه باید برم، پس بیایید سریع‌تر بررسی کنیم."),
+        ("fa", "سلام و روز بخیر، برای پیگیری نوبت فردا تماس گرفتم."),
+        ("fa", "سلام، شب بخیر، ببخشید این موقع شب تماس می‌گیرم، یک پیام فوری داشتم."),
+        ("fa", "سلام و عصر بخیر، خواستم ببینم جلسه امروز سر ساعت برگزار می‌شود یا خیر."),
+        ("ps", "همکار مې همدا اوس خدای پامان ووایه او له خونې ووت، اوس آرام غږېدلی شو."),
+        ("ps", "په مخکینۍ اړیکه کې کارکوونکي ژر د خدای په امان ووایه او اړیکه پرې شوه، ځکه مې بیا زنګ وواهه."),
+        ("ps", "مېلمنو ته مې په دروازه کې په مخه مو ښه ووایه، بخښنه غواړم، ستاسو خبرې اورم."),
+        ("ps", "ورور ته مې وویل په مخه دې ښه چې ښوونځي ته ولاړ شي، اوس خپلې خبرې ته دوام ورکړه."),
+        ("ps", "پرتله کول مې غوښتل چې دلته خلک څنګه مخه ښه کوي، خو زه لا پر لیکه ستاسو ځواب ته منتظر یم."),
+        ("ps", "تل په خیر اوسئ، ما غوښتل د نننۍ غونډې په اړه یو لنډ پیغام پرېږدم."),
+        ("ps", "ملګري مې الله پامان ووایه او ولاړ، اوس کولی شو د کار په اړه تفصیلي وغږېږو."),
+        ("ps", "مور مې ورته وویل خدای دې مل شه او رخصت یې کړ، بخښنه غواړم، تاسو ووایاست."),
+        ("ps", "تاسو پرون وویل چې نن سهار بیا به غږیږو، نو ځکه مې اوس اړیکه ونیوله."),
+        ("ps", "ژوندي اوسئ، ډېره مننه چې زما اړیکه مو ځواب کړه، اوس غواړم خپله ستونزه درته ووایم."),
+        ("ps", "دا مه وایاست چې ښه نو، نور مو نه مصروفوم، زه اوس پوره وخت لرم، مهرباني وکړئ ووایاست."),
+        ("ps", "لس دقیقې وروسته به ووایم زه نور اجازه غواړم، نو راځئ تر هغې دا مسله بشپړه کړو."),
+        ("ps", "مخکې له دې چې وپوښتئ نور کوم امر؟ غواړم په نېټه کې یو کوچنی بدلون راولم."),
+        ("ps", "پلار مې وویل لومړی تاسو ته په کور کې سلام ووایاست او بیا د سبا وخت وپوښتم."),
+        ("ps", "لومړی خو موږ په دعا کې مو یاد ساتئ، او دویم دا چې غواړم یو پیغام ثبت کړم."),
+        ("ps", "هغه یوازې وویل زه باید اوس لاړ شم او هیڅ تفصیل یې ورنه کړ، ځکه له تاسو پوښتم."),
+        ("ps", "السلام علیکم، غواړم د سبا د لیدنې په اړه یو پیغام پرېږدم."),
+        ("ps", "سلام، بخښنه غواړم، ایا دا د دفتر شمېره ده؟"),
+        ("ps", "سلام او شپه مو پخیر، بخښنه غواړم چې ناوخته زنګ وهم، یو بېړنی پیغام لرم."),
+        ("az", "Məlumat üçün sağ ol, bəs ikinci sualımın cavabı necə oldu?"),
+        ("az", "Diqqətiniz üçün sağ olun, amma bir məsələni də soruşmaq istəyirəm."),
+        ("az", "Çox sağ olun, bəs çatdırılma saat neçədə olacaq?"),
+        ("az", "Bu məsələni hələlik saxlayaq, indi əsas mövzuya keçək."),
+        ("az", "Sabah saat neçədə görüşərik, indi vaxtı təyin edək?"),
+        ("az", "Tətil planını sonra danışarıq, indi təcili işi həll edək."),
+        ("az", "Həkim də həmişə özünə yaxşı bax deyir, bəs sənin səhhətin indi necədir?"),
+        ("az", "Hamıya özünüzə yaxşı baxın deyəndən sonra bir sual da ortaya çıxdı, qulaq asın."),
+        ("az", "Uşaqlara gecəniz xeyrə qalsın deyib gəldim, indi səni dinləyirəm."),
+        ("az", "O heç xudahafiz demədən otaqdan çıxdı, təsəvvür edirsən?"),
+        ("az", "Qonaqları sağlıqla qalın deyib yola saldım, indi səninlə geniş danışaq."),
+        ("az", "Yeni layihədə sənə uğurlar, indi de görüm hazırlıq necə gedir?"),
+        ("az", "Uzun təfərrüatlarla sizi yormayım, birbaşa əsas sualıma keçim."),
+        ("az", "Bir saatdan sonra mən getməliyəm, ona görə indi bütün detalları danışaq."),
+        ("az", "Birinci mövzu üzrə başqa sualım yoxdur, indi keçək ikinci məsələyə."),
+        ("az", "Digər şöbə ilə sonra əlaqə saxlayarıq, indi öz aramızda qərar verək."),
+        ("az", "Oldu onda, birinci şərti qəbul edirik, indi ikinci şərtə baxaq."),
+        ("az", "Pəncərəni yaxşı, mən bağlayıram ki, küçənin səsi gəlməsin, indi davam et."),
+        ("hy", "Նա առանց ցտեսություն ասելու դուրս եկավ սենյակից, պատկերացնո՞ւմ ես։"),
+        ("hy", "Եղբորս ասացի լավ մնա ու դուրս եկա բակ, հիմա կարող ենք հանգիստ խոսել։"),
+        ("hy", "Հյուրերին ասացի լավ մնացեք ու ճանապարհ դրեցի, հիմա ասա՝ ինչ նորություն կա։"),
+        ("hy", "Այդ գործում քեզ մեծ հաջողություն եմ մաղթում, իսկ հիմա ասա՝ ե՞րբ ենք սկսում։"),
+        ("hy", "Այսօր շատ հաջող օր էր, հիմա պատմեմ՝ ինչ եղավ առավոտյան։"),
+        ("hy", "Այդ հարցը առայժմ մի կողմ դնենք ու անցնենք հաջորդ կետին։"),
+        ("hy", "Գնի մասին էլ հիմա կխոսենք, բայց նախ ժամը հաստատենք։"),
+        ("hy", "Նա խոստացավ, որ կեսօրին կզանգեմ կասի, բայց հիմա դու ասա՝ ինչ անենք։"),
+        ("hy", "Վաղը որտե՞ղ կհանդիպենք, արի հիմա տեղը որոշենք։"),
+        ("hy", "Փոքրիկին նոր բարի գիշեր ասացի, հիմա ազատ եմ, պատմիր։"),
+        ("hy", "Օպերատորը միանգամից ասաց շնորհակալություն, ցտեսություն ու անջատեց, դրա համար հիմա քեզ զանգեցի։"),
+        ("hy", "Դե լավ, այդ հարցը պարզեցինք, հիմա անցնենք երկրորդին։"),
+        ("hy", "Աշխատակիցներին ասացի, որ ինձ էլ չխանգարեմ ասելու կարիք չկա, հիմա հանգիստ պատմիր։"),
+        ("hy", "Կես ժամից պետք է գնամ, դրա համար հիմա արագ քննարկենք այս հարցը։"),
+        ("hy", "Առաջին մասով այսքանը, իսկ հիմա լսիր երկրորդ մասը։"),
+        ("hy", "Ընկերոջս գրեցի հետո կզանգեմ, որպեսզի հիմա քեզ հետ հանգիստ զրուցեմ։"),
+        ("hy", "Առաջին կետի շուրջ ուրեմն պայմանավորվեցինք, հիմա նայենք երկրորդ կետը։"),
+        ("ka", "ახლა უკვე კარგად ისმის შენი ხმა, განაგრძე."),
+        ("ka", "ეს ფაილი დროებით აქ შევინახოთ და ახლა მეორე საკითხზე გადავიდეთ."),
+        ("ka", "ისე გავიდა ოთახიდან, რომ ნახვამდის არც უთქვამს, წარმოგიდგენია?"),
+        ("ka", "მეგობარს ვუთხარი კარგად იყავი-მეთქი და გამოვედი, ახლა მომიყევი რა ხდება."),
+        ("ka", "ოპერატორმა მაშინვე კარგად ბრძანდებოდეთ მითხრა და გათიშა, ამიტომ ახლა შენ გირეკავ."),
+        ("ka", "მან უცებ აბა დროებით მომაძახა და გაიქცა, შენ რას ფიქრობ ამაზე?"),
+        ("ka", "მეზობელს აბა კარგად ვუთხარი სადარბაზოში და ახლა გისმენ ყურადღებით."),
+        ("ka", "დილით მომწერა მოგვიანებით დაგირეკავო და ჯერ არ ჩანს, შენ ხომ არ გილაპარაკია?"),
+        ("ka", "ფასზე მერე ვილაპარაკოთ, ახლა ჯერ თარიღი შევათანხმოთ."),
+        ("ka", "ბავშვებს ღამე მშვიდობისა ვუსურვე და გამოვედი, ახლა თავისუფალი ვარ, მომიყევი."),
+        ("ka", "ეს იდეა ძალიან მაგრად მომწონს, მითხარი დეტალები როგორ წარმოგიდგენია."),
+        ("ka", "კურიერს მადლობა, ნახვამდის ვუთხარი და კარი დავხურე, ჰოდა გააგრძელე რას ამბობდი."),
+        ("ka", "ბევრი შესავლით აღარ მოგაცდენ და პირდაპირ მთავარ კითხვას დაგისვამ."),
+        ("ka", "ნახევარ საათში უნდა წავიდე, ამიტომ ახლავე გავიაროთ ყველა საკითხი."),
+        ("ka", "პირველი ნაწილი სულ ეს იყო, ახლა გადავიდეთ მეორე საკითხზე."),
+        ("ka", "კაი აბა, გისმენ, მომიყევი თავიდან ბოლომდე რა მოხდა."),
+        ("ka", "პირველ პუნქტზე შევთანხმდით, ახლა მეორე პუნქტსაც გადავხედოთ."),
+        ("ka", "ტელევიზორის ხმას კარგი, გავთიშავ, რომ უკეთ გავიგო რას მეუბნები."),
+        ("sw", "Aliondoka jana bila kusema kwaheri, kwa hivyo nataka kukuuliza kilichotokea."),
+        ("sw", "Subiri kidogo kwenye simu, ninawaambia wageni hapa mlangoni kwaherini."),
+        ("sw", "Tutajadili bajeti baadaye kwenye mkutano, lakini kwanza nieleze ratiba ya leo."),
+        ("sw", "Najua tutaonana wiki ijayo, lakini kwanza tafadhali nijibu swali hili kwenye simu."),
+        ("sw", "Ingawa tutaonana baadaye leo, nahitaji kujua sasa hivi kama nyaraka ziko tayari."),
+        ("sw", "Kuhusu gharama tutazungumza baadaye, lakini sasa hivi nieleze kwanza mpango wa kazi."),
+        ("sw", "Najua tutaongea kesho kwa kirefu, lakini kabla ya hapo naomba nikuulize jambo moja sasa."),
+        ("sw", "Natumaini umekuwa na siku njema kufikia sasa; ninapiga simu kuuliza kuhusu ratiba yetu."),
+        ("sw", "Subiri kidogo kwenye simu, ninamtakia mtoto wangu usiku mwema hapa chumbani."),
+        ("sw", "Tafadhali baki salama hapo ulipo huku tukiendelea kuzungumza kwenye simu na kutafuta msaada."),
+        ("sw", "Nilimwambia dereva wetu nenda salama asubuhi, lakini sasa nataka kukuuliza kuhusu mzigo."),
+        ("sw", "Haya basi, tuanze na jambo la kwanza ulilotaja."),
+        ("sw", "Sawa basi, niko tayari kuandika, tafadhali nitajie maelezo hayo."),
+        ("sw", "Sawa, asante kwa maelezo hayo ya kwanza, na sasa nina swali lingine."),
+        ("sw", "Je, ni hayo tu uliyoambiwa, au kuna maelezo mengine tunayopaswa kujadili sasa?"),
+        ("sw", "Kama umenielewa hapo basi inatosha kwa sehemu ya kwanza, sasa tuingie sehemu ya pili."),
+        ("sw", "Nilikuwa karibu kusema wacha nikuache, lakini nimekumbuka swali moja muhimu sana."),
+        ("sw", "Habari za asubuhi? Salama kabisa, ninapiga simu kuuliza kuhusu miadi yangu."),
+        ("sw", "Salaam, ninaomba kuzungumza na mhudumu kuhusu ombi langu."),
+        ("am", "ቅድም ሳይሰማኝ ቻው ብሎ ስልኩን ዘጋው፣ አሁን ግን ጉዳዩን በዝርዝር ልንገርዎት።"),
+        ("am", "ትላንት ደህና ሁኑ ብለው ከወጡ በኋላ አዲስ መረጃ መጥቷል፣ እባክዎ ያዳምጡኝ።"),
+        ("am", "ቅድም ለጓደኛዬ ደህና ሁን እያልኩ ነበር፣ ከእርስዎ ጋር ግን ንግግራችንን እንቀጥል።"),
+        ("am", "እዚህ አጠገቤ ላለችው ባልደረባዬ ደህና ሁኚ ብዬ ነው፣ እባክዎ እርስዎ መናገርዎን ይቀጥሉ።"),
+        ("am", "ደህና ዋሉ ብዬ ስልኩን ከመዝጋቴ በፊት አንድ ጥያቄ ብቻ ቀረኝ።"),
+        ("am", "ትላንት ጠዋት ደህና ዋል ብሎኝ ከሄደ ወዲህ አላገኘሁትም፣ እርስዎ ሰምተውታል?"),
+        ("am", "እዚህ ቤት ውስጥ ለልጆቹ ደህና እደሩ እያልኩ ነበር፣ እባክዎ አንድ አፍታ ይጠብቁኝና እንቀጥል።"),
+        ("am", "በኋላ እንገናኝ ብሎ ቀጠሮ ሰጥቶኝ ነበር፣ አሁን ግን ሰዓቱን ለመቀየር ነው የደወልኩት።"),
+        ("am", "ነገ እንገናኝ ብለውኝ ነበር፣ ግን ከዚያ በፊት አሁን በስልክ የምጠይቅዎት ጉዳይ አለ።"),
+        ("am", "ዛሬ ለውይይታችን በጣም መልካም ቀን ነው፣ እባክዎ የደወሉበትን ጉዳይ ይንገሩኝ።"),
+        ("am", "ሁልጊዜ በሰላም ሁኑ እያሉ ይመርቁናል፣ አሁን ግን ስለ ዋናው ጉዳይ እንነጋገር።"),
+        ("am", "እሺ በቃ፣ ወደ ዋናው ጉዳይ እንግባና ዝርዝሩን ይንገሩኝ።"),
+        ("am", "እሺ አመሰግናለሁ፣ አሁን ደግሞ ሁለተኛውን ጥያቄ ልጠይቅዎት።"),
+        ("am", "ስለ ክፍያው ሌላ ጥያቄ የለኝም፣ ነገር ግን ስለ ቀጠሮው ቀን አሁን መጠየቅ እፈልጋለሁ።"),
+        ("am", "ከሰዓት በኋላ ወደ ቢሮ መሄድ አለብኝ፣ ስለዚህ ከዚያ በፊት አሁን በስልክ እንጨርሰው።"),
+        ("am", "ስለ መጀመሪያው ርዕስ ለዛሬ ይበቃል፣ አሁን ግን ሁለተኛውን ጉዳይ በአጭሩ እንይ።"),
+        ("am", "እሺ እንግዲህ፣ ከመጀመሪያው ጀምረው ምን እንደተፈጠረ ያስረዱኝ።"),
+        ("am", "ሰላም፣ እንዴት ነዎት? ስለ ቀጠሮዬ ለመጠየቅ ደውዬ ነበር።"),
+        ("am", "ጤና ይስጥልኝ፣ እንዴት ልረዳዎት እችላለሁ?"),
+        ("af", "Hy het gister sonder om totsiens te sê geloop, maar vertel my eers wat vandag gebeur het."),
+        ("af", "Ek hoop die weer gaan môre mooi bly vir die geleentheid, maar watter tyd pas jou?"),
+        ("af", "As alles vandag mooi loop met die vergadering, kan ons die plan vanaand bespreek."),
+        ("af", "Moenie sê ons praat later nie, want ons moet hierdie kwessie sommer nou dadelik oplos."),
+        ("af", "Die ontvangsbeampte het my 'n lekker dag verder toegewens, maar ek bel nou om die tyd te bevestig."),
+        ("af", "Mense verwar soms goeienag met goeienaand aan die begin van 'n oproep, maar hoe kan ek jou vanaand help?"),
+        ("af", "Bly asseblief aan die lyn, ek sê net gou tatta vir iemand wat nou die kantoor verlaat."),
+        ("af", "Ons ry tans verby die baai op pad na die stad, maar ek kan jou duidelik hoor."),
+        ("af", "Ons kan dit nie tot later uitstel nie, so kom ons kyk nou dadelik na die besonderhede."),
+        ("af", "Hy het vanoggend gesê sien jou later en toe nooit opgedaag nie, weet jy dalk waar hy is?"),
+        ("af", "Voordat ons afsluit met lekker aand verder, moet ek net seker maak van môre se tyd."),
+        ("af", "Goed dan, kom ons begin by die eerste vraag op die lys."),
+        ("af", "Reg so, ek luister aandagtig, vertel my gerus wat daarna gebeur het."),
+        ("af", "Nou ja, dit klink interessant, vertel my asseblief 'n bietjie meer daaroor."),
+        ("af", "Dis al wat ek tot dusver gehoor het, so kan jy asseblief die res vir my verduidelik?"),
+        ("af", "My kollega sê ek moet nou gaan teken vir 'n pakkie, so gee my net 'n halwe minuut op die lyn."),
+        ("af", "Baie dankie vir jou hulp met daardie eerste deel, en nou wil ek nog oor die aflewering vra."),
+        ("af", "Goeiedag, waarmee kan ek u vandag op hierdie lyn behulpsaam wees?"),
+        ("af", "Dag, is ek nou deur na die regte afdeling vir navrae?"),
+        ("et", "Eelmine teenindaja ütles mulle lihtsalt head aega ja katkestas kõne, nii et palun vaadake minu avaldus uuesti üle."),
+        ("et", "Kolleeg hõikas mulle siin ukse peal nägemist, aga mina olen ikka liinil, rääkige edasi."),
+        ("et", "Enne kui ütleme kuulmiseni, kas saaksite mulle veel kord öelda kabineti numbri?"),
+        ("et", "Me ei jäta veel nägemiseni, sest ma pean teile enne ütlema ka uksekoodi."),
+        ("et", "Õde ütles mulle praegu köögist tšauki, ära pane tähele, räägi edasi mis arst arvas."),
+        ("et", "Soovin muidugi kõigile kõike head, aga praegu tahaksin kõigepealt teada, miks arve summa on muutunud."),
+        ("et", "Klienditeenindaja soovis mulle juba kena päeva jätku, kuigi mure jäi lahendamata, kas teie saate mind aidata?"),
+        ("et", "Leppisime hommikul kokku, et jääme kuuldele, ja nüüd helistangi, et küsida täpseid mõõte."),
+        ("et", "Kas seda pakkumist saab hoida homseni, või pean otsuse ütlema kohe praeguse kõne jooksul?"),
+        ("et", "Sõber hõikas mulle koridoris pakaa, aga ma kuulan sind edasi, mis kell kohtumine algab?"),
+        ("et", "Olgu, aitäh selle esimese punkti eest, aga vaatame nüüd kohe ka teist tellimust."),
+        ("et", "Mõtlesin juba öelda, et hea küll, ma lõpetan, aga mul tuli meelde veel üks oluline detail."),
+        ("et", "Ütlesin kolleegile, et pean nüüd minema teise tuppa telefoniga rääkima, nii et kuulan teid rahulikult."),
+        ("et", "Kui me räägime hiljem üksikasjadest, siis kas saame vähemalt kuupäeva kohe praegu lukku panna?"),
+        ("et", "Tänan kõne eest muide, tahtsingi teilt just küsida, kuidas eilne ülevaatus läks."),
+        ("et", "Arvasin juba, et rohkem küsimusi pole, kuid kas parkimine on hoovis ikka tasuta?"),
+        ("et", "Tšau, kas sul on praegu hetk aega telefonis rääkida?"),
+        ("et", "Tsau, helistan sulle selle homse väljasõidu pärast, kas kuuled mind?"),
+        ("et", "Hei, oota korraks, ära veel kõnet katkesta, mul jäi kellaaeg küsimata."),
+        ("lv", "Iepriekšējais operators pateica tikai uz redzēšanos un nolika klausuli, tāpēc lūdzu pārbaudiet manu pieteikumu vēlreiz."),
+        ("lv", "Pirms sakām uz sadzirdēšanos, vai varat vēlreiz nosaukt kabineta numuru?"),
+        ("lv", "Bērns tikko koridorā sauca atā kaimiņam, nepievērs uzmanību, es klausos tevi tālāk."),
+        ("lv", "Es jums protams novēlu visu labu, bet vispirms lūdzu paskaidrojiet, kāpēc rēķinā ir šī papildu maksa."),
+        ("lv", "Konsultants man jau novēlēja jauku dienu, lai gan jautājums vēl nebija atrisināts, vai varam to pārbaudīt tagad?"),
+        ("lv", "Vai šo rezervāciju var paturēt spēkā līdz rītdienai, vai man jāapstiprina uzreiz šīs sarunas laikā?"),
+        ("lv", "Mēs vakar norunājām, ka šodien sazvanāmies par līgumu, tāpēc iziesim tagad visiem punktiem cauri."),
+        ("lv", "Kur tieši mēs rīt tiekamies, pie galvenās ieejas vai pagalmā, pasaki pirms beidzam sarunu?"),
+        ("lv", "Kolēģis pie durvīm pateica uz saredzēšanos un devās mājās, bet es vēl esmu klausulē, turpiniet lūdzu."),
+        ("lv", "Es tikko pateicu bērnam ar labu nakti un aizvēru istabas durvis, tagad varu mierīgi ar tevi parunāt."),
+        ("lv", "Labi, paldies par šo pirmo jautājumu, un tagad pāriesim pie nākamā punkta."),
+        ("lv", "Es tikko pateicu kolēģim, ka man tagad jāiet klusākā telpā parunāt ar jums pa telefonu, tāpēc klausos."),
+        ("lv", "Pat ja mēs parunāsim vēlāk par detaļām, vai varam jau tagad vienoties par datumu?"),
+        ("lv", "Paldies par zvanu starp citu, es tieši grasījos jums jautāt par vakardienas piegādi."),
+        ("lv", "Domāju ka tas arī viss, bet pagaidiet mirkli, vai stāvvieta pie klīnikas ir bez maksas?"),
+        ("lv", "Operatora balss teica es jums atzvanīšu, bet neviens tā arī nezvanīja, tāpēc lūdzu palīdziet man tagad."),
+        ("lv", "Čau, vai tu šobrīd vari brīdi parunāt pa telefonu?"),
+        ("lv", "Sveiki, es zvanu, lai precizētu rītdienas vizītes laiku."),
+        ("lt", "Ankstesnis konsultantas pasakė tik viso gero ir padėjo ragelį, todėl norėčiau dabar viską ramiai išsiaiškinti."),
+        ("lt", "Mūsų skyrius šiandien dirba iki šeštos valandos, tad pasakykite, kuriuo metu jums patogiausia atvykti."),
+        ("lt", "Noriu sužinoti iš viso kiek kainuos remontas su visomis detalėmis, ar galite paskaičiuoti?"),
+        ("lt", "Prieš atsisveikinant ir sakant iki malonaus, patikslinkime dar kartą užsakymo kodą."),
+        ("lt", "Mums liko dar dvi dienos iki pasimatymo su gydytoju, todėl skambinu paklausti dėl tyrimų atsakymų."),
+        ("lt", "Tikiuosi sulaukti bent iki greito kurjerio skambučio, bet kol kas pasakykite, kur yra mano siunta."),
+        ("lt", "Vaikas čia šalia pasakė ate močiutei, bet aš vis dar prie telefono, tęskite prašau."),
+        ("lt", "Operatorius man jau palinkėjo geros dienos, nors problema liko neišspręsta, ar galite patikrinti sąskaitą?"),
+        ("lt", "Vakar sutarėme, kad šiandien susiskambinsime dėl sutarties sąlygų, tad gal peržiūrime jas dabar?"),
+        ("lt", "Linkiu mums visiems sėkmės su šiuo projektu, o dabar aptarkime antrojo etapo sąmatą."),
+        ("lt", "Gerai, ačiū už šį paaiškinimą, o dabar norėčiau paklausti apie kitą sąskaitos eilutę."),
+        ("lt", "Pasakiau kolegai, kad turiu bėgti į kitą kabinetą atsiliepti į jūsų skambutį, tad klausau jūsų."),
+        ("lt", "Net jei pasikalbėsime vėliau apie smulkmenas, ar galime jau dabar sutarti tikslią susitikimo dieną?"),
+        ("lt", "Ačiū už skambutį beje, kaip tik ketinau jums skambinti ir paklausti dėl rytdienos pristatymo."),
+        ("lt", "Maniau, kad daugiau klausimų neturiu, bet palaukite, ar automobilių aikštelė prie įėjimo yra nemokama?"),
+        ("lt", "Vakar pažadėjote, kad aš jums perskambinsiu, bet skambučio nesulaukiau, todėl prašau patikrinti dabar."),
+        ("lt", "Čiau, ar turi dabar porą minučių pakalbėti telefonu?"),
+        ("be", "Ён выйшаў з кабінета і не сказаў да пабачэння, таму я тэлефаную ўдакладніць дэталі."),
+        ("be", "Калі ласка, бывайце ў нас часцей на выхадных, а цяпер узгоднім час сустрэчы."),
+        ("be", "Яна напісала бывай у паведамленні, але паслухай, што я хачу прапанаваць."),
+        ("be", "Скажыце зручны для вас дзень, пакуль я правяраю расклад у сістэме."),
+        ("be", "Гэтая гісторыя скончылася вельмі шчасліва, а цяпер пяройдзем да вашага пытання."),
+        ("be", "Засталося мала часу да сустрэчы, таму давайце хутка праверым спіс дакументаў."),
+        ("be", "Заяўку можна падаць да заўтра, таму давайце запоўнім усе палі зараз."),
+        ("be", "У лісце было напісана да хуткай сустрэчы, але давайце спачатку вызначым дату."),
+        ("be", "Ён пажадаў калегам усяго добрага і перадаў мне слухаўку, каб мы працягнулі."),
+        ("be", "Мы жадаем кліентам усяго найлепшага, таму зараз падрабязна разбяром вашу сітуацыю."),
+        ("be", "Лекар сказаў мне беражы сябе і не хвалюйся, а цяпер раскажы свае навіны."),
+        ("be", "Дзеці ўжо сказалі дабранач і леглі спаць, таму цяпер мы можам спакойна пагаварыць."),
+        ("be", "Задам толькі адно кароткае пытанне і не буду вас больш затрымліваць, паслухайце."),
+        ("be", "Каб пасля не казаць што мне трэба бегчы, давай зараз спакойна ўсё абмяркуем."),
+        ("be", "Яшчэ няскора мне пара ісці, таму можаш смела расказваць усе падрабязнасці."),
+        ("be", "Пра іншыя праекты пазней пагаворым, а зараз давай вырашым галоўнае пытанне."),
+        ("be", "Я думаў што на гэтым усё, але раптам узгадаў яшчэ адзін важны момант."),
+        ("be", "Калі раптам сувязь абарвецца і я мушу класці слухаўку, адразу набярыце мяне зноў."),
+        ("be", "Алё, добры дзень, хачу запісацца на прыём да спецыяліста."),
+        ("be", "Алё, добры вечар, прабачце за позні званок."),
+        ("be", "Алё, добрага дня, чым магу вам сёння дапамагчы?"),
+        ("be", "Алё, добрага вечара, падкажыце, ці ёсць вольныя месцы на заўтра?"),
+        ("ta", "முன்னாடி பேசின ஊழியர் உடனே 'சரி, வைக்கிறேன்'னு சொல்லிட்டு இணைப்பைத் துண்டிச்சிட்டாரு, அதான் மறுபடியும் கூப்பிட்டேன்."),
+        ("ta", "பக்கத்து மேசையில என் சக ஊழியர் வேற போன்ல 'சரிங்க, வச்சிடறேன்'னு சொல்றாரு, நீங்க தொடர்ந்து சொல்லுங்க."),
+        ("ta", "வாசல்ல கொரியர் ஊழியர் 'போயிட்டு வரேன்'னு சொல்லிட்டு கிளம்புறாரு, ஆனா நாம இப்போ ரசீதை சரிபார்ப்போம்."),
+        ("ta", "வரவேற்பாளர் என்கிட்ட 'போயிட்டு வாங்க'ன்னு சொல்லிட்டாங்க, ஆனா மருத்துவர் நேரத்தை மாத்திட்டாரான்னு இப்போ உங்ககிட்ட கேட்கணும்."),
+        ("ta", "இன்னும் கொஞ்ச நேரத்துல அலுவலகத்துக்கு வரேன், அதுக்குள்ள என்னென்ன ஆவணம் வேணும்னு இப்போவே சொல்லுங்க."),
+        ("ta", "மத்த விஷயத்தை அப்புறம் பேசலாம், இப்போ முதல்ல நாளைக்கு வர வேண்டிய நேரத்தை முடிவு பண்ணுவோம்."),
+        ("ta", "பட்டியல்ல வேற தேதி இருக்கான்னு இப்போவே பார்க்கலாம், ஒரு நிமிஷம் காத்திருங்க."),
+        ("ta", "மேலதிகாரிகிட்ட நாளைக்கு பேசலாம், ஆனா இப்போதைக்கு விண்ணப்ப எண்ணை எனக்குச் சொல்லுங்க."),
+        ("ta", "மருத்துவர் 'உடம்பை பார்த்துக்கோங்க'ன்னு சொன்னதோட சரி, அடுத்த பரிசோதனை எப்போதுன்னு நீங்க பார்த்துச் சொல்லுங்க."),
+        ("ta", "கிளம்பும்போது எல்லாரும் 'பத்திரமா போயிட்டு வாங்க'ன்னு சொன்னாங்க, இப்போ வழியில இருந்துதான் உங்ககிட்ட முகவரி கேட்கிறேன்."),
+        ("ta", "பக்கத்துல தோழி வேற போன்ல 'சரி, பாய்'னு சொல்றாங்க, நம்ம இணைப்புல எந்தப் பிரச்சினையும் இல்ல, சொல்லுங்க."),
+        ("ta", "சரி அப்போ, அடுத்ததா எந்த ஆவணத்தை எடுத்து வைக்கணும்னு சொல்லுங்க."),
+        ("ta", "சரிங்க, நீங்க சொல்றதைக் குறித்துக்கிறேன், மேற்கொண்டு முழு விவரத்தையும் சொல்லுங்க."),
+        ("ta", "கொரியர் ஊழியர் 'நான் அப்புறம் கூப்பிடுறேன்'னு சொன்னாரு, அதுக்குள்ள நாம முகவரியைச் சரிபார்த்துக்கலாம்."),
+        ("ta", "ரசீதுல வேற ஒண்ணும் இல்ல, அதனால இப்போ நேரடியா கட்டண விவரத்தை எனக்கு விளக்குங்க."),
+        ("ta", "இவ்வளவு சீக்கிரம் எடுத்ததுக்கு ரொம்ப நன்றிங்க, இப்போ என் கோரிக்கை என்னன்னா முகவரியை மாத்தணும்."),
+        ("ta", "பார்சல் வர வேண்டிய நேரமாச்சு, இன்னும் ஏன் வரலைன்னு இப்போ கொஞ்சம் விசாரிச்சுச் சொல்றீங்களா?"),
+        ("ta", "வணக்கம், மருத்துவமனை முன்பதிவு பத்தி விசாரிக்க கூப்பிட்டேன்."),
+        ("he", "אמרתי לו תודה ויום טוב והוא המשיך לדבר, אז מה עם התור שלי?"),
+        ("he", "ויום טוב גם לך, רציתי לשאול אם יש תור פנוי מחר."),
+    ];
+
+    #[test]
+    fn lookalikes_do_not_close() {
+        let mut bad = Vec::new();
+        for (lang, t) in LOOKALIKES {
+            for opening in [true, false] {
+                let mut m = if opening { ClosingMachine::new(lang) } else { after_talk(lang) };
+                let s = hears(&mut m, t);
+                if closes(&s) {
+                    bad.push(format!("[{lang}] opening={opening} {t} -> {:?} ends={}", s.event, s.ends_call));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// Thanks alone is thanks, not a goodbye.
+    const BARE_THANKS: &[(&str, &str)] = &[
+        ("he", "תודה רבה."),
+        ("he", "תודה."),
+        ("tl", "maraming salamat po."),
+        ("tl", "maraming salamat."),
+        ("tl", "salamat po."),
+        ("bn", "অনেক ধন্যবাদ."),
+        ("bn", "ধন্যবাদ."),
+        ("ur", "بہت بہت شکریہ."),
+        ("ur", "بہت شکریہ."),
+        ("ur", "شکریہ."),
+        ("si", "බොහොම ස්තූතියි."),
+        ("si", "ස්තූතියි."),
+        ("si", "ස්තුතියි."),
+        ("my", "ကျေးဇူးအများကြီးတင်ပါတယ်"),
+        ("my", "ကျေးဇူးတင်ပါတယ်"),
+        ("my", "ကျေးဇူးပါ"),
+        ("lo", "ຂອບໃຈຫຼາຍໆເດີ້"),
+        ("lo", "ຂອບໃຈຫຼາຍໆ"),
+        ("lo", "ຂອບໃຈຫຼາຍ"),
+        ("mn", "их баярлалаа."),
+        ("mn", "баярлалаа."),
+        ("fa", "خیلی ممنونم."),
+        ("fa", "خیلی ممنون."),
+        ("fa", "ممنونم."),
+        ("ps", "ډېره مننه."),
+        ("ps", "ډیره مننه."),
+        ("ps", "مننه."),
+        ("az", "çox təşəkkür edirəm."),
+        ("az", "təşəkkür edirəm."),
+        ("az", "təşəkkürlər."),
+        ("hy", "շատ շնորհակալ եմ."),
+        ("hy", "շնորհակալություն."),
+        ("hy", "շնորհակալ եմ."),
+        ("ka", "დიდი მადლობა."),
+        ("ka", "მადლობა."),
+        ("ka", "გმადლობთ."),
+        ("sw", "asante sana."),
+        ("sw", "asanteni."),
+        ("sw", "asante."),
+        ("am", "በጣም አመሰግናለሁ."),
+        ("am", "አመሰግናለሁ."),
+        ("am", "እናመሰግናለን."),
+        ("af", "baie dankie."),
+        ("af", "dankie."),
+        ("et", "suur aitäh."),
+        ("et", "aitäh."),
+        ("et", "tänan väga."),
+        ("lv", "liels paldies."),
+        ("lv", "paldies."),
+        ("lt", "labai ačiū."),
+        ("lt", "ačiū."),
+        ("lt", "dėkoju."),
+        ("be", "вялікі дзякуй."),
+        ("be", "дзякуй вам."),
+        ("be", "дзякуй."),
+        ("ta", "ரொம்ப நன்றிங்க."),
+        ("ta", "ரொம்ப நன்றி."),
+        ("ta", "மிக்க நன்றி."),
+    ];
+
+    #[test]
+    fn bare_thanks_does_not_close() {
+        let mut bad = Vec::new();
+        for (lang, t) in BARE_THANKS {
+            let mut m = after_talk(lang);
+            let s = hears(&mut m, t);
+            if s.ends_call || s.event == ClosingEvent::CallerFarewell {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+}
+
+/// Two gaps simulated calls showed: a Greek wish with "σας" after thanks ("Σας ευχαριστώ
+/// πολύ και καλή σας μέρα!"), and a Vietnamese 「Em chào anh ạ」 after the matter was settled.
+/// The same words opening a call never close it.
+#[cfg(test)]
+mod parting_wish_gaps_tests {
+    use super::*;
+
+    fn hears(m: &mut ClosingMachine, t: &str) -> ClosingStep {
+        m.on_caller(t, t, crate::locale::caller_wraps_up(t), false)
+    }
+
+    fn closes(s: &ClosingStep) -> bool {
+        s.ends_call || matches!(s.event, ClosingEvent::CallerFarewell | ClosingEvent::CallerPreClosing)
+    }
+
+    /// The machine after the caller's first turn.
+    fn after(lang: &'static str, first: &str) -> ClosingMachine {
+        let mut m = ClosingMachine::new(lang);
+        hears(&mut m, first);
+        m
+    }
+
+    const EL_FIRST: &str = "Γεια σας, είμαι από το οδοντιατρείο, θέλουμε να μεταφέρουμε το ραντεβού σας.";
+    const VI_FIRST: &str =
+        "Em chào anh Quang ạ. Em gọi từ bên đơn vị giao hàng, không biết chiều mai anh có ở nhà để nhận hàng không ạ?";
+
+    fn all_end(lang: &'static str, first: &str, cases: &[&str]) -> Vec<String> {
+        let mut bad = Vec::new();
+        for t in cases {
+            let mut m = after(lang, first);
+            let s = hears(&mut m, t);
+            if s.event != ClosingEvent::CallerFarewell || !s.ends_call {
+                bad.push(format!("[{lang}] {t} -> {:?} ends={}", s.event, s.ends_call));
+            }
+        }
+        bad
+    }
+
+    #[test]
+    fn greek_wish_with_sas_after_thanks_ends_the_call() {
+        let mut bad = all_end("el", EL_FIRST, &[
+            "Ακριβώς, την Παρασκευή στις έντεκα. Σας ευχαριστώ πολύ και καλή σας μέρα!",
+            "Εντάξει, ευχαριστώ, καλή σας μέρα.",
+            "Ευχαριστώ πολύ, καλή σας ημέρα!",
+            "Τέλεια, σας ευχαριστώ και καλό σας απόγευμα.",
+            "Ωραία, ευχαριστούμε, καλό σας βράδυ!",
+        ]);
+        // After the AI's own "Επίσης, καλή σας μέρα." the caller's wish alone closes too.
+        let mut m = after("el", EL_FIRST);
+        m.on_ai_turn("Επίσης, καλή σας μέρα.", false, false);
+        let s = hears(&mut m, "Καλή σας μέρα!");
+        if s.event != ClosingEvent::CallerFarewell || !s.ends_call {
+            bad.push(format!("after the AI's wish -> {:?}", s.event));
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    #[test]
+    fn greek_wish_opening_or_mid_sentence_does_not_end_the_call() {
+        let mut bad = Vec::new();
+        for t in ["Καλή σας μέρα, είμαι από την τράπεζα και σας καλώ για την κάρτα σας.", "Καλή σας μέρα!", "Καλημέρα σας!"] {
+            let s = hears(&mut ClosingMachine::new("el"), t);
+            if closes(&s) {
+                bad.push(format!("opening {t} -> {:?}", s.event));
+            }
+        }
+        for t in [
+            "Καλή σας μέρα!",
+            "Μου είπε καλή σας μέρα και μετά έκλεισε, τι έγινε με το ραντεβού;",
+            "Θέλω να ευχηθώ καλή σας μέρα σε όλη την ομάδα, αλλά πρώτα μια ερώτηση για την παραγγελία.",
+        ] {
+            let s = hears(&mut after("el", EL_FIRST), t);
+            if closes(&s) {
+                bad.push(format!("mid-call {t} -> {:?}", s.event));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    #[test]
+    fn vietnamese_chao_after_the_settled_matter_ends_the_call() {
+        let bad = all_end("vi", VI_FIRST, &[
+            "Dạ vâng, vậy em sẽ gửi lại quầy lễ tân cho anh nhé. Em chào anh ạ.",
+            "Vâng, chiều mai ba giờ em giao nhé, chào anh ạ.",
+            "Ok chị, em ghi lại rồi, em chào chị ạ.",
+            "Dạ em hiểu rồi, mai em gọi lại sau, tôi chào anh.",
+        ]);
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    #[test]
+    fn vietnamese_chao_opening_does_not_end_the_call() {
+        let mut bad = Vec::new();
+        for t in ["Em chào anh ạ, em gọi từ bên giao hàng", "Em chào anh ạ.", "Alo, chào anh ạ", "Dạ, cháu chào anh ạ."] {
+            let s = hears(&mut ClosingMachine::new("vi"), t);
+            if closes(&s) {
+                bad.push(format!("opening {t} -> {:?}", s.event));
+            }
+        }
+        // A first turn of greetings only: the greeting in the next turn still opens the call.
+        let mut m = after("vi", "Alo?");
+        let s = hears(&mut m, "Em chào anh ạ.");
+        if closes(&s) {
+            bad.push(format!("second greeting -> {:?}", s.event));
+        }
+        let s = hears(&mut after("vi", VI_FIRST), "Em chào anh, em gọi lại về đơn hàng hôm qua ạ");
+        if closes(&s) {
+            bad.push(format!("mid-call greeting first -> {:?}", s.event));
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// The Vietnamese rule is Vietnamese only: elsewhere a greeting-goodbye after the
+    /// caller's own words still waits for thanks (or the AI's goodbye) before it.
+    #[test]
+    fn other_languages_keep_the_thanks_rule_for_greeting_goodbyes() {
+        let first = "Parcel delivery info";
+        let mut bad = Vec::new();
+        for (lang, t) in [
+            ("id", "Paketnya saya antar besok pagi, selamat siang"),
+            ("es", "Le llevo el paquete mañana por la mañana, buenas tardes"),
+            ("de", "Ich bringe das Paket morgen vorbei, servus"),
+            ("he", "החבילה תגיע מחר בבוקר, שלום"),
+        ] {
+            let s = hears(&mut after(lang, first), t);
+            if closes(&s) {
+                bad.push(format!("[{lang}] without thanks {t} -> {:?}", s.event));
+            }
+        }
+        for (lang, t) in [
+            ("id", "Baik, terima kasih, selamat siang."),
+            ("de", "Alles klar, danke, servus!"),
+            ("he", "תודה, שלום."),
+            ("vi", "Cảm ơn anh, chào anh ạ"),
+        ] {
+            let s = hears(&mut after(lang, first), t);
+            if s.event != ClosingEvent::CallerFarewell || !s.ends_call {
+                bad.push(format!("[{lang}] with thanks {t} -> {:?}", s.event));
             }
         }
         assert!(bad.is_empty(), "{}", bad.join("\n"));

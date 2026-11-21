@@ -1873,10 +1873,10 @@ mod tests {
     use crate::locale::Lang;
 
     /// The 27 languages the database covers.
-    const LANGS: [&str; 42] = [
+    const LANGS: [&str; 61] = [
         "zh-TW", "zh-CN", "en", "es", "fr", "de", "pt", "it", "vi", "id", "ms", "tl", "tr", "ru", "ja", "ko", "hi", "ar", "th",
         "nl", "pl", "ro", "uk", "bn", "mr", "ta", "te", "sv", "nb", "da", "fi", "is", "cs", "sk", "hu", "bg", "el", "hr", "sr",
-        "sl", "mk", "sq",
+        "sl", "mk", "sq", "he", "ur", "ne", "si", "my", "lo", "mn", "fa", "ps", "az", "hy", "ka", "sw", "am", "af", "et", "lv", "lt", "be",
     ];
 
     fn temp_dir(tag: &str) -> PathBuf {
@@ -4573,6 +4573,592 @@ mod added_countries_4_tests {
             "您好，這裡是銀行，您的新卡已經寄出，請注意查收",
             "你好，快递到了，放门口可以吗",
             "Hi, this is the clinic, your appointment moved to Friday, and your insurance policies are on file",
+            "Hola, le llamo del banco, su tarjeta nueva ya está en la oficina, la policía local cortó la calle",
+            "Bonjour, la pharmacie, votre commande est prête, la police municipale a fermé la rue",
+            "Guten Tag, Ihre Bank, die neue Karte ist da, die Polizei hat die Straße gesperrt",
+            "Olá, é da clínica, a sua consulta passou para sexta, a polícia fechou a rua",
+            "もしもし、病院です、予約が金曜日に変わりました",
+            "여보세요, 택배입니다, 내일 오전에 도착합니다",
+        ];
+        let mut bad = Vec::new();
+        for t in calls {
+            let (e, s, h) = live(t);
+            if e {
+                bad.push(format!("engaged (score={s} hits={h:?}): {t}"));
+            }
+            if keyword_hits(t).iter().any(|k| NEW_LANGS.contains(&db().keyword(k.text).map_or("", |kw| kw.lang.as_str()))) {
+                bad.push(format!("a new-language word heard in: {t} {h:?}"));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+}
+
+/// Fifth batch: Asia, the Middle East, Africa, Latin America and the Baltics (Singapore,
+/// Malaysia, the Philippines, New Zealand, Israel, Mongolia, Myanmar, Laos, Bangladesh,
+/// Pakistan, Nepal, Sri Lanka, Afghanistan, Ireland, the Spanish-speaking Americas, Uruguay,
+/// Belarus, Estonia, Latvia, Lithuania, the Levant, the Maghreb, Iran, Azerbaijan, Armenia,
+/// Georgia, South Africa, East Africa, Haiti, Madagascar, Macao and the Gulf) and the scam
+/// types a few listed countries were missing. Run through the live engage rule.
+#[cfg(test)]
+mod added_countries_5_tests {
+    use super::*;
+
+    const NEW_COUNTRIES: [&str; 58] = [
+        "sg", "my", "ph", "nz", "il", "mn", "mm", "la", "bd", "pk", "np", "lk", "af", "ie", "co", "pe", "cl", "ec", "ve", "bo",
+        "py", "gt", "hn", "sv", "ni", "cr", "pa", "cu", "do", "pr", "uy", "by", "ee", "lv", "lt", "lb", "jo", "sy", "ps", "iq",
+        "ma", "dz", "tn", "ir", "az", "am", "ge", "za", "ke", "tz", "et", "mg", "ht", "mo", "qa", "kw", "bh", "om",
+    ];
+    const NEW_LANGS: [&str; 19] =
+        ["he", "ur", "ne", "si", "my", "lo", "mn", "fa", "ps", "az", "hy", "ka", "sw", "am", "af", "et", "lv", "lt", "be"];
+
+    /// gemini_live::stall_score_add + stall_engages, step by step: a keyword inside a
+    /// longer one heard with it counts once, as the longer one.
+    fn live(text: &str) -> (bool, u32, Vec<&'static str>) {
+        let found: Vec<(&'static str, u32)> = keyword_hits(text).into_iter().map(|h| (h.text, h.weight)).collect();
+        let longer = |kw: &str, k: &str| k.len() > kw.len() && k.contains(kw);
+        let mut hits: Vec<&'static str> = Vec::new();
+        let mut score = 0;
+        for &(kw, w) in &found {
+            if hits.contains(&kw) || found.iter().any(|&(k, _)| longer(kw, k)) || hits.iter().any(|&h| longer(kw, h)) {
+                continue;
+            }
+            hits.push(kw);
+            score += w;
+        }
+        let engaged = hits.iter().any(|h| is_hard(h)) || (score >= 3 && hits.iter().any(|h| keyword(h).map_or(0, |k| k.weight) >= 2));
+        (engaged, score, hits)
+    }
+
+    fn from_country(iso: &str, text: &str) -> bool {
+        keyword_hits(text).iter().any(|h| {
+            db().country_kw_map
+                .get(&normalized_hit_key(h.text))
+                .is_some_and(|pairs| pairs.iter().any(|(i, _)| i == iso))
+        })
+    }
+
+    type Row = (&'static str, &'static [&'static str], &'static [&'static str]);
+
+    /// Country, typical scams in its language, ordinary calls (bank, courier, clinic).
+    const ROWS: &[Row] = &[
+        (
+            "il",
+            &[
+                "שלום, מדברים ממחלקת הביטחון של הבנק, זוהתה פעולה חשודה, תקריא לי את קוד האימות במסרון",
+                "כאן משטרת ישראל, היה ניסיון פריצה לחשבון, צריך להוריד אפליקציה לתמיכה מרחוק ואסור לספר לאף אחד",
+                "החבילה שלך מעוכבת בבדיקת מכס, תן לי מספר כרטיס אשראי ושלוש ספרות כדי לשחרר אותה",
+            ],
+            &[
+                "שלום, מדברים מהבנק, הכרטיס החדש שלך מחכה בסניף, אפשר לאסוף אותו עם תעודת זהות",
+                "היי, זה השליח, אני מגיע מחר בין עשר לשתים עשרה עם החבילה",
+                "שלום, מהמרפאה, רצינו להזיז את התור שלך מיום חמישי ליום שישי",
+            ],
+        ),
+        (
+            "my",
+            &[
+                "Saya pegawai polis, ada waran tangkap atas nama encik, pindahkan wang untuk audit ke akaun selamat",
+                "Ini bahagian keselamatan bank, ada transaksi mencurigakan, sila beri kod pengesahan transaksi dan nombor PIN",
+                "Bungkusan encik ditahan kastam, ada dokumen haram dalam bungkusan, saya sambungkan talian ke balai polis",
+            ],
+            &[
+                "Selamat pagi, ini dari bank, kad debit baru encik sudah sampai di cawangan, boleh ambil dengan kad pengenalan",
+                "Hello encik, saya kurier, bungkusan sampai esok pagi, ada orang di rumah tak",
+                "Selamat petang, ini klinik, temujanji encik hari Khamis kami tukar ke hari Jumaat",
+            ],
+        ),
+        (
+            "ph",
+            &[
+                "Hi sir, this is your bank, there is an unauthorized charge, please read out the OTP and the CVV number",
+                "This is the telecommunications commission, we will deactivate your SIM today unless you settle a clearance fee",
+                "Para ma-unlock higher tasks, kailangan mo munang mag top-up deposit at send funds first",
+            ],
+            &[
+                "Hi po, this is the bank, your new debit card is ready at the branch, you can pick it up any time",
+                "Hello sir, rider po ito, nandito na ako sa labas ng gate niyo with your parcel",
+                "Good morning, this is the clinic, your check-up on Thursday is moved to Friday",
+            ],
+        ),
+        (
+            "bd",
+            &[
+                "আমি মোবাইল ব্যাংকিং কাস্টমার কেয়ার থেকে বলছি, আপনার পিন নম্বর বলুন, না হলে অ্যাকাউন্ট লক হয়ে যাবে",
+                "আপনার নামে মামলা হয়েছে, মামলা নিষ্পত্তি করতে টাকা লাগবে, এখনই টাকা পাঠান",
+                "আপনি লটারি জিতেছেন, পুরস্কারের টাকা পেতে ট্যাক্সের টাকা আগে পাঠান",
+            ],
+            &[
+                "আসসালামু আলাইকুম, ব্যাংক থেকে বলছি, আপনার নতুন কার্ড শাখায় এসেছে, এসে নিয়ে যাবেন",
+                "ভাই, কুরিয়ার থেকে বলছি, আপনার পার্সেল কাল সকালে পৌঁছাবে",
+                "নমস্কার, ক্লিনিক থেকে বলছি, আপনার বৃহস্পতিবারের অ্যাপয়েন্টমেন্ট শুক্রবারে সরানো হয়েছে",
+            ],
+        ),
+        (
+            "pk",
+            &[
+                "سرکاری امداد کی نئی قسط آئی ہے، پہلے رجسٹریشن فیس جمع کروائیں اور جو کوڈ آیا ہے وہ بتائیں",
+                "میں ٹیلی کام اتھارٹی سے بات کر رہا ہوں، پانچ منٹ میں سم بند ہو جائے گی، او ٹی پی کوڈ بتائیں",
+                "بینک ہیلپ لائن سے بات ہو رہی ہے، مشکوک ٹرانزیکشن ہوئی ہے، کارڈ کے پیچھے تین ہندسے اور اے ٹی ایم پن بتائیں",
+            ],
+            &[
+                "السلام علیکم، بینک سے بات ہو رہی ہے، آپ کا نیا کارڈ برانچ میں آ گیا ہے، آ کر لے لیں",
+                "جی، کورئیر والا بول رہا ہوں، آپ کا پارسل کل صبح پہنچ جائے گا",
+                "السلام علیکم، کلینک سے بات ہو رہی ہے، آپ کی جمعرات والی اپوائنٹمنٹ جمعہ کو کر دی ہے",
+            ],
+        ),
+        (
+            "np",
+            &[
+                "तपाईंको केवाईसी अपडेट गर्नुपर्छ, ओटीपी कोड भन्नुहोस्, नत्र खाता बन्द हुन्छ",
+                "विदेशबाट पार्सल आएको छ, भन्सार कर पठाउनुहोस्, नत्र पार्सल जफत हुन्छ",
+                "घरमै बसेर काम छ, तपाईंको खाता भाडामा दिनुस्, कमिशन आउँछ",
+            ],
+            &[
+                "नमस्ते, बैंकबाट बोलेको, तपाईंको नयाँ कार्ड शाखामा आइसकेको छ",
+                "हजुर, कुरियरबाट बोलेको, तपाईंको सामान भोलि बिहान आइपुग्छ",
+                "नमस्ते, क्लिनिकबाट बोलेको, बिहीबारको भेट शुक्रबार सारिएको छ",
+            ],
+        ),
+        (
+            "lk",
+            &[
+                "ඔබට රථවාහන දඩ මුදලක් තියෙනවා, වහාම දඩය ගෙවන්න, OTP අංකය කියන්න",
+                "බැංකු ගිණුමේ සැකකටයුතු ගනුදෙනුවක් තියෙනවා, OTP කේතය දෙන්න",
+                "ඔබේ තැපැල් පාර්සලය රඳවාගෙන තියෙනවා, ලින්ක් එකෙන් ගෙවන්න",
+            ],
+            &[
+                "ආයුබෝවන්, බැංකුවෙන් කතා කරන්නේ, ඔබේ අලුත් කාඩ්පත ශාඛාවට ඇවිත් තියෙනවා",
+                "හලෝ, කූරියර් එකෙන්, ඔබේ පාර්සලය හෙට උදේ ගෙනෙනවා",
+                "ආයුබෝවන්, සායනයෙන්, බ්‍රහස්පතින්දා වෙලාව සිකුරාදාට මාරු කළා",
+            ],
+        ),
+        (
+            "mm",
+            &[
+                "ဘဏ်ဝန်ဆောင်မှုကပါ၊ အကောင့်အဆင့်မြှင့်ဖို့ OTP နံပါတ်ပြောပြပါ",
+                "ကံစမ်းမဲပေါက်ပါတယ်၊ ဆုကြေးငွေရဖို့ ကြိုတင်ငွေလွှဲရမည်",
+                "နေ့စဉ်အတိုးအမြတ်ရမည်၊ ငွေထုတ်ရန်အခွန်အရင်သွင်းပါ",
+            ],
+            &[
+                "မင်္ဂလာပါ၊ ဘဏ်ကပါ၊ ကတ်အသစ်ရောက်နေပြီ၊ ဘဏ်ခွဲမှာလာယူလို့ရပါတယ်",
+                "မင်္ဂလာပါ၊ ပါဆယ်ပို့တဲ့သူပါ၊ မနက်ဖြန်မနက်ရောက်မယ်",
+                "မင်္ဂလာပါ၊ ဆေးခန်းကပါ၊ ကြာသပတေးနေ့ချိန်းကို သောကြာနေ့ပြောင်းထားပါတယ်",
+            ],
+        ),
+        (
+            "la",
+            &[
+                "ສະບາຍດີ, ຈາກທະນາຄານ, ບັນຊີຖືກລະງັບ, ກະລຸນາບອກລະຫັດ OTP",
+                "ລູກເກີດອຸບັດຕິເຫດ, ໂອນເງິນມາດ່ວນດຽວນີ້, ຢ່າຟ້າວບອກໃຜ",
+                "ທ່ານຖືກລາງວັນ, ໂອນຄ່າທຳນຽມກ່ອນ",
+            ],
+            &[
+                "ສະບາຍດີ, ຈາກທະນາຄານ, ບັດໃໝ່ຂອງທ່ານມາຮອດສາຂາແລ້ວ",
+                "ສະບາຍດີ, ຂົນສົ່ງ, ພັດສະດຸຈະຮອດມື້ອື່ນເຊົ້າ",
+                "ສະບາຍດີ, ຄລີນິກ, ນັດວັນພະຫັດປ່ຽນເປັນວັນສຸກ",
+            ],
+        ),
+        (
+            "mn",
+            &[
+                "Сайн байна уу, утсанд очсон кодыг хэлээд өгөөч, баталгаажуулах дөрвөн оронтой код",
+                "Та сугалаанд ялж азтан боллоо, шагналаа авахын тулд урьдчилгаа шимтгэл шилжүүл",
+                "Дансаа түр ашиглуулаад урамшуулал ав, интернэт банкны нэвтрэх нэр өг",
+            ],
+            &[
+                "Сайн байна уу, банкнаас залгаж байна, таны шинэ карт салбарт ирсэн",
+                "Сайн байна уу, хүргэлтийн ажилтан байна, илгээмж маргааш өглөө очно",
+                "Сайн байна уу, эмнэлгээс залгаж байна, пүрэв гарагийн цагийг баасан руу шилжүүллээ",
+            ],
+        ),
+        (
+            "ir",
+            &[
+                "سلام، از طرف سامانه کالابرگ، برای ثبت اعتراض رمز پویا و اطلاعات کارت بانکی رو بگید",
+                "ابلاغیه قضایی دارید، حکم جلب صادر شده، هزینه دادرسی از طریق لینک رو پرداخت کنید",
+                "شما برنده قرعه کشی شدید، کد تایید پیامکی را بخوانید",
+            ],
+            &[
+                "سلام، از بانک تماس می‌گیرم، کارت جدیدتون به شعبه رسیده",
+                "سلام، پیک هستم، بسته‌تون فردا صبح می‌رسه",
+                "سلام، از مطب تماس می‌گیرم، نوبت پنجشنبه‌تون رو به جمعه منتقل کردیم",
+            ],
+        ),
+        (
+            "af",
+            &[
+                "مبارک شه، لویه جایزه مو ګټلې، د جایزې فیس او د کارت پټ کوډ راکړئ",
+                "زه د مخابراتو له دفتر څخه یم، د پیغام کوډ ووایاست او پټ نمبر راکړئ",
+            ],
+            &[
+                "السلام علیکم، له بانک څخه زنګ وهم، ستاسو نوی کارت څانګې ته راغلی",
+                "سلام، زه د ډاکټر له دفتر څخه یم، ستاسو وخت جمعې ته بدل شو",
+            ],
+        ),
+        (
+            "az",
+            &[
+                "Bank kartınızda şübhəli əməliyyat var, OTP kodu və CVV kodu deyin",
+                "Poçt bağlamanız saxlanılıb, kart məlumatlarını daxil edin və SMS təsdiq kodu göndərin",
+                "Kart hesabınızı icarəyə verin, köçürmələrdən faiz qazanacaqsınız",
+            ],
+            &[
+                "Salam, bankdan zəng edirik, yeni kartınız filiala çatıb",
+                "Salam, kuryerəm, bağlamanız sabah səhər gələcək",
+                "Salam, klinikadan zəng edirik, cümə axşamı növbənizi cüməyə keçirdik",
+            ],
+        ),
+        (
+            "am",
+            &[
+                "Բարև, օպերատորից ենք, 5G ակտիվացման համար պետք է էկրանի համօգտագործում միացնել և ասել հաստատման կոդ",
+                "Կենտրոնական բանկի անվտանգության բաժնից ենք, գումարը փոխանցեք անվտանգ հաշիվ և ասեք մեկանգամյա գաղտնաբառ",
+                "Երաշխավորված եկամուտ ամեն ամիս, շտապ ներդրում արեք",
+            ],
+            &[
+                "Բարև ձեզ, բանկից ենք զանգում, ձեր նոր քարտը մասնաճյուղում է",
+                "Բարև, առաքիչն եմ, ծանրոցը վաղը առավոտյան կբերեմ",
+                "Բարև ձեզ, կլինիկայից ենք, հինգշաբթի օրվա այցը տեղափոխեցինք ուրբաթ",
+            ],
+        ),
+        (
+            "ge",
+            &[
+                "გამარჯობა, ბანკის წარმომადგენელი ვარ, საეჭვო ტრანზაქციაა, მითხარით ერთჯერადი კოდი და CVV კოდი",
+                "ეროვნული ბანკიდან გირეკავთ, გადადით ბმულზე და შეიყვანეთ ავტორიზაციის მონაცემები",
+                "საინვესტიციო პლატფორმაზე გარანტირებული მოგება და სწრაფი გამდიდრება",
+            ],
+            &[
+                "გამარჯობა, ბანკიდან გირეკავთ, თქვენი ახალი ბარათი ფილიალშია",
+                "გამარჯობა, კურიერი ვარ, ამანათს ხვალ დილით მოგიტანთ",
+                "გამარჯობა, კლინიკიდან გირეკავთ, ხუთშაბათის ვიზიტი პარასკევზე გადავიტანეთ",
+            ],
+        ),
+        (
+            "ke",
+            &[
+                "Samahani, nimekosea namba, nimekutumia pesa kimakosa, rudisha pesa sasa hivi kwenye namba hii",
+                "Ile fedha tuma kwenye namba hii, usitumie huduma rasmi ya kurudisha, ingiza namba ya siri",
+            ],
+            &[
+                "Habari, ni benki, kadi yako mpya imefika tawini, unaweza kuja kuichukua",
+                "Habari, mimi ni mletaji wa mizigo, kifurushi chako kitafika kesho asubuhi",
+                "Habari, ni kliniki, miadi yako ya Alhamisi imehamishwa hadi Ijumaa",
+            ],
+        ),
+        (
+            "et",
+            &[
+                "ሰላም፣ ከባንክ ነው የምደውለው፣ አሁን የደረሰዎትን ኮድ ይንገሩኝ፣ አካውንትዎ እንዳይዘጋ",
+                "ሚስጥር ቁጥርዎን ያረጋግጡ፣ ይህን መተግበሪያ ይጫኑ",
+            ],
+            &[
+                "ሰላም፣ ከባንክ ነው፣ አዲሱ ካርድዎ ቅርንጫፍ ደርሷል",
+                "ሰላም፣ ከክሊኒክ ነው፣ የሐሙስ ቀጠሮዎ ወደ ዓርብ ተቀይሯል",
+            ],
+        ),
+        (
+            "ee",
+            &[
+                "Tere, kinnitage PIN1 ja seejärel sisestage PIN2, muidu ei saa hüvitist",
+                "Teie pangakonto on ohus, raha tuleb kanda turvakonto peale, ärge kellelegi rääkige",
+                "Investeerimisplatvorm annab garanteeritud tulu, aga väljamakse tasu tuleb enne maksta",
+            ],
+            &[
+                "Tere, pangast helistan, teie uus kaart on kontoris kättesaadav",
+                "Tere, kuller siin, pakk tuleb homme hommikul",
+                "Tere, kliinikust helistan, neljapäevane aeg tõsteti reedele",
+            ],
+        ),
+        (
+            "lv",
+            &[
+                "Labdien, jums ir sūtījums, lūdzu ievadiet PIN1 un apstipriniet ar PIN2",
+                "Tas ir kriminālprocess, nododiet skaidru naudu kurjeram, ielieciet karti pakomātā",
+                "Garantēta peļņa, tikai komisija par naudas izmaksu",
+            ],
+            &[
+                "Labdien, zvanu no bankas, jūsu jaunā karte ir filiālē",
+                "Labdien, kurjers, sūtījums būs rīt no rīta",
+                "Labdien, no klīnikas, jūsu ceturtdienas vizīte pārcelta uz piektdienu",
+            ],
+        ),
+        (
+            "lt",
+            &[
+                "Laba diena, banke įtartina operacija, patvirtinkite PIN1 ir suveskite PIN2, niekam nepasakokite",
+                "Močiute, avarija, skubiai reikia grynųjų, atvyks kurjeris paimti",
+                "Garantuotas pelnas, o paskui pinigų susigrąžinimo tarnyba paprašys išankstinis mokestis už grąžinimą",
+            ],
+            &[
+                "Laba diena, skambinu iš banko, jūsų nauja kortelė jau skyriuje",
+                "Laba diena, kurjeris, siunta atvyks rytoj ryte",
+                "Laba diena, iš klinikos, ketvirtadienio vizitas perkeltas į penktadienį",
+            ],
+        ),
+        (
+            "by",
+            &[
+                "Следственный комитет, вам нужно задекларировать наличные сбережения и передать деньги курьеру для проверки",
+                "Приложите карточку к смартфону и введите пин-код, установите обновление приложения из мессенджера",
+            ],
+            &[
+                "Добрый день, банк, ваша новая карточка в отделении",
+                "Добрый день, поликлиника, ваш приём перенесли с четверга на пятницу",
+            ],
+        ),
+        (
+            "sg",
+            &[
+                "This is the monetary authority, your bank account frozen due to money laundering, transfer funds for investigation to a safe account",
+                "Download remote access app and approve digital token, your device compromised",
+            ],
+            &[
+                "Hi, calling from the bank, your new debit card is ready for collection at the branch",
+                "Hello, delivery here, your parcel will reach tomorrow morning, anyone at home or not",
+                "Hi, this is the clinic, your appointment on Thursday moved to Friday",
+            ],
+        ),
+        (
+            "nz",
+            &[
+                "Your account compromised, move your funds to a safe account and read out the verification code",
+                "Mum, I dropped my phone, new mobile number, transfer money urgently to this account",
+            ],
+            &[
+                "Kia ora, it's the bank, your new card's ready at the branch",
+                "Hi, courier here, I'll drop the parcel off tomorrow morning",
+            ],
+        ),
+        (
+            "ie",
+            &[
+                "This is the fraud team, move your money to a safe account, a courier to collect your bank card is on the way",
+                "There is an immediate arrest warrant, pay immediately by gift vouchers",
+            ],
+            &[
+                "Hiya, it's the bank, your new card is in the branch for you",
+                "Hello, An Post here, the parcel will be with you tomorrow",
+            ],
+        ),
+        (
+            "co",
+            &[
+                "Le hablamos del área de seguridad, deme la clave dinámica y el código enviado por mensaje",
+                "Hola tía, soy yo, cambié mi número telefónico, necesito transferir dinero de inmediato",
+            ],
+            &[
+                "Buenos días, le llamamos del banco, su tarjeta nueva ya está en la oficina",
+                "Hola, le habla el mensajero, su paquete llega mañana en la mañana",
+            ],
+        ),
+        (
+            "uy",
+            &[
+                "Abuela, habla tu nieto, hay que entregar dólares o efectivo al contador, son billetes que salen de circulación",
+                "Pasame el código de seis números, el código que te llegó por mensaje, es para el turno de vacunación",
+            ],
+            &[
+                "Buenas, le llamo del banco, su tarjeta nueva está en la sucursal",
+                "Hola, del correo, el paquete llega mañana de mañana",
+            ],
+        ),
+        (
+            "lb",
+            &[
+                "مرحبا، من البنك، بدنا تحديث البيانات المصرفية، أعطيني رمز التحقق وأرقام البطاقة",
+                "وصلك رمز بالخطأ، اقرأ لي الكود الرمز المؤلف من ستة أرقام",
+            ],
+            &[
+                "مرحبا، من البنك، بطاقتك الجديدة صارت بالفرع",
+                "مرحبا، من العيادة، موعدك يوم الخميس صار يوم الجمعة",
+            ],
+        ),
+        (
+            "ma",
+            &[
+                "السلام عليكم، من البنك، عطيني رمز التأكيد السري والرقم السري للبطاقة",
+                "ربحت جائزة مالية، خاص دفع رسوم التسليم لاستلام الجائزة",
+            ],
+            &[
+                "السلام عليكم، من البنك، البطاقة الجديدة ديالك وصلات للوكالة",
+                "السلام عليكم، من العيادة، الموعد ديالك تبدل للجمعة",
+            ],
+        ),
+        (
+            "qa",
+            &[
+                "معك خدمة عملاء البنك، أعطني رمز التحقق واقبل طلب الدخول",
+                "معك التحريات والمباحث، عندك بلاغ مالي، لازم تحويل المبلغ لحساب آمن",
+            ],
+            &[
+                "مرحبا، من البنك، بطاقتك الجديدة جاهزة في الفرع",
+                "مرحبا، المندوب، الشحنة توصلك بكرة الصبح",
+            ],
+        ),
+        (
+            "mo",
+            &[
+                "你好，我是司法警察，你涉嫌洗黑錢，要做資金審查，開視頻辦案",
+                "會員到期自動續費，取消訂閱要開啟共享屏幕，再報一次性密碼",
+            ],
+            &[
+                "你好，銀行這邊，你的新卡已經到分行了，可以來拿",
+                "你好，快遞，包裹明天上午送到",
+            ],
+        ),
+        (
+            "za",
+            &[
+                "This is the fraud department, read out the one-time PIN and approve the reversal prompt",
+                "Your identity number linked to illegal SIM registration, I am transferring you to a police officer, pay bail or clearance fee",
+            ],
+            &[
+                "Howzit, it's the bank, your new card is at the branch",
+                "Hi, courier here, I'll be there tomorrow morning with the parcel",
+            ],
+        ),
+    ];
+
+    #[test]
+    fn every_new_country_has_a_profile_in_its_languages() {
+        for iso in NEW_COUNTRIES {
+            let cp = db().countries.get(iso).unwrap_or_else(|| panic!("missing {iso}"));
+            assert!(!cp.scams.is_empty(), "{iso}");
+            for sc in &cp.scams {
+                assert!(cp.languages.contains(&sc.lang), "{iso}/{}: {} not among {:?}", sc.id, sc.lang, cp.languages);
+            }
+        }
+        for lang in NEW_LANGS {
+            assert!(db().languages().contains(&lang), "{lang} has no keywords");
+        }
+    }
+
+    #[test]
+    fn scams_are_caught_by_their_own_countrys_words() {
+        let mut bad = Vec::new();
+        for (iso, scams, _) in ROWS {
+            for t in scams.iter() {
+                let (e, s, h) = live(t);
+                if !e || !from_country(iso, t) {
+                    bad.push(format!("{iso}: scam not caught (engaged={e} score={s} hits={h:?}): {t}"));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    #[test]
+    fn ordinary_bank_courier_and_clinic_calls_stay_quiet() {
+        let mut bad = Vec::new();
+        for (iso, _, ordinary) in ROWS {
+            for t in ordinary.iter() {
+                let (e, s, h) = live(t);
+                let strong = keyword_hits(t).iter().any(|k| k.weight >= 2 && from_country(iso, k.text));
+                if e || strong {
+                    bad.push(format!("{iso}: ordinary call hit (engaged={e} score={s} hits={h:?}): {t}"));
+                }
+            }
+            let all = ordinary.join(" ");
+            let (e, s, h) = live(&all);
+            if e {
+                bad.push(format!("{iso}: ordinary calls together engaged (score={s} hits={h:?})"));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// Country words are weight 2 at most and never scam-only on their own; the
+    /// scam-only words of the new languages live in data/scam_db.json.
+    #[test]
+    fn new_country_keywords_are_weight_two_at_most_and_never_hard() {
+        let mut bad = Vec::new();
+        for iso in NEW_COUNTRIES {
+            for sc in &db().countries[iso].scams {
+                if !sc.id.starts_with(&format!("{iso}_")) {
+                    continue;
+                }
+                for rf in &sc.red_flag_keywords {
+                    if rf.hard || rf.weight != 2 {
+                        bad.push(format!("{iso}/{}: {:?} weight {} hard {}", sc.id, rf.text, rf.weight, rf.hard));
+                    }
+                }
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// Each new language: a scam-only demand engages at once; a common word of
+    /// the same field (bank, parcel, clinic) does not, alone or together.
+    #[test]
+    fn new_language_lists_catch_demands_but_not_everyday_words() {
+        let demands: &[(&str, &str)] = &[
+            ("he", "תעביר את הכסף לחשבון מאובטח עכשיו"), ("he", "תקריא לי את קוד האימות שקיבלת"),
+            ("ur", "پیسے سیف اکاؤنٹ میں منتقل کریں"), ("ur", "مجھے او ٹی پی بتائیں"),
+            ("ne", "पैसा सुरक्षित खाता मा पठाउनुहोस्"), ("ne", "मलाई ओटीपी भन्नुहोस्"),
+            ("si", "මුදල් ආරක්ෂිත ගිණුමට දාන්න"), ("si", "OTP අංකය මට කියන්න"),
+            ("my", "ပိုက်ဆံကို လုံခြုံသောအကောင့်ထဲ လွှဲပါ"), ("my", "အတည်ပြုကုဒ် ပြောပြပါ"),
+            ("lo", "ໂອນເງິນເຂົ້າບັນຊີປອດໄພ"), ("lo", "ບອກລະຫັດຢືນຢັນໃຫ້ແດ່"),
+            ("mn", "Мөнгөө аюулгүй данс руу шилжүүл"), ("mn", "Баталгаажуулах код хэлээрэй"),
+            ("fa", "پول رو به حساب امن منتقل کنید"), ("fa", "رمز دوم کارتتون رو بگید"),
+            ("ps", "پیسې خوندي حساب ته واستوئ"), ("ps", "تایید کوډ راته ووایاست"),
+            ("az", "Pulu təhlükəsiz hesaba köçürün"), ("az", "Mənə təsdiq kodu deyin"),
+            ("hy", "Գումարը փոխանցեք անվտանգ հաշվին"), ("hy", "Ասեք հաստատման կոդը"),
+            ("ka", "ფული უსაფრთხო ანგარიშზე გადარიცხეთ"), ("ka", "მითხარით ერთჯერადი კოდი"),
+            ("sw", "Hamisha pesa kwenye akaunti salama"), ("sw", "Niambie namba ya siri"),
+            ("am", "ገንዘቡን ደህንነቱ የተጠበቀ አካውንት ያስገቡ"), ("am", "የማረጋገጫ ኮድ ይንገሩኝ"),
+            ("af", "Skuif die geld na 'n veilige rekening"), ("af", "Lees vir my die eenmalige PIN voor"),
+            ("et", "Kandke raha turvalisele kontole"), ("et", "Öelge mulle kinnituskood"),
+            ("lv", "Pārskaitiet naudu uz drošu kontu"), ("lv", "Pasakiet man apstiprinājuma kodu"),
+            ("lt", "Pervesk pinigus į saugią sąskaitą"), ("lt", "Pasakykite patvirtinimo kodą"),
+            ("be", "Перавядзіце грошы на бяспечны рахунак"), ("be", "Скажыце код пацвярджэння"),
+        ];
+        let everyday: &[(&str, &str)] = &[
+            ("he", "מהבנק לגבי חשבון הבנק שלך, החבילה מגיעה מחר, התור במרפאה זז"),
+            ("ur", "بینک سے آپ کے بینک اکاؤنٹ کے بارے میں، پارسل کل آئے گا، کلینک کی اپوائنٹمنٹ بدل گئی"),
+            ("ne", "बैंकबाट तपाईंको बैंक खाता बारे, पार्सल भोलि आउँछ, क्लिनिकको समय सारियो"),
+            ("si", "බැංකුවෙන් ඔබේ බැංකු ගිණුම ගැන, පාර්සලය හෙට එනවා, සායනයේ වෙලාව මාරු කළා"),
+            ("my", "ဘဏ်ကပါ ဘဏ်အကောင့်အကြောင်း၊ ပါဆယ်မနက်ဖြန်ရောက်မယ်၊ ဆေးခန်းချိန်းပြောင်းပြီ"),
+            ("lo", "ຈາກທະນາຄານເລື່ອງບັນຊີທະນາຄານ, ພັດສະດຸຮອດມື້ອື່ນ, ນັດຄລີນິກປ່ຽນແລ້ວ"),
+            ("mn", "Банкнаас таны банкны данс талаар, илгээмж маргааш ирнэ, эмнэлгийн цаг өөрчлөгдсөн"),
+            ("fa", "از بانک درباره حساب بانکی شما، بسته فردا می‌رسه، نوبت مطب عوض شد"),
+            ("ps", "له بانک څخه ستاسو د بانکي حساب په اړه، بسته سبا راځي، د ډاکټر وخت بدل شو"),
+            ("az", "Bankdan bank hesabı haqqında zəng edirik, bağlama sabah gəlir, həkim növbəsi dəyişdi"),
+            ("hy", "Բանկից ձեր բանկային հաշիվ մասին, ծանրոցը վաղը կգա, բժշկի այցը փոխվեց"),
+            ("ka", "ბანკიდან თქვენი საბანკო ანგარიში შესახებ, ამანათი ხვალ მოვა, ექიმთან ვიზიტი გადაიწია"),
+            ("sw", "Ni benki kuhusu akaunti ya benki yako, kifurushi kitafika kesho, miadi ya kliniki imehamishwa"),
+            ("am", "ከባንክ ስለ የባንክ አካውንት ነው፣ እቃው ነገ ይደርሳል፣ የክሊኒክ ቀጠሮ ተቀይሯል"),
+            ("af", "Die bank bel oor jou bankrekening, die pakkie kom môre, jou afspraak by die dokter is geskuif"),
+            ("et", "Pangast helistatakse teie pangakonto pärast, pakk tuleb homme, arsti aeg muutus"),
+            ("lv", "Zvana no bankas par jūsu bankas konts, sūtījums būs rīt, ārsta vizīte pārcelta"),
+            ("lt", "Skambina iš banko dėl jūsų banko sąskaita, siunta bus rytoj, gydytojo vizitas perkeltas"),
+            ("be", "Тэлефануюць з банка наконт вашага банкаўскі рахунак, пасылка будзе заўтра, прыём у лекара перанеслі"),
+        ];
+        let mut bad = Vec::new();
+        for (lang, t) in demands {
+            let (e, s, h) = live(t);
+            if !e || !h.iter().any(|x| is_hard(x)) {
+                bad.push(format!("[{lang}] demand missed (score={s} hits={h:?}): {t}"));
+            }
+        }
+        for (lang, t) in everyday {
+            let (e, s, h) = live(t);
+            if e {
+                bad.push(format!("[{lang}] everyday words engaged (score={s} hits={h:?}): {t}"));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// The new words must not change how the core languages' ordinary calls score.
+    #[test]
+    fn core_language_ordinary_calls_stay_quiet() {
+        let calls = [
+            "您好，這裡是銀行，您的新卡已經寄出，請注意查收",
+            "你好，快递到了，放门口可以吗",
+            "Hi, this is the clinic, your appointment moved to Friday, and your insurance policies are on file",
+            "Hi, this is the bank's card fraud desk, did you make a purchase of 129 dollars yesterday evening?",
             "Hola, le llamo del banco, su tarjeta nueva ya está en la oficina, la policía local cortó la calle",
             "Bonjour, la pharmacie, votre commande est prête, la police municipale a fermé la rue",
             "Guten Tag, Ihre Bank, die neue Karte ist da, die Polizei hat die Straße gesperrt",
