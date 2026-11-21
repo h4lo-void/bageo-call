@@ -27,13 +27,20 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release -p agent \
     && cp /src/target/release/agent /usr/local/bin/agent
 
+# Only English (US) voices go in the image; the other voices are downloaded
+# when they are needed. scripts/bundle-assets.sh holds that rule for every package.
+FROM debian:bookworm-slim AS assets
+COPY scripts/bundle-assets.sh /tmp/bundle-assets.sh
+COPY assets /tmp/assets
+RUN sh /tmp/bundle-assets.sh copy /tmp/assets /out/assets
+
 FROM debian:bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl tzdata \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /usr/local/bin/agent /usr/local/bin/agent
-COPY assets /app/assets
+COPY --from=assets /out/assets /app/assets
 
 ENV AGENT_HOST=0.0.0.0 \
     AGENT_PORT=8787 \

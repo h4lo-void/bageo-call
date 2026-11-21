@@ -78,12 +78,15 @@ jobs:
               sleep 10
             done
             test -f "dist/$dir.dmg"
+            sh scripts/bundle-assets.sh check dist/dmg/Bageo.app/Contents/Resources/assets
             rm -rf dist/dmg
             exit 0
           fi
           mkdir -p "dist/$dir"
           cp "target/release/${{ matrix.exe }}" "dist/$dir/"
-          cp -R assets docs LICENSES "dist/$dir/"
+          cp -R docs LICENSES "dist/$dir/"
+          # Only English (US) voices are bundled; the others are downloaded when needed.
+          sh scripts/bundle-assets.sh copy assets "dist/$dir/assets"
           cp README*.md CHANGELOG.md LICENSE LICENSING.md COMMERCIAL_LICENSE.md CLA.md LEGAL.md AUDIT_REPORT.md NOTICE.md SECURITY.md .env.example "dist/$dir/"
           if [ "${{ runner.os }}" = "Windows" ]; then
             cp start.ps1 start.cmd "dist/$dir/"
