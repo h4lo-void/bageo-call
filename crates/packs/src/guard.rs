@@ -697,6 +697,21 @@ mod tests {
         for ok in ["ok. Then we talk", "Gov.gr re-verification", "Gov.gr: verify first", "e.dentifier", "3.5 km", "e.g. at 9 a.m."] {
             assert!(!has_web_address(ok), "{ok}");
         }
+        // Abbreviations of everyday languages are no addresses; an address next to them still is.
+        for ok in [
+            "f.eks. Pakker: stil dem i receptionen.",
+            "Paket, t.ex. till receptionen.",
+            "Pakker, f.eks. ved resepsjonen.",
+            "p.ex. deixe na portaria",
+            "p.ej. en la recepción",
+            "Mails, SMS m.fl. kommer her.",
+            "z.Zt. nicht erreichbar",
+        ] {
+            assert!(!has_web_address(ok), "{ok}");
+        }
+        for bad in ["f.eks.example.com", "se f.eks. evil.shop", "t.ex/login"] {
+            assert!(has_web_address(bad), "{bad}");
+        }
         assert!(has_web_address("example\u{3002}com"));
         assert!(!has_web_address("用 PackUp、boîte aux lettres\u{3002}Moien、Äddi 是常見招呼。"));
     }

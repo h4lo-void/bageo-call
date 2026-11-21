@@ -301,7 +301,22 @@ pub const ARABIC_ACCENTS: &[&str] = &[
 /// address and that region text has to mention by name (the Greek
 /// government login, a Dutch bank's card reader). Matched whole, in any
 /// case, and only without a path after them.
-pub const ADDRESS_LIKE_NAMES: &[&str] = &["gov.gr", "e.dentifier"];
+pub const ADDRESS_LIKE_NAMES: &[&str] = &[
+    "gov.gr",
+    "e.dentifier",
+    // Everyday abbreviations written without spaces: "for example" in Danish and
+    // Norwegian (f.eks.), Swedish (t.ex., f.ex.), Portuguese (p.ex.), Spanish (p.ej.),
+    // German (z.Zt., u.dgl.) and "and more" / "or the like" (m.fl., o.lign.).
+    "f.eks",
+    "t.ex",
+    "f.ex",
+    "p.ex",
+    "p.ej",
+    "m.fl",
+    "o.lign",
+    "z.zt",
+    "u.dgl",
+];
 
 /// Instructions that would change the AI's rules or make it someone else,
 /// as whole phrases (compared like [BANNED], see [crate::guard]). Region
