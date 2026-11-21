@@ -83,6 +83,7 @@ mod urgency;
 mod usb_bridge;
 mod vad;
 mod voice_preview;
+mod voice_packs;
 mod wyoming;
 mod zh_convert;
 mod zh_tw;
@@ -1175,6 +1176,8 @@ async fn main() -> Result<()> {
     // The local data pack: an installed update is checked and loaded now, and
     // a download a crash left unfinished is cleared.
     let _ = packs_store::current();
+    // Voice packs: what an unfinished download or removal left goes.
+    voice_packs::clear_unfinished(&voice_packs::voices_root());
     // Calls the owner has the AI make (errands), and the SIMs each phone has
     // reported (an errand dials from a SIM of the number's country).
     let phone_sims = errands::SimBook::open(PathBuf::from(&settings.calls_data_dir).join("phone_sims.json"));
@@ -1235,7 +1238,7 @@ async fn main() -> Result<()> {
         previews: Arc::new(voice_preview::VoicePreviews::new(
             calls.root().join("voice_preview"),
             config::assets_dir().join("voices"),
-        )),
+        ).with_packs(voice_packs::voices_root())),
         ambience: Arc::new(ambience::AmbienceLibrary::load(
             &std::env::var("AMBIENCE_DIR")
                 .ok()

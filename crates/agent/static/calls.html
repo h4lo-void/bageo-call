@@ -789,6 +789,12 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
     <span class="grow" id="netBannerText"></span>
     <button type="button" class="btn sm" id="netRetry" data-i18n="retry"></button>
   </div>
+  <!-- Offers the voices of a language this console uses (never shown while nothing can be downloaded) -->
+  <div class="banner info" id="vpCard" hidden role="status">
+    <span class="grow"><b id="vpCardAsk"></b> <span id="vpCardHelp"></span><span class="help" id="vpCardEn" style="display:block"></span></span>
+    <button type="button" class="btn sm" id="vpCardGet" data-i18n="vp_get"></button>
+    <button type="button" class="btn sm ghost" id="vpCardLater" data-i18n="vp_not_now"></button>
+  </div>
 
   <!-- ======================= Calls ======================= -->
   <section id="view-calls" data-view="calls">
@@ -1135,6 +1141,10 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
               <button type="button" class="btn" id="btnPvVoice" data-i18n="pv_voice"></button>
             </div>
             <div class="help" data-i18n="f_voice_h"></div></div>
+          <div class="pv" id="vpVoiceBox" hidden>
+            <button type="button" class="btn sm ghost" id="btnVpVoice"></button>
+            <span class="pv-status" id="vpVoiceStatus" aria-live="polite"></span>
+          </div>
           <div class="pv" id="pvVoiceBox" hidden>
             <span class="pv-status" id="pvVoiceStatus" aria-live="polite"></span>
             <audio id="pvVoiceAudio" controls preload="none" hidden></audio>
@@ -1158,6 +1168,14 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
                 <span class="pv-status" id="pkStatus" aria-live="polite"></span>
               </div>
               <div class="help" data-i18n="pk_h"></div></div>
+            <div class="field" id="vpField" hidden><div class="lbl" data-i18n="vp_title"></div>
+              <div id="vpRows"></div>
+              <div class="pv">
+                <button type="button" class="btn sm" id="btnVpImport" data-i18n="vp_import"></button>
+                <input type="file" id="vpFile" accept=".zip,application/zip" hidden />
+                <span class="pv-status" id="vpStatus" aria-live="polite"></span>
+              </div>
+              <div class="help" data-i18n="vp_h"></div></div>
             <div class="field" id="simLangField"><div class="lbl" id="lbl-simlang" data-i18n="f_simlang"></div>
               <div class="rows" id="simLangRows" data-k="sim_languages" data-t="simlangs" role="group" aria-labelledby="lbl-simlang"></div>
               <div class="pv" style="margin-top:0">
@@ -3306,6 +3324,27 @@ I18N["en"] = {
   pk_r_io: "Can't save it. Check there is free disk space.",
   pk_r_busy: "Still working on it. Try again in a moment.",
   pk_r_restored: "Restored. The next call uses it.",
+  vp_title: "Voice downloads",
+  vp_h: "No internet? Import a voice file you downloaded from GitHub.",
+  vp_none: "No voices downloaded yet",
+  vp_import: "Import a file",
+  vp_importing: "Importing…",
+  vp_delete: "Delete",
+  vp_name: "{lang} ({region})",
+  vp_ask: "Download the {name} voices? ({size})",
+  vp_ask_h: "Downloaded straight from GitHub to this computer, never through us.",
+  vp_get: "Download",
+  vp_not_now: "Not now",
+  vp_get_voice: "Download {name} voices ({size})",
+  vp_working: "Downloading…",
+  vp_r_installed: "Downloaded. Previews use it now.",
+  vp_r_removed: "Deleted.",
+  vp_r_not_listed: "This isn't a voice file Bageo knows.",
+  vp_r_offline: "Can't connect. Try again later.",
+  vp_r_bad_pack: "Something is wrong with this file, so it wasn't used.",
+  vp_r_update_bageo: "Update Bageo first.",
+  vp_r_io: "Can't save it. Check there is free disk space.",
+  vp_r_busy: "Still working on it. Try again in a moment.",
   cb_none: "Nothing found",
   f_talk_style: "Talk style",
   ts_1: "Casual and lively",
@@ -4576,6 +4615,27 @@ I18N["zh-TW"] = {
   pk_r_io: "沒辦法存檔，請確認磁碟還有空間",
   pk_r_busy: "正在處理，請稍候再試",
   pk_r_restored: "已還原，下一通電話生效",
+  vp_title: "語音下載",
+  vp_h: "沒有網路時，可以匯入從 GitHub 下載的語音檔。",
+  vp_none: "還沒有下載任何語音",
+  vp_import: "匯入檔案",
+  vp_importing: "正在匯入…",
+  vp_delete: "刪除",
+  vp_name: "{lang}（{region}）",
+  vp_ask: "要下載{name}的語音嗎？（{size}）",
+  vp_ask_h: "直接從 GitHub 下載到這台電腦，不會經過我們。",
+  vp_get: "下載",
+  vp_not_now: "先不用",
+  vp_get_voice: "下載{name}語音（{size}）",
+  vp_working: "正在下載…",
+  vp_r_installed: "已下載，試聽會用它",
+  vp_r_removed: "已刪除",
+  vp_r_not_listed: "這不是 Bageo 認得的語音檔",
+  vp_r_offline: "沒辦法連線，稍後再試",
+  vp_r_bad_pack: "這個檔案有問題，沒有使用",
+  vp_r_update_bageo: "請先更新 Bageo",
+  vp_r_io: "沒辦法存檔，請確認磁碟還有空間",
+  vp_r_busy: "正在處理，請稍候再試",
   cb_none: "找不到",
   f_talk_style: "講話風格",
   ts_1: "隨性熱絡",
@@ -5846,6 +5906,27 @@ I18N["zh-CN"] = {
   pk_r_io: "无法保存，请确认磁盘还有空间",
   pk_r_busy: "正在处理，请稍后再试",
   pk_r_restored: "已还原，下一通电话生效",
+  vp_title: "语音下载",
+  vp_h: "没有网络时，可以导入从 GitHub 下载的语音文件。",
+  vp_none: "还没有下载任何语音",
+  vp_import: "导入文件",
+  vp_importing: "正在导入…",
+  vp_delete: "删除",
+  vp_name: "{lang}（{region}）",
+  vp_ask: "要下载{name}的语音吗？（{size}）",
+  vp_ask_h: "直接从 GitHub 下载到这台电脑，不经过我们。",
+  vp_get: "下载",
+  vp_not_now: "先不用",
+  vp_get_voice: "下载{name}语音（{size}）",
+  vp_working: "正在下载…",
+  vp_r_installed: "已下载，试听会用它",
+  vp_r_removed: "已删除",
+  vp_r_not_listed: "这不是 Bageo 认得的语音文件",
+  vp_r_offline: "无法连接，请稍后再试",
+  vp_r_bad_pack: "这个文件有问题，没有使用",
+  vp_r_update_bageo: "请先更新 Bageo",
+  vp_r_io: "无法保存，请确认磁盘还有空间",
+  vp_r_busy: "正在处理，请稍后再试",
   cb_none: "找不到",
   f_talk_style: "说话风格",
   ts_1: "随性热络",
@@ -7116,6 +7197,27 @@ I18N["ja"] = {
   pk_r_io: "保存できません。ディスクの空きを確認してください",
   pk_r_busy: "処理中です。少し待ってからもう一度お試しください",
   pk_r_restored: "戻しました。次の通話から使われます",
+  vp_title: "音声のダウンロード",
+  vp_h: "ネットにつながらないときは、GitHub からダウンロードした音声ファイルを取り込めます。",
+  vp_none: "ダウンロードした音声はまだありません",
+  vp_import: "ファイルを取り込む",
+  vp_importing: "取り込み中…",
+  vp_delete: "削除",
+  vp_name: "{lang}（{region}）",
+  vp_ask: "{name}の音声をダウンロードしますか？（{size}）",
+  vp_ask_h: "GitHub からこのパソコンに直接ダウンロードします。私たちを経由しません。",
+  vp_get: "ダウンロード",
+  vp_not_now: "今はしない",
+  vp_get_voice: "{name}の音声をダウンロード（{size}）",
+  vp_working: "ダウンロード中…",
+  vp_r_installed: "ダウンロードしました。試聴で使われます",
+  vp_r_removed: "削除しました",
+  vp_r_not_listed: "Bageo が知らない音声ファイルです",
+  vp_r_offline: "接続できません。しばらくしてからもう一度お試しください",
+  vp_r_bad_pack: "このファイルに問題があるため、使いませんでした",
+  vp_r_update_bageo: "先に Bageo を更新してください",
+  vp_r_io: "保存できません。ディスクの空きを確認してください",
+  vp_r_busy: "処理中です。少し待ってからもう一度お試しください",
   cb_none: "見つかりません",
   f_talk_style: "話し方",
   ts_1: "くだけて元気",
@@ -8386,6 +8488,27 @@ I18N["ko"] = {
   pk_r_io: "저장할 수 없어요. 디스크 공간을 확인하세요",
   pk_r_busy: "처리 중이에요. 잠시 후 다시 시도하세요",
   pk_r_restored: "되돌렸어요. 다음 통화부터 적용돼요",
+  vp_title: "음성 다운로드",
+  vp_h: "인터넷이 안 되면 GitHub에서 받은 음성 파일을 가져올 수 있어요.",
+  vp_none: "아직 받은 음성이 없어요",
+  vp_import: "파일 가져오기",
+  vp_importing: "가져오는 중…",
+  vp_delete: "삭제",
+  vp_name: "{lang}({region})",
+  vp_ask: "{name} 음성을 받을까요? ({size})",
+  vp_ask_h: "GitHub에서 이 컴퓨터로 바로 받아요. 저희를 거치지 않아요.",
+  vp_get: "받기",
+  vp_not_now: "나중에",
+  vp_get_voice: "{name} 음성 받기({size})",
+  vp_working: "받는 중…",
+  vp_r_installed: "받았어요. 미리 듣기에 사용돼요",
+  vp_r_removed: "삭제했어요",
+  vp_r_not_listed: "Bageo가 모르는 음성 파일이에요",
+  vp_r_offline: "연결할 수 없어요. 잠시 후 다시 시도하세요",
+  vp_r_bad_pack: "이 파일에 문제가 있어 사용하지 않았어요",
+  vp_r_update_bageo: "먼저 Bageo를 업데이트하세요",
+  vp_r_io: "저장할 수 없어요. 디스크 공간을 확인하세요",
+  vp_r_busy: "처리 중이에요. 잠시 후 다시 시도하세요",
   cb_none: "찾을 수 없어요",
   f_talk_style: "말투",
   ts_1: "편하고 활발하게",
@@ -9656,6 +9779,27 @@ I18N["es"] = {
   pk_r_io: "No se pudo guardar. Revisa que haya espacio en el disco.",
   pk_r_busy: "Todavía en curso. Inténtalo en un momento.",
   pk_r_restored: "Restaurado. Se usa desde la próxima llamada.",
+  vp_title: "Descarga de voces",
+  vp_h: "¿Sin internet? Importa un archivo de voces descargado de GitHub.",
+  vp_none: "Todavía no has descargado voces",
+  vp_import: "Importar un archivo",
+  vp_importing: "Importando…",
+  vp_delete: "Eliminar",
+  vp_name: "{lang} ({region})",
+  vp_ask: "¿Descargar las voces en {name}? ({size})",
+  vp_ask_h: "Se descargan directamente de GitHub a esta computadora, sin pasar por nosotros.",
+  vp_get: "Descargar",
+  vp_not_now: "Ahora no",
+  vp_get_voice: "Descargar voces en {name} ({size})",
+  vp_working: "Descargando…",
+  vp_r_installed: "Descargado. Ya se usa al escuchar las voces.",
+  vp_r_removed: "Eliminado.",
+  vp_r_not_listed: "Este no es un archivo de voces que Bageo conozca.",
+  vp_r_offline: "No hay conexión. Inténtalo más tarde.",
+  vp_r_bad_pack: "Este archivo tiene un problema, así que no se usó.",
+  vp_r_update_bageo: "Primero actualiza Bageo.",
+  vp_r_io: "No se pudo guardar. Revisa que haya espacio en el disco.",
+  vp_r_busy: "Todavía en curso. Inténtalo en un momento.",
   cb_none: "Sin resultados",
   f_talk_style: "Forma de hablar",
   ts_1: "Relajado y animado",
@@ -10926,6 +11070,27 @@ I18N["fr"] = {
   pk_r_io: "Enregistrement impossible. Vérifiez l'espace disque.",
   pk_r_busy: "Opération en cours. Réessayez dans un instant.",
   pk_r_restored: "Restauré. Utilisé dès le prochain appel.",
+  vp_title: "Téléchargement des voix",
+  vp_h: "Pas d'internet ? Importez un fichier de voix téléchargé depuis GitHub.",
+  vp_none: "Aucune voix téléchargée pour l'instant",
+  vp_import: "Importer un fichier",
+  vp_importing: "Importation…",
+  vp_delete: "Supprimer",
+  vp_name: "{lang} ({region})",
+  vp_ask: "Télécharger les voix en {name} ? ({size})",
+  vp_ask_h: "Téléchargées directement depuis GitHub sur cet ordinateur, sans passer par nous.",
+  vp_get: "Télécharger",
+  vp_not_now: "Pas maintenant",
+  vp_get_voice: "Télécharger les voix en {name} ({size})",
+  vp_working: "Téléchargement…",
+  vp_r_installed: "Téléchargé. Utilisé dès la prochaine écoute.",
+  vp_r_removed: "Supprimé.",
+  vp_r_not_listed: "Ce n'est pas un fichier de voix que Bageo connaît.",
+  vp_r_offline: "Connexion impossible. Réessayez plus tard.",
+  vp_r_bad_pack: "Ce fichier pose problème : il n'a pas été utilisé.",
+  vp_r_update_bageo: "Mettez d'abord Bageo à jour.",
+  vp_r_io: "Enregistrement impossible. Vérifiez l'espace disque.",
+  vp_r_busy: "Opération en cours. Réessayez dans un instant.",
   cb_none: "Aucun résultat",
   f_talk_style: "Façon de parler",
   ts_1: "Décontracté et chaleureux",
@@ -12196,6 +12361,27 @@ I18N["de"] = {
   pk_r_io: "Speichern nicht möglich. Prüfe den freien Speicherplatz.",
   pk_r_busy: "Läuft noch. Versuch es gleich noch mal.",
   pk_r_restored: "Wiederhergestellt. Gilt ab dem nächsten Anruf.",
+  vp_title: "Stimmen herunterladen",
+  vp_h: "Kein Internet? Importiere eine Stimmdatei, die du von GitHub geladen hast.",
+  vp_none: "Noch keine Stimmen heruntergeladen",
+  vp_import: "Datei importieren",
+  vp_importing: "Wird importiert …",
+  vp_delete: "Löschen",
+  vp_name: "{lang} ({region})",
+  vp_ask: "Stimmen auf {name} herunterladen? ({size})",
+  vp_ask_h: "Kommt direkt von GitHub auf diesen Computer, nicht über uns.",
+  vp_get: "Herunterladen",
+  vp_not_now: "Jetzt nicht",
+  vp_get_voice: "Stimmen auf {name} herunterladen ({size})",
+  vp_working: "Wird heruntergeladen …",
+  vp_r_installed: "Heruntergeladen. Die Hörprobe nutzt sie ab jetzt.",
+  vp_r_removed: "Gelöscht.",
+  vp_r_not_listed: "Das ist keine Stimmdatei, die Bageo kennt.",
+  vp_r_offline: "Keine Verbindung. Versuch es später noch mal.",
+  vp_r_bad_pack: "Mit dieser Datei stimmt etwas nicht, sie wurde nicht übernommen.",
+  vp_r_update_bageo: "Aktualisiere zuerst Bageo.",
+  vp_r_io: "Speichern nicht möglich. Prüfe den freien Speicherplatz.",
+  vp_r_busy: "Läuft noch. Versuch es gleich noch mal.",
   cb_none: "Nichts gefunden",
   f_talk_style: "Sprechweise",
   ts_1: "Locker und herzlich",
@@ -13466,6 +13652,27 @@ I18N["pt"] = {
   pk_r_io: "Não foi possível salvar. Verifique o espaço em disco.",
   pk_r_busy: "Ainda em andamento. Tente de novo em instantes.",
   pk_r_restored: "Restaurado. Vale a partir da próxima ligação.",
+  vp_title: "Download de vozes",
+  vp_h: "Sem internet? Importe um arquivo de vozes baixado do GitHub.",
+  vp_none: "Nenhuma voz baixada ainda",
+  vp_import: "Importar arquivo",
+  vp_importing: "Importando…",
+  vp_delete: "Excluir",
+  vp_name: "{lang} ({region})",
+  vp_ask: "Baixar as vozes em {name}? ({size})",
+  vp_ask_h: "Baixado direto do GitHub para este computador, sem passar por nós.",
+  vp_get: "Baixar",
+  vp_not_now: "Agora não",
+  vp_get_voice: "Baixar vozes em {name} ({size})",
+  vp_working: "Baixando…",
+  vp_r_installed: "Baixado. Já vale para ouvir as vozes.",
+  vp_r_removed: "Excluído.",
+  vp_r_not_listed: "Este não é um arquivo de vozes que o Bageo conhece.",
+  vp_r_offline: "Sem conexão. Tente mais tarde.",
+  vp_r_bad_pack: "Este arquivo tem um problema e não foi usado.",
+  vp_r_update_bageo: "Atualize o Bageo primeiro.",
+  vp_r_io: "Não foi possível salvar. Verifique o espaço em disco.",
+  vp_r_busy: "Ainda em andamento. Tente de novo em instantes.",
   cb_none: "Nada encontrado",
   f_talk_style: "Jeito de falar",
   ts_1: "Descontraído e animado",
@@ -16113,6 +16320,7 @@ function populate() {
   bkLoad();
   loadPackRegions();
   pkLoad();
+  vpLoad();
   // The environment's bot can take commands only when it is set up.
   $("tgEnvCtl").hidden = !(S.telegram_bot_token_set && String(S.telegram_chat_id || "").trim());
 }
@@ -16135,6 +16343,7 @@ function relabelSettings(skipRows) {
   bkRender();
   renderHomeCountry();
   pkRender();
+  vpRender();
   renderAboutHints();
   tsRender(false);
   updateDirty();
@@ -16860,13 +17069,14 @@ async function loadPackRegions() {
   renderHomeCountry();
   renderAboutHints();
   tsRender(false);
+  vpRender();
 }
 // ----- the local data pack in use, "Check for updates" and going back to the built-in one
 let pkInfo = null; // GET packs/update
 let pkMsg = ""; // the key of the last result shown
 function pkRender() {
   $("pkVersion").textContent = pkInfo ? t(pkInfo.builtin ? "pk_ver_builtin" : "pk_ver_updated", { date: pkInfo.date || String(pkInfo.version || "") }) : "";
-  $("btnPkRestore").hidden = !pkInfo || !!pkInfo.builtin;
+  $("btnPkRestore").hidden = !pkInfo || (!!pkInfo.builtin && !pkInfo.voice_list_kept);
   $("pkStatus").textContent = pkMsg ? t(pkMsg) : "";
 }
 async function pkLoad() {
@@ -16895,6 +17105,152 @@ async function pkRun(btn, path, working) {
 }
 $("btnPkCheck").addEventListener("click", () => pkRun($("btnPkCheck"), "/packs/update", "pk_checking"));
 $("btnPkRestore").addEventListener("click", () => pkRun($("btnPkRestore"), "/packs/restore", "pk_restoring"));
+// ----- voice packs: downloaded when needed, the card that offers one, "Voice downloads"
+let vpInfo = null; // GET voices
+let vpMsg = ""; // the key of the work going on
+const vpSize = (b) => `${Math.max(1, Math.round((Number(b) || 0) / 1e6))} MB`;
+// A text in one language (English when that language has none).
+function tIn(l, key, vars) {
+  let s = (I18N[l] && I18N[l][key]) ?? I18N.en[key] ?? key;
+  return vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : s;
+}
+// A pack's name in a language: "繁體中文（台灣）", "Spanish (Latin America)".
+function vpName(p, inLang) {
+  const loc = LANG_INTL[inLang] || inLang;
+  let ln = "";
+  try { ln = new Intl.DisplayNames([loc], { type: "language" }).of(LANG_INTL[p.lang] || p.lang) || ""; } catch (_) { ln = ""; }
+  if (!ln || ln === p.lang) ln = (inLang === "en" ? LANG_EN[p.lang] : LANG_NAMES[p.lang]) || p.lang;
+  if (!p.region) return ln;
+  const reg = (packRegions || []).find((r) => r.code === p.region);
+  let rn = reg && Array.isArray(reg.countries) && reg.countries.length === 1 ? countryNameIn(loc, reg.countries[0]) : "";
+  if (!rn && reg && reg.name && typeof reg.name === "object") rn = reg.name[inLang] || reg.name.en || reg.name.native || "";
+  return tIn(inLang, "vp_name", { lang: ln, region: rn || String(p.region).toUpperCase() });
+}
+// Regions this console is used in: the home country, the phones' SIMs, the browser's languages.
+function vpRegions() {
+  const out = [];
+  for (const c of [$("f-home_country").value, ...connectedCountries(), ...browserCountries()]) {
+    const r = regionOfCountry(String(c || "").toLowerCase());
+    if (r && !out.includes(r.code)) out.push(r.code);
+  }
+  return out;
+}
+// The pack worth getting for a language here (the region's, else the language's own);
+// null when none is listed or one is here already.
+function vpPackFor(l) {
+  const packs = ((vpInfo && vpInfo.packs) || []).filter((p) => p.lang === l);
+  if (!packs.length) return null;
+  const regions = vpRegions();
+  const usable = (p) => !p.region || regions.includes(p.region);
+  if (packs.some((p) => usable(p) && (p.downloaded || p.bundled))) {
+    // Only a region's own pack is still worth offering then.
+    const own = regions.map((r) => packs.find((p) => p.region === r)).find(Boolean);
+    return own && !own.downloaded ? own : null;
+  }
+  return regions.map((r) => packs.find((p) => p.region === r)).find(Boolean) || packs.find((p) => !p.region) || null;
+}
+// The pack the card offers: for the console's language, the language setting or a SIM's
+// language, unless "Not now" was pressed for it.
+function vpOffer() {
+  const langs = [];
+  const add = (l) => { const m = matchLang(l); if (m && !langs.includes(m)) langs.push(m); };
+  add(lang);
+  add(S && S.language);
+  Object.values((S && S.sim_languages) || {}).forEach(add);
+  add(browserLang());
+  const dismissed = (S && S.dismissed_pack_prompts) || [];
+  return langs.map(vpPackFor).find((p) => p && !dismissed.includes(p.id)) || null;
+}
+function vpRender() {
+  const has = !!vpInfo && (((vpInfo.packs || []).length > 0) || ((vpInfo.downloaded || []).length > 0));
+  $("vpField").hidden = !has;
+  const rows = $("vpRows");
+  rows.textContent = "";
+  for (const d of (vpInfo && vpInfo.downloaded) || []) {
+    const row = document.createElement("div");
+    row.className = "pv";
+    const name = document.createElement("span");
+    name.className = "pv-status";
+    name.textContent = `${vpName(d, lang)} · ${vpSize(d.bytes)}`;
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "btn sm ghost";
+    del.textContent = t("vp_delete");
+    del.addEventListener("click", () => vpRun("/voices/delete", jsonBody("POST", { id: d.id }), "", del));
+    row.append(name, del);
+    rows.append(row);
+  }
+  if (has && !rows.children.length) rows.textContent = t("vp_none");
+  const working = vpMsg ? t(vpMsg) : "";
+  $("vpStatus").textContent = working;
+  $("vpVoiceStatus").textContent = working;
+  const offer = vpOffer();
+  $("vpCard").hidden = !offer;
+  if (offer) {
+    const pl = LANGS.includes(offer.lang) ? offer.lang : "en";
+    const vars = (l) => ({ name: vpName(offer, l), size: vpSize(offer.bytes) });
+    $("vpCardAsk").textContent = tIn(pl, "vp_ask", vars(pl));
+    $("vpCardHelp").textContent = tIn(pl, "vp_ask_h");
+    $("vpCardAsk").lang = $("vpCardHelp").lang = pl;
+    $("vpCardEn").hidden = pl === "en";
+    $("vpCardEn").textContent = pl === "en" ? "" : `${tIn("en", "vp_ask", vars("en"))} ${tIn("en", "vp_ask_h")}`;
+    $("vpCard").dataset.id = offer.id;
+  }
+  const pick = vpPackFor(pvLang() || lang);
+  $("vpVoiceBox").hidden = !pick;
+  if (pick) {
+    $("btnVpVoice").textContent = t("vp_get_voice", { name: vpName(pick, lang), size: vpSize(pick.bytes) });
+    $("btnVpVoice").dataset.id = pick.id;
+  }
+}
+async function vpLoad() {
+  try { vpInfo = await api("/voices"); } catch (_) { vpInfo = null; }
+  vpRender();
+}
+const vpButtons = () => [$("vpCardGet"), $("vpCardLater"), $("btnVpVoice"), $("btnVpImport"), ...$("vpRows").querySelectorAll("button")];
+async function vpRun(path, opts, working, btn) {
+  vpButtons().forEach((b) => { b.disabled = true; });
+  vpMsg = working;
+  vpRender();
+  try {
+    const d = await api(path, opts);
+    vpInfo = d;
+    const key = "vp_r_" + d.result;
+    const ok = d.result === "installed" || d.result === "removed";
+    toast(t(I18N.en[key] != null ? key : "vp_r_bad_pack"), !ok);
+  } catch (e) {
+    if (e.status !== 401) toast(e.message, true);
+  } finally {
+    vpMsg = "";
+    vpRender();
+    vpButtons().forEach((b) => { b.disabled = false; });
+    if (btn && btn.isConnected) btn.focus();
+  }
+}
+const vpDownload = (id, btn) => vpRun("/voices/download", jsonBody("POST", { id }), "vp_working", btn);
+$("vpCardGet").addEventListener("click", () => vpDownload($("vpCard").dataset.id, null));
+$("btnVpVoice").addEventListener("click", () => vpDownload($("btnVpVoice").dataset.id, $("btnVpVoice")));
+// "Not now": that pack is not offered again (saved in the settings).
+$("vpCardLater").addEventListener("click", async () => {
+  const id = $("vpCard").dataset.id;
+  const list = [...((S && S.dismissed_pack_prompts) || [])];
+  if (id && !list.includes(id)) list.push(id);
+  $("vpCard").hidden = true;
+  try {
+    const d = await api("/settings", jsonBody("PUT", { dismissed_pack_prompts: list }));
+    if (S) S.dismissed_pack_prompts = (d.settings && d.settings.dismissed_pack_prompts) || list;
+  } catch (e) {
+    if (e.status !== 401) toast(t("save_failed", { msg: e.message }), true);
+  }
+  vpRender();
+});
+$("btnVpImport").addEventListener("click", () => $("vpFile").click());
+$("vpFile").addEventListener("change", () => {
+  const file = $("vpFile").files[0];
+  $("vpFile").value = "";
+  if (file) vpRun("/voices/import", { method: "POST", headers: { "Content-Type": "application/zip" }, body: file }, "vp_importing", $("btnVpImport"));
+});
+$("f-language").addEventListener("change", vpRender);
 const regionOfCountry = (cc) => (cc && packRegions && packRegions.find((r) => Array.isArray(r.countries) && r.countries.includes(cc))) || null;
 const regionNamers = {};
 // A country's name in one language ("" when the browser has none for it).

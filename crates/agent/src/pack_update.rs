@@ -25,6 +25,10 @@
 //!   clears one left by a crash.
 //! - One check at a time, in a task of its own; a call already going keeps its
 //!   table, the next call uses the new one.
+//!
+//! The voice packs ([crate::voice_packs]) come from the same releases through
+//! the same pieces: [Source], [open], [fetch_index], [download_checked] and
+//! [Staged].
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -95,7 +99,8 @@ impl Outcome {
     }
 }
 
-enum Fail {
+#[derive(Debug)]
+pub(crate) enum Fail {
     UpToDate,
     Offline(String),
     Bad(String),
@@ -114,7 +119,7 @@ impl Fail {
         }
     }
 
-    fn detail(&self) -> &str {
+    pub(crate) fn detail(&self) -> &str {
         match self {
             Fail::UpToDate => "up to date",
             Fail::Offline(s) | Fail::Bad(s) | Fail::UpdateBageo(s) | Fail::Io(s) => s,
@@ -122,11 +127,11 @@ impl Fail {
     }
 }
 
-fn bad(s: impl Into<String>) -> Fail {
+pub(crate) fn bad(s: impl Into<String>) -> Fail {
     Fail::Bad(s.into())
 }
 
-fn offline(e: reqwest::Error) -> Fail {
+pub(crate) fn offline(e: reqwest::Error) -> Fail {
     Fail::Offline(e.to_string())
 }
 
@@ -150,7 +155,7 @@ fn hop_allowed(u: &Url) -> bool {
 }
 
 /// Where the index and the bundle come from.
-struct Source {
+pub(crate) struct Source {
     releases: String,
     /// Tests: the local server that plays GitHub (plain http on 127.0.0.1).
     #[cfg(test)]
@@ -158,7 +163,7 @@ struct Source {
 }
 
 impl Source {
-    fn official() -> Self {
+    pub(crate) fn official() -> Self {
         Source {
             releases: RELEASES.to_string(),
             #[cfg(test)]
@@ -167,12 +172,17 @@ impl Source {
     }
 
     #[cfg(test)]
-    fn local(port: u16) -> Self {
+    pub(crate) fn local(port: u16) -> Self {
         Source { releases: format!("http://127.0.0.1:{port}{REPO_PATH}/releases"), test_port: Some(port) }
     }
 
     fn index_url(&self) -> String {
-        format!("{}/latest/download/{INDEX_NAME}", self.releases)
+        self.index_url_named(INDEX_NAME)
+    }
+
+    /// The index file `name` in the latest release.
+    pub(crate) fn index_url_named(&self, name: &str) -> String {
+        format!("{}/latest/download/{name}", self.releases)
     }
 
     fn may_visit(&self, u: &Url) -> bool {
@@ -190,11 +200,18 @@ impl Source {
     /// The bundle's address: in the release the index came from (the tag the
     /// latest/ link led to), else the latest one.
     fn pack_url(&self, hops: &[Url], file: &str) -> Option<Url> {
+        self.release_file_url(hops, INDEX_NAME, file)
+    }
+
+    /// The address of `file` in the release the index `index_name` came from
+    /// (the tag its latest/ link led to), else in the latest one. None when
+    /// `file` is not a plain file name.
+    pub(crate) fn release_file_url(&self, hops: &[Url], index_name: &str, file: &str) -> Option<Url> {
         if !plain_file_name(file) {
             return None;
         }
         let prefix = format!("{}/download/", self.releases);
-        let suffix = format!("/{INDEX_NAME}");
+        let suffix = format!("/{index_name}");
         let base = hops
             .iter()
             .rev()
@@ -235,10 +252,16 @@ fn bageo_at_least(min: &str) -> bool {
 }
 
 fn client() -> reqwest::Result<reqwest::Client> {
+    client_with(TOTAL_TIMEOUT)
+}
+
+/// The HTTP client of a download: redirects by hand, https only (outside
+/// tests), `total` for the whole of one request.
+pub(crate) fn client_with(total: Duration) -> reqwest::Result<reqwest::Client> {
     let b = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(CONNECT_TIMEOUT)
-        .timeout(TOTAL_TIMEOUT)
+        .timeout(total)
         .user_agent(concat!("Bageo/", env!("CARGO_PKG_VERSION")))
         .https_only(!cfg!(test));
     #[cfg(test)]
@@ -248,7 +271,7 @@ fn client() -> reqwest::Result<reqwest::Client> {
 
 /// Asks for url, following redirects by hand; every address is checked before
 /// it is asked. Returns the answer and the addresses asked.
-async fn open(client: &reqwest::Client, src: &Source, start: Url) -> Result<(reqwest::Response, Vec<Url>), Fail> {
+pub(crate) async fn open(client: &reqwest::Client, src: &Source, start: Url) -> Result<(reqwest::Response, Vec<Url>), Fail> {
     let mut url = start;
     let mut hops = Vec::new();
     for followed in 0..=MAX_HOPS {
@@ -275,7 +298,7 @@ async fn open(client: &reqwest::Client, src: &Source, start: Url) -> Result<(req
 }
 
 /// Reads a body, at most cap bytes (a longer one is cut off and refused).
-async fn read_capped(resp: &mut reqwest::Response, cap: u64, mut each: impl FnMut(&[u8]) -> Result<(), Fail>) -> Result<u64, Fail> {
+pub(crate) async fn read_capped(resp: &mut reqwest::Response, cap: u64, mut each: impl FnMut(&[u8]) -> Result<(), Fail>) -> Result<u64, Fail> {
     if resp.content_length().is_some_and(|n| n > cap) {
         return Err(bad(format!("larger than {cap} bytes")));
     }
@@ -290,18 +313,59 @@ async fn read_capped(resp: &mut reqwest::Response, cap: u64, mut each: impl FnMu
     Ok(n)
 }
 
+/// The index file `name` of the latest release, at most `cap` bytes, as text;
+/// and the addresses asked on the way (they tell which release it is in).
+pub(crate) async fn fetch_index(client: &reqwest::Client, src: &Source, name: &str, cap: u64) -> Result<(String, Vec<Url>), Fail> {
+    let url = Url::parse(&src.index_url_named(name)).map_err(|e| bad(e.to_string()))?;
+    let (mut resp, hops) = open(client, src, url).await?;
+    let mut raw = Vec::new();
+    read_capped(&mut resp, cap, |c| {
+        raw.extend_from_slice(c);
+        Ok(())
+    })
+    .await?;
+    let text = String::from_utf8(raw).map_err(|_| bad("the index is not UTF-8 text"))?;
+    Ok((text, hops))
+}
+
+/// Downloads `url` into `staged`: it must be exactly `bytes` long with the
+/// SHA-256 `sha256` (lowercase hex), counted and hashed as it comes in.
+pub(crate) async fn download_checked(client: &reqwest::Client, src: &Source, url: Url, bytes: u64, sha256: &str, staged: &mut Staged) -> Result<(), Fail> {
+    let (mut resp, _) = open(client, src, url).await?;
+    if resp.content_length().is_some_and(|n| n != bytes) {
+        return Err(bad("the size is not the one in the index"));
+    }
+    let mut hasher = Sha256::new();
+    let n = read_capped(&mut resp, bytes, |c| {
+        hasher.update(c);
+        staged.write(c)
+    })
+    .await?;
+    if n != bytes {
+        return Err(bad("the size is not the one in the index"));
+    }
+    if format!("{:x}", hasher.finalize()) != sha256 {
+        return Err(bad("the checksum is not the one in the index"));
+    }
+    staged.finish()
+}
+
 /// The download being written; removed when dropped (a failure, a time-out, a
 /// stopped task) unless it was installed (renamed away) first.
-struct Staged {
+pub(crate) struct Staged {
     path: PathBuf,
     file: Option<std::fs::File>,
 }
 
 impl Staged {
-    fn create(path: PathBuf) -> Result<Self, Fail> {
+    pub(crate) fn create(path: PathBuf) -> Result<Self, Fail> {
         // A new file only: never a file or a link that is already there.
         let file = std::fs::OpenOptions::new().write(true).create_new(true).open(&path).map_err(|e| Fail::Io(format!("cannot write the pack: {e}")))?;
         Ok(Staged { path, file: Some(file) })
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
     }
 
     fn write(&mut self, bytes: &[u8]) -> Result<(), Fail> {
@@ -309,7 +373,7 @@ impl Staged {
         file.write_all(bytes).map_err(|e| Fail::Io(format!("cannot write the pack: {e}")))
     }
 
-    fn finish(&mut self) -> Result<(), Fail> {
+    pub(crate) fn finish(&mut self) -> Result<(), Fail> {
         if let Some(file) = self.file.take() {
             file.sync_all().map_err(|e| Fail::Io(format!("cannot write the pack: {e}")))?;
         }
@@ -355,15 +419,8 @@ async fn attempt<F>(client: &reqwest::Client, src: &Source, packs: &Path, in_use
 where
     F: FnOnce(&Path, u64) -> Result<u64, Vec<Issue>>,
 {
-    let index_url = Url::parse(&src.index_url()).map_err(|e| bad(e.to_string()))?;
-    let (mut resp, hops) = open(client, src, index_url).await?;
-    let mut raw = Vec::new();
-    read_capped(&mut resp, MAX_INDEX_BYTES, |c| {
-        raw.extend_from_slice(c);
-        Ok(())
-    })
-    .await?;
-    let text = std::str::from_utf8(&raw).map_err(|_| bad("the index is not UTF-8 text"))?;
+    let (text, hops) = fetch_index(client, src, INDEX_NAME, MAX_INDEX_BYTES).await?;
+    let text = text.as_str();
     let value: Value = serde_json::from_str(text).map_err(|e| bad(format!("the index: {e}")))?;
     if let Some(n) = value.get("format").and_then(Value::as_u64) {
         if n > u64::from(FORMAT) {
@@ -384,23 +441,7 @@ where
 
     std::fs::create_dir_all(packs).map_err(|e| Fail::Io(format!("cannot make the packs folder: {e}")))?;
     let mut staged = Staged::create(packs_store::incoming_path(packs))?;
-    let (mut resp, _) = open(client, src, url).await?;
-    if resp.content_length().is_some_and(|n| n != ix.bytes) {
-        return Err(bad("the size is not the one in the index"));
-    }
-    let mut hasher = Sha256::new();
-    let n = read_capped(&mut resp, ix.bytes, |c| {
-        hasher.update(c);
-        staged.write(c)
-    })
-    .await?;
-    if n != ix.bytes {
-        return Err(bad("the size is not the one in the index"));
-    }
-    if format!("{:x}", hasher.finalize()) != ix.sha256 {
-        return Err(bad("the checksum is not the one in the index"));
-    }
-    staged.finish()?;
+    download_checked(client, src, url, ix.bytes, &ix.sha256, &mut staged).await?;
     apply(&staged.path, ix.version).map_err(|i| bad(first_issue(&i)))
 }
 
@@ -462,16 +503,21 @@ async fn check_official() -> Outcome {
 /// "io" when the installed pack cannot be deleted (nothing changes then).
 pub(crate) fn restore() -> &'static str {
     let Some(_running) = Running::take() else { return Outcome::Busy.code() };
-    match packs_store::restore_builtin() {
-        Ok(()) => {
-            tracing::info!("local data pack: back to the built-in one");
-            "restored"
-        }
-        Err(e) => {
-            tracing::warn!("local data pack: cannot delete the installed one ({e}); still in use");
-            Outcome::Io.code()
-        }
+    restore_all(&crate::voice_packs::voices_root())
+}
+
+/// The built-in pack, and the voice list Bageo came with (kept in voices).
+pub(crate) fn restore_all(voices: &Path) -> &'static str {
+    if let Err(e) = packs_store::restore_builtin() {
+        tracing::warn!("local data pack: cannot delete the installed one ({e}); still in use");
+        return Outcome::Io.code();
     }
+    if let Err(e) = crate::voice_packs::restore_builtin_index(voices) {
+        tracing::warn!("voice list: cannot delete the downloaded one ({e}); still in use");
+        return Outcome::Io.code();
+    }
+    tracing::info!("local data pack and voice list: back to the built-in ones");
+    "restored"
 }
 
 /// YYYYMMDDNN as YYYY-MM-DD ("" for the empty table).
@@ -491,20 +537,22 @@ fn status_json() -> Value {
         "date": version_date(t.version),
         "builtin": packs_store::builtin_in_use(),
         "regions": t.regions.len(),
+        // A downloaded voice list is kept: "Restore" puts the built-in one back too.
+        "voice_list_kept": crate::voice_packs::kept_index(&crate::voice_packs::voices_root()),
         "running": RUNNING.load(Ordering::SeqCst),
         "last_check": LAST.lock().unwrap_or_else(|e| e.into_inner()).clone(),
     })
 }
 
 /// Changes take JSON only (a form or a no-cors fetch from another page cannot send it).
-fn json_request(headers: &HeaderMap) -> bool {
+pub(crate) fn json_request(headers: &HeaderMap) -> bool {
     headers
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .is_some_and(|v| v.split(';').next().unwrap_or("").trim().eq_ignore_ascii_case("application/json"))
 }
 
-fn json_required() -> Response {
+pub(crate) fn json_required() -> Response {
     api_error(axum::http::StatusCode::BAD_REQUEST, "bad_request", "Content-Type must be application/json")
 }
 
@@ -549,7 +597,7 @@ pub fn router() -> Router<CallsState> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::io::{BufRead, BufReader};
     use std::net::{Shutdown, TcpListener, TcpStream};
@@ -564,7 +612,7 @@ mod tests {
         Url::parse(raw).is_ok_and(|u| hop_allowed(&u))
     }
 
-    enum Reply {
+    pub(crate) enum Reply {
         Body(Vec<u8>),
         Redirect(String),
         /// Declares this many bytes, sends the rest, then hangs up.
@@ -575,13 +623,13 @@ mod tests {
     }
 
     /// A tiny HTTP server playing GitHub, one connection at a time.
-    struct Server {
-        port: u16,
-        hits: Arc<Mutex<Vec<String>>>,
+    pub(crate) struct Server {
+        pub(crate) port: u16,
+        pub(crate) hits: Arc<Mutex<Vec<String>>>,
     }
 
     impl Server {
-        fn start(route: impl Fn(&str) -> Reply + Send + 'static) -> Self {
+        pub(crate) fn start(route: impl Fn(&str) -> Reply + Send + 'static) -> Self {
             let listener = TcpListener::bind("127.0.0.1:0").unwrap();
             let port = listener.local_addr().unwrap().port();
             let hits = Arc::new(Mutex::new(Vec::new()));
@@ -597,11 +645,11 @@ mod tests {
             Server { port, hits }
         }
 
-        fn source(&self) -> Source {
+        pub(crate) fn source(&self) -> Source {
             Source::local(self.port)
         }
 
-        fn asked(&self, end: &str) -> usize {
+        pub(crate) fn asked(&self, end: &str) -> usize {
             self.hits.lock().unwrap().iter().filter(|p| p.ends_with(end)).count()
         }
     }
@@ -635,7 +683,7 @@ mod tests {
         let _ = s.shutdown(Shutdown::Both);
     }
 
-    struct Dir(PathBuf);
+    pub(crate) struct Dir(pub(crate) PathBuf);
 
     impl Drop for Dir {
         fn drop(&mut self) {
@@ -643,7 +691,7 @@ mod tests {
         }
     }
 
-    fn tmp() -> Dir {
+    pub(crate) fn tmp() -> Dir {
         let d = std::env::temp_dir().join(format!("bageo-pack-update-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&d).unwrap();
         Dir(d)
