@@ -249,6 +249,43 @@ mod tests {
     }
 
     #[test]
+    fn every_mascot_region_is_a_pack_region_and_has_all_its_drawings() {
+        let start = TEMPLATE.find("const TS_REGIONS = {").expect("TS_REGIONS") + "const TS_REGIONS = {".len();
+        let block = &TEMPLATE[start..start + TEMPLATE[start..].find("\n};").expect("end of TS_REGIONS")];
+        let regions = &crate::packs_store::builtin().regions;
+        let has = |what: String| TEMPLATE.contains(&what);
+        let (mut codes, mut scenes) = (Vec::new(), Vec::new());
+        let mut prints = Vec::new();
+        for line in block.lines() {
+            if let Some((key, _)) = line.strip_prefix("  ").filter(|l| !l.starts_with(' ') && !l.starts_with("\"default\"")).and_then(|l| l.split_once(": { bow:")) {
+                codes.push(key.trim_matches('"').to_string());
+                prints.push(line.split("print: \"").nth(1).and_then(|r| r.split('"').next()).unwrap_or("").to_string());
+            } else if let Some(rest) = line.strip_prefix("    scenes: ") {
+                let v: Value = serde_json::from_str(rest.trim_end().trim_end_matches(',').trim_end_matches('}').trim_end()).unwrap_or_else(|e| panic!("scenes {rest}: {e}"));
+                scenes.push(v);
+            }
+        }
+        assert!(codes.len() >= 73, "only {} regions in TS_REGIONS", codes.len());
+        assert_eq!(codes.len(), scenes.len());
+        for (i, code) in codes.iter().enumerate() {
+            assert!(regions.contains_key(code), "{code}: not a region of the built-in pack");
+            assert!(!prints[i].is_empty() && has(format!("class=\"bts-print\" data-p=\"{}\"", prints[i])), "{code}: T-shirt print {:?} is not drawn", prints[i]);
+            assert!(has(format!("class=\"bts-item\" data-r=\"{code}\"")), "{code}: no desk item");
+            let list = scenes[i].as_array().unwrap();
+            assert_eq!(list.len(), 3, "{code}: needs three views");
+            for sc in list {
+                for p in sc[1].as_array().unwrap() {
+                    let p = p.as_str().unwrap();
+                    assert!(has(format!("class=\"bts-prop\" data-p=\"{p}\"")), "{code}: view prop {p} is not drawn");
+                }
+            }
+        }
+        for code in regions.keys().filter(|c| *c != "default") {
+            assert!(codes.contains(code), "pack region {code} has no mascot");
+        }
+    }
+
+    #[test]
     fn the_language_is_picked_from_address_then_cookie_then_browser() {
         let cookie = Some("a=b; pca_lang=ja; c=d");
         let al = Some("fr-CA,fr;q=0.9,en;q=0.8");
