@@ -239,6 +239,7 @@ Details for `GET /calls/api/settings`:
 - Secrets come back masked (`"abc…wxyz"`) with a `<name>_set` flag.
 - Notification channels come back with empty `url` / `token` plus `url_hint`, `token_hint`, `url_set`, `token_set`.
 - Read-only helpers: `default_prompt`, `voices`, `ambience_kinds`, `languages`, `countries` (ISO codes for *Main language for each SIM*), `seen_sim_countries` (SIM countries the phones reported since Bageo started), `notify_kinds`, `sample_lines`, `summary_ready`.
+- `languages` is a list of `{code, native, en, zh, dir, stage, reviewed}`: the nine core languages (`stage` `console`), then each other Gemini Live language the translations carry far enough. `stage` `call`: the AI can answer and talk in it (`language`, `sim_languages`); `notify`: notifications, summaries and chat replies too (`notify_language`). `reviewed` is false until a native speaker checked the translation. `dir` is `rtl` for languages written right to left. `language`, `notify_language` and `sim_languages` accept these codes; a stored code whose language no longer goes far enough (the translations went back) is kept and read as English.
 
 Fields worth knowing (all of them are in `RuntimeSettings` in
 [`settings_store.rs`](../../crates/agent/src/settings_store.rs) and on the
@@ -750,13 +751,13 @@ Details:
 
 ## Local data
 
-Three routes show and update the local data the AI uses for each country's habits: the same as *Local data* under *More options* in the console settings. Bageo connects only when `POST …/packs/update` is called; it never checks on its own. It then downloads two files straight from the latest release of the public `h4lo-void/bageo-packs` repository on GitHub, and nothing else is sent. They follow the console's password rule, and both `POST` routes the `Content-Type: application/json` rule above.
+Three routes show and update the local data the AI uses for each country's habits, and the translations of the languages beyond the nine core ones: the same as *Local data* under *More options* in the console settings. Bageo connects only when `POST …/packs/update` is called; it never checks on its own. It then downloads the index, the data file and, when the release has newer ones, the translations (`bageo-locales.json.gz`) straight from the latest release of the public `h4lo-void/bageo-packs` repository on GitHub, and nothing else is sent. Each file is checked on its own: a broken one is refused without affecting the other. They follow the console's password rule, and both `POST` routes the `Content-Type: application/json` rule above.
 
 | Method and path | What |
 |---|---|
-| `GET /calls/api/packs/update` | The data in use: `{version, date, builtin, regions, running, last_check}`. |
-| `POST /calls/api/packs/update` | Body `{}`. Checks for a newer version now and installs it: the same fields as `GET`, plus `result`. |
-| `POST /calls/api/packs/restore` | Body `{}`. Deletes the downloaded version and goes back to the one built into Bageo: the same fields, with `result` `restored` (`busy` while a check runs; `io` when the file cannot be deleted, and then nothing changes). |
+| `GET /calls/api/packs/update` | The data in use: `{version, date, builtin, regions, locales: {version, date, builtin, languages}, running, last_check}`. `last_check` also has `pack_result` and `locales_result`. |
+| `POST /calls/api/packs/update` | Body `{}`. Checks for newer files now and installs them: the same fields as `GET`, plus `result` (`updated` when either file was). |
+| `POST /calls/api/packs/restore` | Body `{}`. Deletes the downloaded data and translations and goes back to the ones built into Bageo: the same fields, with `result` `restored` (`busy` while a check runs; `io` when either file cannot be deleted, and then that one stays in use). |
 
 Details:
 

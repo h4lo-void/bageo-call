@@ -1098,7 +1098,12 @@ struct OtherLatin {
     best_words: i32,
     unique_script: bool,
     unique_tokens: usize,
+    /// Index of the best language in [OTHER_LATIN_CODES].
+    best_idx: usize,
 }
+
+/// The languages [other_latin_stats] scores, in its order.
+const OTHER_LATIN_CODES: [&str; 7] = ["vi", "it", "id", "tr", "pl", "nl", "ro"];
 
 fn is_vi_unique_char(c: char) -> bool {
     matches!(
@@ -1257,7 +1262,52 @@ fn other_latin_stats(text: &str) -> OtherLatin {
         best_words: word_hits[best_idx],
         unique_script: unique_tokens[best_idx] > 0,
         unique_tokens: unique_tokens[best_idx],
+        best_idx,
     }
+}
+
+/// What a caller's words in a language without a setting are in, as far as
+/// the letters tell ([read_other]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OtherReading {
+    pub script: bageo_packs::data::Script,
+    /// The language, when it is one the translations carry to the call stage
+    /// ([crate::locales_store]) and the words tell it clearly.
+    pub lang: Option<Lang>,
+}
+
+/// The script and, where it can be told, the language of words in a language
+/// without a setting: another script by its letters
+/// ([crate::gemini_live::other_script_lang]; Arabic letters read as Arabic,
+/// which Persian and Urdu share), Latin letters by the strong markers of
+/// [other_latin_stats]. None when neither tells anything.
+pub fn read_other(said: &str) -> Option<OtherReading> {
+    use bageo_packs::data::Script;
+    let ready = |code: &str| {
+        crate::locale::Ext::from_code(code)
+            .filter(|e| crate::locales_store::current().stage(*e) >= crate::locales_store::Stage::Call)
+            .map(Lang::Ext)
+    };
+    if let Some(stt) = crate::gemini_live::other_script_lang(said) {
+        let code = stt.split('-').next().unwrap_or("");
+        let script = match code {
+            "th" => Script::Thai,
+            "ru" | "uk" => Script::Cyrillic,
+            "ar" => Script::Arabic,
+            "hi" => Script::Devanagari,
+            "bn" => Script::Bengali,
+            "ta" => Script::Tamil,
+            "te" => Script::Telugu,
+            _ => return None,
+        };
+        return Some(OtherReading { script, lang: ready(code) });
+    }
+    if is_strong_other_latin(said) {
+        let o = other_latin_stats(said);
+        let lang = if o.best >= 2 { ready(OTHER_LATIN_CODES[o.best_idx]) } else { None };
+        return Some(OtherReading { script: Script::Latin, lang });
+    }
+    None
 }
 
 fn is_strong_other_latin(text: &str) -> bool {
@@ -1387,7 +1437,11 @@ fn latin_word_and_total_scores(text: &str) -> ([Lang; 5], [i32; 5], [i32; 5]) {
 pub fn language_name(lang: Lang) -> &'static str {
     match lang {
         Lang::ZhTw | Lang::ZhCn => "Chinese",
-        Lang::En | Lang::Ext(_) => "English",
+        Lang::En => "English",
+        // Another language is named once the translations carry it to the
+        // call stage; until then its calls are held in English.
+        Lang::Ext(e) if crate::locales_store::current().stage(e) >= crate::locales_store::Stage::Call => lang.name_en(),
+        Lang::Ext(_) => "English",
         Lang::Ja => "Japanese",
         Lang::Ko => "Korean",
         Lang::Es => "Spanish",

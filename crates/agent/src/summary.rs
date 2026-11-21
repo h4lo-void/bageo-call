@@ -522,10 +522,16 @@ pub fn summary_says_sales(lang: Lang, summary: &str) -> bool {
         Lang::Pt => &["ligação comercial", "tentativa de golpe", "cobrança abusiva", "ligação de assédio"],
     };
     let label = locale::words(lang).s_matter.as_str();
+    // A translated label is a draft the model may not copy: English's counts too.
+    let en_label = (!lang.is_core()).then(|| locale::words(Lang::En).s_matter.as_str());
     summary
         .lines()
         .map(str::trim)
-        .filter_map(|l| l.strip_prefix(label).or_else(|| l.strip_prefix("事情")))
+        .filter_map(|l| {
+            l.strip_prefix(label)
+                .or_else(|| en_label.and_then(|en| l.strip_prefix(en)))
+                .or_else(|| l.strip_prefix("事情"))
+        })
         .map(|l| l.trim_start_matches(|c: char| c.is_whitespace() || c == ':' || c == '：').to_lowercase())
         .any(|line| {
             let marked = if lang.is_zh() {

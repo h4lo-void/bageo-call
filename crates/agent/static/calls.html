@@ -1116,7 +1116,9 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
           <div class="two">
             <div class="field"><label for="f-language" data-i18n="f_language"></label>
               <select id="f-language" data-k="language" data-t="text"></select>
-              <div class="help" data-i18n="f_language_h"></div></div>
+              <div class="help" data-i18n="f_language_h"></div>
+              <div class="help" id="langPartial" data-i18n="lang_partial" hidden></div>
+              <div class="help" id="langFallback" data-i18n="lang_fallback" hidden></div></div>
             <div class="field"><label for="f-owner_name" data-i18n="f_owner"></label>
               <input type="text" id="f-owner_name" data-k="owner_name" data-t="text" maxlength="40" data-i18n-ph="f_owner_ph" />
               <div class="help" data-i18n="f_owner_h"></div></div>
@@ -3344,6 +3346,9 @@ I18N["en"] = {
   ab_parcel_ph0: "e.g. Leave it at the front desk",
   ab_extra: "Anything else the AI should know",
   adv_opts: "Advanced",
+  lang_unreviewed: "(not yet checked by a native speaker)",
+  lang_partial: "Some features don't support this language yet: stalling sales and scam calls, call scenario hints, short replies, and voice samples.",
+  lang_fallback: "This language isn't available right now, so calls will be in English for now.",
 };
 
 I18N["zh-TW"] = {
@@ -4614,6 +4619,9 @@ I18N["zh-TW"] = {
   ab_parcel_ph0: "例如：放管理室",
   ab_extra: "其他想讓 AI 知道的",
   adv_opts: "進階",
+  lang_unreviewed: "（待當地人確認）",
+  lang_partial: "部分功能還沒支援這個語言：推銷詐騙陪聊、通話情境提示、短回應判斷、預錄試聽。",
+  lang_fallback: "這個語言目前不能用，通話會先用英文。",
 };
 
 I18N["zh-CN"] = {
@@ -5884,6 +5892,9 @@ I18N["zh-CN"] = {
   ab_parcel_ph0: "例如：放快递柜",
   ab_extra: "其他想让 AI 知道的",
   adv_opts: "高级",
+  lang_unreviewed: "（待当地人确认）",
+  lang_partial: "部分功能还没支持这个语言：推销诈骗陪聊、通话情境提示、短回应判断、预录试听。",
+  lang_fallback: "这个语言目前不能用，通话会先用英文。",
 };
 
 I18N["ja"] = {
@@ -7154,6 +7165,9 @@ I18N["ja"] = {
   ab_parcel_ph0: "例：宅配ボックスに入れてください",
   ab_extra: "ほかに AI に知っておいてほしいこと",
   adv_opts: "詳細設定",
+  lang_unreviewed: "（ネイティブ確認待ち）",
+  lang_partial: "この言語にはまだ対応していない機能があります：営業・詐欺電話の引き延ばし、通話の場面ヒント、短い返事の判定、録音済みの試聴。",
+  lang_fallback: "この言語は今は使えないため、通話はしばらく英語になります。",
 };
 
 I18N["ko"] = {
@@ -8424,6 +8438,9 @@ I18N["ko"] = {
   ab_parcel_ph0: "예: 문 앞에 두세요",
   ab_extra: "AI가 더 알아야 할 것",
   adv_opts: "고급 설정",
+  lang_unreviewed: "(원어민 확인 전)",
+  lang_partial: "일부 기능은 아직 이 언어를 지원하지 않습니다: 영업·사기 전화 붙잡아 두기, 통화 상황 힌트, 짧은 대답 판단, 녹음된 미리 듣기.",
+  lang_fallback: "이 언어는 지금 쓸 수 없어서 통화는 당분간 영어로 합니다.",
 };
 
 I18N["es"] = {
@@ -9694,6 +9711,9 @@ I18N["es"] = {
   ab_parcel_ph0: "p. ej. En la portería",
   ab_extra: "Algo más que la IA deba saber",
   adv_opts: "Avanzado",
+  lang_unreviewed: "(pendiente de revisión por un hablante nativo)",
+  lang_partial: "Algunas funciones aún no admiten este idioma: entretener llamadas de venta y estafas, sugerencias según la llamada, respuestas cortas y muestras de voz.",
+  lang_fallback: "Este idioma no está disponible ahora, así que por el momento las llamadas serán en inglés.",
 };
 
 I18N["fr"] = {
@@ -10964,6 +10984,9 @@ I18N["fr"] = {
   ab_parcel_ph0: "ex. À la loge du gardien",
   ab_extra: "Autre chose que l'IA devrait savoir",
   adv_opts: "Options avancées",
+  lang_unreviewed: "(à faire vérifier par un locuteur natif)",
+  lang_partial: "Certaines fonctions ne prennent pas encore en charge cette langue : faire durer les appels de démarchage et d'arnaque, les conseils selon l'appel, les réponses courtes et les extraits de voix.",
+  lang_fallback: "Cette langue n'est pas disponible pour l'instant : les appels se feront en anglais en attendant.",
 };
 
 I18N["de"] = {
@@ -12234,6 +12257,9 @@ I18N["de"] = {
   ab_parcel_ph0: "z. B. Beim Nachbarn abgeben",
   ab_extra: "Was die KI sonst wissen sollte",
   adv_opts: "Erweitert",
+  lang_unreviewed: "(noch nicht von Muttersprachlern geprüft)",
+  lang_partial: "Einige Funktionen unterstützen diese Sprache noch nicht: Werbe- und Betrugsanrufe hinhalten, Hinweise je nach Anruf, kurze Antworten und Stimmproben.",
+  lang_fallback: "Diese Sprache ist gerade nicht verfügbar, deshalb laufen Anrufe vorerst auf Englisch.",
 };
 
 I18N["pt"] = {
@@ -13504,6 +13530,9 @@ I18N["pt"] = {
   ab_parcel_ph0: "ex.: Na portaria",
   ab_extra: "Mais alguma coisa que a IA deve saber",
   adv_opts: "Avançado",
+  lang_unreviewed: "(falta revisão de um falante nativo)",
+  lang_partial: "Algumas funções ainda não aceitam este idioma: segurar ligações de venda e golpe, dicas conforme a ligação, respostas curtas e amostras de voz.",
+  lang_fallback: "Este idioma não está disponível agora, então por enquanto as ligações serão em inglês.",
 };
 
 // =====================================================================
@@ -15761,14 +15790,64 @@ function fillSelect(sel, build) {
   build(sel);
   if (keep) sel.value = keep;
 }
+// The languages the agent offers ({code, native, en, zh, dir, stage, reviewed});
+// an older agent sends codes only, which are core languages. min: the stage a
+// menu needs ("call" for the AI's and the SIMs' language, "notify" for what the
+// owner reads).
+const LANG_STAGES = ["none", "call", "notify", "console"];
+const LANG_INFO = {};
+function offeredLangs(min) {
+  const raw = S && Array.isArray(S.languages) && S.languages.length ? S.languages : LANGS;
+  const need = LANG_STAGES.indexOf(min);
+  return raw
+    .map((x) => (typeof x === "string" ? { code: x, stage: "console", reviewed: true } : x))
+    .filter((x) => x && x.code && LANG_STAGES.indexOf(x.stage) >= need)
+    .map((x) => { LANG_INFO[x.code] = x; return x; });
+}
+function langText(x) {
+  const name = LANG_NAMES[x.code] || x.native || x.code;
+  return x.reviewed === false ? name + " " + t("lang_unreviewed") : name;
+}
+// A saved language the agent does not offer now (its translation went back):
+// kept in the menu, so saving something else never changes it.
+function keepSaved(sel, code) {
+  if (!code || Array.from(sel.options).some((o) => o.value === code)) return;
+  // Its name in the page's language ("義大利文"), else its own name, else the code.
+  const name = langNameHere(code) || (LANG_INFO[code] && LANG_INFO[code].native) || code;
+  sel.append(h("option", { value: code, text: name, dataset: { stale: "1" } }));
+}
+// A saved language the agent no longer offers for calls (the AI's or a SIM's):
+// say that calls use English until it is back.
+function langFallbackSync() {
+  const el = $("langFallback");
+  if (!el) return;
+  const stale = (s) => { const o = s && s.selectedOptions && s.selectedOptions[0]; return !!(o && o.dataset.stale); };
+  el.hidden = !(stale($("f-language")) || Array.from(document.querySelectorAll(".sl-lang")).some(stale));
+}
+// A language outside the nine in use (the AI's, the owner's or a SIM's): say
+// that some features do not follow it yet.
+function langPartialSync() {
+  langFallbackSync();
+  const el = $("langPartial");
+  if (!el) return;
+  const sims = Array.from(document.querySelectorAll(".sl-lang")).map((s) => s.value);
+  const codes = [$("f-language").value, $("f-notify_language").value].concat(sims);
+  el.hidden = !codes.some((c) => c && !LANG_NAMES[c]);
+}
+document.addEventListener("change", (e) => {
+  const el = e.target;
+  if (el && (el.id === "f-language" || el.id === "f-notify_language" || (el.classList && el.classList.contains("sl-lang")))) langPartialSync();
+});
 function buildMenus() {
   fillSelect($("f-language"), (sel) => {
-    for (const code of S.languages || LANGS) sel.append(h("option", { value: code, text: LANG_NAMES[code] || code }));
+    for (const x of offeredLangs("call")) sel.append(h("option", { value: x.code, text: langText(x) }));
+    keepSaved(sel, S.language);
   });
   // What the owner reads: "" = the same as the AI's language.
   fillSelect($("f-notify_language"), (sel) => {
     sel.append(h("option", { value: "", text: t("nl_same") }));
-    for (const code of S.languages || LANGS) sel.append(h("option", { value: code, text: LANG_NAMES[code] || code }));
+    for (const x of offeredLangs("notify")) sel.append(h("option", { value: x.code, text: langText(x) }));
+    keepSaved(sel, S.notify_language);
   });
   fillSelect($("f-gemini_voice_name"), (sel) => {
     const voices = Array.isArray(S.voices) ? S.voices : [];
@@ -15829,7 +15908,8 @@ function simLangRow(e) {
   cc.value = e.country || "";
   const lg = h("select", { class: "sl-lang", "aria-label": t("sl_lang") });
   lg.append(h("option", { value: "", text: t("nl_same") }));
-  for (const code of (S && S.languages) || LANGS) lg.append(h("option", { value: code, text: LANG_NAMES[code] || code }));
+  for (const x of offeredLangs("call")) lg.append(h("option", { value: x.code, text: langText(x) }));
+  keepSaved(lg, e.lang);
   lg.value = e.lang || "";
   const row = h("div", { class: "brow slrow" }, cc, lg,
     h("button", { type: "button", class: "btn sm ghost sl-del", title: t("sl_remove"), "aria-label": t("sl_remove"), text: t("ct_delete") }));
@@ -16105,6 +16185,7 @@ function populate() {
   tsTouched = false;
   $("abSuggest").hidden = true;
   relabelSettings(true);
+  langPartialSync();
   wlModeHelp();
   updateDirty();
   renderSetup();
@@ -16786,10 +16867,11 @@ function langNameHere(code) {
   } catch (_) { return ""; }
 }
 function langOption(o) {
-  const code = o.value, own = LANG_NAMES[code];
+  const code = o.value, info = LANG_INFO[code], own = LANG_NAMES[code] || (info && info.native);
   if (!own) return { value: code, label: o.textContent, search: [] };
-  const en = LANG_EN[code] || code;
-  return { value: code, label: own === en ? en : own + " · " + en, short: own, search: [own, en, langNameHere(code), code] };
+  const en = LANG_EN[code] || (info && info.en) || code;
+  const mark = info && info.reviewed === false ? " " + t("lang_unreviewed") : "";
+  return { value: code, label: (own === en ? en : own + " · " + en) + mark, short: own, search: [own, en, langNameHere(code), code, info && info.zh].filter(Boolean) };
 }
 const langCombos = [];
 let cbSeq = 0;

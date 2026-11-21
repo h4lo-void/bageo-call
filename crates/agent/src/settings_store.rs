@@ -697,17 +697,31 @@ fn sanitize_appointment_mode(s: &str) -> String {
 }
 
 fn sanitize_language(s: &str) -> String {
-    crate::locale::Lang::parse(s).code().to_string()
+    match ext_code(s) {
+        Some(code) => code.to_string(),
+        None => crate::locale::Lang::parse(s).code().to_string(),
+    }
 }
 
-/// One of the language codes (any case, `_` for `-`); anything else is empty
-/// (= the AI's language).
+/// The settings code of an official language outside the core ones (`it`,
+/// `fil`; any case, `_` for `-`). Only the format is checked here: whether
+/// the translations carry it far enough is asked when it is used
+/// ([crate::locales_store::lang_at]), so a stored code survives a
+/// translations update going back.
+fn ext_code(s: &str) -> Option<&'static str> {
+    let t = s.trim().to_ascii_lowercase().replace('_', "-");
+    crate::locale::Ext::from_code(&t).map(|e| e.code())
+}
+
+/// One of the language codes (any case, `_` for `-`), core or another
+/// official language ([ext_code]); anything else is empty (= the AI's language).
 fn sanitize_notify_language(s: &str) -> String {
     let t = s.trim().replace('_', "-");
     crate::locale::ALL
         .iter()
         .find(|l| l.code().eq_ignore_ascii_case(&t))
         .map(|l| l.code().to_string())
+        .or_else(|| ext_code(&t).map(str::to_string))
         .unwrap_or_default()
 }
 
@@ -1248,15 +1262,18 @@ impl RuntimeSettings {
     }
 
     pub fn lang(&self) -> crate::locale::Lang {
-        crate::locale::Lang::parse(&self.language)
+        crate::locales_store::lang_at(&self.language, crate::locales_store::Stage::Call)
     }
 
     /// The language of what the owner reads: `notify_language`, else `language`.
+    /// Another language reads English until the translations carry it to the
+    /// notify stage.
     pub fn notify_lang(&self) -> crate::locale::Lang {
-        match sanitize_notify_language(&self.notify_language).as_str() {
-            "" => self.lang(),
-            code => crate::locale::Lang::parse(code),
-        }
+        let code = match sanitize_notify_language(&self.notify_language) {
+            c if c.is_empty() => self.language.clone(),
+            c => c,
+        };
+        crate::locales_store::lang_at(&code, crate::locales_store::Stage::Notify)
     }
 
     /// Which service writes the post-call summary.
@@ -2658,7 +2675,7 @@ fn masked(rt: &RuntimeSettings) -> Value {
     );
     m.insert(
         "languages".into(),
-        json!(crate::locale::ALL.iter().map(|l| l.code()).collect::<Vec<_>>()),
+        json!(crate::locales_store::menu()),
     );
     // "Main language of each SIM": every country the menu offers, and the SIM
     // countries the phones have reported since the agent started.
@@ -4171,6 +4188,52 @@ mod tests {
         let rt = store.apply_patch(&json!({ "notify_language": "" })).unwrap();
         assert_eq!((rt.notify_language.as_str(), rt.locale_active().notify_lang), ("", Lang::De));
         assert_eq!(SettingsStore::load(base).snapshot().notify_language, "");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn another_language_is_stored_and_read_as_english_below_its_stage() {
+        use crate::locale::{Ext, Lang};
+        let dir = std::env::temp_dir().join(format!("bageo-call-ext-lang-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("temp settings dir");
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        crate::locales_store::testing::use_table();
+        let ext = |c: &str| Lang::Ext(Ext::from_code(c).unwrap());
+        let rt = store
+            .apply_patch(&json!({ "language": "TH", "notify_language": "it", "sim_languages": {"it": "it", "ir": "fa", "eg": "ar", "ru": "ru", "fr": "klingon"} }))
+            .unwrap();
+        assert_eq!((rt.language.as_str(), rt.notify_language.as_str()), ("th", "it"));
+        assert_eq!(rt.lang(), ext("th"));
+        assert_eq!(rt.notify_lang(), ext("it"));
+        assert_eq!(rt.sim_languages.get("ir").map(String::as_str), Some("fa"));
+        assert_eq!(rt.sim_languages.get("ru").map(String::as_str), Some("ru"), "the format only: an official code is kept");
+        assert!(!rt.sim_languages.contains_key("fr"));
+        // Thai reaches the call only: what the owner reads follows the AI's
+        // language, so it reads English.
+        let rt = store.apply_patch(&json!({ "notify_language": "" })).unwrap();
+        assert_eq!(rt.notify_lang(), Lang::En);
+        // An unknown code is still English.
+        let rt = store.apply_patch(&json!({ "language": "klingon" })).unwrap();
+        assert_eq!(rt.language, "en");
+        let rt = store.apply_patch(&json!({ "language": "ar", "notify_language": "ar" })).unwrap();
+        assert_eq!((rt.lang(), rt.notify_lang()), (ext("ar"), ext("ar")));
+        // The settings API lists the languages with their stage.
+        let shown = store.masked_json();
+        let langs = shown["languages"].as_array().unwrap();
+        assert!(langs.iter().any(|l| l["code"] == "th" && l["stage"] == "call" && l["reviewed"] == false));
+        assert!(!langs.iter().any(|l| l["code"] == "ru"));
+        // The translations go back to ones without these languages: English,
+        // the stored codes untouched, before and after a restart.
+        crate::locales_store::testing::use_empty();
+        let rt = store.snapshot();
+        assert_eq!((rt.lang(), rt.notify_lang()), (Lang::En, Lang::En));
+        assert_eq!((rt.language.as_str(), rt.notify_language.as_str()), ("ar", "ar"));
+        let again = SettingsStore::load(base).snapshot();
+        assert_eq!((again.language.as_str(), again.notify_language.as_str()), ("ar", "ar"));
+        assert_eq!(again.sim_languages.get("eg").map(String::as_str), Some("ar"));
+        assert_eq!(store.masked_json()["languages"].as_array().unwrap().len(), 9);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

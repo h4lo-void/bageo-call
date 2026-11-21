@@ -60,6 +60,7 @@ mod notify;
 mod openclaw;
 mod pack_update;
 mod packs_store;
+mod locales_store;
 mod phone_region;
 mod phone_wifi;
 mod place_habits;

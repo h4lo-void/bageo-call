@@ -12,10 +12,11 @@
 //! The settings value lives in a process-wide slot ([`set_current`]) because
 //! the Live session's helpers are free functions. Unset (unit tests) = zh-TW.
 
-use bageo_packs::data::{OfficialLang, OFFICIAL_LANG_INFO};
+use bageo_packs::data::{OfficialLang, Script, OFFICIAL_LANG_INFO};
 
 mod notify_words;
 
+pub(crate) use notify_words::words_over_english;
 pub use notify_words::{notify_words, words, Words};
 
 /// A Gemini Live language outside the nine core ones (Italian, Thai, Arabic,
@@ -49,6 +50,11 @@ impl Ext {
     /// The code exactly as the official list writes it (`it-IT`, `fil`).
     pub fn official(self) -> &'static str {
         self.info().official
+    }
+
+    /// The script it is written in.
+    pub fn script(self) -> Script {
+        self.info().script
     }
 }
 
@@ -647,7 +653,10 @@ pub fn phrases(lang: Lang) -> &'static Phrases {
     match lang {
         Lang::ZhTw => &ZH_TW,
         Lang::ZhCn => &ZH_CN,
-        Lang::En | Lang::Ext(_) => &EN,
+        Lang::En => &EN,
+        // A language with call speech in the translations uses it; any other
+        // reads English.
+        Lang::Ext(e) => crate::locales_store::current().phrases(e).unwrap_or(&EN),
         Lang::Ja => &JA,
         Lang::Ko => &KO,
         Lang::Es => &ES,
@@ -2688,6 +2697,8 @@ mod ext_tests {
     /// point treats it exactly like English and none of them panics.
     #[test]
     fn every_ext_language_works_like_english() {
+        // Without translations every other language works like English.
+        crate::locales_store::testing::use_empty();
         use crate::stall_script::Family;
         let en = Lang::En;
         let dt = chrono::NaiveDate::from_ymd_opt(2026, 11, 21).unwrap().and_hms_opt(15, 30, 0).unwrap();

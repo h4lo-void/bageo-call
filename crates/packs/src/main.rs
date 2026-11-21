@@ -16,7 +16,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use bageo_packs::export::{apply_app_export, export_app};
-use bageo_packs::sync::sync_source;
+use bageo_packs::sync::{keep_same_ok, sync_source};
 use bageo_packs::util::{now_rfc3339, valid_rfc3339_utc};
 use bageo_packs::{
     build, build_locales_at, check_index, check_locales, check_locales_ref, check_sources, load_locales, load_sources, pack_locales,
@@ -349,7 +349,7 @@ fn cmd_sync_source(args: &[String]) -> ExitCode {
     if commit.is_some_and(|c| !valid_commit_arg(c)) {
         return usage();
     }
-    let synced = match sync_source(Path::new(root), commit) {
+    let mut synced = match sync_source(Path::new(root), commit) {
         Ok(s) => s,
         Err(errs) => {
             for e in &errs {
@@ -358,6 +358,10 @@ fn cmd_sync_source(args: &[String]) -> ExitCode {
             return fail(format!("{} problem(s); nothing written", errs.len()));
         }
     };
+    // "same_ok" set by hand in the packs folder survives the export.
+    for k in keep_same_ok(&mut synced, Path::new(out)) {
+        println!("kept same_ok: {k}");
+    }
     for (rel, body) in &synced.files {
         let p = Path::new(out).join(rel);
         if let Some(d) = p.parent() {

@@ -873,8 +873,28 @@ fn latin_words(s: &str) -> usize {
     n
 }
 
-/// More than half of the letters (outside placeholders) are in the script.
+/// The product name, kept as it is in every language: its letters say nothing
+/// about whether a line was translated.
+const PRODUCT_NAME: &str = "Bageo";
+
+/// More than half of the letters are in the script. Placeholders ({n},
+/// %1$s) and the product name are left out of the count: "خدمة Bageo" is
+/// Arabic, "Bageo service" is not.
 fn mostly_in_script(s: &str, script: Script) -> bool {
+    let c: Vec<char> = s.chars().collect();
+    let mut kept = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < c.len() {
+        if c[i] == '%' {
+            if let Some(n) = printf_spec_len(&c[i..]) {
+                i += n;
+                continue;
+            }
+        }
+        kept.push(c[i]);
+        i += 1;
+    }
+    let s = kept.replace(PRODUCT_NAME, " ");
     let (mut letters, mut own, mut inside) = (0usize, 0usize, false);
     for c in s.chars() {
         match c {
@@ -1477,6 +1497,13 @@ pub fn parse_locales(gz: &[u8]) -> Result<Locales, Vec<Issue>> {
 /// unpacked size must also fit the number of languages the file lists
 /// (600 KB each, plus room for the header), and no key may appear twice.
 pub fn parse_locales_limited(gz: &[u8], max: usize) -> Result<Locales, Vec<Issue>> {
+    parse_locales_at(gz, max, now_days())
+}
+
+/// Same, with today given (days since 1970-01-01) for the "not later than
+/// tomorrow" check of the version: the file Bageo ships passes a day far
+/// ahead, so a computer whose clock is behind still reads it.
+pub fn parse_locales_at(gz: &[u8], max: usize, today: i64) -> Result<Locales, Vec<Issue>> {
     let json = unpack_locales(gz, max)?;
     let one = |rule: &'static str, field: &str, d: String| vec![Issue::new(LOCALES_FILE, field, rule, d)];
     let head: Head = serde_json::from_slice(&json).map_err(|e| one(lrule::FORMAT, "", e.to_string()))?;
@@ -1497,7 +1524,7 @@ pub fn parse_locales_limited(gz: &[u8], max: usize) -> Result<Locales, Vec<Issue
     }
     let loc: Locales = serde_json::from_slice(&json).map_err(|e| one(lrule::FORMAT, "", e.to_string()))?;
     let mut out = Vec::new();
-    check_header(&mut out, &loc, now_days());
+    check_header(&mut out, &loc, today);
     if out.is_empty() {
         Ok(loc)
     } else {
@@ -1623,5 +1650,32 @@ mod tests {
         assert!(mostly_in_script("{number} : 12", Script::Arabic));
         assert_eq!(latin_words("Bageo Status"), 2);
         assert_eq!(latin_words("{} s"), 0);
+    }
+
+    #[test]
+    fn the_product_name_and_placeholders_do_not_count_against_the_script() {
+        // The product name stays in Latin letters in a translated line.
+        assert!(mostly_in_script("خدمة Bageo", Script::Arabic));
+        assert!(mostly_in_script("Bageo सेवा", Script::Devanagari));
+        assert!(mostly_in_script("%1$s مكالمة {n}", Script::Arabic));
+        assert!(mostly_in_script("Bageo %1$s सेवा %2$d", Script::Devanagari));
+        // A line left in English is still caught, the product name or not.
+        assert!(!mostly_in_script("Bageo service", Script::Arabic));
+        assert!(!mostly_in_script("The Bageo service is off", Script::Devanagari));
+        assert!(!mostly_in_script("Phone %1$s is not connected", Script::Arabic));
+        // Through the check itself: the translated line passes, the English one does not.
+        let info = ext_lang("ar").unwrap();
+        let cx = Ctx { file: "languages/ar/app.json", prefix: "", kind: Kind::App, info, strict: true };
+        let mut out = Vec::new();
+        check_value(&mut out, &cx, "strings.channel_service", "خدمة Bageo", "Bageo service", None, false);
+        assert!(out.is_empty(), "{out:?}");
+        check_value(&mut out, &cx, "strings.channel_service", "Bageo service", "Bageo service", None, false);
+        assert!(out.iter().any(|i| i.rule == lrule::UNTRANSLATED), "{out:?}");
+        let hi = Ctx { info: ext_lang("hi").unwrap(), file: "languages/hi/app.json", ..cx };
+        let mut out = Vec::new();
+        check_value(&mut out, &hi, "strings.channel_service", "Bageo सेवा", "Bageo service", None, false);
+        assert!(out.is_empty(), "{out:?}");
+        check_value(&mut out, &hi, "strings.x", "The service is running", "The service is running", None, false);
+        assert!(out.iter().any(|i| i.rule == lrule::UNTRANSLATED), "{out:?}");
     }
 }

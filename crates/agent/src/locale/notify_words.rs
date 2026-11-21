@@ -263,9 +263,22 @@ fn load(text: &str) -> Words {
 
 static CACHE: [OnceLock<Words>; 9] = [const { OnceLock::new() }; 9];
 
+/// The words of a translated file (strings, lists and formats of the
+/// translations' notify part) laid over English: only keys English has are
+/// read, missing ones stay English.
+pub(crate) fn words_over_english(text: &str) -> Words {
+    load(text)
+}
+
 /// The words of a language, read from its file the first time they are
-/// needed. Languages beyond the nine core ones read English.
+/// needed. Languages beyond the nine core ones read their translation when it
+/// reaches the notify stage ([crate::locales_store]), else English.
 pub fn words(lang: Lang) -> &'static Words {
+    if let Lang::Ext(e) = lang {
+        if let Some(w) = crate::locales_store::current().words(e) {
+            return w;
+        }
+    }
     let i = FILES.iter().position(|(l, _)| *l == lang).unwrap_or(0);
     CACHE[i].get_or_init(|| load(FILES[i].1))
 }
@@ -490,6 +503,8 @@ mod tests {
 
     #[test]
     fn unknown_keys_are_left_out_and_missing_ones_read_english() {
+        // Without translations every other language reads English.
+        crate::locales_store::testing::use_empty();
         let en = words(Lang::En);
         let w = load(r#"{"schema":1,"strings":{"n_incoming":"X","no_such_key":"Y","n_outgoing":["Z"]},"lists":{"quote":["<",">","!"]}}"#);
         assert_eq!(w.n_incoming, "X");

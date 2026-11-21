@@ -224,6 +224,34 @@ fn pretty<T: serde::Serialize>(v: &T) -> Result<String, String> {
     serde_json::to_string_pretty(v).map(|s| s + "\n").map_err(|e| e.to_string())
 }
 
+/// Keeps the "same_ok": true a maintainer set by hand in the notes already in
+/// the packs folder (source/meta/<file>.json): bageo-call's notes may not
+/// carry it, and a fresh export would drop it. Only for keys that are still
+/// there. Returns the keys kept, as "<file>.<key>".
+pub fn keep_same_ok(s: &mut Synced, packs: &Path) -> Vec<String> {
+    let mut kept = Vec::new();
+    for (rel, body) in s.files.iter_mut() {
+        let Some(kind) = rel.strip_prefix("source/meta/").and_then(|f| f.strip_suffix(".json")) else { continue };
+        let Ok(old) = fs::read(packs.join(rel.as_str())) else { continue };
+        let Ok(old) = serde_json::from_slice::<BTreeMap<String, Value>>(&old) else { continue };
+        let Ok(mut meta) = serde_json::from_str::<BTreeMap<String, Meta>>(body) else { continue };
+        let mut changed = false;
+        for (k, m) in meta.iter_mut() {
+            if !m.same_ok && old.get(k).and_then(|v| v.get("same_ok")).and_then(Value::as_bool) == Some(true) {
+                m.same_ok = true;
+                changed = true;
+                kept.push(format!("{kind}.{k}"));
+            }
+        }
+        if changed {
+            if let Ok(text) = pretty(&meta) {
+                *body = text;
+            }
+        }
+    }
+    kept
+}
+
 /// Reads the English and notes under root (a bageo-call checkout). commit is
 /// recorded as the English files' source.
 pub fn sync_source(root: &Path, commit: Option<&str>) -> Result<Synced, Vec<String>> {

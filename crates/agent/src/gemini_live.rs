@@ -1116,7 +1116,7 @@ pub fn call_lang_plan(
     // The main language the owner set for this SIM's country.
     let sim_lang = sim
         .and_then(|s| sim_langs.get(s))
-        .map(|code| Lang::parse(code));
+        .map(|code| crate::locales_store::lang_at(code, crate::locales_store::Stage::Call));
     // For the opening only: with no language set for the SIM, its country's.
     // The prompt stays in the setting's language (`prompt_lang` below).
     let sim_main = sim_lang.or_else(|| sim.and_then(country_lang));
@@ -2713,6 +2713,8 @@ fn turn_ends_with_closing(text: &str) -> bool {
             .iter()
             .any(|m| tail.contains(m))
         || crate::locale::ends_with_farewell(text, 1)
+        // The farewells of the translated languages' call speech.
+        || crate::closing::ai_says_translated_farewell(text)
 }
 
 fn persona_stall_wrap_up_client_content() -> String {
@@ -5549,6 +5551,10 @@ pub async fn run_session(
     let mut bytes_at_last_caller_eou: u64 = 0;
     let mut turn_base_bytes: u64 = prebuf_flushed_bytes;
     let mut out_tx_window = String::with_capacity(512);
+    // The AI's words since its last turn ended: the first audio after the caller
+    // finished keeps these, so a reply whose words came before its audio, or a turn
+    // the caller's "mm" cut in two, is judged whole ("Baik, sampai nanti.").
+    let mut out_tx_turn = String::with_capacity(512);
     let mut in_tx_window = String::with_capacity(512);
     // Whether the last output / input snippet ended with a space ([`tx_carry`]).
     let (mut out_space_held, mut in_space_held) = (false, false);
@@ -6200,6 +6206,7 @@ pub async fn run_session(
                         // turn is still streaming, muted, being cut or held back.
                         let keep_owed = std::mem::take(&mut stall_keep_after_turn) && stall_on && !wrap_up_sent;
                         model_generating = false;
+                        out_tx_turn.clear();
                         mute_model_audio = false;
                         play_head.set_generating(false);
                         stall_tx.clear();
@@ -7269,6 +7276,7 @@ pub async fn run_session(
                                     let s_raw = tx_carry(&mut out_space_held, s_raw);
                                     let s_raw = s_raw.as_str();
                                     push_tx_window(&mut out_tx_window, s_raw, 800);
+                                    push_tx_window(&mut out_tx_turn, s_raw, 800);
                                     push_tx_window(&mut turn_out_text, s_raw, 400);
                                     // Whitelist urgent call: dialing is decided by the AI saying its hold-on
                                     // line; the keyword table only lets weak hold-on phrases ("hold on",
@@ -7851,6 +7859,7 @@ pub async fn run_session(
                                         && audio_chunks_out == chunks_at_last_caller_eou + 1
                                     {
                                         out_tx_window.clear();
+                                        out_tx_window.push_str(&out_tx_turn);
                                         stall_tx.clear();
                                         // The caller's next words start a new utterance.
                                         // Their finished words tell the call's language (lang_lock).
@@ -8837,6 +8846,9 @@ pub async fn run_session(
                                                 chunks_at_last_caller_eou = audio_chunks_out;
                                                 bytes_at_last_caller_eou = downlink_pcm_bytes;
                                                 turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
+                                                if !model_generating {
+                                                    out_tx_turn.clear();
+                                                }
                                                 last_caller_eou_at = Some(now);
                                             }
                                             info!(
@@ -9107,6 +9119,9 @@ pub async fn run_session(
                                 chunks_at_last_caller_eou = audio_chunks_out;
                                 bytes_at_last_caller_eou = downlink_pcm_bytes;
                                 turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
+                                if !model_generating {
+                                    out_tx_turn.clear();
+                                }
                                 last_caller_eou_at = Some(tokio::time::Instant::now());
                                 info!(
                                     "Gemini Live {} serial={serial} silence_ms={silence_ms} voiced_ms={voiced_ms} activity_ms={activity_ms} forced={force_end} short={} raw_max={turn_raw_max:.0} floor={:.0} n={local_eou_sent} chunks_out={audio_chunks_out}",
@@ -13195,5 +13210,89 @@ mod local_hello_opening {
         let cn = crate::prompts::kick_open_local(Lang::ZhCn, true, it, false);
         // The pack names languages in Traditional Chinese; Simplified is converted.
         assert!(cn.contains(&crate::zh_convert::to_cn(it.name_tw)) && !cn.contains("義") && !cn.contains('{'), "{cn}");
+    }
+}
+
+/// The AI's own goodbye in the languages the shipped translations carry: the
+/// farewells of their call speech, once their examples pass.
+#[cfg(test)]
+mod translated_ai_goodbyes {
+    use super::turn_ends_with_closing;
+    use crate::closing::ai_says_translated_farewell;
+
+    /// (language, the AI's goodbye, a line that is none).
+    const SAID: [(&str, &str, &str); 10] = [
+        ("it", "Perfetto, allora a dopo.", "Il corso si chiama «A presto» e costa cento euro al mese."),
+        ("th", "โอเคค่ะ ไว้คุยกันใหม่นะคะ", "อย่าเพิ่งลาก่อนนะคะ"),
+        ("ar", "حسنًا، في أمان الله.", "هل ترغب في اللقاء غدا في المكتب؟"),
+        ("tr", "Tamam, güle güle.", "Görüşürüz demeden önce bir şey daha soracağım, kaç taksit olacak"),
+        ("vi", "Dạ vâng, tạm biệt anh.", "Hôm qua tôi đã nói tạm biệt với anh ấy rồi mà."),
+        ("hi", "ठीक है, फिर बात करते हैं।", "अलविदा कहने से पहले एक बात और सुनिए।"),
+        ("nl", "Oké, fijne avond.", "Tot ziens zeggen we pas als alles geregeld is."),
+        ("pl", "Dobrze, do usłyszenia.", "Na razie nie podjąłem decyzji, ale chętnie posłucham dalej."),
+        ("id", "Baik, sampai ketemu.", "Kemarin saya bilang sampai jumpa ke dia, tapi dia telepon lagi."),
+        ("ru", "Хорошо, до встречи.", "До свидания я скажу, когда мы всё обсудим."),
+    ];
+
+    /// Lines of the AI in the core languages that are no goodbye, from the tests
+    /// of the older check and of the closing words.
+    const CORE_NO: &[&str] = &[
+        "欸等一下，你剛剛說的利率是固定的嗎？",
+        "那先這樣算的話，一個月要繳多少？",
+        "我拜拜那天剛好有去，然後你說那個等待期是多久？",
+        "喔你們今天要拜拜喔",
+        "你在瞎掰吧",
+        "我們在拜拜",
+        "Sure, ok",
+        "Yes, I am at home",
+        "Hello, I am calling from the bank",
+        "好，我知道了",
+        "はい、わかりました",
+        "네, 알겠습니다",
+        "Sí, claro",
+        "Oui, d'accord",
+        "Ja, genau",
+        "Sim, claro",
+        "Na verdade, o pacote chega amanhã de manhã",
+        "Ich rufe wegen Ihrer Bestellung an",
+    ];
+
+    #[test]
+    fn the_ais_goodbye_in_each_translated_language_is_heard_and_other_lines_are_not() {
+        crate::locales_store::testing::use_builtin();
+        // Languages whose farewells passed their examples ("vi" did not: its
+        // example "Thôi chào em nhé." is no closing to the classifier).
+        let checked = |code: &str| {
+            crate::locales_store::builtin()
+                .phrases(crate::locale::Ext::from_code(code).unwrap())
+                .is_some_and(|p| !p.farewells.is_empty())
+        };
+        assert_eq!(SAID.iter().filter(|(c, _, _)| !checked(c)).map(|(c, _, _)| *c).collect::<Vec<_>>(), ["vi"]);
+        for (code, yes, no) in SAID {
+            assert_eq!(ai_says_translated_farewell(yes), checked(code), "{code}: {yes}");
+            assert!(turn_ends_with_closing(yes), "{code}: {yes}");
+            assert!(!ai_says_translated_farewell(no), "{code}: {no}");
+            assert!(!turn_ends_with_closing(no), "{code}: {no}");
+        }
+        // Without the translations the new check hears none of them.
+        crate::locales_store::testing::use_empty();
+        for (code, yes, _) in SAID {
+            assert!(!ai_says_translated_farewell(yes), "{code}: {yes}");
+        }
+    }
+
+    #[test]
+    fn the_core_lines_that_were_no_goodbye_stay_so_with_the_translations() {
+        for table in [0, 1] {
+            if table == 0 {
+                crate::locales_store::testing::use_empty();
+            } else {
+                crate::locales_store::testing::use_builtin();
+            }
+            for t in CORE_NO {
+                assert!(!turn_ends_with_closing(t), "{table}: {t}");
+                assert!(!ai_says_translated_farewell(t), "{table}: {t}");
+            }
+        }
     }
 }

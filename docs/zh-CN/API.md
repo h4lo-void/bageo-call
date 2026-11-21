@@ -213,6 +213,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - 机密字段以掩码返回（`"abc…wxyz"`），附一个 `<name>_set` 标志。
 - 通知渠道返回时 `url`／`token` 是空的，另外附 `url_hint`、`token_hint`、`url_set`、`token_set`。
 - 只读的辅助字段：`default_prompt`、`voices`、`ambience_kinds`、`languages`、`countries`（“各 SIM 卡的主要语言”可选的国家代码）、`seen_sim_countries`（Bageo 启动后手机上报过的 SIM 卡国家）、`notify_kinds`、`sample_lines`、`summary_ready`。
+- `languages` 是 `{code, native, en, zh, dir, stage, reviewed}` 的列表：先列核心九种语言（`stage` 是 `console`），再列翻译已经到位的其他 Gemini Live 语言。`stage` 是 `call`：AI 能用这个语言接听和回话（`language`、`sim_languages`）；`notify`：通知、摘要、聊天室回复也能用（`notify_language`）。当地人还没确认过翻译时 `reviewed` 是 false。从右到左书写的语言 `dir` 是 `rtl`。`language`、`notify_language`、`sim_languages` 都接受这些代码；已保存的代码如果因为翻译退回而不再到位，值照样保留，使用时按英文处理。
 
 值得了解的字段（全部都在 [`settings_store.rs`](../../crates/agent/src/settings_store.rs) 的 `RuntimeSettings` 和[设置参考](SETTINGS.md)里）：
 
@@ -700,13 +701,13 @@ Content-Type: application/json
 
 ## 当地数据
 
-三个路由用来查看和更新 AI 参考的各国生活习惯数据，对应控制台设置“更多选项”里的“当地数据”。只有调用 `POST …/packs/update` 时 Bageo 才会联网，不会自己检查；联网时直接从 GitHub 公开数据库 `h4lo-void/bageo-packs` 最新的 Release 下载两个文件，不会发送其他数据。它们遵循控制台的密码规则，两个 `POST` 也要遵循上面的 `Content-Type: application/json` 规则。
+三个路由用来查看和更新 AI 参考的各国生活习惯数据，以及核心九种语言以外的翻译，对应控制台设置“更多选项”里的“当地数据”。只有调用 `POST …/packs/update` 时 Bageo 才会联网，不会自己检查；联网时直接从 GitHub 公开数据库 `h4lo-void/bageo-packs` 最新的 Release 下载清单、数据文件，有更新的翻译时再下载翻译文件（`bageo-locales.json.gz`），不会发送其他数据。每个文件各自检查，坏掉的那个被拒收，不影响另一个。它们遵循控制台的密码规则，两个 `POST` 也要遵循上面的 `Content-Type: application/json` 规则。
 
 | 方法与路径 | 内容 |
 |---|---|
-| `GET /calls/api/packs/update` | 当前使用的数据：`{version, date, builtin, regions, running, last_check}`。 |
-| `POST /calls/api/packs/update` | Body `{}`。马上检查有没有新版，有就安装：字段同 `GET`，另加 `result`。 |
-| `POST /calls/api/packs/restore` | Body `{}`。删掉下载的版本，改回 Bageo 内置的版本：字段同上，`result` 是 `restored`（正在检查时是 `busy`；文件删不掉时是 `io`，这时什么都不会改）。 |
+| `GET /calls/api/packs/update` | 当前使用的数据：`{version, date, builtin, regions, locales: {version, date, builtin, languages}, running, last_check}`。`last_check` 另有 `pack_result` 和 `locales_result`。 |
+| `POST /calls/api/packs/update` | Body `{}`。马上检查有没有新版，有就安装：字段同 `GET`，另加 `result`（任一个文件更新了就是 `updated`）。 |
+| `POST /calls/api/packs/restore` | Body `{}`。删掉下载的数据和翻译，改回 Bageo 内置的版本：字段同上，`result` 是 `restored`（正在检查时是 `busy`；任一个文件删不掉时是 `io`，删不掉的那个继续使用）。 |
 
 细节：
 

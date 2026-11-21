@@ -473,8 +473,9 @@ const EN_WAIT_ONE_MORE: &str = "Wait, one more question";
 
 /// `{p_wait}` in `lang`'s prompts: [EN_WAIT_ONE_MORE] in English, else the language's own line.
 pub(crate) fn wait_one_more(lang: Lang) -> &'static str {
-    match lang.base() {
+    match lang {
         Lang::En => EN_WAIT_ONE_MORE,
+        Lang::Ext(e) if crate::locales_store::current().phrases(e).is_none() => EN_WAIT_ONE_MORE,
         _ => locale::phrases(lang).wait_one_more,
     }
 }
@@ -629,8 +630,13 @@ fn short_text(lang: Lang) -> &'static ShortText {
 fn generic_pack(lang: Lang) -> Pack {
     let ph = locale::phrases(lang);
     let st = short_text(lang);
+    // Another language's prompts are the English ones that name it.
+    let language = match lang {
+        Lang::Ext(_) => format!("Speak {}, in everyday phone speech.", ph.name_en),
+        _ => st.language.to_string(),
+    };
     let short = |t: &str| -> String {
-        t.replace("{LANGUAGE}", st.language)
+        t.replace("{LANGUAGE}", &language)
             .replace("{HOLD}", st.hold)
             .replace("{SALES}", st.sales)
             .replace("{END}", st.end)
@@ -730,8 +736,15 @@ pub fn pack(lang: Lang) -> &'static Pack {
             })
             .collect()
     });
-    // Only the core languages have a pack; any other language uses English's
+    // Another language with call speech in the translations gets English
+    // prompts that name it, built once per translations table (an update is
+    // used from the next call). Any other language uses English's
     // (`Lang::base`), so a code without its own pack never panics here.
+    if let Lang::Ext(e) = lang {
+        if let Some(p) = crate::locales_store::current().prompt_pack(e, || generic_pack(lang)) {
+            return p;
+        }
+    }
     &packs[&lang.base()]
 }
 
@@ -742,6 +755,17 @@ pub fn current() -> &'static Pack {
 
 /// What the instructions of `pack_lang` call `lang`.
 fn language_label(pack_lang: Lang, lang: Lang) -> &'static str {
+    if let Lang::Ext(e) = lang {
+        let t = crate::locales_store::current();
+        match pack_lang {
+            Lang::ZhTw | Lang::ZhCn => {
+                if let Some(n) = t.zh_name(e, pack_lang == Lang::ZhCn) {
+                    return n;
+                }
+            }
+            _ => return lang.name_en(),
+        }
+    }
     let (tw, cn) = match lang {
         Lang::ZhTw => ("台灣國語", "台湾国语"),
         Lang::ZhCn => ("普通話", "普通话"),

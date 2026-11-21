@@ -25,6 +25,14 @@
 //!   clears one left by a crash.
 //! - One check at a time, in a task of its own; a call already going keeps its
 //!   table, the next call uses the new one.
+//! - The same check fetches the translations (bageo-locales.json.gz) the
+//!   index's locales entry names, by the same rules: same release, same
+//!   hosts and redirects, its own size (at most 48 MiB, and unpacked while
+//!   counted, [locales_store]), SHA-256, format, version and min_bageo, the
+//!   same temporary file, check and rename. A version not newer than the one
+//!   in use is not downloaded. Either file failing costs only that file.
+//! - "Restore the built-in version" puts both back; it fails when either
+//!   installed file cannot be deleted.
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -37,13 +45,14 @@ use axum::http::{header, HeaderMap};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use bageo_packs::{parse_index, Issue, FORMAT, MAX_BUNDLE_BYTES};
+use bageo_packs::locales::{check_locales_ref, LOCALES_FORMAT};
+use bageo_packs::{parse_index, Issue, LocalesRef, FORMAT, MAX_BUNDLE_BYTES};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use url::{Host, Url};
 
 use crate::calls_http::{api_error, token_ok_parts, unauthorized, CallsState, TokenQuery};
-use crate::packs_store;
+use crate::{locales_store, packs_store};
 
 /// The public data repository on github.com.
 const REPO_PATH: &str = "/h4lo-void/bageo-packs";
@@ -95,12 +104,15 @@ impl Outcome {
     }
 }
 
+#[derive(Clone)]
 enum Fail {
     UpToDate,
     Offline(String),
     Bad(String),
     UpdateBageo(String),
     Io(String),
+    /// Installs of this file reached their cap in this run.
+    Restart,
 }
 
 impl Fail {
@@ -111,12 +123,14 @@ impl Fail {
             Fail::Bad(_) => Outcome::BadPack,
             Fail::UpdateBageo(_) => Outcome::UpdateBageo,
             Fail::Io(_) => Outcome::Io,
+            Fail::Restart => Outcome::Restart,
         }
     }
 
     fn detail(&self) -> &str {
         match self {
             Fail::UpToDate => "up to date",
+            Fail::Restart => "restart Bageo first",
             Fail::Offline(s) | Fail::Bad(s) | Fail::UpdateBageo(s) | Fail::Io(s) => s,
         }
     }
@@ -334,27 +348,76 @@ where
         Ok(r) => r,
         Err(_) => Err(Fail::Offline(format!("no answer within {} s", TOTAL_TIMEOUT.as_secs()))),
     };
+    report("local data pack", in_use, result)
+}
+
+/// Logs how one file's check ended.
+fn report(what: &str, in_use: u64, result: Result<u64, Fail>) -> Outcome {
     match result {
         Ok(v) => {
-            tracing::info!("local data pack updated to {v}; calls from now on use it");
+            tracing::info!("{what} updated to {v}; calls from now on use it");
             Outcome::Updated(v)
         }
         Err(f) => {
             let outcome = f.outcome();
             if outcome == Outcome::UpToDate {
-                tracing::info!("local data pack {in_use} is the latest");
+                tracing::info!("{what} {in_use} is the latest");
             } else {
-                tracing::warn!("local data pack update: {} ({})", outcome.code(), f.detail());
+                tracing::warn!("{what} update: {} ({})", outcome.code(), f.detail());
             }
             outcome
         }
     }
 }
 
+/// Installs a checked download (staged file, the version the index names).
+type Apply<'a> = &'a (dyn Fn(&Path, u64) -> Result<u64, Vec<Issue>> + Sync);
+
+/// One check of both files: the index, then the local data pack and the
+/// translations, each on its own (None: its installs reached the cap). A
+/// failing index fails both; a failing file only itself.
+async fn check_both(client: &reqwest::Client, src: &Source, packs: &Path, in_use: u64, apply: Option<Apply<'_>>, loc_in_use: u64, loc_apply: Option<Apply<'_>>) -> (Outcome, Outcome) {
+    let work = async {
+        let f = match fetch_index(client, src).await {
+            Ok(f) => f,
+            Err(e) => return (Err(e.clone()), Err(e)),
+        };
+        let region = match apply {
+            Some(a) => region_step(client, src, &f, packs, in_use, |p, v| a(p, v)).await,
+            None => Err(Fail::Restart),
+        };
+        let loc = match loc_apply {
+            Some(a) => locales_step(client, src, &f, packs, loc_in_use, |p, v| a(p, v)).await,
+            None => Err(Fail::Restart),
+        };
+        (region, loc)
+    };
+    let (region, loc) = match tokio::time::timeout(TOTAL_TIMEOUT, work).await {
+        Ok(r) => r,
+        Err(_) => {
+            let f = Fail::Offline(format!("no answer within {} s", TOTAL_TIMEOUT.as_secs()));
+            (Err(f.clone()), Err(f))
+        }
+    };
+    (report("local data pack", in_use, region), report("translations", loc_in_use, loc))
+}
+
 async fn attempt<F>(client: &reqwest::Client, src: &Source, packs: &Path, in_use: u64, apply: F) -> Result<u64, Fail>
 where
     F: FnOnce(&Path, u64) -> Result<u64, Vec<Issue>>,
 {
+    let f = fetch_index(client, src).await?;
+    region_step(client, src, &f, packs, in_use, apply).await
+}
+
+/// The release index as it came: its text, its JSON and the addresses asked.
+struct Fetched {
+    text: String,
+    value: Value,
+    hops: Vec<Url>,
+}
+
+async fn fetch_index(client: &reqwest::Client, src: &Source) -> Result<Fetched, Fail> {
     let index_url = Url::parse(&src.index_url()).map_err(|e| bad(e.to_string()))?;
     let (mut resp, hops) = open(client, src, index_url).await?;
     let mut raw = Vec::new();
@@ -363,14 +426,22 @@ where
         Ok(())
     })
     .await?;
-    let text = std::str::from_utf8(&raw).map_err(|_| bad("the index is not UTF-8 text"))?;
-    let value: Value = serde_json::from_str(text).map_err(|e| bad(format!("the index: {e}")))?;
-    if let Some(n) = value.get("format").and_then(Value::as_u64) {
+    let text = String::from_utf8(raw).map_err(|_| bad("the index is not UTF-8 text"))?;
+    let value: Value = serde_json::from_str(&text).map_err(|e| bad(format!("the index: {e}")))?;
+    Ok(Fetched { text, value, hops })
+}
+
+/// The local data pack the index names, when it is newer than in_use.
+async fn region_step<F>(client: &reqwest::Client, src: &Source, f: &Fetched, packs: &Path, in_use: u64, apply: F) -> Result<u64, Fail>
+where
+    F: FnOnce(&Path, u64) -> Result<u64, Vec<Issue>>,
+{
+    if let Some(n) = f.value.get("format").and_then(Value::as_u64) {
         if n > u64::from(FORMAT) {
             return Err(Fail::UpdateBageo(format!("format {n} is newer than this Bageo reads ({FORMAT})")));
         }
     }
-    let ix = parse_index(text).map_err(|i| bad(first_issue(&i)))?;
+    let ix = parse_index(&f.text).map_err(|i| bad(first_issue(&i)))?;
     if ix.version <= in_use {
         return Err(Fail::UpToDate);
     }
@@ -380,28 +451,62 @@ where
     if ix.bytes > MAX_PACK_BYTES {
         return Err(bad(format!("{} bytes, the limit is {MAX_PACK_BYTES}", ix.bytes)));
     }
-    let url = src.pack_url(&hops, &ix.file).ok_or_else(|| bad("the index names a path, not a file"))?;
+    let url = src.pack_url(&f.hops, &ix.file).ok_or_else(|| bad("the index names a path, not a file"))?;
+    let staged = download(client, src, url, ix.bytes, &ix.sha256, packs, packs_store::incoming_path(packs)).await?;
+    apply(&staged.path, ix.version).map_err(|i| bad(first_issue(&i)))
+}
 
+/// The translations the index's locales entry names, when they are newer
+/// than in_use. No entry: nothing to do.
+async fn locales_step<F>(client: &reqwest::Client, src: &Source, f: &Fetched, packs: &Path, in_use: u64, apply: F) -> Result<u64, Fail>
+where
+    F: FnOnce(&Path, u64) -> Result<u64, Vec<Issue>>,
+{
+    let Some(entry) = f.value.get("locales").filter(|v| !v.is_null()) else { return Err(Fail::UpToDate) };
+    if let Some(n) = entry.get("format").and_then(Value::as_u64) {
+        if n > u64::from(LOCALES_FORMAT) {
+            return Err(Fail::UpdateBageo(format!("translations format {n} is newer than this Bageo reads ({LOCALES_FORMAT})")));
+        }
+    }
+    let r: LocalesRef = serde_json::from_value(entry.clone()).map_err(|e| bad(format!("the translations entry: {e}")))?;
+    if r.version <= in_use {
+        return Err(Fail::UpToDate);
+    }
+    if !bageo_at_least(&r.min_bageo) {
+        return Err(Fail::UpdateBageo(format!("the translations need Bageo {} or newer", r.min_bageo)));
+    }
+    let issues = check_locales_ref(&r);
+    if !issues.is_empty() {
+        return Err(bad(first_issue(&issues)));
+    }
+    let url = src.pack_url(&f.hops, &r.file).ok_or_else(|| bad("the index names a path, not a file"))?;
+    let staged = download(client, src, url, r.bytes, &r.sha256, packs, locales_store::incoming_path(packs)).await?;
+    apply(&staged.path, r.version).map_err(|i| bad(first_issue(&i)))
+}
+
+/// Downloads url into a new temporary file: exactly bytes long with this
+/// SHA-256, counted and hashed as it comes in.
+async fn download(client: &reqwest::Client, src: &Source, url: Url, bytes: u64, sha256: &str, packs: &Path, path: PathBuf) -> Result<Staged, Fail> {
     std::fs::create_dir_all(packs).map_err(|e| Fail::Io(format!("cannot make the packs folder: {e}")))?;
-    let mut staged = Staged::create(packs_store::incoming_path(packs))?;
+    let mut staged = Staged::create(path)?;
     let (mut resp, _) = open(client, src, url).await?;
-    if resp.content_length().is_some_and(|n| n != ix.bytes) {
+    if resp.content_length().is_some_and(|n| n != bytes) {
         return Err(bad("the size is not the one in the index"));
     }
     let mut hasher = Sha256::new();
-    let n = read_capped(&mut resp, ix.bytes, |c| {
+    let n = read_capped(&mut resp, bytes, |c| {
         hasher.update(c);
         staged.write(c)
     })
     .await?;
-    if n != ix.bytes {
+    if n != bytes {
         return Err(bad("the size is not the one in the index"));
     }
-    if format!("{:x}", hasher.finalize()) != ix.sha256 {
+    if format!("{:x}", hasher.finalize()) != sha256 {
         return Err(bad("the checksum is not the one in the index"));
     }
     staged.finish()?;
-    apply(&staged.path, ix.version).map_err(|i| bad(first_issue(&i)))
+    Ok(staged)
 }
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
@@ -423,55 +528,87 @@ impl Drop for Running {
     }
 }
 
-/// Checks for a newer pack now and installs it. Runs in a task of its own, so
-/// it finishes even when the console stops waiting.
+/// What the console shows for a check of both files: updated when either
+/// was; otherwise the local data pack's result, or the translations' when the
+/// pack was up to date.
+fn combine(region: Outcome, loc: Outcome) -> Outcome {
+    match (region, loc) {
+        (Outcome::Updated(v), _) => Outcome::Updated(v),
+        (_, Outcome::Updated(_)) => Outcome::Updated(packs_store::current().version),
+        (Outcome::UpToDate, other) => other,
+        (r, _) => r,
+    }
+}
+
+/// Checks for a newer pack and newer translations now and installs them. Runs
+/// in a task of its own, so it finishes even when the console stops waiting.
 pub(crate) async fn check_now() -> Outcome {
     let Some(running) = Running::take() else { return Outcome::Busy };
     let task = tokio::spawn(async move {
         let _running = running;
-        let outcome = check_official().await;
-        let version = match outcome {
+        let (region, loc) = check_official().await;
+        let version = match region {
             Outcome::Updated(v) => v,
             _ => packs_store::current().version,
         };
+        let outcome = combine(region, loc);
         *LAST.lock().unwrap_or_else(|e| e.into_inner()) = Some(json!({
             "at": chrono::Utc::now().to_rfc3339(),
             "result": outcome.code(),
             "version": version,
+            "pack_result": region.code(),
+            "locales_result": loc.code(),
+            "locales_version": locales_store::current().version,
         }));
         outcome
     });
     task.await.unwrap_or(Outcome::Offline)
 }
 
-async fn check_official() -> Outcome {
-    if packs_store::installs_left() == 0 {
-        return Outcome::Restart;
-    }
+async fn check_official() -> (Outcome, Outcome) {
     let client = match client() {
         Ok(c) => c,
         Err(e) => {
             tracing::warn!("local data pack update: no HTTP client ({e})");
-            return Outcome::Offline;
+            return (Outcome::Offline, Outcome::Offline);
         }
     };
-    check_with(&client, &Source::official(), &packs_store::installed_dir(), packs_store::current().version, packs_store::install_file).await
+    let apply: Apply = &packs_store::install_file;
+    let loc_apply: Apply = &locales_store::install_file;
+    check_both(
+        &client,
+        &Source::official(),
+        &packs_store::installed_dir(),
+        packs_store::current().version,
+        (packs_store::installs_left() > 0).then_some(apply),
+        locales_store::current().version,
+        (locales_store::installs_left() > 0).then_some(loc_apply),
+    )
+    .await
 }
 
-/// Goes back to the built-in pack: "restored", "busy" while a check runs, or
-/// "io" when the installed pack cannot be deleted (nothing changes then).
+/// Goes back to the built-in pack and translations: "restored", "busy" while a
+/// check runs, or "io" when either installed file cannot be deleted (that one
+/// stays in use).
 pub(crate) fn restore() -> &'static str {
     let Some(_running) = Running::take() else { return Outcome::Busy.code() };
-    match packs_store::restore_builtin() {
+    match restore_both() {
         Ok(()) => {
-            tracing::info!("local data pack: back to the built-in one");
+            tracing::info!("local data pack and translations: back to the built-in ones");
             "restored"
         }
         Err(e) => {
-            tracing::warn!("local data pack: cannot delete the installed one ({e}); still in use");
+            tracing::warn!("local data pack or translations: cannot delete the installed file ({e}); still in use");
             Outcome::Io.code()
         }
     }
+}
+
+/// Restores both files; both are tried, and either failing is a failure.
+fn restore_both() -> std::io::Result<()> {
+    let pack = packs_store::restore_builtin();
+    let loc = locales_store::restore_builtin();
+    pack.and(loc)
 }
 
 /// YYYYMMDDNN as YYYY-MM-DD ("" for the empty table).
@@ -485,12 +622,19 @@ fn version_date(v: u64) -> String {
 
 fn status_json() -> Value {
     let t = packs_store::current();
+    let l = locales_store::current();
     json!({
         "ok": true,
         "version": t.version,
         "date": version_date(t.version),
         "builtin": packs_store::builtin_in_use(),
         "regions": t.regions.len(),
+        "locales": {
+            "version": l.version,
+            "date": version_date(l.version),
+            "builtin": locales_store::builtin_in_use(),
+            "languages": l.langs().filter(|(_, x)| x.stage >= locales_store::Stage::Call).count(),
+        },
         "running": RUNNING.load(Ordering::SeqCst),
         "last_check": LAST.lock().unwrap_or_else(|e| e.into_inner()).clone(),
     })
@@ -1062,5 +1206,198 @@ mod tests {
         assert!(src.pack_url(&[latest], "../x.json").is_none());
         assert_eq!(version_date(2026112001), "2026-11-20");
         assert_eq!(version_date(0), "");
+    }
+
+    // ---- the translations, downloaded with the pack ----
+
+    const LOC: &str = "bageo-locales.json.gz";
+
+    fn lv0() -> u64 {
+        locales_store::builtin().version
+    }
+
+    fn loc_entry(body: &[u8], version: u64) -> Value {
+        json!({"file": LOC, "bytes": body.len(), "sha256": format!("{:x}", Sha256::digest(body)), "format": 1, "version": version, "min_bageo": "1.0.0"})
+    }
+
+    /// A release with both files: the latest index leads to the tagged one.
+    fn release2(index: Value, pack: Vec<u8>, loc: Vec<u8>) -> Server {
+        let index = serde_json::to_vec(&index).unwrap();
+        Server::start(move |path| {
+            if path == LATEST {
+                Reply::Redirect(format!("{TAGGED}{INDEX_NAME}"))
+            } else if path == format!("{TAGGED}{INDEX_NAME}") {
+                Reply::Body(index.clone())
+            } else if path == format!("{TAGGED}{PACK}") {
+                Reply::Body(pack.clone())
+            } else if path == format!("{TAGGED}{LOC}") {
+                Reply::Body(loc.clone())
+            } else {
+                Reply::NotFound
+            }
+        })
+    }
+
+    /// Both files into a folder of their own, each with its own install count.
+    async fn run_both(src: &Source, data: &Path, in_use: u64, loc_in_use: u64) -> (Outcome, Outcome) {
+        let (c1, c2) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        let packs = data.join("packs");
+        let dir = data.to_path_buf();
+        let apply = |staged: &Path, want: u64| packs_store::install_file_counted(&c1, &dir, staged, in_use, Some(want)).map(|t| t.version);
+        let loc_apply = |staged: &Path, want: u64| locales_store::install_file_counted(&c2, &packs, staged, loc_in_use, Some(want)).map(|t| t.version);
+        check_both(&client().unwrap(), src, &data.join("packs"), in_use, Some(&apply), loc_in_use, Some(&loc_apply)).await
+    }
+
+    fn has_file(data: &Path, name: &str) -> bool {
+        data.join("packs").join(name).is_file()
+    }
+
+    #[tokio::test]
+    async fn translations_come_with_the_pack_and_the_next_call_uses_them() {
+        let (v, lv) = (v0() + 1, lv0() + 1);
+        let body = pack(v, |_| {});
+        // A hello the shipped file does not have, to tell which file a call reads.
+        let loc = locales_store::testing::gz(lv, |v| v["langs"]["it"]["speech"]["hello"] = "Pronto, chi parla?".into());
+        let mut ix = index_for(&body, v);
+        ix["locales"] = loc_entry(&loc, lv);
+        let s = release2(ix, body, loc.clone());
+        let apply: Apply = &packs_store::install_file;
+        let loc_apply: Apply = &locales_store::install_file;
+        let (region, l) = check_both(
+            &client().unwrap(),
+            &s.source(),
+            &packs_store::installed_dir(),
+            packs_store::current().version,
+            Some(apply),
+            locales_store::current().version,
+            Some(loc_apply),
+        )
+        .await;
+        assert_eq!((region, l), (Outcome::Updated(v), Outcome::Updated(lv)));
+        assert_eq!(s.asked(&format!("{TAGGED}{LOC}")), 1, "from the index's release");
+        let it = crate::locale::Lang::Ext(crate::locale::Ext::from_code("it").unwrap());
+        let it_ext = crate::locale::Ext::from_code("it").unwrap();
+        assert_ne!(locales_store::builtin().phrases(it_ext).map(|p| p.hello), Some("Pronto, chi parla?"));
+        assert_eq!(locales_store::stage(it), locales_store::Stage::Notify);
+        assert!(crate::prompts::pack(it).kick_open_persona.contains("Pronto, chi parla?"), "the next call reads the download");
+        assert_eq!(status_json()["locales"]["version"].as_u64(), Some(lv));
+        let packs = packs_store::installed_dir();
+        assert_eq!(std::fs::read(packs.join(locales_store::FILE_NAME)).unwrap(), loc);
+        assert!(!locales_store::has_incoming(&packs) && !packs_store::has_incoming(&packs));
+        // Both back to the built-in files.
+        restore_both().unwrap();
+        assert!(packs_store::builtin_in_use() && locales_store::builtin_in_use());
+        assert_eq!(locales_store::stage(it), locales_store::builtin().stage(it_ext));
+        assert!(!crate::prompts::pack(it).kick_open_persona.contains("chi parla"), "the next call reads the shipped file again");
+        let _ = std::fs::remove_dir_all(packs.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_broken_translations_file_costs_only_itself() {
+        let (v, lv) = (v0() + 1, lv0() + 1);
+        let body = pack(v, |_| {});
+        let loc = locales_store::testing::gz(lv, |_| {});
+        // One changed byte.
+        let d = tmp();
+        let mut ix = index_for(&body, v);
+        ix["locales"] = loc_entry(&loc, lv);
+        let mut changed = loc.clone();
+        let mid = changed.len() / 2;
+        changed[mid] ^= 0x01;
+        let s = release2(ix.clone(), body.clone(), changed);
+        assert_eq!(run_both(&s.source(), &d.0, v0(), lv0()).await, (Outcome::Updated(v), Outcome::BadPack));
+        assert!(has_file(&d.0, packs_store::FILE_NAME) && !has_file(&d.0, locales_store::FILE_NAME));
+        assert!(!locales_store::has_incoming(&d.0.join("packs")));
+        // Data after the gzip member, listed with its own size and checksum.
+        let d = tmp();
+        let mut tail = loc.clone();
+        tail.extend_from_slice(b"\0more");
+        let mut ix = index_for(&body, v);
+        ix["locales"] = loc_entry(&tail, lv);
+        let s = release2(ix, body.clone(), tail);
+        assert_eq!(run_both(&s.source(), &d.0, v, lv0()).await, (Outcome::UpToDate, Outcome::BadPack));
+        assert!(!has_file(&d.0, locales_store::FILE_NAME) && !locales_store::has_incoming(&d.0.join("packs")));
+        // A pack that fails leaves the translations alone.
+        let d = tmp();
+        let mut ix = index_for(&body, v);
+        ix["locales"] = loc_entry(&loc, lv);
+        let mut bad_pack = body.clone();
+        bad_pack[mid.min(body.len() - 1)] ^= 0x01;
+        let s = release2(ix, bad_pack, loc.clone());
+        assert_eq!(run_both(&s.source(), &d.0, v0(), lv0()).await, (Outcome::BadPack, Outcome::Updated(lv)));
+        assert!(has_file(&d.0, locales_store::FILE_NAME) && !has_file(&d.0, packs_store::FILE_NAME));
+    }
+
+    #[tokio::test]
+    async fn translations_over_their_limit_older_or_newer_in_format_are_not_downloaded() {
+        let (v, lv) = (v0() + 1, lv0() + 1);
+        let body = pack(v, |_| {});
+        let loc = locales_store::testing::gz(lv, |_| {});
+        let cases: [(&str, Value, u64, Outcome); 5] = [
+            ("bytes", json!(bageo_packs::locales::MAX_LOCALES_BYTES + 1), lv0(), Outcome::BadPack),
+            ("version", json!(lv0()), lv0(), Outcome::UpToDate),
+            ("version", json!(lv), lv, Outcome::UpToDate),
+            ("format", json!(2), lv0(), Outcome::UpdateBageo),
+            ("min_bageo", json!("99.0.0"), lv0(), Outcome::UpdateBageo),
+        ];
+        for (field, value, loc_in_use, want) in cases {
+            let d = tmp();
+            let mut ix = index_for(&body, v);
+            ix["locales"] = loc_entry(&loc, lv);
+            ix["locales"][field] = value.clone();
+            let s = release2(ix, body.clone(), loc.clone());
+            assert_eq!(run_both(&s.source(), &d.0, v0(), loc_in_use).await, (Outcome::Updated(v), want), "{field} {value}");
+            assert_eq!(s.asked(LOC), 0, "{field}: not downloaded");
+        }
+        // A file that keeps coming past its listed size: cut off.
+        let d = tmp();
+        let mut ix = index_for(&body, v);
+        ix["locales"] = loc_entry(&loc, lv);
+        let index = serde_json::to_vec(&ix).unwrap();
+        let pk = body.clone();
+        let s = Server::start(move |path| {
+            if path == LATEST {
+                Reply::Body(index.clone())
+            } else if path.ends_with(&format!("/{PACK}")) {
+                Reply::Body(pk.clone())
+            } else {
+                Reply::Endless
+            }
+        });
+        assert_eq!(run_both(&s.source(), &d.0, v0(), lv0()).await, (Outcome::Updated(v), Outcome::BadPack));
+        assert!(!locales_store::has_incoming(&d.0.join("packs")));
+        // No entry at all: up to date, as an older release.
+        let d = tmp();
+        let s = release2(index_for(&body, v), body.clone(), loc);
+        assert_eq!(run_both(&s.source(), &d.0, v0(), lv0()).await, (Outcome::Updated(v), Outcome::UpToDate));
+        assert_eq!(combine(Outcome::UpToDate, Outcome::Updated(lv)), Outcome::Updated(packs_store::current().version));
+        assert_eq!(combine(Outcome::UpToDate, Outcome::BadPack), Outcome::BadPack);
+        assert_eq!(combine(Outcome::Offline, Outcome::UpToDate), Outcome::Offline);
+    }
+
+    #[tokio::test]
+    async fn a_restore_fails_when_either_file_cannot_be_deleted() {
+        let (v, lv) = (v0() + 1, lv0() + 1);
+        let body = pack(v, |_| {});
+        let loc = locales_store::testing::gz(lv, |_| {});
+        let mut ix = index_for(&body, v);
+        ix["locales"] = loc_entry(&loc, lv);
+        let s = release2(ix, body, loc);
+        let apply: Apply = &packs_store::install_file;
+        let loc_apply: Apply = &locales_store::install_file;
+        let packs = packs_store::installed_dir();
+        let out = check_both(&client().unwrap(), &s.source(), &packs, packs_store::current().version, Some(apply), locales_store::current().version, Some(loc_apply)).await;
+        assert_eq!(out, (Outcome::Updated(v), Outcome::Updated(lv)));
+        // The translations file cannot be deleted (a folder is in its place).
+        let file = packs.join(locales_store::FILE_NAME);
+        std::fs::remove_file(&file).unwrap();
+        std::fs::create_dir(&file).unwrap();
+        assert!(restore_both().is_err(), "one file left: the restore failed");
+        assert!(packs_store::builtin_in_use(), "the pack that could be deleted is back");
+        assert!(!locales_store::builtin_in_use(), "the translations still in use");
+        std::fs::remove_dir(&file).unwrap();
+        restore_both().unwrap();
+        assert!(packs_store::builtin_in_use() && locales_store::builtin_in_use());
+        let _ = std::fs::remove_dir_all(packs.parent().unwrap());
     }
 }

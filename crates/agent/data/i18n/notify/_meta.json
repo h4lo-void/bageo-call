@@ -117,7 +117,7 @@
   "ap_web_confirm": {"where": "summary line: where to confirm the appointment in the web console", "who": "the owner", "placeholders": ["{}"]},
   "ap_web_console": {"where": "summary line: confirm in the web console (no address known)", "who": "the owner", "placeholders": []},
   "ap_web_label": {"where": "label of the web link on the appointment card", "who": "the owner", "placeholders": []},
-  "n_named_number": {"where": "number and contact name in the title of a notification", "who": "the owner", "placeholders": ["{number}","{name}"]},
+  "n_named_number": {"where": "number and contact name in the title of a notification", "who": "the owner", "placeholders": ["{number}","{name}"], "same_ok": true},
   "n_cw_headline": {"where": "headline of the notification for a call the phone refused because it was on another call", "who": "the owner", "placeholders": ["{caller}","{device}"]},
   "n_blocked_declined": {"where": "line on the blocked-caller notification when the call was declined while it rang", "who": "the owner", "placeholders": []},
   "cw_matter": {"where": "matter line of the record of a call turned away during another call; {sim} = the SIM, in brackets, or nothing", "who": "the owner", "placeholders": ["{sim}"]},

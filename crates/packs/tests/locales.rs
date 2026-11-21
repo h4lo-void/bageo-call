@@ -14,7 +14,7 @@ use std::process::Command;
 use bageo_packs::export::{android_escape, android_qualifier, apply_app_export, export_app, xml_attr, GENERATED_MARK};
 use bageo_packs::guard::{has_web_address, hidden_char, rule_change, Writing};
 use bageo_packs::locales::{lrule, Closing, Locale, SrcSpeech, SrcStrings};
-use bageo_packs::sync::sync_source;
+use bageo_packs::sync::{keep_same_ok, sync_source};
 use bageo_packs::*;
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -592,6 +592,52 @@ fn sync_source_copies_the_english_and_the_notes() {
     w("crates/agent/data/i18n/notify/_meta.json", &meta.replace(r#""u_sec":{"where":"seconds","who":"the owner","placeholders":["{}"]},"#, ""));
     let errs = sync_source(&root, None).unwrap_err();
     assert!(errs.iter().any(|e| e.contains("u_sec")), "{errs:?}");
+    let _ = fs::remove_dir_all(&d);
+}
+
+#[test]
+fn sync_source_keeps_same_ok_set_by_hand_in_the_packs_folder() {
+    let d = tmp("sync-same-ok");
+    let root = d.join("bageo-call");
+    let w = |base: &Path, rel: &str, body: &str| {
+        let p = base.join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, body).unwrap();
+    };
+    w(&root, "crates/agent/data/i18n/notify/en.json", r#"{"schema":1,"strings":{"n_named_number":"{number} ({name})","n_incoming":"Incoming call"}}"#);
+    w(
+        &root,
+        "crates/agent/data/i18n/notify/_meta.json",
+        r#"{"n_named_number":{"where":"title","who":"the owner","placeholders":["{number}","{name}"]},"n_incoming":{"where":"title","who":"the owner","placeholders":[]}}"#,
+    );
+    w(&root, "android/app/src/main/res/values/strings.xml", "<resources>\n    <string name=\"header_device\">Pixel %1$s</string>\n    <string name=\"ok\">OK then</string>\n</resources>\n");
+    w(&root, "desktop/ui/i18n.json", r#"{"en":{"h_ok":"All good"}}"#);
+    // The packs folder: a maintainer set same_ok on two keys; one key is gone from bageo-call since.
+    let packs = d.join("packs");
+    w(&packs, "source/meta/notify.json", r#"{"n_named_number":{"where":"old","who":"the owner","placeholders":["{number}","{name}"],"same_ok":true},"n_gone":{"same_ok":true}}"#);
+    w(&packs, "source/meta/app.json", r#"{"header_device":{"where":"x","who":"y","placeholders":["%1$s"],"same_ok":true},"ok":{"where":"x","who":"y","placeholders":[]}}"#);
+
+    let mut synced = sync_source(&root, None).expect("syncs");
+    let get = |s: &bageo_packs::sync::Synced, rel: &str| -> Value { serde_json::from_str(&s.files.iter().find(|(r, _)| r == rel).expect(rel).1).unwrap() };
+    assert!(get(&synced, "source/meta/notify.json")["n_named_number"].get("same_ok").is_none(), "a fresh export alone drops it");
+    let kept = keep_same_ok(&mut synced, &packs);
+    assert_eq!(kept, ["notify.n_named_number", "app.header_device"]);
+    let notify = get(&synced, "source/meta/notify.json");
+    assert_eq!(notify["n_named_number"]["same_ok"], json!(true));
+    assert_eq!(notify["n_named_number"]["where"], "title", "the rest comes from bageo-call");
+    assert!(notify.get("n_gone").is_none() && notify["n_incoming"].get("same_ok").is_none());
+    let app = get(&synced, "source/meta/app.json");
+    assert_eq!(app["header_device"]["same_ok"], json!(true));
+    assert!(app["ok"].get("same_ok").is_none());
+    // Written out, it loads as packs sources with the flag on.
+    for (rel, body) in &synced.files {
+        w(&packs, rel, body);
+    }
+    let ls = load_locales(&packs).expect("loads");
+    assert!(ls.english.files.values().any(|f| f.meta.get("header_device").is_some_and(|m| m.same_ok)));
+    // Nothing in the packs folder yet: nothing to keep.
+    let mut fresh = sync_source(&root, None).unwrap();
+    assert!(keep_same_ok(&mut fresh, &d.join("none")).is_empty());
     let _ = fs::remove_dir_all(&d);
 }
 
