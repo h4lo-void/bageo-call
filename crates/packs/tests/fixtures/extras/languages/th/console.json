@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "lang": "th",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "tab_calls": "สายโทร",
+    "tab_settings": "การตั้งค่า",
+    "retry": "ลองอีกครั้ง",
+    "calls_today": "วันนี้ {n} สาย",
+    "save_done": "บันทึกแล้ว"
+  }
+}

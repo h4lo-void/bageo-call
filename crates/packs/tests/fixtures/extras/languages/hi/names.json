@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "code": "hi",
+  "official": "hi-IN",
+  "native": "हिन्दी",
+  "en": "Hindi",
+  "zh": "印地文",
+  "aliases": [
+    "हिंदी"
+  ],
+  "country": "in",
+  "status": "ai_draft"
+}

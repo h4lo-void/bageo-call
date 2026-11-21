@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "lang": "ar",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "tab_calls": "المكالمات",
+    "tab_settings": "الإعدادات",
+    "retry": "حاول مرة أخرى",
+    "calls_today": "{n} مكالمات اليوم",
+    "save_done": "تم حفظ التغييرات"
+  }
+}

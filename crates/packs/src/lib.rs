@@ -17,11 +17,13 @@
 //! layers (languages/<code>/names.json, notify.json, ...) and ship as their
 //! own download, bageo-locales.json.gz ([locales]); [export] turns the app
 //! and desktop parts into the apps' resource files and [sync] copies the
-//! English originals out of bageo-call.
+//! English originals out of bageo-call. The [extras] module holds the
+//! on-demand downloads: one file per extra language and per region drawing.
 
 pub mod check;
 pub mod data;
 pub mod export;
+pub mod extras;
 pub mod guard;
 pub mod locales;
 pub mod model;
@@ -32,10 +34,14 @@ pub mod util;
 use std::fmt;
 
 pub use check::{check_bundle, check_bundle_at, check_index, parse_bundle, parse_index, parse_index_noting, sound_locales};
+pub use extras::{
+    build_extras, check_art, load_art, parse_extras_index, parse_lang_file, read_art_source, ExtraLang, ExtrasArtRef, ExtrasBuild,
+    ExtrasIndex, ExtrasLangRef, EXTRAS_FORMAT, EXTRAS_INDEX_FILE,
+};
 pub use locales::{
-    build_locales_at, check_locales, check_locales_ref, load_locales, lrule, pack_locales, parse_locales, parse_locales_limited,
-    sanitize_locales, unpack_locales, ClosingJudge, English, Kind, LocaleSources, Locales, LOCALES_FORMAT, MAX_LANG_BYTES,
-    MAX_LOCALES_BYTES,
+    build_locales_at, build_locales_call_at, check_locales, check_locales_ref, load_locales, lrule, pack_locales, parse_locales,
+    parse_locales_limited, sanitize_locales, unpack_locales, ClosingJudge, English, Kind, LocaleSources, Locales, LOCALES_FORMAT,
+    MAX_LANG_BYTES, MAX_LOCALES_BYTES,
 };
 pub use model::{Bundle, DeliveryKey, Entry, Hello, Index, LangInfo, LocalesRef, Name, RegionData, TalkStyle, Text};
 pub use source::{build, build_at, check_sources, load_sources, Sources};

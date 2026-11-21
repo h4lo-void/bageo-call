@@ -1269,7 +1269,29 @@ fn lang_status(l: &Locale, notify: Option<&LocFile>, console: Option<&LocFile>, 
     REVIEW_STATES[low].to_string()
 }
 
-fn check_lang(out: &mut Vec<Issue>, ls: &LocaleSources, l: &Locale, judge: Option<ClosingJudge>, now: i64) -> Option<LocaleLang> {
+/// One language after the rules: what bageo-locales.json.gz carries, plus
+/// what only the extra language files carry (the desktop text and the review
+/// state of the text without the call speech).
+pub(crate) struct Checked {
+    pub lang: LocaleLang,
+    pub desktop: Option<LocFile>,
+    /// The lowest review state of names, notify, console and desktop.
+    pub text_status: String,
+    /// The lowest review state of names and call speech alone.
+    pub call_status: String,
+}
+
+fn text_status(l: &Locale, files: [(Kind, Option<&LocFile>); 3]) -> String {
+    let mut low = l.names.as_ref().and_then(|n| rank(&n.data.status)).unwrap_or(1);
+    for (kind, f) in files {
+        for k in f.into_iter().flat_map(|f| f.keys()) {
+            low = low.min(rank(review_status(l, kind.name(), k)).unwrap_or(1));
+        }
+    }
+    REVIEW_STATES[low].to_string()
+}
+
+fn check_lang(out: &mut Vec<Issue>, ls: &LocaleSources, l: &Locale, judge: Option<ClosingJudge>, now: i64) -> Option<Checked> {
     let dir = format!("languages/{}", l.code);
     let info = match ext_lang(&l.code) {
         Ok(i) => i,
@@ -1340,18 +1362,26 @@ fn check_lang(out: &mut Vec<Issue>, ls: &LocaleSources, l: &Locale, judge: Optio
     if call_states(l).any(|s| s == "needs_fix") {
         speech = None;
     }
+    let desktop = files.remove(&Kind::Desktop).filter(|f| !f.is_empty());
     let mut take = |k: Kind| files.remove(&k).filter(|f| k.packed() && !f.is_empty());
     let (notify, console) = (take(Kind::Notify), take(Kind::Console));
     let status = lang_status(l, notify.as_ref(), console.as_ref(), speech.is_some());
+    let text_status = text_status(l, [(Kind::Notify, notify.as_ref()), (Kind::Console, console.as_ref()), (Kind::Desktop, desktop.as_ref())]);
+    let call_status = lang_status(l, None, None, speech.is_some());
     let lang = LocaleLang { names, status, speech, notify, console };
     let size = serde_json::to_vec(&lang).map(|v| v.len()).unwrap_or(usize::MAX);
     if size > MAX_LANG_BYTES {
         push(out, &dir, "", lrule::SIZE, format!("{size} bytes packed, the limit for one language is {MAX_LANG_BYTES}"));
     }
-    Some(lang)
+    Some(Checked { lang, desktop, text_status, call_status })
 }
 
 fn pipeline(ls: &LocaleSources, judge: Option<ClosingJudge>, now: i64) -> (BTreeMap<String, LocaleLang>, Vec<Issue>) {
+    let (full, out) = pipeline_full(ls, judge, now);
+    (full.into_iter().map(|(k, c)| (k, c.lang)).collect(), out)
+}
+
+pub(crate) fn pipeline_full(ls: &LocaleSources, judge: Option<ClosingJudge>, now: i64) -> (BTreeMap<String, Checked>, Vec<Issue>) {
     let mut out = Vec::new();
     for (kind, en) in &ls.english.files {
         if en.text.schema != 1 {
@@ -1376,7 +1406,7 @@ pub fn check_locales(ls: &LocaleSources, judge: Option<ClosingJudge>) -> Vec<Iss
     pipeline(ls, judge, now_days()).1
 }
 
-fn version_ok(v: u64, now: i64) -> Result<(), String> {
+pub(crate) fn version_ok(v: u64, now: i64) -> Result<(), String> {
     if !(1_000_000_000..10_000_000_000).contains(&v) {
         return Err(format!("{v} is not YYYYMMDDNN"));
     }
@@ -1418,8 +1448,32 @@ fn check_header(out: &mut Vec<Issue>, l: &Locales, now: i64) {
 /// Checks and packs the sources; built_at is given so the same sources
 /// always give the same file.
 pub fn build_locales_at(ls: &LocaleSources, version: u64, commit: &str, built_at: &str, judge: Option<ClosingJudge>) -> Result<Locales, Vec<Issue>> {
+    build_locales_with(ls, version, commit, built_at, judge, false)
+}
+
+/// The same checks and the same file layout, but each language carries only
+/// its names, status and call speech (what a call needs to recognise a
+/// language and its closing words). The status is that of those parts alone.
+/// Every file is still checked: a broken notify or console key fails the build.
+pub fn build_locales_call_at(ls: &LocaleSources, version: u64, commit: &str, built_at: &str, judge: Option<ClosingJudge>) -> Result<Locales, Vec<Issue>> {
+    build_locales_with(ls, version, commit, built_at, judge, true)
+}
+
+fn build_locales_with(ls: &LocaleSources, version: u64, commit: &str, built_at: &str, judge: Option<ClosingJudge>, call_only: bool) -> Result<Locales, Vec<Issue>> {
     let now = now_days();
-    let (langs, mut out) = pipeline(ls, judge, now);
+    let (full, mut out) = pipeline_full(ls, judge, now);
+    let langs = full
+        .into_iter()
+        .map(|(code, c)| {
+            let mut lang = c.lang;
+            if call_only {
+                lang.notify = None;
+                lang.console = None;
+                lang.status = c.call_status;
+            }
+            (code, lang)
+        })
+        .collect();
     let loc = Locales {
         format: LOCALES_FORMAT,
         version,

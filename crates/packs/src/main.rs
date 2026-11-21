@@ -6,6 +6,9 @@
 //!             [--index <bageo-pack-index.json>] [--min-bageo <x.y.z>]
 //! packs build-locales <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-locales.json.gz>
 //!             [--index <bageo-pack-index.json>] [--built-at <time>] [--min-bageo <x.y.z>] [--check]
+//!             [--call-only]
+//! packs build-extras <source folder> --version <YYYYMMDDNN> --commit <text> --out <folder>
+//!             [--built-at <time>] [--min-bageo <x.y.z>]
 //! packs sync-source --bageo-call <checkout> --out <packs folder> [--commit <text>]
 //! packs export-app --packs <packs folder> --android <res folder> --desktop <i18n.ext.json> [--commit <text>] [--check]
 
@@ -16,18 +19,20 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use bageo_packs::export::{apply_app_export, export_app};
+use bageo_packs::extras::EXTRAS_INDEX_FILE;
 use bageo_packs::sync::{keep_same_ok, sync_source};
 use bageo_packs::util::{now_rfc3339, valid_rfc3339_utc};
 use bageo_packs::{
-    build, build_locales_at, check_index, check_locales, check_locales_ref, check_sources, load_locales, load_sources, pack_locales,
-    parse_bundle, parse_index, parse_locales, sanitize_locales, sha256_hex, sound_locales, unpack_locales, Index, Issue, LocalesRef,
-    FORMAT, LOCALES_FORMAT, MAX_LOCALES_BYTES,
+    build, build_extras, build_locales_at, build_locales_call_at, check_index, check_locales, check_locales_ref, check_sources, load_art,
+    load_locales, load_sources, pack_locales, parse_bundle, parse_index, parse_locales, sanitize_locales, sha256_hex, sound_locales,
+    unpack_locales, Index, Issue, LocalesRef, FORMAT, LOCALES_FORMAT, MAX_LOCALES_BYTES,
 };
 
 const USAGE: &str = "usage:
   packs check <source folder>
   packs build <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-pack.json> [--index <bageo-pack-index.json>] [--min-bageo <x.y.z>]
-  packs build-locales <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-locales.json.gz> [--index <bageo-pack-index.json>] [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>] [--check]
+  packs build-locales <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-locales.json.gz> [--index <bageo-pack-index.json>] [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>] [--check] [--call-only]
+  packs build-extras <source folder> --version <YYYYMMDDNN> --commit <text> --out <folder> [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>]
   packs sync-source --bageo-call <checkout> --out <packs folder> [--commit <text>]
   packs export-app --packs <packs folder> --android <res folder> --desktop <i18n.ext.json> [--commit <text>] [--check]";
 
@@ -49,6 +54,7 @@ fn main() -> ExitCode {
         Some("check") => cmd_check(&args[1..]),
         Some("build") => cmd_build(&args[1..]),
         Some("build-locales") => cmd_build_locales(&args[1..]),
+        Some("build-extras") => cmd_build_extras(&args[1..]),
         Some("sync-source") => cmd_sync_source(&args[1..]),
         Some("export-app") => cmd_export_app(&args[1..]),
         _ => usage(),
@@ -222,7 +228,7 @@ fn fail(msg: impl std::fmt::Display) -> ExitCode {
 }
 
 fn cmd_build_locales(args: &[String]) -> ExitCode {
-    let Some(a) = parse_args(args, &["--version", "--commit", "--out", "--index", "--built-at", "--min-bageo"], &["--check"]) else {
+    let Some(a) = parse_args(args, &["--version", "--commit", "--out", "--index", "--built-at", "--min-bageo"], &["--check", "--call-only"]) else {
         return usage();
     };
     let ([dir], Some(version), Some(commit), Some(out)) =
@@ -244,7 +250,13 @@ fn cmd_build_locales(args: &[String]) -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    let built = match build_locales_at(&sources, version, commit, &built_at, None) {
+    let call_only = a.flags.contains("--call-only");
+    let built = if call_only {
+        build_locales_call_at(&sources, version, commit, &built_at, None)
+    } else {
+        build_locales_at(&sources, version, commit, &built_at, None)
+    };
+    let built = match built {
         Ok(b) => b,
         Err(issues) => {
             report(&issues);
@@ -324,6 +336,59 @@ fn cmd_build_locales(args: &[String]) -> ExitCode {
         }
         println!("wrote {path}");
     }
+    ExitCode::SUCCESS
+}
+
+/// build-extras: the language files, the art files and their index, written into one folder.
+fn cmd_build_extras(args: &[String]) -> ExitCode {
+    let Some(a) = parse_args(args, &["--version", "--commit", "--out", "--built-at", "--min-bageo"], &[]) else { return usage() };
+    let ([dir], Some(version), Some(commit), Some(out)) = (a.pos.as_slice(), a.opts.get("--version"), a.opts.get("--commit"), a.opts.get("--out"))
+    else {
+        return usage();
+    };
+    let Ok(version) = version.parse::<u64>() else { return usage() };
+    let built_at = a.opts.get("--built-at").cloned().unwrap_or_else(now_rfc3339);
+    if !valid_rfc3339_utc(&built_at) || !valid_commit_arg(commit) {
+        return usage();
+    }
+    let min_bageo = a.opts.get("--min-bageo").cloned().unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+
+    let sources = match load_locales(Path::new(dir)) {
+        Ok(s) => s,
+        Err(issues) => {
+            report(&issues);
+            return ExitCode::from(1);
+        }
+    };
+    let art = match load_art(Path::new(dir)) {
+        Ok(a) => a,
+        Err(issues) => {
+            report(&issues);
+            return ExitCode::from(1);
+        }
+    };
+    // Everything is built and checked in memory before any file is written.
+    let built = match build_extras(&sources, &art, version, commit, &built_at, &min_bageo) {
+        Ok(b) => b,
+        Err(issues) => {
+            report(&issues);
+            return ExitCode::from(1);
+        }
+    };
+    if let Err(e) = fs::create_dir_all(out) {
+        return fail(format!("cannot create {out}: {e}"));
+    }
+    for (name, body) in &built.files {
+        if let Err(e) = fs::write(Path::new(out).join(name), body) {
+            return fail(format!("cannot write {name}: {e}"));
+        }
+        println!("wrote {name}: {} bytes, sha256 {}", body.len(), &sha256_hex(body)[..8]);
+    }
+    if let Err(e) = fs::write(Path::new(out).join(EXTRAS_INDEX_FILE), built.index_json.as_bytes()) {
+        return fail(format!("cannot write {EXTRAS_INDEX_FILE}: {e}"));
+    }
+    println!("wrote {EXTRAS_INDEX_FILE}: {} bytes", built.index_json.len());
+    println!("built {} language file(s) and {} art file(s), version {version}", built.index.langs.len(), built.index.art.len());
     ExitCode::SUCCESS
 }
 

@@ -1,0 +1,29 @@
+{
+  "tab_calls": {
+    "where": "tab for the call list",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "tab_settings": {
+    "where": "tab for the settings",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "retry": {
+    "where": "button after an error",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "calls_today": {
+    "where": "how many calls came in today",
+    "who": "the owner",
+    "placeholders": [
+      "{n}"
+    ]
+  },
+  "save_done": {
+    "where": "shown after settings were saved",
+    "who": "the owner",
+    "placeholders": []
+  }
+}

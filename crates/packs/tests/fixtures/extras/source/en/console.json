@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "tab_calls": "Calls",
+    "tab_settings": "Settings",
+    "retry": "Try again",
+    "calls_today": "{n} calls today",
+    "save_done": "Changes saved"
+  }
+}

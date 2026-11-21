@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "code": "ru",
+  "official": "ru-RU",
+  "native": "Русский",
+  "en": "Russian",
+  "zh": "俄文",
+  "aliases": [
+    "русский"
+  ],
+  "country": "ru",
+  "status": "ai_draft"
+}

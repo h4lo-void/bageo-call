@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "lang": "ru",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "n_incoming": "Входящий звонок",
+    "n_hidden": "Скрытый номер",
+    "n_repeat_body": "{number} звонил {count} раз",
+    "sep": ": ",
+    "u_sec": "{} с",
+    "n_brand": "Bageo Status"
+  },
+  "lists": {
+    "quote": [
+      "«",
+      "»"
+    ],
+    "ap_weekdays": [
+      "пн",
+      "вт",
+      "ср",
+      "чт",
+      "пт",
+      "сб",
+      "вс"
+    ]
+  },
+  "formats": {
+    "dt_fmt": "%-d %b, %H:%M",
+    "ap_dt_fmt": "{}, %-d %b, %H:%M"
+  }
+}

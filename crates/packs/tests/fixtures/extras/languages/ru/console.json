@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "lang": "ru",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "tab_calls": "Звонки",
+    "tab_settings": "Настройки",
+    "retry": "Повторить",
+    "calls_today": "Звонков сегодня: {n}",
+    "save_done": "Изменения сохранены"
+  }
+}
