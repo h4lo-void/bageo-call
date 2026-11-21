@@ -248,6 +248,45 @@ mod tests {
         assert!(!TEMPLATE.contains("I18N[\""), "a language block is back in calls.html");
     }
 
+    /// The style block says "start"/"end", never "left"/"right", so the page turns
+    /// round under <html dir="rtl">. A line that must stay physical says why in
+    /// a `/* ltr-ok: reason */` comment.
+    #[test]
+    fn console_css_is_logical() {
+        let from = TEMPLATE.find("<style>").expect("<style>");
+        let to = TEMPLATE.find("</style>").expect("</style>");
+        let css = &TEMPLATE[from..to];
+        assert!(css.lines().count() > 600, "the style block was not found");
+        let mut bad = Vec::new();
+        let mut kept = 0;
+        for (i, line) in css.lines().enumerate() {
+            let low = line.to_ascii_lowercase();
+            let mut hit = ["margin-left", "margin-right", "padding-left", "padding-right", "border-left", "border-right", "-left-radius", "-right-radius"]
+                .iter()
+                .any(|p| low.contains(p));
+            let squeezed = low.replace(": ", ":");
+            hit |= ["text-align:left", "text-align:right", "float:left", "float:right"].iter().any(|p| squeezed.contains(p));
+            for word in ["left:", "right:"] {
+                hit |= low.match_indices(word).any(|(at, _)| at > 0 && matches!(low.as_bytes()[at - 1], b' ' | b';' | b'{'));
+            }
+            if !hit {
+                continue;
+            }
+            match line.find("/* ltr-ok:") {
+                Some(at) if line[at + "/* ltr-ok:".len()..].trim_start().len() > 3 => kept += 1,
+                _ => bad.push(format!("{}: {}", i + 1, line.chars().take(110).collect::<String>())),
+            }
+        }
+        assert!(bad.is_empty(), "left/right written into the style block (use start/end, or say why with ltr-ok): {bad:#?}");
+        assert!(kept <= 8, "too many ltr-ok lines ({kept}): each one needs a reason that cannot be done with start/end");
+    }
+
+    #[test]
+    fn the_page_turns_right_to_left_for_the_languages_compiled_in_for_it() {
+        assert!(TEMPLATE.contains("const RTL_LANGS = [\"ar\", \"he\", \"fa\", \"ur\", \"ps\", \"sd\"];"));
+        assert!(TEMPLATE.contains("document.documentElement.dir = RTL_LANGS.includes("));
+    }
+
     #[test]
     fn every_mascot_region_is_a_pack_region_and_has_all_its_drawings() {
         let start = TEMPLATE.find("const TS_REGIONS = {").expect("TS_REGIONS") + "const TS_REGIONS = {".len();
