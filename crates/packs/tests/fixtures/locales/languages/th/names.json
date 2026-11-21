@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "code": "th",
+  "official": "th-TH",
+  "native": "ไทย",
+  "en": "Thai",
+  "zh": "泰文",
+  "aliases": [
+    "ภาษาไทย"
+  ],
+  "country": "th",
+  "status": "ai_draft"
+}

@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "lang": "th",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "h_ok": "ทุกอย่างปกติ",
+    "r_ready": "โทรศัพท์พร้อม: {n}",
+    "r_phone_offline": "{name} ไม่ได้เชื่อมต่อ"
+  }
+}

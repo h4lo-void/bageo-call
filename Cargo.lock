@@ -183,6 +183,8 @@ dependencies = [
 name = "bageo-packs"
 version = "1.6.9"
 dependencies = [
+ "chrono",
+ "flate2",
  "serde",
  "serde_json",
  "sha2",

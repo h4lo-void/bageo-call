@@ -173,88 +173,6 @@ pub fn official_ext_index(code: &str) -> Option<usize> {
     OFFICIAL_LANG_INFO.iter().position(|l| !l.core && l.code == code)
 }
 
-#[cfg(test)]
-mod lang_info_tests {
-    use super::*;
-    use std::collections::HashSet;
-
-    #[test]
-    fn info_matches_the_code_list() {
-        assert_eq!(OFFICIAL_LANG_INFO.len(), OFFICIAL_LANGS.len());
-        for (info, code) in OFFICIAL_LANG_INFO.iter().zip(OFFICIAL_LANGS) {
-            assert_eq!(info.official, *code);
-            assert!(is_official_lang(info.official));
-        }
-    }
-
-    #[test]
-    fn code_is_the_primary_subtag() {
-        for l in &OFFICIAL_LANG_INFO {
-            assert_eq!(l.code, l.official.split('-').next().unwrap(), "{}", l.official);
-            assert_eq!(l.code, l.code.to_ascii_lowercase());
-            assert!(!l.name_en.is_empty());
-        }
-    }
-
-    #[test]
-    fn non_core_codes_are_unique() {
-        let mut seen = HashSet::new();
-        for l in OFFICIAL_LANG_INFO.iter().filter(|l| !l.core) {
-            assert!(seen.insert(l.code), "duplicate primary code {}", l.code);
-        }
-        assert_eq!(seen.len(), 70);
-        // No non-core code collides with a core one.
-        for l in OFFICIAL_LANG_INFO.iter().filter(|l| l.core) {
-            assert!(!seen.contains(l.code), "{}", l.code);
-        }
-    }
-
-    #[test]
-    fn shared_and_split_codes() {
-        let en: Vec<_> = OFFICIAL_LANG_INFO.iter().filter(|l| l.code == "en").map(|l| l.official).collect();
-        assert_eq!(en, ["en-US", "en-IN"]);
-        assert!(OFFICIAL_LANG_INFO.iter().filter(|l| l.code == "en").all(|l| l.core));
-        let nb = official_ext_index("nb").unwrap();
-        let nn = official_ext_index("nn").unwrap();
-        assert_ne!(nb, nn);
-        assert_eq!(OFFICIAL_LANG_INFO[nb].name_en, "Norwegian Bokmål");
-        assert_eq!(OFFICIAL_LANG_INFO[nn].name_en, "Norwegian Nynorsk");
-        assert_eq!(official_ext_index("no"), None);
-        assert_eq!(official_ext_index("en"), None);
-    }
-
-    #[test]
-    fn core_set_is_the_nine_languages() {
-        let core: HashSet<_> = OFFICIAL_LANG_INFO.iter().filter(|l| l.core).map(|l| l.code).collect();
-        let want: HashSet<_> = ["en", "cmn", "ja", "ko", "es", "fr", "de", "pt"].into_iter().collect();
-        assert_eq!(core, want);
-        for c in &core {
-            assert!(NINE_LANG_PRIMARY.contains(c));
-        }
-    }
-
-    #[test]
-    fn right_to_left_languages() {
-        let rtl: HashSet<_> = OFFICIAL_LANG_INFO.iter().filter(|l| l.rtl).map(|l| l.code).collect();
-        let want: HashSet<_> = ["ar", "he", "fa", "ps", "sd", "ur"].into_iter().collect();
-        assert_eq!(rtl, want);
-        for l in &OFFICIAL_LANG_INFO {
-            if l.rtl {
-                assert!(matches!(l.script, Script::Arabic | Script::Hebrew), "{}", l.code);
-            }
-        }
-        let it = &OFFICIAL_LANG_INFO[official_ext_index("it").unwrap()];
-        assert_eq!((it.official, it.script, it.rtl), ("it-IT", Script::Latin, false));
-        let th = &OFFICIAL_LANG_INFO[official_ext_index("th").unwrap()];
-        assert_eq!((th.official, th.script), ("th-TH", Script::Thai));
-        let hi = &OFFICIAL_LANG_INFO[official_ext_index("hi").unwrap()];
-        assert_eq!(hi.script, Script::Devanagari);
-        let ru = &OFFICIAL_LANG_INFO[official_ext_index("ru").unwrap()];
-        assert_eq!(ru.script, Script::Cyrillic);
-    }
-}
-
-
 /// ISO 3166-1 alpha-2 codes, lower case. "xk" (Kosovo) is allowed on top.
 const ISO_COUNTRIES: &str = "ad ae af ag ai al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bl bm bn bo bq br \
 bs bt bv bw by bz ca cc cd cf cg ch ci ck cl cm cn co cr cu cv cw cx cy cz de dj dk dm do dz ec ee eg eh er es et fi fj fk \
@@ -379,7 +297,220 @@ pub const ARABIC_ACCENTS: &[&str] = &[
     "黎巴嫩腔",
 ];
 
-/// Top-level domains the URL check recognises when there is no scheme.
-pub const URL_TLDS: &[&str] = &[
-    "com", "net", "org", "edu", "gov", "io", "app", "dev", "xyz", "top", "info", "biz", "tw", "cn", "jp", "kr", "hk", "uk",
+/// Names of public services and devices that are spelled like a web
+/// address and that region text has to mention by name (the Greek
+/// government login, a Dutch bank's card reader). Matched whole, in any
+/// case, and only without a path after them.
+pub const ADDRESS_LIKE_NAMES: &[&str] = &["gov.gr", "e.dentifier"];
+
+/// Instructions that would change the AI's rules or make it someone else,
+/// as whole phrases (compared like [BANNED], see [crate::guard]). Region
+/// text, layer text, call speech and names may not carry them; a
+/// translation may only when its English original does.
+pub const RULE_CHANGE_PHRASES: &[&str] = &[
+    // English
+    "new instructions",
+    "system:",
+    "system prompt",
+    "developer mode",
+    "jailbreak",
+    // Spanish
+    "nuevas instrucciones",
+    // French
+    "nouvelles instructions",
+    // German
+    "neue anweisungen",
+    // Portuguese
+    "novas instruções",
+    // Italian
+    "nuove istruzioni",
+    // Russian
+    "новые инструкции",
+    // Arabic
+    "تعليمات جديدة",
+    // Chinese
+    "忽略以上",
+    "忽略上面",
+    "忽略之前",
+    "忽略前面",
+    "忽略規則",
+    "忽略规则",
+    "無視規則",
+    "无视规则",
+    "無視以上",
+    "无视以上",
+    "忘記規則",
+    "忘记规则",
+    "從現在起你是",
+    "从现在起你是",
+    "從現在開始你是",
+    "从现在开始你是",
+    "新的指令",
+    "系統提示詞",
+    "系统提示词",
+    // Japanese
+    "指示を無視",
+    "ルールを無視",
+    "上記を無視",
+    "以前の指示",
+    "今からあなたは",
+    "あなたは今から",
+    "新しい指示",
+    // Korean
+    "지시를 무시",
+    "규칙을 무시",
+    "위의 내용을 무시",
+    "이전 지시",
+    "지금부터 너는",
+    "이제부터 너는",
+    "지금부터 당신은",
+    "이제부터 당신은",
+    "새로운 지시",
 ];
+
+/// "You are now …" in several languages. Ordinary text says it too ("Vous
+/// êtes maintenant connecté", "Du bist jetzt verbunden"), so it only counts
+/// when one of [RULE_CHANGE_IDENTITY_NEXT] follows: someone the AI is told
+/// to become ("You are now DAN", "ab jetzt bist du ein Assistent").
+pub const RULE_CHANGE_IDENTITY_PHRASES: &[&str] = &[
+    "you are now",
+    "from now on you are",
+    "ahora eres",
+    "a partir de ahora eres",
+    "tu es maintenant",
+    "vous êtes maintenant",
+    "désormais tu es",
+    "désormais vous êtes",
+    "du bist jetzt",
+    "ab jetzt bist du",
+    "agora você é",
+    "a partir de agora você é",
+    "da ora in poi sei",
+    "d'ora in poi sei",
+    "с этого момента ты",
+    "من الآن أنت",
+];
+
+/// Whole words that turn [RULE_CHANGE_IDENTITY_PHRASES] into an instruction:
+/// articles, possessives and the roles a prompt injection hands out.
+/// Prepositions are left out ("vous êtes maintenant en ligne" is fine).
+pub const RULE_CHANGE_IDENTITY_NEXT: &[&str] = &[
+    "a", "an", "the", "my", "your", "dan", "ai", "assistant", "bot", "chatgpt", "gemini", "developer", "admin", "un", "una", "uno",
+    "el", "la", "le", "l", "il", "lo", "mi", "tu", "mon", "ma", "mio", "mia", "ein", "eine", "der", "die", "das", "mein", "meine",
+    "dein", "um", "uma", "o", "meu", "minha", "ki", "ia", "asistente", "assistente", "assistent", "assistante", "мой", "моя",
+    "ассистент", "ассистентом", "бот", "ботом", "ии", "مساعد", "مساعدي", "بوت", "نظام",
+];
+
+/// Word starts of verbs that only ever mean "drop it" ("ignore", "игнорируй",
+/// "تجاهل"); with a rule word or a word for what came before in the next
+/// four words they make an instruction ("Ignore all previous rules").
+pub const RULE_CHANGE_STRONG_VERBS: &[&str] = &["ignor", "disregard", "overrid", "bypass", "игнор", "تجاهل"];
+
+/// Word starts of "forget" verbs. Everyday text forgets things all the time
+/// ("Don't forget the previous message", "N'oubliez pas de régler"), so
+/// these count only with a rule word after them and not when negated.
+pub const RULE_CHANGE_WEAK_VERBS: &[&str] = &["forget", "olvid", "oubli", "vergiss", "vergess", "esquec", "dimentic", "забуд", "забыть"];
+
+/// Whole words for rules and instructions (compared without accents;
+/// "regelmäßig", "правильно" and "régler" are other words).
+pub const RULE_NOUNS: &[&str] = &[
+    "rule", "rules", "instruction", "instructions", "prompt", "prompts", "guideline", "guidelines", "regla", "reglas", "instrucción",
+    "instrucciones", "règle", "règles", "consigne", "consignes", "regel", "regeln", "anweisung", "anweisungen", "regra", "regras",
+    "instrução", "instruções", "regola", "regole", "istruzione", "istruzioni", "правило", "правила", "правил", "инструкция",
+    "инструкции", "инструкций", "инструкцию", "указания", "قاعدة", "قواعد", "تعليمات",
+];
+
+/// Word starts for "what was said before", counted only after a strong verb
+/// ("Ignore everything above", "تجاهل السابق").
+pub const RULE_POSITION_WORDS: &[&str] = &[
+    "above", "previous", "earlier", "anterior", "precedent", "obig", "vorherig", "выше", "предыдущ", "سابق",
+];
+
+/// Words right before a weak verb that negate it ("don't", "no", "n'",
+/// "не", "لا"); "don't" reads as "don" and "t".
+pub const RULE_NEGATIONS_BEFORE: &[&str] = &["not", "never", "no", "ne", "n", "non", "nao", "nie", "не", "لا"];
+
+/// Words in the two after a weak verb that negate it ("Vergessen Sie
+/// nicht", "N'oubliez pas").
+pub const RULE_NEGATIONS_AFTER: &[&str] = &["nicht", "pas", "not"];
+
+#[cfg(test)]
+mod lang_info_tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn info_matches_the_code_list() {
+        assert_eq!(OFFICIAL_LANG_INFO.len(), OFFICIAL_LANGS.len());
+        for (info, code) in OFFICIAL_LANG_INFO.iter().zip(OFFICIAL_LANGS) {
+            assert_eq!(info.official, *code);
+            assert!(is_official_lang(info.official));
+        }
+    }
+
+    #[test]
+    fn code_is_the_primary_subtag() {
+        for l in &OFFICIAL_LANG_INFO {
+            assert_eq!(l.code, l.official.split('-').next().unwrap(), "{}", l.official);
+            assert_eq!(l.code, l.code.to_ascii_lowercase());
+            assert!(!l.name_en.is_empty());
+        }
+    }
+
+    #[test]
+    fn non_core_codes_are_unique() {
+        let mut seen = HashSet::new();
+        for l in OFFICIAL_LANG_INFO.iter().filter(|l| !l.core) {
+            assert!(seen.insert(l.code), "duplicate primary code {}", l.code);
+        }
+        assert_eq!(seen.len(), 70);
+        // No non-core code collides with a core one.
+        for l in OFFICIAL_LANG_INFO.iter().filter(|l| l.core) {
+            assert!(!seen.contains(l.code), "{}", l.code);
+        }
+    }
+
+    #[test]
+    fn shared_and_split_codes() {
+        let en: Vec<_> = OFFICIAL_LANG_INFO.iter().filter(|l| l.code == "en").map(|l| l.official).collect();
+        assert_eq!(en, ["en-US", "en-IN"]);
+        assert!(OFFICIAL_LANG_INFO.iter().filter(|l| l.code == "en").all(|l| l.core));
+        let nb = official_ext_index("nb").unwrap();
+        let nn = official_ext_index("nn").unwrap();
+        assert_ne!(nb, nn);
+        assert_eq!(OFFICIAL_LANG_INFO[nb].name_en, "Norwegian Bokmål");
+        assert_eq!(OFFICIAL_LANG_INFO[nn].name_en, "Norwegian Nynorsk");
+        assert_eq!(official_ext_index("no"), None);
+        assert_eq!(official_ext_index("en"), None);
+    }
+
+    #[test]
+    fn core_set_is_the_nine_languages() {
+        let core: HashSet<_> = OFFICIAL_LANG_INFO.iter().filter(|l| l.core).map(|l| l.code).collect();
+        let want: HashSet<_> = ["en", "cmn", "ja", "ko", "es", "fr", "de", "pt"].into_iter().collect();
+        assert_eq!(core, want);
+        for c in &core {
+            assert!(NINE_LANG_PRIMARY.contains(c));
+        }
+    }
+
+    #[test]
+    fn right_to_left_languages() {
+        let rtl: HashSet<_> = OFFICIAL_LANG_INFO.iter().filter(|l| l.rtl).map(|l| l.code).collect();
+        let want: HashSet<_> = ["ar", "he", "fa", "ps", "sd", "ur"].into_iter().collect();
+        assert_eq!(rtl, want);
+        for l in &OFFICIAL_LANG_INFO {
+            if l.rtl {
+                assert!(matches!(l.script, Script::Arabic | Script::Hebrew), "{}", l.code);
+            }
+        }
+        let it = &OFFICIAL_LANG_INFO[official_ext_index("it").unwrap()];
+        assert_eq!((it.official, it.script, it.rtl), ("it-IT", Script::Latin, false));
+        let th = &OFFICIAL_LANG_INFO[official_ext_index("th").unwrap()];
+        assert_eq!((th.official, th.script), ("th-TH", Script::Thai));
+        let hi = &OFFICIAL_LANG_INFO[official_ext_index("hi").unwrap()];
+        assert_eq!(hi.script, Script::Devanagari);
+        let ru = &OFFICIAL_LANG_INFO[official_ext_index("ru").unwrap()];
+        assert_eq!(ru.script, Script::Cyrillic);
+    }
+}

@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "lang": "th",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "app_name": "Bageo",
+    "header_version": "เวอร์ชัน %1$s (%2$d)",
+    "st_ai_on": "AI กำลังรับสายของคุณ",
+    "ip_err_unreachable": "เข้าถึงที่อยู่นี้ไม่ได้ ตรวจสอบว่าโทรศัพท์และ Bageo อยู่ในเครือข่ายเดียวกัน",
+    "step_pair_ip": "แตะ \"เชื่อมต่อด้วยที่อยู่ IP\" เพื่อจับคู่"
+  }
+}

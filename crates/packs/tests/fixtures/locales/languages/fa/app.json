@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "lang": "fa",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "app_name": "Bageo",
+    "header_version": "نسخه %1$s (%2$d)",
+    "st_ai_on": "هوش مصنوعی به تماس\u200cهای شما پاسخ می\u200cدهد",
+    "ip_err_unreachable": "به این نشانی دسترسی نیست. مطمئن شوید تلفن و Bageo در یک شبکه هستند.",
+    "step_pair_ip": "برای جفت\u200cشدن روی \"اتصال با نشانی IP\" بزنید."
+  }
+}

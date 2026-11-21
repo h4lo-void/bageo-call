@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "lang": "it",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "h_ok": "Tutto a posto",
+    "r_ready": "Telefoni pronti: {n}",
+    "r_phone_offline": "{name} non è connesso"
+  }
+}

@@ -7,6 +7,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::data::*;
+use crate::guard::{has_web_address, hidden_char, hidden_reason, rule_change, Writing};
+use crate::locales::{check_locales_ref, LOCALES_FILE};
 use crate::model::*;
 use crate::util::*;
 use crate::{rule, Issue, FORMAT, MAX_BUNDLE_BYTES};
@@ -94,25 +96,6 @@ pub(crate) fn primary_subtag(lang: &str) -> &str {
 
 // ---- text rules -------------------------------------------------------------
 
-/// Characters that hide text or break a line: control characters (line
-/// breaks and tabs too), zero-width, bidirectional and tag characters.
-fn bad_char(c: char) -> bool {
-    c.is_control()
-        || matches!(
-            c,
-            '\u{00AD}'
-                | '\u{061C}'
-                | '\u{180E}'
-                | '\u{200B}'..='\u{200F}'
-                | '\u{2028}'..='\u{202E}'
-                | '\u{2060}'..='\u{2064}'
-                | '\u{2066}'..='\u{206F}'
-                | '\u{FEFF}'
-                | '\u{FFF9}'..='\u{FFFB}'
-                | '\u{E0000}'..='\u{E007F}'
-        )
-}
-
 fn is_cjk(c: char) -> bool {
     matches!(c, '\u{3040}'..='\u{30FF}' | '\u{3400}'..='\u{9FFF}' | '\u{AC00}'..='\u{D7AF}')
 }
@@ -154,19 +137,16 @@ fn find_phrase<'a>(words: &'a [&'a str], spaced: &str, tight: &str) -> Option<&'
     None
 }
 
-fn has_domain(low: &str) -> bool {
-    let chars: Vec<char> = low.chars().collect();
-    for (i, &c) in chars.iter().enumerate() {
-        if c != '.' || i == 0 || !chars[i - 1].is_alphanumeric() {
-            continue;
-        }
-        let tld: String = chars[i + 1..].iter().take_while(|c| c.is_ascii_lowercase()).collect();
-        let after = chars.get(i + 1 + tld.len());
-        if URL_TLDS.contains(&tld.as_str()) && !after.is_some_and(|c| c.is_alphanumeric()) {
-            return true;
-        }
-    }
-    false
+/// The banned phrase a text contains, if any (see [crate::guard::banned_phrase]).
+pub(crate) fn banned_phrase(s: &str) -> Option<&'static str> {
+    crate::guard::banned_phrase(s)
+}
+
+/// The phrase that names a language or accent Gemini Live does not speak, or
+/// pins the call to one language, if any.
+pub(crate) fn unsupported_phrase(s: &str) -> Option<&'static str> {
+    let (spaced, tight) = match_forms(s);
+    find_phrase(&UNSUPPORTED_OR_LIMITING, &spaced, &tight).or_else(|| find_phrase(ARABIC_ACCENTS, &spaced, &tight))
 }
 
 fn placeholders(out: &mut Vec<Issue>, file: &str, field: &str, folded: &str, allow_owner: bool) {
@@ -193,10 +173,11 @@ fn placeholders(out: &mut Vec<Issue>, file: &str, field: &str, folded: &str, all
     }
 }
 
-/// Everything that is true of any text a pack carries.
-pub(crate) fn content(out: &mut Vec<Issue>, file: &str, field: &str, s: &str, allow_owner: bool) {
-    if let Some(c) = s.chars().find(|&c| bad_char(c)) {
-        push(out, file, field, rule::CHARSET, format!("contains U+{:04X} (line breaks, control, zero-width and bidirectional characters are not allowed)", c as u32));
+/// Everything that is true of any text a pack carries. w is the language
+/// the text is written in (it decides which joiners and spaces it may use).
+pub(crate) fn content(out: &mut Vec<Issue>, file: &str, field: &str, s: &str, allow_owner: bool, w: Writing) {
+    if let Some(c) = hidden_char(s, w) {
+        push(out, file, field, rule::CHARSET, format!("contains U+{:04X} ({})", c as u32, hidden_reason(c)));
     }
     let folded = fold(s);
     if let Some(c) = folded.chars().find(|c| matches!(c, '[' | ']' | '【' | '】' | '<' | '>' | '&')) {
@@ -204,11 +185,10 @@ pub(crate) fn content(out: &mut Vec<Issue>, file: &str, field: &str, s: &str, al
     }
     placeholders(out, file, field, &folded, allow_owner);
 
-    let low = folded.to_lowercase();
-    if low.contains("://") || low.contains("www.") || has_domain(&low) {
+    if has_web_address(s) {
         push(out, file, field, rule::PATTERN, "contains a web address");
     }
-    if low.contains('@') {
+    if folded.contains('@') {
         push(out, file, field, rule::PATTERN, "contains an e-mail address or @handle");
     }
     let mut run = 0;
@@ -224,17 +204,19 @@ pub(crate) fn content(out: &mut Vec<Issue>, file: &str, field: &str, s: &str, al
         }
     }
 
-    let (spaced, tight) = match_forms(s);
-    if let Some(w) = find_phrase(BANNED, &spaced, &tight) {
+    if let Some(w) = banned_phrase(s) {
         push(out, file, field, rule::BANNED, format!("contains the banned phrase \"{w}\""));
     }
-    if let Some(w) = find_phrase(&UNSUPPORTED_OR_LIMITING, &spaced, &tight).or_else(|| find_phrase(ARABIC_ACCENTS, &spaced, &tight)) {
+    if let Some(p) = rule_change(s) {
+        push(out, file, field, rule::BANNED, format!("contains an instruction that changes the AI's rules (\"{p}\")"));
+    }
+    if let Some(w) = unsupported_phrase(s) {
         push(out, file, field, rule::UNSUPPORTED, format!("names a language or accent Gemini Live does not speak, or pins the call to one language: \"{w}\""));
     }
 }
 
 /// A required, non-empty text with a length limit.
-pub(crate) fn text_str(out: &mut Vec<Issue>, file: &str, field: &str, s: &str, max: usize, allow_owner: bool) {
+pub(crate) fn text_str(out: &mut Vec<Issue>, file: &str, field: &str, s: &str, max: usize, allow_owner: bool, w: Writing) {
     if s.trim().is_empty() {
         push(out, file, field, rule::REQUIRED, "empty");
         return;
@@ -243,12 +225,12 @@ pub(crate) fn text_str(out: &mut Vec<Issue>, file: &str, field: &str, s: &str, m
     if n > max {
         push(out, file, field, rule::LENGTH, format!("{n} characters, the limit is {max}"));
     }
-    content(out, file, field, s, allow_owner);
+    content(out, file, field, s, allow_owner, w);
 }
 
 pub(crate) fn text_field(out: &mut Vec<Issue>, file: &str, field: &str, t: &Text, lim: Pair, allow_owner: bool) {
-    text_str(out, file, &format!("{field}.en"), &t.en, lim.0, allow_owner);
-    text_str(out, file, &format!("{field}.zh"), &t.zh, lim.1, allow_owner);
+    text_str(out, file, &format!("{field}.en"), &t.en, lim.0, allow_owner, Writing::EN);
+    text_str(out, file, &format!("{field}.zh"), &t.zh, lim.1, allow_owner, Writing::ZH);
 }
 
 /// A fraud line also has to say it is a scam.
@@ -261,12 +243,13 @@ pub(crate) fn fraud_marker(out: &mut Vec<Issue>, file: &str, field: &str, t: &Te
     }
 }
 
-pub(crate) fn hello_fields(out: &mut Vec<Issue>, file: &str, field: &str, h: &Hello) {
-    text_str(out, file, &format!("{field}.hello"), &h.hello, HELLO_MAX.0, false);
-    text_str(out, file, &format!("{field}.hello_again"), &h.hello_again, HELLO_MAX.1, false);
+/// The hello lines, in the language they are spoken in.
+pub(crate) fn hello_fields(out: &mut Vec<Issue>, file: &str, field: &str, h: &Hello, w: Writing) {
+    text_str(out, file, &format!("{field}.hello"), &h.hello, HELLO_MAX.0, false, w);
+    text_str(out, file, &format!("{field}.hello_again"), &h.hello_again, HELLO_MAX.1, false, w);
 }
 
-pub(crate) fn vocab_fields(out: &mut Vec<Issue>, file: &str, field: &str, v: &BTreeMap<String, Vec<String>>) {
+pub(crate) fn vocab_fields(out: &mut Vec<Issue>, file: &str, field: &str, v: &BTreeMap<String, Vec<String>>, lang: Writing) {
     if v.len() > MAX_VOCAB_SITUATIONS {
         push(out, file, field, rule::LENGTH, format!("{} situations, the limit is {MAX_VOCAB_SITUATIONS}", v.len()));
     }
@@ -279,7 +262,7 @@ pub(crate) fn vocab_fields(out: &mut Vec<Issue>, file: &str, field: &str, v: &BT
             push(out, file, &f, rule::LENGTH, format!("{} words, the limit is {MAX_VOCAB_WORDS}", words.len()));
         }
         for (i, w) in words.iter().enumerate() {
-            text_str(out, file, &format!("{f}[{i}]"), w, MAX_VOCAB_WORD_CHARS, false);
+            text_str(out, file, &format!("{f}[{i}]"), w, MAX_VOCAB_WORD_CHARS, false, lang);
         }
     }
 }
@@ -320,6 +303,7 @@ pub(crate) fn hello_required(r: &RegionData) -> bool {
 
 pub(crate) fn check_region(out: &mut Vec<Issue>, file: &str, p: &str, r: &RegionData, now: i64) {
     let fld = |n: &str| format!("{p}{n}");
+    let own = Writing::of(&r.lang);
     if !valid_code(&r.code) {
         push(out, file, &fld("code"), rule::CODE, format!("\"{}\" must match [a-z]{{2,}}(-[a-z]{{2,}})* and be at most {MAX_CODE} characters", r.code));
     }
@@ -336,10 +320,10 @@ pub(crate) fn check_region(out: &mut Vec<Issue>, file: &str, p: &str, r: &Region
         }
     }
 
-    text_str(out, file, &fld("name.en"), &r.name.en, MAX_NAME, false);
-    text_str(out, file, &fld("name.native"), &r.name.native, MAX_NAME, false);
+    text_str(out, file, &fld("name.en"), &r.name.en, MAX_NAME, false, Writing::EN);
+    text_str(out, file, &fld("name.native"), &r.name.native, MAX_NAME, false, own);
     if let Some(z) = &r.name.zh {
-        text_str(out, file, &fld("name.zh"), z, MAX_NAME, false);
+        text_str(out, file, &fld("name.zh"), z, MAX_NAME, false, Writing::ZH);
     }
 
     if !is_official_lang(&r.lang) {
@@ -363,16 +347,16 @@ pub(crate) fn check_region(out: &mut Vec<Issue>, file: &str, p: &str, r: &Region
     }
 
     match &r.hello {
-        Some(h) => hello_fields(out, file, &fld("hello"), h),
+        Some(h) => hello_fields(out, file, &fld("hello"), h, own),
         None if hello_required(r) => push(out, file, &fld("hello"), rule::REQUIRED, "this region's language needs its own hello"),
         None => {}
     }
 
     text_field(out, file, &fld("delivery"), &r.delivery, DELIVERY_MAX, false);
     if let Some(k) = &r.delivery_key {
-        for (l, v) in [("en", &k.en), ("zh", &k.zh)] {
+        for (l, v, w) in [("en", &k.en, Writing::EN), ("zh", &k.zh, Writing::ZH)] {
             if let Some(v) = v {
-                text_str(out, file, &fld(&format!("delivery_key.{l}")), v, MAX_KEY, false);
+                text_str(out, file, &fld(&format!("delivery_key.{l}")), v, MAX_KEY, false, w);
             }
         }
     }
@@ -404,7 +388,7 @@ pub(crate) fn check_region(out: &mut Vec<Issue>, file: &str, p: &str, r: &Region
         }
     }
 
-    vocab_fields(out, file, &fld("vocab"), &r.vocab);
+    vocab_fields(out, file, &fld("vocab"), &r.vocab, own);
 
     if !valid_status(&r.status) {
         push(out, file, &fld("status"), rule::STATUS, format!("\"{}\" must be draft or local_reviewed", r.status));
@@ -418,7 +402,7 @@ pub(crate) fn check_region(out: &mut Vec<Issue>, file: &str, p: &str, r: &Region
 
 // ---- the bundle -----------------------------------------------------------------
 
-fn valid_commit(s: &str) -> bool {
+pub(crate) fn valid_commit(s: &str) -> bool {
     !s.is_empty() && s.len() <= 64 && s.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
@@ -602,23 +586,41 @@ pub fn parse_bundle(json: &str) -> Result<Bundle, Vec<Issue>> {
 
 // ---- the release index ------------------------------------------------------------
 
-fn valid_min_bageo(s: &str) -> bool {
+pub(crate) fn valid_min_bageo(s: &str) -> bool {
     let parts: Vec<&str> = s.split('.').collect();
     parts.len() == 3 && parts.iter().all(|p| !p.is_empty() && p.len() <= 4 && p.bytes().all(|b| b.is_ascii_digit()))
 }
 
+/// A plain file name (letters, digits, '.', '_', '-'), never a path.
+pub(crate) fn plain_file_name(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 64 && !s.starts_with('.') && s.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
+const INDEX_FILE: &str = "bageo-pack-index.json";
+
+/// The translations entry of an index when every field of it is sound;
+/// otherwise None and one issue saying why it was left out. A broken entry
+/// never costs the region pack.
+pub fn sound_locales(ix: &Index) -> (Option<LocalesRef>, Option<Issue>) {
+    let Some(l) = &ix.locales else { return (None, None) };
+    let bad = check_locales_ref(l);
+    if bad.is_empty() {
+        return (Some(l.clone()), None);
+    }
+    let why = bad.iter().map(|i| format!("{}: {}", i.field, i.detail)).collect::<Vec<_>>().join("; ");
+    let note = Issue::new(INDEX_FILE, "locales", rule::RELEASE_INDEX, format!("the translations entry is left out ({why}); {LOCALES_FILE} is not downloaded"));
+    (None, Some(note))
+}
+
+/// Every field of an index, the translations entry included.
 pub fn check_index(ix: &Index) -> Vec<Issue> {
-    let f = "bageo-pack-index.json";
+    let f = INDEX_FILE;
     let mut out = Vec::new();
     if ix.format != FORMAT {
         push(&mut out, f, "format", rule::FORMAT, format!("format {} is not {FORMAT}", ix.format));
     }
     version_field(&mut out, f, "version", ix.version, now_days());
-    let plain_name = !ix.file.is_empty()
-        && ix.file.len() <= 64
-        && !ix.file.starts_with('.')
-        && ix.file.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'));
-    if !plain_name {
+    if !plain_file_name(&ix.file) {
         push(&mut out, f, "file", rule::RELEASE_INDEX, "must be a plain file name (letters, digits, '.', '_', '-'), not a path");
     }
     if ix.bytes == 0 || ix.bytes > MAX_BUNDLE_BYTES as u64 {
@@ -630,19 +632,28 @@ pub fn check_index(ix: &Index) -> Vec<Issue> {
     if !valid_min_bageo(&ix.min_bageo) {
         push(&mut out, f, "min_bageo", rule::RELEASE_INDEX, "must look like 1.6.9");
     }
+    out.extend(sound_locales(ix).1);
     out
 }
 
-/// Reads an index (tolerant of unknown fields) and checks it.
+/// Reads an index (tolerant of unknown fields) and checks it. A translations
+/// entry that is not sound reads as absent (see [parse_index_noting]).
 pub fn parse_index(json: &str) -> Result<Index, Vec<Issue>> {
-    let f = "bageo-pack-index.json";
+    parse_index_noting(json).map(|(ix, _)| ix)
+}
+
+/// [parse_index], plus the issue for a translations entry it left out.
+pub fn parse_index_noting(json: &str) -> Result<(Index, Option<Issue>), Vec<Issue>> {
+    let f = INDEX_FILE;
     if json.len() > 4096 {
         return Err(vec![Issue::new(f, "", rule::LENGTH, "an index is a few hundred bytes")]);
     }
-    let ix: Index = serde_json::from_str(json).map_err(|e| vec![Issue::new(f, "", rule::FORMAT, e.to_string())])?;
+    let mut ix: Index = serde_json::from_str(json).map_err(|e| vec![Issue::new(f, "", rule::FORMAT, e.to_string())])?;
+    let (locales, note) = sound_locales(&ix);
+    ix.locales = locales;
     let issues = check_index(&ix);
     if issues.is_empty() {
-        Ok(ix)
+        Ok((ix, note))
     } else {
         Err(issues)
     }

@@ -14,6 +14,8 @@ use serde::Deserialize;
 
 use crate::check::*;
 use crate::data::*;
+use crate::guard::Writing;
+use crate::locales::{SrcNames, SrcSpeech};
 use crate::model::*;
 use crate::util::*;
 use crate::{checker_id, rule, Issue, FORMAT, MAX_BUNDLE_BYTES};
@@ -128,7 +130,9 @@ pub struct SrcCommon {
     pub vocab: BTreeMap<String, Vec<String>>,
 }
 
-/// languages/<layer>/call.json
+/// languages/<layer>/call.json. Schema 1 needs a name; schema 2 may take it
+/// from the folder's names.json and may carry the call speech of a language
+/// outside the nine core ones (checked with the translations).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SrcLayer {
@@ -137,12 +141,15 @@ pub struct SrcLayer {
     pub status: String,
     #[serde(default)]
     pub reviewed_on: Option<String>,
-    pub name: SrcText,
+    #[serde(default)]
+    pub name: Option<SrcText>,
     #[serde(default)]
     pub stt: Option<String>,
     #[serde(default)]
     pub hello: Option<SrcHello>,
     pub common: SrcCommon,
+    #[serde(default)]
+    pub speech: Option<SrcSpeech>,
 }
 
 impl From<&SrcText> for Text {
@@ -167,11 +174,13 @@ pub struct SourceFile<T> {
 pub struct Sources {
     pub regions: Vec<SourceFile<SrcRegion>>,
     pub layers: Vec<SourceFile<SrcLayer>>,
+    /// languages/<code>/names.json, where present.
+    pub names: Vec<SourceFile<SrcNames>>,
 }
 
 const MAX_SOURCE_BYTES: usize = 256 * 1024;
 
-fn sorted_paths(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
+pub(crate) fn sorted_paths(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     let mut v = fs::read_dir(dir)?.map(|e| e.map(|e| e.path())).collect::<Result<Vec<_>, _>>()?;
     v.sort();
     Ok(v)
@@ -204,8 +213,9 @@ fn name_of(p: &Path) -> String {
     p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string()
 }
 
-/// Reads regions/*.json and languages/*/call.json under dir. Every file that
-/// cannot be read or has a field the format does not define is reported.
+/// Reads regions/*.json, languages/*/call.json and languages/*/names.json
+/// under dir (a language folder needs at least one of the two). Every file
+/// that cannot be read or has a field the format does not define is reported.
 pub fn load_sources(dir: &Path) -> Result<Sources, Vec<Issue>> {
     let mut issues = Vec::new();
     let mut s = Sources::default();
@@ -226,14 +236,23 @@ pub fn load_sources(dir: &Path) -> Result<Sources, Vec<Issue>> {
     if let Ok(paths) = sorted_paths(&dir.join("languages")) {
         for p in paths.iter().filter(|p| p.is_dir()) {
             let id = name_of(p);
-            let file = format!("languages/{id}/call.json");
             let call = p.join("call.json");
-            if !call.is_file() {
-                issues.push(Issue::new(&format!("languages/{id}"), "", rule::FORMAT, "call.json is missing"));
+            let names = p.join("names.json");
+            if !call.is_file() && !names.is_file() {
+                issues.push(Issue::new(&format!("languages/{id}"), "", rule::FORMAT, "needs call.json or names.json"));
                 continue;
             }
-            if let Some((sha256, data)) = read_json::<SrcLayer>(&call, &file, &mut issues) {
-                s.layers.push(SourceFile { id, file, sha256, data });
+            if names.is_file() {
+                let file = format!("languages/{id}/names.json");
+                if let Some((sha256, data)) = read_json::<SrcNames>(&names, &file, &mut issues) {
+                    s.names.push(SourceFile { id: id.clone(), file, sha256, data });
+                }
+            }
+            if call.is_file() {
+                let file = format!("languages/{id}/call.json");
+                if let Some((sha256, data)) = read_json::<SrcLayer>(&call, &file, &mut issues) {
+                    s.layers.push(SourceFile { id, file, sha256, data });
+                }
             }
         }
     }
@@ -295,8 +314,8 @@ fn check_region_file(out: &mut Vec<Issue>, r: &SourceFile<SrcRegion>) {
 
 fn check_layer_file(out: &mut Vec<Issue>, l: &SourceFile<SrcLayer>, now: i64) {
     let (f, d) = (l.file.as_str(), &l.data);
-    if d.schema != 1 {
-        push(out, f, "schema", rule::FORMAT, format!("schema {} is not 1", d.schema));
+    if d.schema != 1 && d.schema != 2 {
+        push(out, f, "schema", rule::FORMAT, format!("schema {} is not 1 or 2", d.schema));
     }
     if !valid_code(&d.layer) {
         push(out, f, "layer", rule::CODE, format!("\"{}\" is not a valid layer code", d.layer));
@@ -304,14 +323,18 @@ fn check_layer_file(out: &mut Vec<Issue>, l: &SourceFile<SrcLayer>, now: i64) {
     if l.id != d.layer {
         push(out, f, "layer", rule::CODE, format!("the layer \"{}\" must equal its folder name \"{}\"", d.layer, l.id));
     }
-    text_field(out, f, "name", &conv(&d.name), (MAX_NAME, MAX_NAME), false);
+    match &d.name {
+        Some(n) => text_field(out, f, "name", &conv(n), (MAX_NAME, MAX_NAME), false),
+        None if d.schema == 1 => push(out, f, "name", rule::REQUIRED, "required in schema 1"),
+        None => {}
+    }
     if let Some(s) = &d.stt {
         if !is_official_lang(s) {
             push(out, f, "stt", rule::LANG, format!("\"{s}\" is not on the official language list"));
         }
     }
     if let Some(h) = &d.hello {
-        hello_fields(out, f, "hello", &Hello { hello: h.hello.clone(), hello_again: h.hello_again.clone() });
+        hello_fields(out, f, "hello", &Hello { hello: h.hello.clone(), hello_again: h.hello_again.clone() }, Writing::of(&d.layer));
     }
     if d.status == "local_reviewed" && d.reviewed_on.is_none() {
         push(out, f, "reviewed_on", rule::STATUS, "required when the status is local_reviewed");
@@ -345,7 +368,7 @@ fn check_layer_file(out: &mut Vec<Issue>, l: &SourceFile<SrcLayer>, now: i64) {
             }
         }
     }
-    vocab_fields(out, f, "common.vocab", &c.vocab);
+    vocab_fields(out, f, "common.vocab", &c.vocab, Writing::of(&d.layer));
 }
 
 // ---- merging --------------------------------------------------------------------------
@@ -474,7 +497,17 @@ fn pipeline(s: &Sources, version: u64, commit: &str, built_at: &str) -> (Bundle,
     let mut manifest = Vec::new();
     let mut languages = BTreeMap::new();
     for l in &s.layers {
-        let info = LangInfo { name: conv(&l.data.name), stt: l.data.stt.clone() };
+        let name = match (&l.data.name, s.names.iter().find(|n| n.id == l.id)) {
+            (Some(n), _) => conv(n),
+            (None, Some(n)) => Text { en: n.data.en.clone(), zh: n.data.zh.clone() },
+            (None, None) => {
+                if l.data.schema != 1 {
+                    push(&mut issues, &l.file, "name", rule::REQUIRED, "missing here and the folder has no names.json");
+                }
+                Text { en: String::new(), zh: String::new() }
+            }
+        };
+        let info = LangInfo { name, stt: l.data.stt.clone() };
         if languages.insert(l.data.layer.clone(), info).is_some() {
             push(&mut issues, &l.file, "layer", rule::CODE, format!("the layer \"{}\" is defined twice", l.data.layer));
         }

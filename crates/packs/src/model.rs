@@ -171,4 +171,28 @@ pub struct Index {
     pub sha256: String,
     /// The oldest Bageo that can use this pack (x.y.z).
     pub min_bageo: String,
+    /// The translations download (bageo-locales.json.gz), when the release has
+    /// one. A malformed entry reads as absent, so it can never cost the
+    /// region pack; older Bageo ignores the field altogether.
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "tolerant_locales")]
+    pub locales: Option<LocalesRef>,
+}
+
+/// The translations file listed in the release index.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalesRef {
+    /// A plain file name, never a path.
+    pub file: String,
+    pub bytes: u64,
+    pub sha256: String,
+    pub format: u32,
+    /// YYYYMMDDNN.
+    pub version: u64,
+    /// The oldest Bageo that can use these translations (x.y.z).
+    pub min_bageo: String,
+}
+
+fn tolerant_locales<'de, D: Deserializer<'de>>(d: D) -> Result<Option<LocalesRef>, D::Error> {
+    let v = Option::<serde_json::Value>::deserialize(d)?;
+    Ok(v.and_then(|v| serde_json::from_value(v).ok()))
 }

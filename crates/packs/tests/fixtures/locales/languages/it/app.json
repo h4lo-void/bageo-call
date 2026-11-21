@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "lang": "it",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "app_name": "Bageo",
+    "header_version": "Versione %1$s (%2$d)",
+    "st_ai_on": "L'IA risponde alle tue chiamate",
+    "ip_err_unreachable": "Impossibile raggiungere l'indirizzo. Controlla che il telefono e Bageo siano sulla stessa rete.",
+    "step_pair_ip": "Tocca \"Connetti con indirizzo IP\" per associare."
+  }
+}

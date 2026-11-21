@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "n_incoming": "Incoming call",
+    "n_hidden": "Hidden number",
+    "n_repeat_body": "{number} called {count} times",
+    "sep": ": ",
+    "u_sec": "{} s",
+    "n_brand": "Bageo Status"
+  },
+  "lists": {
+    "quote": [
+      "\"",
+      "\""
+    ],
+    "ap_weekdays": [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+      "Sun"
+    ]
+  },
+  "formats": {
+    "dt_fmt": "%b %-d, %H:%M",
+    "ap_dt_fmt": "{}, %b %-d, %-I:%M %p"
+  }
+}

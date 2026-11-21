@@ -1,0 +1,60 @@
+{
+  "n_incoming": {
+    "where": "title of the incoming call notification",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "n_hidden": {
+    "where": "stands in for a hidden caller number",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "n_repeat_body": {
+    "where": "text of the repeated calls notification",
+    "who": "the owner",
+    "placeholders": [
+      "{number}",
+      "{count}"
+    ]
+  },
+  "sep": {
+    "where": "between a label and its value",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "u_sec": {
+    "where": "a length in seconds",
+    "who": "the owner",
+    "placeholders": [
+      "{}"
+    ]
+  },
+  "n_brand": {
+    "where": "name of the desktop widget",
+    "who": "the owner",
+    "placeholders": [],
+    "same_ok": true
+  },
+  "quote": {
+    "where": "quotation marks around a quoted phrase",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ap_weekdays": {
+    "where": "weekday names in appointment times",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "dt_fmt": {
+    "where": "chrono format of a date and time",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ap_dt_fmt": {
+    "where": "chrono format of an appointment time",
+    "who": "the owner",
+    "placeholders": [
+      "{}"
+    ]
+  }
+}

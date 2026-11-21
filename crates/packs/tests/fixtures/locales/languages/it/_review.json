@@ -1,0 +1,17 @@
+{
+  "keys": {
+    "notify.n_hidden": {
+      "status": "needs_fix",
+      "back": "Secret number",
+      "note": "should mean a hidden caller number"
+    },
+    "notify.n_incoming": {
+      "status": "ai_checked",
+      "back": "Incoming call"
+    },
+    "call.speech.bye": {
+      "status": "ai_checked",
+      "back": "All right, goodbye."
+    }
+  }
+}

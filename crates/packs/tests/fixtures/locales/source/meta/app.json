@@ -1,0 +1,30 @@
+{
+  "app_name": {
+    "where": "app name on the home screen",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "header_version": {
+    "where": "version line at the top of the app",
+    "who": "the owner",
+    "placeholders": [
+      "%1$s",
+      "%2$d"
+    ]
+  },
+  "st_ai_on": {
+    "where": "status card title when the AI answers",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ip_err_unreachable": {
+    "where": "error when the computer cannot be reached",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "step_pair_ip": {
+    "where": "setup step for pairing by IP address",
+    "who": "the owner",
+    "placeholders": []
+  }
+}

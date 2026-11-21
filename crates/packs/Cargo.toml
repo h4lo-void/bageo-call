@@ -9,7 +9,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Bageo local data packs: source-file format, checks and the single bageo-pack.json bundle"
+description = "Bageo local data packs and translations: source-file formats, checks, bundles and app export"
 
 [lib]
 name = "bageo_packs"
@@ -20,6 +20,8 @@ name = "packs"
 path = "src/main.rs"
 
 [dependencies]
+chrono.workspace = true
+flate2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

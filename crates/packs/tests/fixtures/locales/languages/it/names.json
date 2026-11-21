@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "code": "it",
+  "official": "it-IT",
+  "native": "Italiano",
+  "en": "Italian",
+  "zh": "義大利文",
+  "aliases": [
+    "italiano"
+  ],
+  "country": "it",
+  "status": "ai_draft"
+}

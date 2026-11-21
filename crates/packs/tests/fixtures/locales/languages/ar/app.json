@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "lang": "ar",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "app_name": "Bageo",
+    "header_version": "الإصدار %1$s (%2$d)",
+    "st_ai_on": "الذكاء الاصطناعي يرد على مكالماتك",
+    "ip_err_unreachable": "تعذّر الوصول إلى هذا العنوان. تأكد من أن الهاتف و Bageo على نفس الشبكة.",
+    "step_pair_ip": "اضغط \"الاتصال عبر عنوان IP\" للاقتران."
+  }
+}
