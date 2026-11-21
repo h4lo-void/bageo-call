@@ -4,7 +4,7 @@
 //! LAN web console: call history + runtime settings + tasks (`/calls`).
 
 use axum::body::Body;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query, RawQuery, State};
 use axum::http::{header, Extensions, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -12,8 +12,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::io::Write as _;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use tokio::sync::oneshot;
 use tracing::info;
 
@@ -45,7 +44,6 @@ pub struct CallsState {
     pub sms: Arc<crate::sms_store::SmsStore>,
 }
 
-const UI_HTML: &str = include_str!("../static/calls.html");
 // "Add to home screen": the app manifest and its icons (the bird of docs/images/bageo.svg).
 const MANIFEST: &[u8] = include_bytes!("../static/manifest.webmanifest");
 const ICON_192: &[u8] = include_bytes!("../static/icon-192.png");
@@ -66,28 +64,6 @@ fn static_file(bytes: &'static [u8], content_type: &'static str) -> Response {
 /// `/favicon.ico` (also at the site root, where browsers look for it).
 pub async fn favicon() -> Response {
     static_file(FAVICON, "image/x-icon")
-}
-
-/// Embedded UI: raw bytes, gzip bytes and a strong ETag, computed once.
-struct UiAsset {
-    gzip: Vec<u8>,
-    etag: String,
-}
-
-fn ui_asset() -> &'static UiAsset {
-    static ASSET: OnceLock<UiAsset> = OnceLock::new();
-    ASSET.get_or_init(|| {
-        let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
-        let _ = enc.write_all(UI_HTML.as_bytes());
-        let gzip = enc.finish().unwrap_or_default();
-        use sha2::Digest;
-        let digest = sha2::Sha256::digest(UI_HTML.as_bytes());
-        let etag = format!(
-            "\"{}\"",
-            digest.iter().take(8).map(|b| format!("{b:02x}")).collect::<String>()
-        );
-        UiAsset { gzip, etag }
-    })
 }
 
 fn accepts_gzip(headers: &HeaderMap) -> bool {
@@ -325,30 +301,9 @@ fn fulfill_err_response(e: anyhow::Error) -> Response {
     api_error(StatusCode::INTERNAL_SERVER_ERROR, "fulfill_failed", format!("fulfill failed: {msg}"))
 }
 
-async fn ui(headers: HeaderMap) -> Response {
-    // The page itself holds nothing private and is served to anyone: it asks
-    // for the console token when the API answers 401 (a link from a
-    // notification has no token in it).
-    // `CALLS_UI_FILE`: serve the page from disk on every request (working on the
-    // page without rebuilding, or a page of your own).
-    if let Ok(path) = std::env::var("CALLS_UI_FILE") {
-        if !path.trim().is_empty() {
-            return match tokio::fs::read(path.trim()).await {
-                Ok(bytes) => Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-                    .header(header::CACHE_CONTROL, "no-store")
-                    .body(Body::from(bytes))
-                    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response()),
-                Err(e) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("CALLS_UI_FILE {}: {e}", path.trim()),
-                )
-                    .into_response(),
-            };
-        }
-    }
-    let asset = ui_asset();
+/// An embedded text (the page, a language file) with its ETag: a 304 when the
+/// browser has it, else the gzip when it takes gzip.
+fn asset_response(headers: &HeaderMap, asset: &crate::console_i18n::Asset, content_type: &'static str, vary: &'static str) -> Response {
     let not_modified = headers
         .get(header::IF_NONE_MATCH)
         .and_then(|v| v.to_str().ok())
@@ -358,26 +313,64 @@ async fn ui(headers: HeaderMap) -> Response {
         .header(header::ETAG, asset.etag.as_str())
         // Revalidate every load (cheap 304) so a rebuilt agent ships the new UI at once.
         .header(header::CACHE_CONTROL, "no-cache")
-        .header(header::VARY, "Accept-Encoding");
+        .header(header::VARY, vary);
     if not_modified {
         return builder
             .status(StatusCode::NOT_MODIFIED)
             .body(Body::empty())
             .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response());
     }
-    if accepts_gzip(&headers) && !asset.gzip.is_empty() {
+    let builder = builder.status(StatusCode::OK).header(header::CONTENT_TYPE, content_type);
+    if accepts_gzip(headers) && !asset.gzip.is_empty() {
         return builder
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
             .header(header::CONTENT_ENCODING, "gzip")
             .body(Body::from(asset.gzip.clone()))
             .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response());
     }
     builder
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-        .body(Body::from(UI_HTML))
+        .body(Body::from(asset.body.clone()))
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+/// `GET /calls/i18n/<code>.json`: one language of the console, for the page to
+/// fetch when it is chosen. Public like the page.
+async fn i18n_file(Path(file): Path<String>, headers: HeaderMap) -> Response {
+    match file.strip_suffix(".json").and_then(crate::console_i18n::language_file) {
+        Some(asset) => asset_response(&headers, &asset, "application/json; charset=utf-8", "Accept-Encoding"),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+async fn ui(headers: HeaderMap, RawQuery(query): RawQuery) -> Response {
+    // The page itself holds nothing private and is served to anyone: it asks
+    // for the console token when the API answers 401 (a link from a
+    // notification has no token in it).
+    // `CALLS_UI_FILE`: serve the page from disk on every request (working on the
+    // page without rebuilding, or a page of your own).
+    // The page comes with English and one more language: the address (?lang=),
+    // else the language cookie, else the browser's languages decide which.
+    let text_of = |name: header::HeaderName| headers.get(name).and_then(|v| v.to_str().ok());
+    let code = crate::console_i18n::pick(query.as_deref(), text_of(header::COOKIE), text_of(header::ACCEPT_LANGUAGE));
+    if let Ok(path) = std::env::var("CALLS_UI_FILE") {
+        if !path.trim().is_empty() {
+            return match tokio::fs::read(path.trim()).await {
+                Ok(bytes) => Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+                    .header(header::CACHE_CONTROL, "no-store")
+                    .body(Body::from(crate::console_i18n::render(&String::from_utf8_lossy(&bytes), code)))
+                    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response()),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("CALLS_UI_FILE {}: {e}", path.trim()),
+                )
+                    .into_response(),
+            };
+        }
+    }
+    let asset = crate::console_i18n::page(code);
+    // The language comes from the address, the cookie and the browser: all three vary the answer.
+    asset_response(&headers, &asset, "text/html; charset=utf-8", "Cookie, Accept-Language, Accept-Encoding")
 }
 
 async fn list(
@@ -3898,17 +3891,34 @@ mod tests {
         );
     }
 
-    #[test]
-    fn ui_asset_gzip_roundtrip() {
-        use std::io::Read;
-        let a = ui_asset();
-        assert!(a.etag.starts_with('"') && a.etag.len() > 4);
-        let mut out = String::new();
-        flate2::read::GzDecoder::new(&a.gzip[..])
-            .read_to_string(&mut out)
-            .unwrap();
-        assert_eq!(out, UI_HTML);
-        assert!(a.gzip.len() < UI_HTML.len() / 2);
+    #[tokio::test]
+    async fn the_page_has_an_etag_per_language_and_answers_304() {
+        let with_cookie = |v: &str| {
+            let mut h = HeaderMap::new();
+            h.insert(header::COOKIE, v.parse().unwrap());
+            h
+        };
+        let ja = ui(with_cookie("pca_lang=ja"), RawQuery(None)).await;
+        assert_eq!(ja.status(), StatusCode::OK);
+        let etag = ja.headers()[header::ETAG].clone();
+        let vary = ja.headers()[header::VARY].to_str().unwrap().to_string();
+        assert!(vary.contains("Cookie") && vary.contains("Accept-Language"), "{vary}");
+        let mut again = with_cookie("pca_lang=ja");
+        again.insert(header::IF_NONE_MATCH, etag.clone());
+        assert_eq!(ui(again, RawQuery(None)).await.status(), StatusCode::NOT_MODIFIED);
+        let de = ui(with_cookie("pca_lang=de"), RawQuery(None)).await;
+        assert_ne!(de.headers()[header::ETAG], etag);
+        // The address wins over the cookie.
+        let q = ui(with_cookie("pca_lang=de"), RawQuery(Some("lang=ja".into()))).await;
+        assert_eq!(q.headers()[header::ETAG], etag);
+        // One language's file: ETag, 304, and nothing for a code it does not have.
+        let f = i18n_file(Path("ko.json".into()), HeaderMap::new()).await;
+        assert_eq!(f.status(), StatusCode::OK);
+        let mut h = HeaderMap::new();
+        h.insert(header::IF_NONE_MATCH, f.headers()[header::ETAG].clone());
+        assert_eq!(i18n_file(Path("ko.json".into()), h).await.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(i18n_file(Path("ar.json".into()), HeaderMap::new()).await.status(), StatusCode::NOT_FOUND);
+        assert_eq!(i18n_file(Path("ko".into()), HeaderMap::new()).await.status(), StatusCode::NOT_FOUND);
     }
 
     #[test]
@@ -5333,6 +5343,7 @@ mod tests {
 pub fn router(state: CallsState) -> Router {
     Router::new()
         .route("/", get(ui))
+        .route("/i18n/{file}", get(i18n_file))
         .route("/manifest.webmanifest", get(|| async { static_file(MANIFEST, "application/manifest+json") }))
         .route("/icon-192.png", get(|| async { static_file(ICON_192, "image/png") }))
         .route("/icon-512.png", get(|| async { static_file(ICON_512, "image/png") }))

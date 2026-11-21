@@ -200,6 +200,10 @@ pub fn gate(f: &Facts) -> Gate {
         "/calls/api/control/inbound" if f.mcp_token_set => return Gate::Pass,
         _ => {}
     }
+    // The console's language files: texts of the page, nothing private.
+    if f.path.starts_with("/calls/i18n/") {
+        return Gate::Pass;
+    }
     if ics_what(f.path).is_some() && f.ics_key_ok {
         return Gate::Pass;
     }
@@ -758,6 +762,7 @@ mod tests {
             "/favicon.ico",
             "/calls/manifest.webmanifest",
             "/calls/icon-192.png",
+            "/calls/i18n/ja.json",
             "/calls/api/quick-action",
             "/mcp",
             "/api/phone-pairing/claim",

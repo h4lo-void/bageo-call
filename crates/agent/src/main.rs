@@ -37,6 +37,7 @@ mod calls;
 mod calls_http;
 mod closing;
 mod config;
+mod console_i18n;
 mod contacts;
 mod control;
 mod country_profile;

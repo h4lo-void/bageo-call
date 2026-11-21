@@ -75,8 +75,8 @@ Everything lives in `crates/agent/src`. The files you are most likely to touch:
 | `locale.rs` | The nine languages: phrases, goodbye words, notification labels, sales keywords. |
 | `calendar.rs`, `phone_region.rs`, `voice_preview.rs` | Calendar links and `.ics`; phone numbers and countries; the recorded voice previews. |
 
-The web console is the single file `crates/agent/static/calls.html`, with all
-nine languages inside. The phone side is described in
+The web console is the page `crates/agent/static/calls.html`; its texts are one file per language in `crates/agent/static/i18n/`, with all
+nine languages compiled in. The phone side is described in
 [`android/ARCHITECTURE.md`](android/ARCHITECTURE.md).
 
 ## Changing the call logic
@@ -104,7 +104,7 @@ the AI speaks. A state-changing route must keep requiring
    says goodbye, the notification labels, the goodbye and wrap-up phrases the
    hang-up logic should recognise, and sales / scam keywords with weights.
 2. Languages written with spaces go into `WORD_LANGS`, others into `RUN_LANGS`.
-3. The web console (`crates/agent/static/calls.html`) and the phone app
+3. The web console (a file in `crates/agent/static/i18n/`, listed in `console_i18n.rs`) and the phone app
    (`android/app/src/main/res/values-<lang>/strings.xml`): add the dictionary.
 4. `cargo test -p agent` — several tests run over every language.
 
