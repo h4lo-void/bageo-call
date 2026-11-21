@@ -114,6 +114,7 @@ Bageo never answers preflights. This covers:
 - `POST /calls/api/errands`, `…/{id}/cancel`, `…/{id}/retry`, `…/{id}/say`;
 - `POST /calls/api/backup/run`, `…/export`, `…/file-ticket`, `…/restore`, `…/delete`, `…/unlock`, `…/apply`, `…/discard`, `…/open-folder` (`POST /calls/api/backup/import` needs an `X-Filename` header instead).
 - `POST /calls/api/packs/update` and `POST /calls/api/packs/restore`.
+- `POST /calls/api/voices/download` and `POST /calls/api/voices/delete` (`POST /calls/api/voices/import` takes the zip as `application/zip` instead).
 
 Where a route allows an empty body, it counts as `{}`. This is the second line
 of defence. The first is setting a password (`CALLS_UI_TOKEN`) whenever your
@@ -346,6 +347,8 @@ setting:
 All 30 built-in voices come recorded in all 9 languages, both the preview and
 the announcement (1,080 clips in `assets/voices/`), so a preview needs no
 Gemini session. Only `regen=true` or a voice without a recording opens one.
+Languages and regions whose recordings do not come with Bageo can be added as
+voice packs ([Voice downloads](#voice-downloads)).
 
 Errors: 400 `unknown_voice` / `unknown_background`, 404 `background_missing`
 (the sound file is not loaded), 502 `preview_failed`.
@@ -755,9 +758,9 @@ Three routes show and update the local data the AI uses for each country's habit
 
 | Method and path | What |
 |---|---|
-| `GET /calls/api/packs/update` | The data in use: `{version, date, builtin, regions, locales: {version, date, builtin, languages}, running, last_check}`. `last_check` also has `pack_result` and `locales_result`. |
+| `GET /calls/api/packs/update` | The data in use: `{version, date, builtin, regions, locales: {version, date, builtin, languages}, voice_list_kept, running, last_check}`. `last_check` also has `pack_result` and `locales_result`. |
 | `POST /calls/api/packs/update` | Body `{}`. Checks for newer files now and installs them: the same fields as `GET`, plus `result` (`updated` when either file was). |
-| `POST /calls/api/packs/restore` | Body `{}`. Deletes the downloaded data and translations and goes back to the ones built into Bageo: the same fields, with `result` `restored` (`busy` while a check runs; `io` when either file cannot be deleted, and then that one stays in use). |
+| `POST /calls/api/packs/restore` | Body `{}`. Deletes the downloaded data and translations, and a downloaded voice list (`voice_list_kept`), and goes back to the ones built into Bageo: the same fields, with `result` `restored` (`busy` while a check runs; `io` when a file cannot be deleted, and then that one stays in use). |
 
 Details:
 
@@ -765,6 +768,27 @@ Details:
 - `result`: `up_to_date`, `updated` (calls from now on use it; a call already going keeps the old data), `offline` (no connection, a time-out or GitHub did not answer: try again later), `bad_pack` (the download was refused; nothing changed), `update_bageo` (the data needs a newer Bageo), `restart` (8 updates were installed since Bageo started: restart it first), `io` (it could not be saved) or `busy` (another check is running).
 - What Bageo checks: it reads `bageo-pack-index.json` (at most 16 KiB) from `https://github.com/h4lo-void/bageo-packs/releases/latest/download/`, then the file it names (a plain file name, at most 4 MiB) in the same release. Every address, including each of at most 5 redirects, must be `https` on the standard port, without a user name, on `github.com` (under that repository's releases), `objects.githubusercontent.com` or `release-assets.githubusercontent.com`. The size and SHA-256 must match the index, the index's `format` and `min_bageo` must fit this Bageo, and the version must be newer than the one in use. The file is then checked in full, like the built-in one, and renamed into place in one step. The address cannot be changed by a setting.
 - The downloaded version is kept as `packs/bageo-pack.json` in the data folder and checked again each time Bageo starts; a download left unfinished there is deleted.
+
+## Voice downloads
+
+Four routes list, download, delete and import voice packs: the recorded preview lines and blocked-number announcement of a language, or of a language in one region. They are the same as *Voice downloads* under *More options* in the console settings, and as the card the console shows when it uses a language whose voices are not on this computer. Bageo connects only when `POST …/voices/download` is called, straight to the latest release of `h4lo-void/bageo-packs` on GitHub. Without a pack nothing breaks: the first preview in that language is made by Gemini, as before. The routes follow the console's password rule; `download` and `delete` also the `Content-Type: application/json` rule above.
+
+| Method and path | What |
+|---|---|
+| `GET /calls/api/voices` | `{version, packs, downloaded, dismissed, running}`: `packs` can be downloaded (`{id, lang, region, bytes, downloaded, bundled}`), `downloaded` are on this computer (`{id, lang, region, bytes}`), `dismissed` is the setting `dismissed_pack_prompts`. The lists are empty while no pack is published. |
+| `POST /calls/api/voices/download` | Body `{"id": "ja"}` or `{"id": "es-latam"}`. Downloads and installs that pack: the same fields, plus `result`. |
+| `POST /calls/api/voices/delete` | Body `{"id": "ja"}`. Deletes a downloaded pack: `result` `removed`, `not_listed` when there is none, `io` when it cannot be deleted (nothing changes then). |
+| `POST /calls/api/voices/import` | The zip itself as the body, with `Content-Type: application/zip`. For a computer without internet: the file must have the size and SHA-256 of a pack in the list, else `not_listed`. |
+
+Details:
+
+- `id` is `<language>` or `<language>-<region>` (`zh-tw-tw`, `es-latam`), with the region codes of the local data. Bageo answers with it in lowercase and takes it in any case; Windows device names (`con`, `nul`, `com1`…) are never a language or region.
+- `result`: `installed` (previews and the announcement use it from now on), `removed`, `not_listed`, `offline` (try again later), `bad_pack` (refused; nothing changed), `update_bageo`, `io` or `busy` (another download, import or deletion is running).
+- A pack is `voices-<id>.zip` holding only `<Voice>_<0|1|2|reject>.wav` for each voice its entry lists (120 files for all 30 voices). The list is `bageo-voices-index.json` in the same release: `{format, version, voices: [{lang, region?, file, bytes, sha256, voices}]}`. Bageo ships with its own copy and keeps a newer one it downloads.
+- What Bageo checks: the same addresses, redirects and https rules as *Local data*; the list at most 256 KiB, a pack at most 16 MiB with the size and SHA-256 the list gives. The zip is opened with the backup's zip reader: exactly the files the list promises, by exact name, each at most 512 KiB, none packed like a zip bomb, each a WAV Bageo plays, a preview line at most 13 s and an announcement at most 16 s. The files are unpacked into a temporary folder and renamed to `voices/<id>/` in the data folder in one step; a pack being replaced is put back when the new one cannot take its place (also at the next start after a crash), and anything else left unfinished is deleted then. The list is kept only once a pack from it is installed.
+- Installing a pack forgets the previews Gemini made for its language and voices, so the recordings are played from then on. Deleting a pack leaves those previews alone.
+- Where a preview comes from: what was made on this computer before, then the region's pack, then the language's pack or the samples that came with Bageo (`assets/voices/<language>`, also when an older install left them), then Gemini. The region is the home country's, else the language's own country.
+- The setting `dismissed_pack_prompts` (`PUT /calls/api/settings`) lists the packs the owner answered *Not now* to; the card does not offer them again.
 
 ## Phones and health
 

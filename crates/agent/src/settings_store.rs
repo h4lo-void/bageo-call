@@ -295,6 +295,10 @@ pub struct RuntimeSettings {
     /// `name`, `callback`, `reason`, `urgency`. All four by default.
     #[serde(default = "crate::prompts::default_about_asks")]
     pub about_message_asks: Vec<String>,
+    /// Voice packs (`ja`, `es-latam`…) the owner answered "Not now" to on the
+    /// console's download card: not offered again ([crate::voice_packs::clean_dismissed]).
+    #[serde(default)]
+    pub dismissed_pack_prompts: Vec<String>,
     /// OpenAI-compatible chat endpoint for the post-call summary when
     /// `summary_provider` is `custom`, e.g. `https://api.openai.com/v1`.
     /// Empty = Gemini with the Live API key, else OpenRouter.
@@ -1211,6 +1215,7 @@ impl RuntimeSettings {
             about_parcel: String::new(),
             about_extra: String::new(),
             about_message_asks: crate::prompts::default_about_asks(),
+            dismissed_pack_prompts: Vec::new(),
             summary_api_base: env_or("SUMMARY_API_BASE", ""),
             summary_model: env_or("SUMMARY_MODEL", ""),
             summary_provider: sanitize_summary_provider(&env_or("SUMMARY_PROVIDER", "auto")),
@@ -1603,6 +1608,7 @@ impl RuntimeSettings {
             about_parcel,
             about_extra,
             about_message_asks,
+            dismissed_pack_prompts,
             home_country,
             summary_api_base,
             summary_model,
@@ -1720,6 +1726,7 @@ impl RuntimeSettings {
         self.about_parcel = crate::prompts::clean_about_text(&self.about_parcel, crate::prompts::ABOUT_PARCEL_MAX);
         self.about_extra = crate::prompts::clean_about_text(&self.about_extra, crate::prompts::ABOUT_EXTRA_MAX);
         self.about_message_asks = crate::prompts::clean_about_asks(&self.about_message_asks);
+        self.dismissed_pack_prompts = crate::voice_packs::clean_dismissed(&self.dismissed_pack_prompts);
         self.errand_identity = sanitize_errand_identity(&self.errand_identity);
         if let Some(v) = &ov.backup_schedule {
             self.backup_schedule = v.clone();
@@ -2149,6 +2156,8 @@ struct Overrides {
     about_extra: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     about_message_asks: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dismissed_pack_prompts: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     summary_api_base: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2982,6 +2991,9 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     }
     if let Some(v) = strs("about_message_asks") {
         ov.about_message_asks = Some(crate::prompts::clean_about_asks(&v));
+    }
+    if let Some(v) = strs("dismissed_pack_prompts") {
+        ov.dismissed_pack_prompts = Some(crate::voice_packs::clean_dismissed(&v));
     }
     p_string(patch, "summary_api_base", &mut ov.summary_api_base);
     p_string(patch, "summary_model", &mut ov.summary_model);
