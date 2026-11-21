@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "regions": {
+    "tw": {
+      "lang": "zh-TW",
+      "gemini_lang": "cmn",
+      "preview": [
+        "喂，你好，請問哪裡找？",
+        "喔好，我大概了解了，這邊先幫你記下來喔。",
+        "好，沒問題，那先這樣喔，掰掰。"
+      ],
+      "reject": "您撥的電話目前無法接聽，請稍後再撥，謝謝。"
+    },
+    "us": {
+      "lang": "en",
+      "gemini_lang": "en-US",
+      "preview": [
+        "Hey, thanks for calling—how can I help you today?",
+        "Got it, let me make sure I pass that right along for you.",
+        "Appreciate you calling—take care and have a good rest of your day."
+      ],
+      "reject": "The wireless customer you are calling is not available. Please try your call again later."
+    }
+  }
+}
