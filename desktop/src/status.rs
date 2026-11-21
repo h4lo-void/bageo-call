@@ -126,37 +126,38 @@ pub enum DevicesResult {
 }
 
 /// Maps a system locale such as "zh_Hant_TW" or "pt-BR" to a UI language: one of the
-/// nine, an extra language the program has text for (Italian, Thai, ...), or English.
-pub fn locale_to_lang(locale: &str) -> &'static str {
+/// nine, an extra language loaded on demand, or English.
+pub fn locale_to_lang(locale: &str) -> String {
     let norm = locale.trim().replace('_', "-").to_lowercase();
     let mut parts = norm.split(|c| c == '-' || c == '.' || c == '@');
+    let en = || "en".to_string();
     match parts.next().unwrap_or("") {
         "zh" => {
             let traditional = parts.any(|p| matches!(p, "hant" | "tw" | "hk" | "mo"));
             if traditional {
-                "zh-TW"
+                "zh-TW".to_string()
             } else {
-                "zh-CN"
+                "zh-CN".to_string()
             }
         }
-        "ja" => "ja",
-        "ko" => "ko",
-        "es" => "es",
-        "fr" => "fr",
-        "de" => "de",
-        "pt" => "pt",
+        "ja" => "ja".to_string(),
+        "ko" => "ko".to_string(),
+        "es" => "es".to_string(),
+        "fr" => "fr".to_string(),
+        "de" => "de".to_string(),
+        "pt" => "pt".to_string(),
         // Android and Java still say "iw" and "in" for Hebrew and Indonesian.
-        "iw" => i18n::ext_code("he").unwrap_or("en"),
-        "in" => i18n::ext_code("id").unwrap_or("en"),
-        other => i18n::ext_code(other).unwrap_or("en"),
+        "iw" => i18n::ext_code("he").unwrap_or_else(en),
+        "in" => i18n::ext_code("id").unwrap_or_else(en),
+        other => i18n::ext_code(other).unwrap_or_else(en),
     }
 }
 
 /// Picks the UI language: Bageo's own notify language first, then the system language.
-pub fn resolve_lang(notify_language: Option<&str>, system_locale: &str) -> &'static str {
+pub fn resolve_lang(notify_language: Option<&str>, system_locale: &str) -> String {
     if let Some(n) = notify_language {
         if let Some(found) = LANGS.iter().find(|l| **l == n) {
-            return found;
+            return (*found).to_string();
         }
         if let Some(found) = i18n::ext_code(n) {
             return found;
@@ -263,7 +264,7 @@ pub fn build_snapshot(
     system_locale: &str,
 ) -> Snapshot {
     let lang = resolve_lang(health.get("notify_language").and_then(Value::as_str), system_locale);
-    let mut snap = Snapshot::blank(Level::Ok, Reason::Ready, lang, has_password, address);
+    let mut snap = Snapshot::blank(Level::Ok, Reason::Ready, &lang, has_password, address);
     snap.version = text(health.get("version")).to_string();
     snap.locked = matches!(devices, DevicesResult::Locked);
 
@@ -634,6 +635,8 @@ mod tests {
 
     #[test]
     fn language_mapping_covers_all_nine() {
+        let _g = i18n::test_lock();
+        i18n::clear_extra();
         assert_eq!(locale_to_lang("en-US"), "en");
         assert_eq!(locale_to_lang("zh-TW"), "zh-TW");
         assert_eq!(locale_to_lang("zh-HK"), "zh-TW");
@@ -650,22 +653,29 @@ mod tests {
         assert_eq!(locale_to_lang("fr-CA"), "fr");
         assert_eq!(locale_to_lang("de-AT"), "de");
         assert_eq!(locale_to_lang("pt-BR"), "pt");
+        // Unloaded extra languages fall back to English until fetched/cached.
+        assert_eq!(locale_to_lang("it-IT"), "en");
+        i18n::set_extra("it", [("quit".into(), "Esci".into())].into_iter().collect());
         assert_eq!(locale_to_lang("it-IT"), "it");
+        i18n::set_extra("he", [("quit".into(), "יציאה".into())].into_iter().collect());
         assert_eq!(locale_to_lang("iw-IL"), "he");
+        i18n::set_extra("id", [("quit".into(), "Keluar".into())].into_iter().collect());
         assert_eq!(locale_to_lang("in_ID"), "id");
-        assert_eq!(locale_to_lang("th"), "th");
-        assert_eq!(locale_to_lang("ar-EG"), "ar");
         assert_eq!(locale_to_lang("xx-XX"), "en");
         assert_eq!(locale_to_lang(""), "en");
+        i18n::clear_extra();
     }
 
     #[test]
     fn notify_language_wins_when_supported() {
+        let _g = i18n::test_lock();
+        i18n::clear_extra();
         assert_eq!(resolve_lang(Some("ja"), "en-US"), "ja");
         assert_eq!(resolve_lang(Some("zh-CN"), "fr-FR"), "zh-CN");
         assert_eq!(resolve_lang(Some("xx"), "de-DE"), "de");
+        assert_eq!(resolve_lang(Some("it"), "en-US"), "en");
+        i18n::set_extra("it", [("quit".into(), "Esci".into())].into_iter().collect());
         assert_eq!(resolve_lang(Some("it"), "en-US"), "it");
-        assert_eq!(resolve_lang(Some("he"), "de-DE"), "he");
         assert_eq!(resolve_lang(None, "pt-PT"), "pt");
         let mut h = health();
         h["notify_language"] = json!("ko");
@@ -674,6 +684,7 @@ mod tests {
         h["notify_language"] = json!("");
         let s = build_snapshot(&h, &DevicesResult::Unavailable, false, "", "zh-HK");
         assert_eq!(s.lang, "zh-TW");
+        i18n::clear_extra();
     }
 
     #[test]

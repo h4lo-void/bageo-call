@@ -191,6 +191,11 @@ fn fit(app: AppHandle, height: f64) {
     window::fit(&app, height);
 }
 
+#[tauri::command]
+fn get_extra_i18n() -> Option<(String, std::collections::HashMap<String, String>)> {
+    i18n::get_extra()
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -210,7 +215,8 @@ fn main() {
             hide,
             quit,
             install_adb,
-            fit
+            fit,
+            get_extra_i18n
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
@@ -227,9 +233,12 @@ fn main() {
             if !existed || remember {
                 let _ = config::save(&handle, &cfg);
             }
+            if let Some((code, strings)) = config::load_i18n_cache(&handle) {
+                i18n::set_extra(&code, strings);
+            }
             let locale = sys_locale::get_locale().unwrap_or_default();
             let lang = status::resolve_lang(None, &locale);
-            let first = Snapshot::blank(status::Level::Unknown, status::Reason::Starting, lang, false, "");
+            let first = Snapshot::blank(status::Level::Unknown, status::Reason::Starting, &lang, false, "");
             app.manage(Shared::new(cfg, first.clone(), local));
 
             tray::build(&handle, &first)?;

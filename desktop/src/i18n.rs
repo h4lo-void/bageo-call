@@ -4,14 +4,11 @@
 //! Texts the Rust side needs (tray tooltip and menu). Shared with the window UI.
 
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use crate::status::{Reason, Snapshot};
 
 const RAW: &str = include_str!("../ui/i18n.json");
-/// The languages `packs export-app` writes (see tools/bageo-packs.ref). Their text
-/// still waits for a native speaker to confirm, so the nine built-in languages win on any clash.
-const EXT_RAW: &str = include_str!("../ui/i18n.ext.json");
 
 type Table = HashMap<String, HashMap<String, String>>;
 
@@ -20,36 +17,75 @@ fn base() -> &'static Table {
     BASE.get_or_init(|| serde_json::from_str(RAW).unwrap_or_default())
 }
 
-fn ext() -> &'static Table {
-    static EXT: OnceLock<Table> = OnceLock::new();
-    EXT.get_or_init(|| serde_json::from_str(EXT_RAW).unwrap_or_default())
+fn extra_slot() -> &'static Mutex<Option<(String, HashMap<String, String>)>> {
+    static EXTRA: OnceLock<Mutex<Option<(String, HashMap<String, String>)>>> = OnceLock::new();
+    EXTRA.get_or_init(|| Mutex::new(None))
 }
 
-fn table() -> &'static Table {
-    static TABLE: OnceLock<Table> = OnceLock::new();
-    TABLE.get_or_init(|| {
-        let mut all = base().clone();
-        for (code, strings) in ext() {
-            all.entry(code.clone()).or_insert_with(|| strings.clone());
-        }
-        all
-    })
+/// True when `code` looks like a standalone non-core language code safe to fetch on demand.
+pub fn is_valid_ext_code(code: &str) -> bool {
+    (2..=12).contains(&code.len())
+        && code.bytes().next().is_some_and(|b| b.is_ascii_lowercase())
+        && code.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        && !code.ends_with('-')
+        && !code.contains("--")
+        && !base().contains_key(code)
 }
 
-/// The code of an extra (not yet confirmed) language the program has text for.
-pub fn ext_code(code: &str) -> Option<&'static str> {
-    let (k, _) = ext().get_key_value(code)?;
-    (!base().contains_key(code)).then_some(k.as_str())
+/// Replaces the currently loaded extra language strings (if `code` is valid and non-core).
+pub fn set_extra(code: &str, strings: HashMap<String, String>) {
+    if !is_valid_ext_code(code) {
+        return;
+    }
+    *extra_slot().lock().unwrap_or_else(|e| e.into_inner()) = Some((code.to_string(), strings));
+}
+
+/// Returns the currently loaded extra `(code, strings)` pair, if any.
+pub fn get_extra() -> Option<(String, HashMap<String, String>)> {
+    extra_slot().lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// True when the given non-core language is currently loaded in memory.
+pub fn has_extra(code: &str) -> bool {
+    matches!(&*extra_slot().lock().unwrap_or_else(|e| e.into_inner()), Some((c, _)) if c == code)
+}
+
+/// Returns `Some(code)` when `code` is currently loaded as the active extra language.
+pub fn ext_code(code: &str) -> Option<String> {
+    if has_extra(code) {
+        Some(code.to_string())
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn clear_extra() {
+    *extra_slot().lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+#[cfg(test)]
+pub(crate) fn test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(())).lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// Looks a key up in the given language, then in English, then returns the key itself.
 pub fn t(lang: &str, key: &str) -> String {
-    let t = table();
-    t.get(lang)
-        .and_then(|m| m.get(key))
-        .or_else(|| t.get("en").and_then(|m| m.get(key)))
-        .cloned()
-        .unwrap_or_else(|| key.to_string())
+    let b = base();
+    if let Some(val) = b.get(lang).and_then(|m| m.get(key)) {
+        return val.clone();
+    }
+    if !b.contains_key(lang) {
+        if let Some((c, m)) = &*extra_slot().lock().unwrap_or_else(|e| e.into_inner()) {
+            if c == lang {
+                if let Some(val) = m.get(key) {
+                    return val.clone();
+                }
+            }
+        }
+    }
+    b.get("en").and_then(|m| m.get(key)).cloned().unwrap_or_else(|| key.to_string())
 }
 
 /// The sentence that explains the current state.
@@ -104,7 +140,7 @@ mod tests {
     fn every_language_has_every_key() {
         for lang in LANGS {
             for key in KEYS {
-                let v = table().get(lang).and_then(|m| m.get(key));
+                let v = base().get(lang).and_then(|m| m.get(key));
                 assert!(v.map(|s| !s.is_empty()).unwrap_or(false), "{lang} is missing {key}");
             }
         }
@@ -136,32 +172,38 @@ mod tests {
     }
 
     #[test]
-    fn extra_languages_come_from_the_export_and_keep_to_the_english_keys() {
-        let en = &base()["en"];
-        assert_eq!(ext().len(), 20, "the export carries 20 languages");
-        for (lang, strings) in ext() {
-            assert!(!base().contains_key(lang), "{lang} is one of the nine");
-            for key in KEYS {
-                assert!(strings.get(key).is_some_and(|s| !s.is_empty()), "{lang} is missing {key}");
-            }
-            for (key, value) in strings {
-                let english = en.get(key).unwrap_or_else(|| panic!("{lang} has {key}, English does not"));
-                for ph in ["{n}", "{name}"] {
-                    assert_eq!(value.contains(ph), english.contains(ph), "{lang} {key} placeholder {ph}");
-                }
-            }
-        }
+    fn valid_ext_code_rejects_core_and_unsafe_names() {
+        assert!(is_valid_ext_code("it"));
+        assert!(is_valid_ext_code("fil"));
+        assert!(is_valid_ext_code("zh-hans"));
+        assert!(!is_valid_ext_code("en"));
+        assert!(!is_valid_ext_code("ja"));
+        assert!(!is_valid_ext_code("zh-TW"));
+        assert!(!is_valid_ext_code("../it"));
+        assert!(!is_valid_ext_code("a"));
+        assert!(!is_valid_ext_code("-it"));
+        assert!(!is_valid_ext_code("it-"));
     }
 
     #[test]
-    fn extra_language_text_is_found_and_the_nine_are_not_taken_over() {
-        assert_eq!(ext_code("it"), Some("it"));
+    fn extra_language_text_loads_on_demand_and_never_overrides_nine() {
+        let _g = test_lock();
+        clear_extra();
+        assert_eq!(ext_code("it"), None);
+        let mut it = HashMap::new();
+        it.insert("quit".to_string(), "Esci".to_string());
+        set_extra("it", it);
+        // Core languages cannot be registered as extra.
+        let mut ja = HashMap::new();
+        ja.insert("quit".to_string(), "X".to_string());
+        set_extra("ja", ja);
+        assert_eq!(ext_code("it").as_deref(), Some("it"));
         assert_eq!(ext_code("ja"), None);
-        assert_eq!(ext_code("xx"), None);
-        assert_ne!(t("it", "quit"), t("en", "quit"));
+        assert_eq!(t("it", "quit"), "Esci");
         assert_eq!(t("ja", "quit"), base()["ja"]["quit"]);
         // A key the extra language lacks falls back to English.
         assert_eq!(t("it", "lang_unreviewed"), t("en", "lang_unreviewed"));
+        clear_extra();
     }
 
     #[test]

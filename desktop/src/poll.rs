@@ -95,7 +95,7 @@ struct Poller {
 impl Poller {
     fn new(system_locale: String) -> Option<Self> {
         let client = Client::builder().no_proxy().timeout(TIMEOUT).build().ok()?;
-        let lang = status::locale_to_lang(&system_locale).to_string();
+        let lang = status::locale_to_lang(&system_locale);
         Some(Poller {
             client,
             system_locale,
@@ -278,6 +278,23 @@ impl Poller {
                 let retry = self.ui_url.is_empty() && !reported.is_empty() && self.ui_url_tries < UI_URL_QUICK_TRIES;
                 self.ui_url_tries = if opens { 0 } else if retry { self.ui_url_tries + 1 } else { self.ui_url_tries };
                 self.refresh_ui_url = retry;
+            }
+        }
+
+        // Fetch extra desktop strings on demand when Bageo announces an unbundled notify_language.
+        if let Some(wanted) = health_json.get("notify_language").and_then(Value::as_str) {
+            if crate::i18n::is_valid_ext_code(wanted) && !crate::i18n::has_extra(wanted) {
+                let url = format!("{base}calls/i18n/desktop/{wanted}.json");
+                if let Some((200, Some(Value::Object(map)))) = get(&self.client, &url, None).await {
+                    let strings: std::collections::HashMap<String, String> = map
+                        .into_iter()
+                        .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
+                        .collect();
+                    if !strings.is_empty() {
+                        crate::i18n::set_extra(wanted, strings.clone());
+                        config::save_i18n_cache(app, wanted, &strings);
+                    }
+                }
             }
         }
 

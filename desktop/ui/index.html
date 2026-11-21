@@ -168,11 +168,13 @@
   const invoke = (cmd, args) => T.core.invoke(cmd, args);
   const $ = (id) => document.getElementById(id);
 
+  let baseI18n = {};
   let I18N = {};
-  // Languages from i18n.ext.json: their text still waits for a native speaker to confirm.
+  // Extra language fetched from Bageo (cached on disk): waits for a native speaker to confirm.
   let EXT = new Set();
   let lang = "en";
   let snap = null;
+  let extFetching = "";
   let hasPassword = false;
   let clearPw = false;
   let copiedTimer = 0;
@@ -218,6 +220,14 @@
 
   function render() {
     const s = snap || { level: "unknown", reason: "starting", phones: [] };
+    if (s.lang && !I18N[s.lang] && extFetching !== s.lang) {
+      const target = s.lang;
+      extFetching = target;
+      loadExtra().then((loaded) => {
+        if (extFetching === target) extFetching = "";
+        if (loaded) render();
+      });
+    }
     const wanted = s.lang && I18N[s.lang] ? s.lang : systemLang();
     if (wanted !== lang) { lang = wanted; }
     applyTexts();
@@ -364,13 +374,25 @@
   });
   document.addEventListener("contextmenu", (ev) => ev.preventDefault());
 
+  async function loadExtra() {
+    try {
+      const extra = await invoke("get_extra_i18n");
+      if (Array.isArray(extra) && typeof extra[0] === "string" && extra[1] && typeof extra[1] === "object") {
+        const [code, strings] = extra;
+        if (!(code in baseI18n)) {
+          EXT = new Set([code]);
+          I18N = Object.assign({ [code]: strings }, baseI18n);
+          return true;
+        }
+      }
+    } catch (_) { /* the nine languages still work */ }
+    return false;
+  }
+
   async function start() {
-    let base = {};
-    let ext = {};
-    try { base = await (await fetch("i18n.json")).json(); } catch (_) { /* English keys show as is */ }
-    try { ext = await (await fetch("i18n.ext.json")).json(); } catch (_) { /* the nine languages still work */ }
-    EXT = new Set(Object.keys(ext).filter((k) => !(k in base)));
-    I18N = Object.assign({}, ext, base);
+    try { baseI18n = await (await fetch("i18n.json")).json(); } catch (_) { /* English keys show as is */ }
+    I18N = Object.assign({}, baseI18n);
+    await loadExtra();
     lang = systemLang();
     render();
     T.event.listen("snapshot", (e) => { snap = e.payload; render(); });

@@ -3,6 +3,7 @@
 
 //! Settings file and password storage.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -74,6 +75,44 @@ fn entry() -> Option<keyring::Entry> {
     keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_USER).ok()
 }
 
+#[derive(Serialize, Deserialize)]
+struct I18nCache {
+    code: String,
+    strings: HashMap<String, String>,
+}
+
+fn cache_path(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join("i18n-cache.json"))
+}
+
+fn parse_i18n_cache(raw: &str) -> Option<(String, HashMap<String, String>)> {
+    let c: I18nCache = serde_json::from_str(raw).ok()?;
+    if c.code.is_empty() || c.strings.is_empty() {
+        return None;
+    }
+    Some((c.code, c.strings))
+}
+
+fn encode_i18n_cache(code: &str, strings: &HashMap<String, String>) -> Option<String> {
+    serde_json::to_string(&I18nCache { code: code.to_string(), strings: strings.clone() }).ok()
+}
+
+pub fn load_i18n_cache(app: &AppHandle) -> Option<(String, HashMap<String, String>)> {
+    let p = cache_path(app)?;
+    let raw = fs::read_to_string(p).ok()?;
+    parse_i18n_cache(&raw)
+}
+
+pub fn save_i18n_cache(app: &AppHandle, code: &str, strings: &HashMap<String, String>) {
+    let Some(p) = cache_path(app) else { return };
+    if let Some(dir) = p.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    if let Some(raw) = encode_i18n_cache(code, strings) {
+        let _ = fs::write(p, raw);
+    }
+}
+
 pub fn read_password() -> Option<String> {
     entry()?.get_password().ok().filter(|p| !p.is_empty())
 }
@@ -137,5 +176,17 @@ mod tests {
         assert!(c.notify_summary && c.notify_calls && !c.notify_sms);
         let c: Config = serde_json::from_str(r#"{"notify_summary": false}"#).unwrap();
         assert!(!c.notify_summary);
+    }
+
+    #[test]
+    fn i18n_cache_roundtrip_and_rejects_empty() {
+        let mut strings = HashMap::new();
+        strings.insert("quit".to_string(), "Esci".to_string());
+        let raw = encode_i18n_cache("it", &strings).unwrap();
+        let (code, got) = parse_i18n_cache(&raw).unwrap();
+        assert_eq!(code, "it");
+        assert_eq!(got.get("quit").map(String::as_str), Some("Esci"));
+        assert!(parse_i18n_cache(r#"{"code":"","strings":{"a":"b"}}"#).is_none());
+        assert!(parse_i18n_cache(r#"{"code":"it","strings":{}}"#).is_none());
     }
 }
