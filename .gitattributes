@@ -15,6 +15,9 @@ android/magisk/** text eol=lf
 *.yml text eol=lf
 *.toml text eol=lf
 
+# Written by packs export-app; CI compares the bytes.
+desktop/ui/i18n.ext.json text eol=lf
+
 # Windows launchers.
 *.cmd text eol=crlf
 *.bat text eol=crlf

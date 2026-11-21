@@ -58,7 +58,8 @@
     "adb_get": "Download",
     "adb_getting": "Downloading…",
     "adb_failed": "The download failed. Check your connection and try again.",
-    "quit_all": "Quit Bageo"
+    "quit_all": "Quit Bageo",
+    "lang_unreviewed": "Translation waiting for a native speaker to confirm."
   },
   "zh-TW": {
     "h_ok": "一切正常",
@@ -119,7 +120,8 @@
     "adb_get": "下載",
     "adb_getting": "下載中…",
     "adb_failed": "下載失敗，請確認網路後再試一次。",
-    "quit_all": "結束 Bageo"
+    "quit_all": "結束 Bageo",
+    "lang_unreviewed": "這個語言的翻譯還在等當地人確認。"
   },
   "zh-CN": {
     "h_ok": "一切正常",
@@ -180,7 +182,8 @@
     "adb_get": "下载",
     "adb_getting": "下载中…",
     "adb_failed": "下载失败，请确认网络后再试一次。",
-    "quit_all": "退出 Bageo"
+    "quit_all": "退出 Bageo",
+    "lang_unreviewed": "这个语言的翻译还在等当地人确认。"
   },
   "ja": {
     "h_ok": "すべて正常",
@@ -241,7 +244,8 @@
     "adb_get": "ダウンロード",
     "adb_getting": "ダウンロード中…",
     "adb_failed": "ダウンロードできませんでした。接続を確認して、もう一度お試しください。",
-    "quit_all": "Bageo を終了"
+    "quit_all": "Bageo を終了",
+    "lang_unreviewed": "この言語の翻訳は、現地の方の確認待ちです。"
   },
   "ko": {
     "h_ok": "모두 정상",
@@ -302,7 +306,8 @@
     "adb_get": "다운로드",
     "adb_getting": "다운로드 중…",
     "adb_failed": "다운로드하지 못했습니다. 연결을 확인하고 다시 시도해 주세요.",
-    "quit_all": "Bageo 종료"
+    "quit_all": "Bageo 종료",
+    "lang_unreviewed": "이 언어의 번역은 원어민의 확인을 기다리고 있습니다."
   },
   "es": {
     "h_ok": "Todo en orden",
@@ -363,7 +368,8 @@
     "adb_get": "Descargar",
     "adb_getting": "Descargando…",
     "adb_failed": "La descarga falló. Revisa tu conexión e inténtalo de nuevo.",
-    "quit_all": "Salir de Bageo"
+    "quit_all": "Salir de Bageo",
+    "lang_unreviewed": "La traducción a este idioma espera la confirmación de un hablante nativo."
   },
   "fr": {
     "h_ok": "Tout va bien",
@@ -424,7 +430,8 @@
     "adb_get": "Télécharger",
     "adb_getting": "Téléchargement…",
     "adb_failed": "Le téléchargement a échoué. Vérifiez votre connexion et réessayez.",
-    "quit_all": "Quitter Bageo"
+    "quit_all": "Quitter Bageo",
+    "lang_unreviewed": "La traduction dans cette langue attend la confirmation d'un locuteur natif."
   },
   "de": {
     "h_ok": "Alles in Ordnung",
@@ -485,7 +492,8 @@
     "adb_get": "Herunterladen",
     "adb_getting": "Wird heruntergeladen …",
     "adb_failed": "Der Download ist fehlgeschlagen. Prüf deine Verbindung und versuch es noch einmal.",
-    "quit_all": "Bageo beenden"
+    "quit_all": "Bageo beenden",
+    "lang_unreviewed": "Die Übersetzung in dieser Sprache wartet noch auf die Bestätigung durch Muttersprachler."
   },
   "pt": {
     "h_ok": "Tudo certo",
@@ -546,6 +554,7 @@
     "adb_get": "Baixar",
     "adb_getting": "Baixando…",
     "adb_failed": "O download falhou. Verifique sua conexão e tente novamente.",
-    "quit_all": "Sair do Bageo"
+    "quit_all": "Sair do Bageo",
+    "lang_unreviewed": "A tradução neste idioma aguarda a confirmação de um falante nativo."
   }
 }

@@ -123,7 +123,11 @@ body.top .toast{transform:translateY(-6px)}
   document.addEventListener("contextmenu", (ev) => ev.preventDefault());
 
   async function start() {
-    try { I18N = await (await fetch("i18n.json")).json(); } catch (_) { I18N = {}; }
+    let base = {};
+    let ext = {};
+    try { base = await (await fetch("i18n.json")).json(); } catch (_) { /* nothing to show */ }
+    try { ext = await (await fetch("i18n.ext.json")).json(); } catch (_) { /* the nine languages still work */ }
+    I18N = Object.assign({}, ext, base);
     T.event.listen("toast", (e) => show(e.payload));
     let n = null;
     try { n = await invoke("toast_get"); } catch (_) { /* nothing to show */ }
