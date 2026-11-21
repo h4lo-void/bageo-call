@@ -321,7 +321,8 @@ impl ClosingMachine {
         if h.lang == "vi" && self.substance && vi_parting(&h.before) {
             return true;
         }
-        (self.substance || !greeting_only(&h.before))
+        let opening_before = if h.lang == "vi" { vi_without_pronoun(&h.before) } else { h.before.as_str() };
+        (self.substance || !greeting_only(opening_before))
             && (self.state != ClosingState::Talking
                 || cue_before(&h.before)
                 || cue_shortly_before(h.lang, &h.before))
@@ -331,10 +332,28 @@ impl ClosingMachine {
 /// Vietnamese opens and parts with the same 「chào」. After the caller's own words in a
 /// later turn (「…cho anh nhé. Em chào anh ạ」) it is the parting: what comes before it,
 /// without the speaker's own pronoun, is more than greetings and short replies.
-fn vi_parting(before: &str) -> bool {
+fn vi_without_pronoun(before: &str) -> &str {
     let b = before.trim_end();
-    let b = ["em", "cháu", "con", "tôi", "mình"].iter().find_map(|p| ends_with_phrase(b, p)).unwrap_or(b);
-    !b.is_empty() && !greeting_only(b)
+    ["em", "cháu", "con", "tôi", "mình"].iter().find_map(|p| ends_with_phrase(b, p)).unwrap_or(b)
+}
+
+/// A question among the last words before it (「Mai anh có rảnh không. Chào anh」) is
+/// asking, not parting; 「không sao」 / 「không có gì」 (no problem) are no question.
+const VI_QUESTION_WORDS: &[&str] = &["không", "chưa", "nào", "sao", "gì", "bao giờ", "mấy giờ", "ở đâu"];
+
+fn vi_asks_before(b: &str) -> bool {
+    let words: Vec<&str> = b.split(' ').filter(|w| !w.is_empty()).collect();
+    let tail = words[words.len().saturating_sub(CUE_SHORTLY_WORDS)..].join(" ");
+    let mut s = format!(" {tail} ");
+    for ok in [" không sao ", " không có gì "] {
+        s = s.replace(ok, " ");
+    }
+    VI_QUESTION_WORDS.iter().any(|q| s.contains(&format!(" {q} ")))
+}
+
+fn vi_parting(before: &str) -> bool {
+    let b = vi_without_pronoun(before);
+    !b.is_empty() && !greeting_only(b) && !vi_asks_before(b)
 }
 
 fn stall_trigger(t: &'static str) -> &'static str {
@@ -792,6 +811,14 @@ const FAREWELLS: Lexicon = &[
         "המשך ערב נעים", "המשך יום טוב", "נדבר אחר כך", "יאללה ביי", "ולילה טוב", "ושבת שלום", "ויום טוב", "וערב טוב",
         "ולהתראות", "טוב ביי", "ביי ביי", "להתראות", "וכל טוב", "להשתמע", "וביי", "ביי",
     ]),
+    // "See you" (נתראה), alone or with a time ("נתראה בשישי", "נתראה ביום ראשון"): said on leaving.
+    ("he", &[
+        "נתראה", "נתראה בקרוב", "נתראה מחר", "נתראה אחר כך", "נתראה מאוחר יותר", "נתראה בשבוע הבא", "נתראה בשבת",
+        "נתראה בראשון", "נתראה בשני", "נתראה בשלישי", "נתראה ברביעי", "נתראה בחמישי", "נתראה בשישי",
+        "נתראה ביום ראשון", "נתראה ביום שני", "נתראה ביום שלישי", "נתראה ביום רביעי", "נתראה ביום חמישי",
+        "נתראה ביום שישי", "נתראה ביום שבת",
+        "נתראה אז", "נתראה שם", "ויום טוב גם לך", "יום טוב גם לך", "גם לך יום טוב",
+    ]),
     ("ms", &[
         "nanti kita sembang lagi", "selamat tinggal", "saya letak dulu", "jumpa lagi", "ok lah bye", "gerak dulu",
         "jaga diri", "babai",
@@ -807,6 +834,7 @@ const FAREWELLS: Lexicon = &[
     ("ur", &[
         "بعد میں بات کرتے ہیں", "اپنا خیال رکھیے گا", "اپنا خیال رکھنا", "فی امان اللہ", "پھر بات ہوگی",
         "پھر ملتے ہیں", "اللہ حافظ", "اچھا بائے", "خدا حافظ", "رب راکھا",
+        "الله حافظ",
     ]),
     ("ne", &[
         "पछि कुरा गरौँला", "पछी कुरा गरौँला", "फोन राखेँ ल", "पछि बोलम्ला", "पछी बोलम्ला", "शुभ रात्री", "राखेँ है",
@@ -986,6 +1014,8 @@ const GREETING_BYES: Lexicon = &[
     // Fifth batch: greetings and wishes ("יום טוב", "magandang araw", "روز بخیر") and everyday
     // words ("ingat": careful, "baadaye": later, "დროებით": for now, "dag": day).
     ("he", &["לילה טוב", "שבת שלום", "יום טוב", "ערב טוב", "כל טוב", "שלום", "נדבר"]),
+    // "You too" after the other side's wish: it answers a goodbye, and is no goodbye in a question.
+    ("he", &["וגם לך", "גם לך"]),
     ("ms", &["salam sejahtera", "selamat jalan", "hati hati"]),
     ("tl", &[
         "magandang umaga", "magandang hapon", "magandang araw", "magandang gabi", "ingat po kayo", "ingat kayo",
@@ -1687,6 +1717,9 @@ fn classify_with(text: &str, extra: &ExtraWords) -> Option<Hit> {
             if kind == Kind::Farewell && asks_to_stay(before, &t[before.len()..]) {
                 return None;
             }
+            if kind == Kind::Farewell && lang == "he" && he_unsure_see_you(before, &t[before.len()..]) {
+                return None;
+            }
             // 「我們在拜拜」「你不要瞎掰」: 拜拜／掰 as other words are no goodbye.
             if kind == Kind::Farewell {
                 let word = &t[before.len()..];
@@ -1702,6 +1735,13 @@ fn classify_with(text: &str, extra: &ExtraWords) -> Option<Hit> {
         };
     }
     None
+}
+
+/// Hebrew 「נתראה」 ("we'll see each other") after 「אם／לא／מתי／איפה／אולי」 is a doubt or a
+/// question, not a goodbye: 「אני לא יודע אם נתראה」.
+fn he_unsure_see_you(before: &str, word: &str) -> bool {
+    word.trim_start().starts_with("נתראה")
+        && ["אם", "האם", "לא", "מתי", "איפה", "אולי"].iter().any(|p| ends_with_phrase(before.trim_end(), p).is_some())
 }
 
 /// Indonesian "see you" with a day after it ("Sampai ketemu Rabu pagi, Pak",
@@ -1863,7 +1903,7 @@ fn th_see_you_in(run: &str, bare_ok: bool) -> bool {
 const CUE_SHORTLY_WORDS: usize = 12;
 const CUE_SHORTLY_QUESTIONS: &[(&str, &[&str])] = &[
     ("th", TH_QUESTION_WORDS),
-    ("vi", &["không", "chưa", "nào", "sao", "gì", "bao giờ", "mấy giờ", "ở đâu"]),
+    ("vi", VI_QUESTION_WORDS),
     ("id", &["apa", "apakah", "kapan", "bagaimana", "gimana", "berapa", "mana", "siapa"]),
 ];
 
@@ -2525,6 +2565,47 @@ mod tests {
         let step = caller(&mut m, "Dạ vâng, em gửi hàng ở quầy lễ tân nhé, cảm ơn anh nhiều.");
         assert!(!step.ends_call);
         assert_eq!(m.on_ai_turn("Dạ vâng, cảm ơn cô. Tôi chào cô.", true, false), ClosingEvent::FarewellsExchanged);
+    }
+
+    #[test]
+    fn vietnamese_chao_after_a_question_waits_and_other_languages_are_unchanged() {
+        // From the multilingual call simulations: Hebrew "see you" was no goodbye, so nobody
+        // closed the line. The other languages stay as they were.
+        for (lang, line, ends) in [
+            ("he", "מעולה, תודה רבה. נתראה.", true),
+            ("he", "זהו, הכל מעודכן. נתראה בשישי.", true),
+            ("he", "בסדר גמור, נתראה ביום ראשון!", true),
+            ("he", "מצוין, תודה ויום טוב גם לך.", true),
+            ("he", "הכל סגור, אז נתראה אז, יום טוב.", true),
+            ("he", "יש גם לך את המספר?", false),
+            ("he", "אני לא יודע אם נתראה", false),
+            ("he", "מתי נתראה?", false),
+            ("el", "Σας ευχαριστώ πολύ και καλή σας μέρα!", true),
+            ("el", "Και η καλή συνέχεια της δουλειάς σας ποια είναι;", false),
+            ("ur", "شکریہ، الله حافظ", true),
+            ("es", "¿Nos vemos el viernes?", false),
+            ("ja", "また明日の件ですが、どうなりましたか", false),
+            ("zh-TW", "好，那禮拜五見，再見。", true),
+        ] {
+            let mut m = mid_call(lang);
+            assert_eq!(caller(&mut m, line).ends_call, ends, "{lang}: {line}");
+        }
+        // A Vietnamese 「chào」 after a question is no parting; after 「không sao」 it is.
+        for (lang, line, ends) in [
+            ("vi", "Cảm ơn anh. Mai anh có rảnh không. Chào anh.", false),
+            ("vi", "Dạ em gửi hàng ở quầy lễ tân, anh có ở nhà không ạ. Em chào anh ạ.", false),
+            ("vi", "Dạ vâng, không sao ạ, em gửi hàng ở quầy lễ tân nhé. Em chào anh ạ.", true),
+            ("el", "Ευχαριστώ πολύ για τη βοήθεια, και καλή σας μέρα.", true),
+            ("nb", "Takk for hjelpen, ha en fin dag videre. Ha det bra.", true),
+            ("he", "תודה רבה על העזרה, יום טוב, להתראות.", true),
+            ("id", "Makasih banyak ya, Pak. Tolong kabari saya secepatnya. Selamat siang!", true),
+            ("es", "Perfecto, gracias por avisar, hasta luego.", true),
+            ("de", "Danke für den Anruf, tschüss.", true),
+            ("zh-TW", "好，那就這樣，謝謝你，再見。", true),
+        ] {
+            let mut m = mid_call(lang);
+            assert_eq!(caller(&mut m, line).ends_call, ends, "{lang}: {line}");
+        }
     }
 
     #[test]
@@ -3684,21 +3765,22 @@ mod chinese_bye_words {
 
     #[test]
     fn verified_closing_words_of_another_language_join_only_when_every_check_passes() {
-        let fa = closing_of(&["خداحافظ", "خدانگهدار"], &["همین بود"], &["ممنون، خداحافظ.", "باشه، همین بود"], &["سلام، از بانک تماس می\u{200c}گیرم."]);
-        assert!(classify("ممنون، خداحافظ.").is_none(), "not known today");
-        assert!(judge("fa", &fa, "ممنون، خداحافظ.") && !judge("fa", &fa, "سلام، از بانک تماس می\u{200c}گیرم."));
+        // Welsh stands for a language the built-in lists do not know.
+        let fa = closing_of(&["hwyl fawr", "hwyl am y tro"], &["dyna i gyd"], &["Diolch yn fawr, hwyl fawr.", "Iawn, dyna i gyd"], &["Helo, rwy'n ffonio o'r banc."]);
+        assert!(classify("Diolch yn fawr, hwyl fawr.").is_none(), "not known today");
+        assert!(judge("fa", &fa, "Diolch yn fawr, hwyl fawr.") && !judge("fa", &fa, "Helo, rwy'n ffonio o'r banc."));
         let w = ExtraWords::from_verified(&[("fa", fa.clone())]);
-        assert!(classify_with("ممنون، خداحافظ.", &w).is_some_and(|h| h.kind == Kind::Farewell && h.lang == "fa"));
-        assert!(classify_with("باشه، همین بود", &w).is_some_and(|h| h.kind == Kind::PreClosing));
-        assert!(classify_with("خداحافظ؟", &w).is_none(), "a question is no goodbye");
+        assert!(classify_with("Diolch yn fawr, hwyl fawr.", &w).is_some_and(|h| h.kind == Kind::Farewell && h.lang == "fa"));
+        assert!(classify_with("Iawn, dyna i gyd", &w).is_some_and(|h| h.kind == Kind::PreClosing));
+        assert!(classify_with("Hwyl fawr?", &w).is_none(), "a question is no goodbye");
         // A word that makes a core line end is refused, with the rest of its closing.
         let ok = closing_of(&["ok"], &[], &["Merci, ok"], &[]);
         let w = ExtraWords::from_verified(&[("fa", fa.clone()), ("tr", ok)]);
         assert!(classify_with("Sure, ok", &w).is_none(), "core lines stay as they were");
-        assert!(classify_with("ممنون، خداحافظ.", &w).is_some(), "the good closing still joins");
+        assert!(classify_with("Diolch yn fawr, hwyl fawr.", &w).is_some(), "the good closing still joins");
         // An example classified wrong keeps the words out.
-        let wrong = closing_of(&["خداحافظ"], &[], &["ممنون، خداحافظ."], &["خداحافظ"]);
-        assert!(classify_with("ممنون، خداحافظ.", &ExtraWords::from_verified(&[("fa", wrong)])).is_none());
+        let wrong = closing_of(&["hwyl fawr"], &[], &["Diolch yn fawr, hwyl fawr."], &["hwyl fawr"]);
+        assert!(classify_with("Diolch yn fawr, hwyl fawr.", &ExtraWords::from_verified(&[("fa", wrong)])).is_none());
         // Every core closing test line still reads as before with the words in.
         let w = ExtraWords::from_verified(&[("fa", fa)]);
         for s in ["Okay, bye, thanks for calling.", "好，再見陳小姐", "そうですね", "蛤？你可以再講一次嗎？"] {
@@ -3714,19 +3796,20 @@ mod chinese_bye_words {
                 v["langs"]["fa"]["status"] = status.into();
                 let c = &mut v["langs"]["fa"]["speech"]["closing"];
                 c["verified"] = verified.into();
-                c["examples"]["ends"] = serde_json::json!(["ممنون، خداحافظ."]);
+                c["examples"]["ends"] = serde_json::json!(["ممنون، همین بود."]);
             })
         };
         crate::locales_store::testing::use_gz(&verified("local_reviewed", true));
-        assert!(classify("ممنون، خداحافظ.").is_some_and(|h| h.lang == "fa"));
+        // Persian "that's all" is in no built-in list: it counts only through the translation.
+        assert!(classify("ممنون، همین بود.").is_some_and(|h| h.lang == "fa"));
         let mut m = after_talk();
-        assert!(m.on_caller("ممنون، خداحافظ.", "ممنون، خداحافظ.", false, false).ends_call);
+        assert_eq!(m.on_caller("ممنون، همین بود.", "ممنون، همین بود.", false, false).event, ClosingEvent::CallerPreClosing);
         for (status, v) in [("ai_draft", true), ("local_reviewed", false), ("ai_checked", true)] {
             crate::locales_store::testing::use_gz(&verified(status, v));
-            assert!(classify("ممنون، خداحافظ.").is_none(), "{status} {v}");
+            assert!(classify("ممنون، همین بود.").is_none(), "{status} {v}");
         }
         crate::locales_store::testing::use_builtin();
-        assert!(classify("ممنون، خداحافظ.").is_none());
+        assert!(classify("ممنون، همین بود.").is_none());
     }
 
     #[test]
