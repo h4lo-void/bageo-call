@@ -117,6 +117,49 @@ LOCK = HOME / "sms_forward.lock"
 LOG = HOME / "sms_forward.log"
 LOG_MAX = 2 * 1024 * 1024
 
+def _default_local_agent_dirs() -> list[Path]:
+    out: list[Path] = []
+    if os.environ.get("BAGEO_DIR", "").strip():
+        out.append(Path(os.environ["BAGEO_DIR"].strip()).expanduser())
+    here = Path(__file__).resolve()
+    if len(here.parents) > 2:
+        out.append(here.parents[2])
+    if os.environ.get("LOCALAPPDATA", "").strip():
+        out.append(Path(os.environ["LOCALAPPDATA"].strip()) / "Programs" / "Bageo")
+    out.append(Path.home().expanduser() / "Library" / "Application Support" / "Bageo")
+    out.append(Path.cwd())
+    return out
+
+
+LOCAL_AGENT_DIRS: list[Path] = _default_local_agent_dirs()
+
+
+def local_agent_token(dirs: list[Path] | None = None) -> str:
+    """The console password of a Bageo running on this computer (ui_password in
+    settings.json, else CALLS_UI_TOKEN in .env), when AGENT_URL is local."""
+    host = (urllib.parse.urlsplit(AGENT_URL).hostname or "").lower()
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        return ""
+    for root in (LOCAL_AGENT_DIRS if dirs is None else dirs):
+        cfg = read_json(Path(root) / "data" / "calls" / "config" / "settings.json")
+        pw = cfg.get("ui_password")
+        if isinstance(pw, str) and pw.strip():
+            return pw.strip()
+        try:
+            env_text = (Path(root) / ".env").read_text(encoding="utf-8-sig")
+        except OSError:
+            continue
+        for line in env_text.splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                if k.strip() == "CALLS_UI_TOKEN":
+                    tok = v.strip().strip("\"'")
+                    if tok:
+                        return tok
+    return ""
+
+
 AGENT_URL = (os.environ.get("AGENT_URL", "").strip() or "http://127.0.0.1:8787").rstrip("/")
 AGENT_TOKEN = os.environ.get("AGENT_TOKEN", "").strip()
 SMS_LANG = os.environ.get("SMS_LANG", "").strip()
@@ -370,8 +413,9 @@ def agent_request(path: str, payload: dict | None = None, timeout: float = 10.0)
     if payload is not None:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         headers["Content-Type"] = "application/json; charset=utf-8"
-    if AGENT_TOKEN:
-        headers["Authorization"] = f"Bearer {AGENT_TOKEN}"
+    tok = AGENT_TOKEN or local_agent_token()
+    if tok:
+        headers["Authorization"] = f"Bearer {tok}"
     req = urllib.request.Request(AGENT_URL + path, data=data, headers=headers,
                                  method="GET" if data is None else "POST")
     host = (urllib.parse.urlsplit(AGENT_URL).hostname or "").lower()
@@ -409,6 +453,11 @@ def deliver(title: str, body: str, sender: str = "", text: str = "", to: str = "
         if sub_id is not None:
             payload["sub_id"] = int(sub_id)  # the SIM it came in on: a reply goes out on it
     status, obj = agent_request("/calls/api/notify/send", payload, SEND_TIMEOUT)
+    if status == 401:
+        fresh = local_agent_token()
+        if fresh and fresh != AGENT_TOKEN:
+            globals()["AGENT_TOKEN"] = fresh
+            status, obj = agent_request("/calls/api/notify/send", payload, SEND_TIMEOUT)
     if status == 200 and isinstance(obj, dict) and obj.get("ok") is True:
         return True, "agent:200"
     if status == 200:

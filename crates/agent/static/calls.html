@@ -1132,6 +1132,7 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
         <a href="#settings/notify" data-jump="notify"><span data-i18n="g_notify"></span></a>
         <a href="#settings/summary" data-jump="summary"><span data-i18n="g_summary"></span></a>
         <a href="#settings/backup" data-jump="backup"><span data-i18n="g_backup"></span></a>
+        <a href="#settings/update" data-jump="update"><span data-i18n="pk_check"></span></a>
         <a href="#settings/region" data-jump="region"><span data-i18n="g_region"></span></a>
       </nav>
 
@@ -1175,47 +1176,6 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
           </div>
           <div class="hr"></div>
           <label class="sw"><input type="checkbox" data-k="gemini_live_enabled" data-t="bool" /><span><b data-i18n="f_enabled"></b><small data-i18n="f_enabled_h"></small></span></label>
-          <details class="fold more">
-            <summary data-i18n="more_opts"></summary>
-            <div class="field"><label for="f-notify_language" data-i18n="f_notify_lang"></label>
-              <select id="f-notify_language" data-k="notify_language" data-t="text" style="max-width:20rem"></select>
-              <div class="help" data-i18n="f_notify_lang_h"></div></div>
-            <div class="field" id="homeCountryField"><label for="hcBoxIn" data-i18n="f_home_country"></label>
-              <input type="hidden" id="f-home_country" data-k="home_country" data-t="text" />
-              <div class="cb" id="hcBox"></div>
-              <div class="help" data-i18n="f_home_country_h"></div></div>
-            <div class="field" hidden><label class="sw"><input type="checkbox" data-k="extras_auto" data-t="bool" /><span><b data-i18n="f_extras_auto"></b><small data-i18n="f_extras_auto_h"></small></span></label></div>
-            <div class="field" id="packField"><div class="lbl" data-i18n="pk_title"></div>
-              <div class="muted" id="pkVersion"></div>
-              <div class="pv">
-                <button type="button" class="btn sm" id="btnPkCheck" data-i18n="pk_check"></button>
-                <button type="button" class="btn sm ghost" id="btnPkRestore" data-i18n="pk_restore" hidden></button>
-                <span class="pv-status" id="pkStatus" aria-live="polite"></span>
-              </div>
-              <div class="help" data-i18n="pk_h"></div></div>
-            <div class="field" id="vpField" hidden><div class="lbl" data-i18n="vp_title"></div>
-              <div id="vpRows"></div>
-              <div class="pv">
-                <button type="button" class="btn sm" id="btnVpImport" data-i18n="vp_import"></button>
-                <input type="file" id="vpFile" accept=".zip,application/zip" hidden />
-                <span class="pv-status" id="vpStatus" aria-live="polite"></span>
-              </div>
-              <div class="help" data-i18n="vp_h"></div></div>
-            <div class="field" id="simLangField"><div class="lbl" id="lbl-simlang" data-i18n="f_simlang"></div>
-              <div class="rows" id="simLangRows" data-k="sim_languages" data-t="simlangs" role="group" aria-labelledby="lbl-simlang"></div>
-              <div class="pv" style="margin-top:0">
-                <button type="button" class="btn sm" id="btnSimLangAdd" data-i18n="sl_add"></button>
-              </div>
-              <div class="help" data-i18n="f_simlang_h"></div></div>
-            <div class="field"><label for="f-errand_identity" data-i18n="f_er_identity"></label>
-              <select id="f-errand_identity" data-k="errand_identity" data-t="text" style="max-width:20rem">
-                <option value="assistant" data-i18n="er_id_opt_assistant"></option><option value="owner" data-i18n="er_id_opt_owner"></option>
-              </select>
-              <div class="help" data-i18n="f_er_identity_h"></div></div>
-            <div class="field"><label for="f-gemini_live_model" data-i18n="f_model"></label>
-              <input type="text" id="f-gemini_live_model" data-k="gemini_live_model" data-t="text" list="modelList" spellcheck="false" placeholder="gemini-3.8-live" style="max-width:28rem" />
-              <div class="help" data-i18n="f_model_h"></div></div>
-          </details>
         </div></div>
 
         <!-- How it answers -->
@@ -1631,12 +1591,6 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
               <div class="help" data-i18n="f_wl_who_h"></div></div>
             </div>
           </div>
-          <details class="fold more">
-            <summary data-i18n="more_opts"></summary>
-            <label class="sw"><input type="checkbox" data-k="gemini_ring_prewarm" data-t="bool" /><span><b data-i18n="f_prewarm"></b><small data-i18n="f_prewarm_h"></small></span></label>
-            <label class="sw"><input type="checkbox" data-k="gemini_barge_in" data-t="bool" /><span><b data-i18n="f_barge"></b><small data-i18n="f_barge_h"></small></span></label>
-            <label class="sw"><input type="checkbox" data-k="gemini_server_vad" data-t="bool" /><span><b data-i18n="f_vad"></b><small data-i18n="f_vad_h"></small></span></label>
-          </details>
         </div></div>
 
         <!-- Sales & scam -->
@@ -1702,22 +1656,6 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
           <div class="field"><label for="f-knowledge_notes" data-i18n="f_knowledge"></label>
             <textarea id="f-knowledge_notes" data-k="knowledge_notes" data-t="text" rows="5" maxlength="6000" data-i18n-ph="f_knowledge_ph"></textarea>
             <div class="help" data-i18n="f_knowledge_h"></div></div>
-          <details class="fold more" id="promptFold">
-            <summary data-i18n="adv_opts"></summary>
-            <div class="field"><label for="f-gemini_persona_prompt" data-i18n="f_prompt"></label>
-              <textarea id="f-gemini_persona_prompt" data-k="gemini_persona_prompt" data-t="text" rows="9" data-i18n-ph="f_prompt_ph" spellcheck="false"></textarea>
-              <div class="help" data-i18n="f_prompt_h"></div>
-              <details class="fold" style="margin-top:8px">
-                <summary data-i18n="p_builtin"></summary>
-                <div class="help" data-i18n="p_builtin_h"></div>
-                <pre class="block prose" id="defaultPrompt" tabindex="0"></pre>
-                <div class="row" style="margin-top:10px">
-                  <button type="button" class="btn sm" id="btnPromptCopyIn" data-i18n="p_copy_in"></button>
-                  <button type="button" class="btn sm" id="btnPromptClear" data-i18n="p_clear"></button>
-                </div>
-              </details>
-            </div>
-          </details>
         </div></div>
 
         <!-- Announcement for turned-away calls (the Blacklist is in Contacts) -->
@@ -1751,19 +1689,6 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
             <input type="url" id="f-public_url" data-k="public_url" data-t="text" spellcheck="false" placeholder="http://bageo.local/" />
             <div class="help" data-i18n="f_public_url_h"></div>
             <button type="button" class="btn sm ghost" id="btnUseThisUrl" style="margin-top:4px;padding-inline-start:0"></button></div>
-          <details class="fold more" id="ctlField">
-            <summary data-i18n="rc_title"></summary>
-            <p class="help" style="margin-top:0" data-i18n="rc_desc"></p>
-            <label class="sw" id="tgEnvCtl" hidden><input type="checkbox" data-k="telegram_control" data-t="bool" /><span><b data-i18n="rc_env"></b><small data-i18n="rc_env_h"></small></span></label>
-            <div class="two">
-              <div class="field"><label for="f-control_errands_per_hour" data-i18n="rc_errands"></label>
-                <div class="inline"><input type="number" id="f-control_errands_per_hour" data-k="control_errands_per_hour" data-t="int" min="0" max="30" step="1" inputmode="numeric" /></div>
-                <div class="help" data-i18n="rc_errands_h"></div></div>
-              <div class="field"><label for="f-control_commands_per_minute" data-i18n="rc_msgs"></label>
-                <div class="inline"><input type="number" id="f-control_commands_per_minute" data-k="control_commands_per_minute" data-t="int" min="1" max="120" step="1" inputmode="numeric" /></div>
-                <div class="help" data-i18n="rc_msgs_h"></div></div>
-            </div>
-          </details>
         </div></div>
 
         <!-- Summary & calendar -->
@@ -1824,13 +1749,134 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
             <button type="button" class="btn" id="btnBkImport" data-i18n="bk_import"></button>
             <input type="file" id="bkFile" hidden accept=".zip,.json,.bageo,application/zip,application/json" />
           </div>
-          <details class="fold" id="bkFilesBox" style="margin-top:10px">
-            <summary><span data-i18n="bk_files"></span><span id="bkCount"></span></summary>
+          <div class="subbox" id="bkFilesBox" style="padding-top:14px;margin-top:14px">
+            <div><b data-i18n="bk_files"></b><span id="bkCount"></span></div>
             <div class="bk-list" id="bkList"></div>
             <button type="button" class="btn sm ghost" id="btnBkAll" hidden></button>
-          </details>
-          <details class="fold more">
-            <summary data-i18n="more_opts"></summary>
+          </div>
+        </div></div>
+
+        <!-- Updates -->
+        <div class="card group" id="g-update"><div class="pad">
+          <h2><span data-i18n="pk_check"></span></h2>
+          <p class="desc" data-i18n="pk_h"></p>
+          <div class="subbox" style="padding-top:14px">
+            <div class="lbl">Bageo</div>
+            <div class="muted" id="bgVerText"></div>
+            <div class="pv">
+              <button type="button" class="btn sm primary" id="btnBgCheck" data-i18n="pk_check"></button>
+              <span class="pv-status" id="bgVerStatus" aria-live="polite"></span>
+            </div>
+          </div>
+          <div class="subbox" id="packField" style="padding-top:14px">
+            <div class="lbl" data-i18n="pk_title"></div>
+            <div class="muted" id="pkVersion"></div>
+            <div class="pv">
+              <button type="button" class="btn sm" id="btnPkCheck" data-i18n="pk_check"></button>
+              <button type="button" class="btn sm ghost" id="btnPkRestore" data-i18n="pk_restore" hidden></button>
+              <span class="pv-status" id="pkStatus" aria-live="polite"></span>
+            </div>
+            <div class="help" data-i18n="pk_h"></div>
+          </div>
+          <div class="subbox" id="vpField" style="padding-top:14px" hidden>
+            <div class="lbl" data-i18n="vp_title"></div>
+            <div id="vpRows"></div>
+            <div class="pv">
+              <button type="button" class="btn sm" id="btnVpImport" data-i18n="vp_import"></button>
+              <input type="file" id="vpFile" accept=".zip,application/zip" hidden />
+              <span class="pv-status" id="vpStatus" aria-live="polite"></span>
+            </div>
+            <div class="help" data-i18n="vp_h"></div>
+          </div>
+          <div class="subbox" style="padding-top:14px">
+            <div class="lbl" data-i18n="ex_title"></div>
+            <div class="help" style="margin-top:2px" data-i18n="ex_desc"></div>
+            <div class="pv">
+              <button type="button" class="btn sm" id="btnExManage" data-i18n="ex_title"></button>
+            </div>
+          </div>
+        </div></div>
+
+        <!-- Advanced -->
+        <div class="card group" id="g-region"><div class="pad">
+          <h2><span data-i18n="g_region"></span></h2>
+          <p class="desc" data-i18n="g_region_d"></p>
+
+          <div class="subbox" style="padding-top:14px">
+            <b data-i18n="g_basics"></b>
+            <div class="two">
+              <div class="field"><label for="f-notify_language" data-i18n="f_notify_lang"></label>
+                <select id="f-notify_language" data-k="notify_language" data-t="text"></select>
+                <div class="help" data-i18n="f_notify_lang_h"></div></div>
+              <div class="field"><label for="f-errand_identity" data-i18n="f_er_identity"></label>
+                <select id="f-errand_identity" data-k="errand_identity" data-t="text">
+                  <option value="assistant" data-i18n="er_id_opt_assistant"></option><option value="owner" data-i18n="er_id_opt_owner"></option>
+                </select>
+                <div class="help" data-i18n="f_er_identity_h"></div></div>
+            </div>
+            <div class="field" id="homeCountryField"><label for="hcBoxIn" data-i18n="f_home_country"></label>
+              <input type="hidden" id="f-home_country" data-k="home_country" data-t="text" />
+              <div class="cb" id="hcBox"></div>
+              <div class="help" data-i18n="f_home_country_h"></div></div>
+            <div class="field" hidden><label class="sw"><input type="checkbox" data-k="extras_auto" data-t="bool" /><span><b data-i18n="f_extras_auto"></b><small data-i18n="f_extras_auto_h"></small></span></label></div>
+            <div class="field" id="simLangField"><div class="lbl" id="lbl-simlang" data-i18n="f_simlang"></div>
+              <div class="rows" id="simLangRows" data-k="sim_languages" data-t="simlangs" role="group" aria-labelledby="lbl-simlang"></div>
+              <div class="pv" style="margin-top:0">
+                <button type="button" class="btn sm" id="btnSimLangAdd" data-i18n="sl_add"></button>
+              </div>
+              <div class="help" data-i18n="f_simlang_h"></div></div>
+          </div>
+
+          <div class="subbox" style="padding-top:14px">
+            <b data-i18n="g_answer"></b>
+            <div class="two">
+              <div class="field"><label for="f-gemini_live_model" data-i18n="f_model"></label>
+                <input type="text" id="f-gemini_live_model" data-k="gemini_live_model" data-t="text" list="modelList" spellcheck="false" placeholder="gemini-3.8-live" />
+                <div class="help" data-i18n="f_model_h"></div></div>
+              <div class="field"><label for="f-gemini_thinking_level" data-i18n="f_think"></label>
+                <select id="f-gemini_thinking_level" data-k="gemini_thinking_level" data-t="text">
+                  <option value="low" data-i18n="th_low"></option><option value="medium" data-i18n="th_medium"></option><option value="high" data-i18n="th_high"></option>
+                </select>
+                <div class="help" data-i18n="f_think_h"></div></div>
+            </div>
+            <div class="hr"></div>
+            <label class="sw"><input type="checkbox" data-k="gemini_ring_prewarm" data-t="bool" /><span><b data-i18n="f_prewarm"></b><small data-i18n="f_prewarm_h"></small></span></label>
+            <label class="sw"><input type="checkbox" data-k="gemini_barge_in" data-t="bool" /><span><b data-i18n="f_barge"></b><small data-i18n="f_barge_h"></small></span></label>
+            <label class="sw"><input type="checkbox" data-k="gemini_server_vad" data-t="bool" /><span><b data-i18n="f_vad"></b><small data-i18n="f_vad_h"></small></span></label>
+          </div>
+
+          <div class="subbox" id="promptFold" style="padding-top:14px">
+            <div class="field" style="margin-top:0"><label for="f-gemini_persona_prompt" data-i18n="f_prompt"></label>
+              <textarea id="f-gemini_persona_prompt" data-k="gemini_persona_prompt" data-t="text" rows="6" data-i18n-ph="f_prompt_ph" spellcheck="false"></textarea>
+              <div class="help" data-i18n="f_prompt_h"></div>
+              <div class="field" style="margin-top:12px">
+                <div class="lbl" data-i18n="p_builtin"></div>
+                <div class="help" data-i18n="p_builtin_h"></div>
+                <pre class="block prose" id="defaultPrompt" tabindex="0" style="max-height:180px"></pre>
+                <div class="row" style="margin-top:10px">
+                  <button type="button" class="btn sm" id="btnPromptCopyIn" data-i18n="p_copy_in"></button>
+                  <button type="button" class="btn sm" id="btnPromptClear" data-i18n="p_clear"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="subbox" id="ctlField" style="padding-top:14px">
+            <b data-i18n="rc_title"></b>
+            <p class="help" style="margin-top:4px" data-i18n="rc_desc"></p>
+            <label class="sw" id="tgEnvCtl" hidden><input type="checkbox" data-k="telegram_control" data-t="bool" /><span><b data-i18n="rc_env"></b><small data-i18n="rc_env_h"></small></span></label>
+            <div class="two">
+              <div class="field"><label for="f-control_errands_per_hour" data-i18n="rc_errands"></label>
+                <div class="inline"><input type="number" id="f-control_errands_per_hour" data-k="control_errands_per_hour" data-t="int" min="0" max="30" step="1" inputmode="numeric" /></div>
+                <div class="help" data-i18n="rc_errands_h"></div></div>
+              <div class="field"><label for="f-control_commands_per_minute" data-i18n="rc_msgs"></label>
+                <div class="inline"><input type="number" id="f-control_commands_per_minute" data-k="control_commands_per_minute" data-t="int" min="1" max="120" step="1" inputmode="numeric" /></div>
+                <div class="help" data-i18n="rc_msgs_h"></div></div>
+            </div>
+          </div>
+
+          <div class="subbox" style="padding-top:14px">
+            <b data-i18n="g_backup"></b>
             <div class="field"><label for="f-backup_keep" data-i18n="bk_keep"></label>
               <div class="inline"><input type="number" id="f-backup_keep" data-k="backup_keep" data-t="int" min="1" max="100" step="1" inputmode="numeric" /><span class="muted" data-i18n="bk_unit_copies"></span></div></div>
             <label class="sw"><input type="checkbox" data-k="backup_include_calls" data-t="bool" /><span><b data-i18n="bk_calls"></b><small data-i18n="bk_calls_h"></small></span></label>
@@ -1838,37 +1884,29 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
             <div class="field"><label for="f-backup_password"><span data-i18n="bk_pw"></span><span class="tag" data-flag="backup_password"></span></label>
               <div data-secret="backup_password"></div>
               <div class="help" data-i18n="bk_pw_h"></div></div>
-          </details>
-        </div></div>
+          </div>
 
-        <!-- Advanced -->
-        <div class="card group" id="g-region"><div class="pad">
-          <h2><span data-i18n="g_region"></span></h2>
-          <p class="desc" data-i18n="g_region_d"></p>
-          <div class="field"><label for="f-retention_days" data-i18n="f_keep"></label>
-            <div class="inline"><input type="number" id="f-retention_days" data-k="retention_days" data-t="int" min="1" max="365" step="1" inputmode="numeric" /><span class="muted" data-i18n="unit_days"></span></div>
-            <div class="help" data-i18n="f_keep_h"></div></div>
-          <div class="hr"></div>
-          <div class="field"><label for="f-ui_password"><span data-i18n="f_ui_pw"></span><span class="tag" data-flag="ui_password"></span></label>
-            <div data-secret="ui_password"></div>
-            <div class="help" data-i18n="f_ui_pw_h"></div></div>
-          <div class="hr"></div>
-          <div class="field"><label for="f-mdns_name" data-i18n="f_mdns_name"></label>
-            <input type="text" id="f-mdns_name" data-k="mdns_name" data-t="text" spellcheck="false" autocapitalize="off" autocomplete="off" maxlength="63" placeholder="bageo" style="max-width:16rem" />
-            <div class="help" data-i18n="f_mdns_name_h"></div></div>
-          <div class="hr"></div>
-          <label class="sw"><input type="checkbox" data-k="phone_wifi" data-t="bool" /><span><b data-i18n="f_phone_wifi"></b><small data-i18n="f_phone_wifi_h"></small></span></label>
-          <div class="field"><button type="button" class="btn sm" id="btnRepairPhones" data-i18n="repair_btn"></button>
-            <div class="help" data-i18n="f_repair_h"></div></div>
-          <div class="hr"></div>
-          <div class="field"><label for="f-gemini_thinking_level" data-i18n="f_think"></label>
-            <select id="f-gemini_thinking_level" data-k="gemini_thinking_level" data-t="text" style="max-width:16rem">
-              <option value="low" data-i18n="th_low"></option><option value="medium" data-i18n="th_medium"></option><option value="high" data-i18n="th_high"></option>
-            </select>
-            <div class="help" data-i18n="f_think_h"></div></div>
-          <details class="fold more" id="mcpField">
-            <summary data-i18n="mcp_title"></summary>
-            <p class="help" style="margin-top:0" data-i18n="mcp_desc"></p>
+          <div class="subbox" style="padding-top:14px">
+            <div class="two">
+              <div class="field"><label for="f-retention_days" data-i18n="f_keep"></label>
+                <div class="inline"><input type="number" id="f-retention_days" data-k="retention_days" data-t="int" min="1" max="365" step="1" inputmode="numeric" /><span class="muted" data-i18n="unit_days"></span></div>
+                <div class="help" data-i18n="f_keep_h"></div></div>
+              <div class="field"><label for="f-mdns_name" data-i18n="f_mdns_name"></label>
+                <input type="text" id="f-mdns_name" data-k="mdns_name" data-t="text" spellcheck="false" autocapitalize="off" autocomplete="off" maxlength="63" placeholder="bageo" />
+                <div class="help" data-i18n="f_mdns_name_h"></div></div>
+            </div>
+            <div class="field"><label for="f-ui_password"><span data-i18n="f_ui_pw"></span><span class="tag" data-flag="ui_password"></span></label>
+              <div data-secret="ui_password"></div>
+              <div class="help" data-i18n="f_ui_pw_h"></div></div>
+            <div class="hr"></div>
+            <label class="sw"><input type="checkbox" data-k="phone_wifi" data-t="bool" /><span><b data-i18n="f_phone_wifi"></b><small data-i18n="f_phone_wifi_h"></small></span></label>
+            <div class="field"><button type="button" class="btn sm" id="btnRepairPhones" data-i18n="repair_btn"></button>
+              <div class="help" data-i18n="f_repair_h"></div></div>
+          </div>
+
+          <div class="subbox" id="mcpField" style="padding-top:14px">
+            <b data-i18n="mcp_title"></b>
+            <p class="help" style="margin-top:4px" data-i18n="mcp_desc"></p>
             <label class="sw"><input type="checkbox" data-k="mcp_enabled" data-t="bool" /><span><b data-i18n="mcp_on"></b><small data-i18n="mcp_on_h"></small></span></label>
             <div class="two">
               <div class="field"><label for="f-mcp_token"><span data-i18n="mcp_tok"></span><span class="tag" data-flag="mcp_token"></span></label>
@@ -1890,7 +1928,7 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
                 <textarea id="f-mcp_allowed_origins" data-k="mcp_allowed_origins" data-t="lines" rows="2" spellcheck="false" placeholder="https://app.example"></textarea>
                 <div class="help" data-i18n="mcp_origins_h"></div></div>
             </div>
-          </details>
+          </div>
         </div></div>
       </form>
     </div>
@@ -5695,6 +5733,8 @@ async function loadPackRegions() {
 let pkInfo = null; // GET packs/update
 let pkMsg = ""; // the key of the last result shown
 function pkRender() {
+  const bVer = (pkInfo && pkInfo.bageo_version) || (health && health.version) || "";
+  if ($("bgVerText")) $("bgVerText").textContent = bVer ? `${t("ab_version")} v${bVer}` : "";
   $("pkVersion").textContent = pkInfo ? t(pkInfo.builtin ? "pk_ver_builtin" : "pk_ver_updated", { date: pkInfo.date || String(pkInfo.version || "") }) : "";
   $("btnPkRestore").hidden = !pkInfo || (!!pkInfo.builtin && !pkInfo.voice_list_kept);
   $("pkStatus").textContent = pkMsg ? t(pkMsg) : "";
@@ -5728,6 +5768,32 @@ async function pkRun(btn, path, working) {
 }
 $("btnPkCheck").addEventListener("click", () => pkRun($("btnPkCheck"), "/packs/update", "pk_checking"));
 $("btnPkRestore").addEventListener("click", () => pkRun($("btnPkRestore"), "/packs/restore", "pk_restoring"));
+if ($("btnBgCheck")) {
+  $("btnBgCheck").addEventListener("click", async () => {
+    const verBtn = $("btnBgCheck"), verStatus = $("bgVerStatus");
+    verBtn.disabled = true;
+    verStatus.textContent = t("pk_checking");
+    try {
+      const d = await api("/packs/bageo-check", jsonBody("POST", {}));
+      const url = (d && d.url) || "https://github.com/h4lo-void/bageo-call/releases/latest";
+      if (d && d.result === "update_available") {
+        verStatus.textContent = "";
+        verStatus.append(h("a", { href: url, target: "_blank", rel: "noopener", text: "v" + d.latest }));
+        const w = window.open(url, "_blank", "noopener");
+        if (!w) location.href = url;
+      } else if (d && d.result === "up_to_date") {
+        verStatus.textContent = t("pk_r_up_to_date");
+      } else {
+        verStatus.textContent = t("pk_r_offline");
+      }
+    } catch (e) {
+      verStatus.textContent = e.message || t("pk_r_offline");
+    } finally {
+      verBtn.disabled = false;
+    }
+  });
+}
+if ($("btnExManage")) $("btnExManage").addEventListener("click", () => exOpen(null));
 // ----- voice packs: downloaded when needed, the card that offers one, "Voice downloads"
 let vpInfo = null; // GET voices
 let vpMsg = ""; // the key of the work going on
