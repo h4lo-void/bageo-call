@@ -826,7 +826,7 @@ mod tests {
     #[test]
     fn the_shipped_translations_bring_twenty_languages_to_notifications() {
         let (loc, dropped) = parse_from(BUILTIN, Origin::Builtin, 0).unwrap_or_else(|i| panic!("{}", i[0]));
-        assert_eq!(loc.version, 2026112104);
+        assert_eq!(loc.version, 2026112105);
         // A language that ships console text has nearly all of it (a key added to English after the draft reads English).
         let en_keys = en_source(CONSOLE_EN, CONSOLE_META, true).text.keys().count();
         for (code, l) in &loc.langs {
@@ -839,21 +839,18 @@ mod tests {
         let codes: Vec<&str> = t.langs().map(|(e, _)| e.code()).collect();
         assert_eq!(codes.iter().copied().collect::<std::collections::BTreeSet<_>>(), SHIPPED.into_iter().collect());
         for (e, l) in t.langs() {
-            assert!(l.stage >= Stage::Notify, "{e:?}: {:?}", l.stage);
+            let want_stage = if writing_rtl(e.code()) { Stage::Notify } else { Stage::Console };
+            assert_eq!(l.stage, want_stage, "{e:?}: {:?}", l.stage);
             assert_eq!(l.dropped, 0, "{e:?}");
             assert!(!l.reviewed(), "{e:?}: AI drafts until a native speaker checks them");
             assert_eq!(l.names.code, e.code());
             let p = t.phrases(e).unwrap();
             assert!(!p.hello.is_empty() && p.stt == e.official(), "{e:?}");
         }
-        // Farewells are used for the AI's goodbye only when their examples pass.
-        // Vietnamese's "Thôi chào em nhé." is no closing to Bageo's classifier,
-        // so its farewells are left out (the core word lists still know them);
-        // the same holds for Danish, Greek and Swedish.
-        let mut left_out: Vec<&str> = t.langs().filter(|(e, _)| t.phrases(*e).is_some_and(|p| p.farewells.is_empty())).map(|(e, _)| e.code()).collect();
-        left_out.sort_unstable();
-        assert_eq!(left_out, ["da", "el", "sv", "vi"]);
-        assert_eq!(t.ai_farewells().len(), SHIPPED.len() - left_out.len());
+        // Farewells are used for the AI's goodbye once their examples pass.
+        let left_out: Vec<&str> = t.langs().filter(|(e, _)| t.phrases(*e).is_some_and(|p| p.farewells.is_empty())).map(|(e, _)| e.code()).collect();
+        assert!(left_out.is_empty(), "{left_out:?}");
+        assert_eq!(t.ai_farewells().len(), SHIPPED.len());
         testing::use_builtin();
         let menu = menu();
         assert_eq!(menu.len(), 9 + SHIPPED.len());
