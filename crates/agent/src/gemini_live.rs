@@ -3997,6 +3997,24 @@ fn ends_as_question(text: &str) -> bool {
     core.ends_with('嗎') || core.ends_with('吗')
 }
 
+/// The last `n` characters of `text` (for a debug log line).
+fn debug_tail(text: &str, n: usize) -> String {
+    let skip = text.chars().count().saturating_sub(n);
+    text.chars().skip(skip).collect()
+}
+
+/// The caller starts a new turn after the AI spoke: a line break goes at the
+/// end of their words so far, so the closing check reads this turn on its own.
+/// Scripts without spaces or sentence marks (Thai) would otherwise run the two
+/// turns together: a question at the end of the last turn and this turn's
+/// thanks and goodbye become one run of letters (「…1 วันไหมคะขอบคุณมากค่ะ…สวัสดีค่ะ」),
+/// read as a question right before the goodbye.
+fn mark_caller_turn(window: &mut String) {
+    if window.chars().next_back().is_some_and(|c| !c.is_whitespace()) {
+        window.push('\n');
+    }
+}
+
 /// The caller's words with the piece that just came at their end. The window
 /// skips a longer piece it already ends with (`push_tx_window`).
 fn with_latest<'a>(window: &'a str, latest: &str) -> std::borrow::Cow<'a, str> {
@@ -5556,6 +5574,9 @@ pub async fn run_session(
     // the caller's "mm" cut in two, is judged whole ("Baik, sampai nanti.").
     let mut out_tx_turn = String::with_capacity(512);
     let mut in_tx_window = String::with_capacity(512);
+    // The AI spoke since the caller's last turn began; the caller's next turn
+    // then starts with a break in `in_tx_window` (`mark_caller_turn`).
+    let (mut ai_spoke_since_caller, mut caller_turn_break) = (false, false);
     // Whether the last output / input snippet ended with a space ([`tx_carry`]).
     let (mut out_space_held, mut in_space_held) = (false, false);
     let mut end_reason = SessionEndReason::WsClosed;
@@ -7343,6 +7364,13 @@ pub async fn run_session(
                                         // after the caller's wrap-up closes the call.
                                         if errand.is_none() && !model_generating {
                                             let ev = closing_sm.on_ai_late(s, turn_ends_with_closing, stall_on && !wrap_up_sent);
+                                            if crate::log_text::enabled() {
+                                                info!(
+                                                    "closing_debug ai_late serial={serial} piece={:?} state={} event={ev:?}",
+                                                    Said(s),
+                                                    closing_sm.state().name()
+                                                );
+                                            }
                                             if ev == crate::closing::ClosingEvent::Withdrawn && goodbye_pending {
                                                 goodbye_pending = false;
                                                 caller_end_signal = false;
@@ -7500,6 +7528,10 @@ pub async fn run_session(
                                     let s_raw = s_raw.as_str();
                                     if cb_once {
                                         cb_floor.callee.words(s_raw);
+                                    }
+                                    if caller_turn_break && !s_raw.trim().is_empty() {
+                                        caller_turn_break = false;
+                                        mark_caller_turn(&mut in_tx_window);
                                     }
                                     push_tx_window(&mut in_tx_window, s_raw, 800);
                                     push_tx_window(&mut caller_text_all, s_raw, 400);
@@ -7660,10 +7692,21 @@ pub async fn run_session(
                                         // The closing state machine adds the other languages'
                                         // goodbyes and keeps opening greetings from closing.
                                         let heard = with_latest(&in_tx_window, s);
+                                        let state_before = closing_sm.state();
                                         // AI errands keep the old rule (only caller_wraps_up).
                                         let step = errand
                                             .is_none()
                                             .then(|| closing_sm.on_caller(&heard, s, caller_wraps_up(&heard), stall_on));
+                                        if crate::log_text::enabled() {
+                                            info!(
+                                                "closing_debug caller serial={serial} piece={:?} heard_tail={:?} state={}->{} model_generating={model_generating} step={:?}",
+                                                Said(s),
+                                                Said(&debug_tail(&heard, 80)),
+                                                state_before.name(),
+                                                closing_sm.state().name(),
+                                                step
+                                            );
+                                        }
                                         caller_end_signal = match &step {
                                             Some(step) => step.ends_call,
                                             None => caller_wraps_up(&heard),
@@ -7793,6 +7836,7 @@ pub async fn run_session(
                                     if !model_generating {
                                         // A new turn: words coming in now are its own.
                                         closing_sm.ai_started();
+                                        ai_spoke_since_caller = true;
                                     }
                                     model_generating = true;
                                     play_head.set_generating(
@@ -8111,11 +8155,21 @@ pub async fn run_session(
                                     // reply ended on a closing the transcript check missed
                                     // (「先這樣」): have the model take that back. Once per turn.
                                     if persona && errand.is_none() {
+                                        let state_before = closing_sm.state();
                                         let ev = closing_sm.on_ai_turn(
                                             &turn_out_text,
                                             turn_ends_with_closing(&turn_out_text),
                                             stall_on && !wrap_up_sent,
                                         );
+                                        if crate::log_text::enabled() {
+                                            info!(
+                                                "closing_debug ai_turn serial={serial} said={:?} ends_with_closing={} state={}->{} event={ev:?}",
+                                                Said(&turn_out_text),
+                                                turn_ends_with_closing(&turn_out_text),
+                                                state_before.name(),
+                                                closing_sm.state().name()
+                                            );
+                                        }
                                         // The caller announced the end, the AI answered with its
                                         // farewell: their latest words close the call now.
                                         if ev == crate::closing::ClosingEvent::FarewellsExchanged
@@ -8976,6 +9030,10 @@ pub async fn run_session(
                                     activity_open = true;
                                     activity_ms = 0;
                                     turn_raw_max = 0.0;
+                                    // A new caller turn after the AI spoke: their words start apart.
+                                    if std::mem::take(&mut ai_spoke_since_caller) {
+                                        caller_turn_break = true;
+                                    }
                                     // The caller talks: whatever the model says next is for them,
                                     // never a repeat to drop.
                                     if repeat_guard.is_dropping() {
@@ -13293,6 +13351,287 @@ mod translated_ai_goodbyes {
                 assert!(!turn_ends_with_closing(t), "{table}: {t}");
                 assert!(!ai_says_translated_farewell(t), "{table}: {t}");
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod caller_turn_break {
+    use super::{caller_wraps_up, mark_caller_turn, push_tx_window, turn_ends_with_closing, tx_carry, with_latest};
+    use crate::closing::{ClosingMachine, ClosingStep};
+
+    /// Plays a call as the session feeds it: each caller turn's pieces go into
+    /// the caller window (with the break of a new turn after the AI spoke when
+    /// `breaks`), the closing machine hears every piece with the window, then
+    /// the AI's reply (none after the last turn). The step of the last piece.
+    fn play(lang: &'static str, turns: &[(&[&str], &str)], breaks: bool) -> ClosingStep {
+        let mut m = ClosingMachine::new(lang);
+        let (mut window, mut held, mut ai_spoke) = (String::new(), false, false);
+        let mut last = None;
+        for (pieces, ai) in turns {
+            let mut turn_break = std::mem::take(&mut ai_spoke) && breaks;
+            for p in *pieces {
+                let raw = tx_carry(&mut held, p);
+                if turn_break && !raw.trim().is_empty() {
+                    turn_break = false;
+                    mark_caller_turn(&mut window);
+                }
+                push_tx_window(&mut window, &raw, 800);
+                let s = p.trim();
+                let heard = with_latest(&window, s);
+                last = Some(m.on_caller(&heard, s, caller_wraps_up(&heard), false));
+            }
+            if !ai.is_empty() {
+                m.on_ai_turn(ai, turn_ends_with_closing(ai), false);
+                ai_spoke = true;
+            }
+        }
+        last.expect("a caller piece")
+    }
+
+    /// The Thai clinic call as its speech to text came in (one piece per turn,
+    /// no spaces between sentences): the caller's thanks, "see you next
+    /// Thursday" and สวัสดีค่ะ came right after their own question of the turn
+    /// before.
+    const TH_CLINIC: &[(&[&str], &str)] = &[
+        (&["สวัสดีค่ะ เรียนสายคุณหวังนะคะ"], "ใช่ครับ ผมพูดอยู่ครับ มีอะไรหรือเปล่าครับ"),
+        (
+            &["โทรมาจากคลินิกทันตกรรมนะคะ จะโทรมายืนยันนัดตรวจฟันของวันพฤหัสบดีหน้า เวลา 10:00 น. ค่ะ"],
+            "นัดตรวจฟันวันพฤหัสบดีหน้า เวลาสิบโมงเช้า ใช่ไหมครับ",
+        ),
+        (
+            &["ใช่ค่ะ และรบกวนมาก่อนเวลานัด 15 นาทีนะคะ คุณหวังสะดวกรับข้อความแจ้งเตือนล่วงหน้า 1 วันไหมคะ"],
+            "ได้ครับ ส่งข้อความมาเตือนล่วงหน้าได้เลยครับ",
+        ),
+        (&["ขอบคุณมากค่ะแล้วพบกันวันพฤหัสบดีหน้านะคะสวัสดีค่ะ"], ""),
+    ];
+
+    #[test]
+    fn a_thai_goodbye_right_after_the_last_turns_question_ends_the_call() {
+        // Run together with the question before it, the goodbye was missed.
+        assert!(!play("th", TH_CLINIC, false).ends_call);
+        assert!(play("th", TH_CLINIC, true).ends_call);
+        // Its speech to text in pieces, or with spaces, ends it as well.
+        let mut pieces = TH_CLINIC.to_vec();
+        pieces[3] = (&["ขอบคุณมากค่ะ", "แล้วพบกันวันพฤหัสบดีหน้านะคะ", "สวัสดีค่ะ"], "");
+        assert!(play("th", &pieces, true).ends_call);
+        pieces[3] = (&["ขอบคุณมากค่ะ แล้วพบกันวันพฤหัสบดีหน้านะคะ สวัสดีค่ะ"], "");
+        assert!(play("th", &pieces, true).ends_call);
+    }
+
+    /// (language, the caller's question, the AI's answer, their goodbye, a
+    /// question they come back with after thanking).
+    const LANGS: &[(&str, &str, &str, &str, &str)] = &[
+        ("th", "คุณหวังสะดวกรับข้อความแจ้งเตือนล่วงหน้า 1 วันไหมคะ", "ได้ครับ", "ขอบคุณค่ะสวัสดีค่ะ", "อ้อ ขอถามอีกเรื่อง พัสดุจะมาถึงกี่โมง"),
+        (
+            "ja",
+            "明日の午後でよろしいですか",
+            "はい、大丈夫です。",
+            "ありがとうございました、では失礼いたします",
+            "あ、もう一つだけ、配達は何時ごろになりますか",
+        ),
+        ("ko", "내일 오후 괜찮으세요", "네, 괜찮아요.", "네, 수고하세요", "아 그리고 하나만 더 여쭤볼게요, 택배는 언제 와요"),
+        ("vi", "Anh có ở nhà không ạ", "Có, anh ở nhà.", "Cảm ơn anh, chào anh ạ", "À cho em hỏi thêm, mấy giờ giao hàng"),
+        ("de", "Passt Ihnen Montag um zehn", "Ja, das passt.", "Auf Wiederhören! Schönen Tag noch!", "Ach, noch eine Frage, wann kommt das Paket"),
+        ("es", "Le va bien el lunes a las diez", "Sí, perfecto.", "Chao, cuídate", "Ah, una cosa más, el paquete llega mañana"),
+    ];
+
+    #[test]
+    fn a_goodbye_after_a_question_ends_the_call_and_a_new_question_does_not() {
+        for (lang, question, answer, bye, follow_up) in LANGS {
+            let opening: &[&str] = &["我要寄一個包裹給王先生 0912345678"];
+            let (question, bye, follow_up): (&[&str], &[&str], &[&str]) = (&[*question], &[*bye], &[*follow_up]);
+            let call = [(opening, "好。"), (question, *answer), (bye, "")];
+            assert!(play(lang, &call, true).ends_call, "{lang}: {bye:?}");
+            // Thanks first, the AI answers, then a new question: talk on.
+            let thanks: &[&str] = &[match *lang {
+                "th" => "ขอบคุณค่ะ",
+                "ja" => "ありがとうございます。",
+                "ko" => "감사합니다.",
+                "vi" => "Dạ cảm ơn anh.",
+                "de" => "Danke schön.",
+                _ => "Muchas gracias.",
+            }];
+            let call = [(opening, "好。"), (thanks, *answer), (follow_up, "")];
+            assert!(!play(lang, &call, true).ends_call, "{lang}: {follow_up:?}");
+            // A greeting that opens the call does not close it.
+            let hello: &[&str] = &[match *lang {
+                "th" => "สวัสดีค่ะ",
+                "ja" => "もしもし、お世話になっております",
+                "ko" => "여보세요, 수고하십니다",
+                "vi" => "Alo, chào anh ạ",
+                "de" => "Hallo? Grüß Gott",
+                _ => "¿Bueno? Hola",
+            }];
+            assert!(!play(lang, &[(hello, "")], true).ends_call, "{lang}: opening");
+        }
+    }
+
+    #[test]
+    fn the_break_goes_in_once_and_never_doubles() {
+        let mut w = String::new();
+        mark_caller_turn(&mut w);
+        assert_eq!(w, "");
+        w.push_str("คุณหวังสะดวกไหมคะ");
+        mark_caller_turn(&mut w);
+        mark_caller_turn(&mut w);
+        assert_eq!(w, "คุณหวังสะดวกไหมคะ\n");
+        push_tx_window(&mut w, " Thanks", 800);
+        assert_eq!(w, "คุณหวังสะดวกไหมคะ\nThanks");
+        assert_eq!(with_latest(&w, "Thanks"), w);
+    }
+}
+
+#[cfg(test)]
+mod caller_turn_break_review {
+    use super::{
+        caller_wraps_up, caller_withdraws_bye, is_urgent_whitelist_turn, mark_caller_turn, push_tx_window,
+        turn_ends_with_closing, tx_carry, with_latest,
+    };
+    use crate::closing::{ClosingMachine, ClosingStep};
+
+    /// What the session sees, in order: the local VAD opens a caller turn, a piece
+    /// of the caller's speech to text comes in, the AI's audio starts (even a
+    /// short "mm"), the AI's turn finishes with its words.
+    #[derive(Clone, Copy)]
+    enum Ev {
+        Open,
+        Piece(&'static str),
+        AiAudio,
+        AiDone(&'static str),
+    }
+    use Ev::*;
+
+    /// Same flags and calls as run_session: ai_spoke is set by the AI's audio, taken
+    /// at the next caller turn's open into turn_break, which the first non-blank
+    /// piece after it spends on mark_caller_turn. Returns every caller piece's
+    /// step with the words as the closing check read them, and the final window.
+    fn run(lang: &'static str, evs: &[Ev], breaks: bool) -> (Vec<(ClosingStep, String)>, String) {
+        let mut m = ClosingMachine::new(lang);
+        let (mut window, mut held) = (String::new(), false);
+        let (mut ai_spoke, mut turn_break) = (false, false);
+        let mut steps = Vec::new();
+        for ev in evs {
+            match *ev {
+                Open => {
+                    if std::mem::take(&mut ai_spoke) && breaks {
+                        turn_break = true;
+                    }
+                }
+                Piece(p) => {
+                    let raw = tx_carry(&mut held, p);
+                    if turn_break && !raw.trim().is_empty() {
+                        turn_break = false;
+                        mark_caller_turn(&mut window);
+                    }
+                    push_tx_window(&mut window, &raw, 800);
+                    let s = p.trim();
+                    let heard = with_latest(&window, s);
+                    let step = m.on_caller(&heard, s, caller_wraps_up(&heard), false);
+                    steps.push((step, heard.into_owned()));
+                }
+                AiAudio => ai_spoke = true,
+                AiDone(t) => {
+                    ai_spoke = true;
+                    m.on_ai_turn(t, turn_ends_with_closing(t), false);
+                }
+            }
+        }
+        (steps, window)
+    }
+
+    #[test]
+    fn a_turn_the_ai_cut_into_with_an_mm_still_closes_on_the_goodbye_in_thai() {
+        // The caller's thanks, the AI's "mm", the caller goes on with the goodbye
+        // that ran right after their own question: two breaks, one call.
+        let evs = [
+            Open,
+            Piece("สวัสดีค่ะ เรียนสายคุณหวังนะคะ"),
+            AiDone("ใช่ครับ ผมพูดอยู่ครับ"),
+            Open,
+            Piece("ยืนยันนัดตรวจฟันวันพฤหัสบดีหน้า คุณหวังสะดวกรับข้อความแจ้งเตือนล่วงหน้า 1 วันไหมคะ"),
+            AiDone("ได้ครับ"),
+            Open,
+            Piece("ขอบคุณมากค่ะ"),
+            AiAudio,
+            Open,
+            Piece("แล้วพบกันวันพฤหัสบดีหน้านะคะสวัสดีค่ะ"),
+        ];
+        for (breaks, ends) in [(false, false), (true, true)] {
+            let (steps, w) = run("th", &evs, breaks);
+            assert_eq!(steps.last().unwrap().0.ends_call, ends, "breaks={breaks}: {w:?}");
+        }
+        // The thanks alone, nothing after it: no hang-up on thanks alone.
+        let (steps, _) = run("th", &evs[..8], true);
+        assert!(!steps.last().unwrap().0.ends_call);
+    }
+
+    #[test]
+    fn an_mm_inside_a_question_keeps_the_question_a_question() {
+        // The goodbye, the AI hums, then the rest of the ask: the break between them
+        // still reads as the same ask.
+        for (lang, bye, rest) in [
+            ("zh-TW", "那就先這樣", "嗎？"),
+            ("en", "That's all", "for today, right?"),
+            ("ja", "ではこれで失礼いたします", "…でよろしいですか"),
+            ("ko", "그럼 이만 끊을게요", "근데 하나만 더 물어봐도 될까요"),
+            ("es", "Bueno, eso es todo", "¿verdad?"),
+            ("de", "Das wäre alles", "oder haben Sie noch etwas?"),
+        ] {
+            for breaks in [false, true] {
+                let evs = [Open, Piece(bye), AiAudio, Open, Piece(rest)];
+                let (steps, w) = run(lang, &evs, breaks);
+                let (step, heard) = steps.last().unwrap();
+                assert!(!step.ends_call, "{lang} breaks={breaks}: hung up on {heard:?}");
+                assert!(caller_withdraws_bye(&w, rest), "{lang} breaks={breaks}: goodbye not taken back {w:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_goodbye_and_the_question_that_follows_it_in_one_turn_are_taken_back() {
+        // No AI speech between them: no break at all, the check is as it was.
+        for (lang, bye, rest) in [
+            ("zh-TW", "好那就先這樣", "對了我想再問一下，明天幾點會到？"),
+            ("ja", "ありがとうございました、では失礼します", "あ、すみません、明日は何時に届きますか"),
+            ("ko", "네 감사합니다, 수고하세요", "아 참, 내일 몇 시에 오나요?"),
+            ("en", "Okay thanks, goodbye", "Wait, what time does it come tomorrow?"),
+            ("es", "Vale, gracias, adiós", "Espera, ¿a qué hora llega mañana?"),
+            ("de", "Okay, danke, auf Wiederhören", "Moment, wann kommt es denn morgen?"),
+        ] {
+            let evs = [Open, Piece(bye), Piece(rest)];
+            let (steps, w) = run(lang, &evs, true);
+            assert!(!steps.last().unwrap().0.ends_call, "{lang}: {w:?}");
+            assert!(caller_withdraws_bye(&w, rest), "{lang}: {w:?}");
+            assert!(!w.contains('\n'), "{lang}: no break without the AI speaking between");
+        }
+    }
+
+    #[test]
+    fn the_break_is_one_line_feed_between_turns_and_a_silent_open_adds_none() {
+        let evs = [Open, Piece("Is that okay"), AiDone("Yes."), Open, Piece(" Thanks"), Piece(" bye")];
+        let (steps, w) = run("en", &evs, true);
+        assert_eq!(w, "Is that okay\nThanks bye");
+        assert!(steps.last().unwrap().0.ends_call);
+        let (_, w) = run("en", &[Open, Piece("Hello"), AiAudio, Open, Piece("  "), Piece(" there")], true);
+        assert_eq!(w, "Hello\nthere");
+    }
+
+    #[test]
+    fn a_break_does_not_change_whether_an_urgent_matter_is_heard() {
+        // The urgent check reads sentences apart at a line feed.
+        for (a, b) in [
+            ("我爸剛剛", "昏倒了，救護車來了"),
+            ("Dad just", "collapsed and the ambulance is here"),
+            ("お父さんが", "倒れて救急車を呼びました"),
+            ("아버지가", "쓰러지셔서 구급차 불렀어요"),
+            ("Papa ist gerade", "zusammengebrochen, der Notarzt ist da"),
+            ("Mi padre se", "desmayó y viene la ambulancia"),
+        ] {
+            let (_, w0) = run("en", &[Open, Piece(a), AiAudio, Open, Piece(b)], false);
+            let (_, w1) = run("en", &[Open, Piece(a), AiAudio, Open, Piece(b)], true);
+            let (u0, u1) = (is_urgent_whitelist_turn(&w0), is_urgent_whitelist_turn(&w1));
+            assert_eq!(u0, u1, "{a:?}+{b:?}: urgent without break={u0}, with break={u1} ({w1:?})");
         }
     }
 }
