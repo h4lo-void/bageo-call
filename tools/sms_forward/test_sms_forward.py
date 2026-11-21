@@ -214,6 +214,7 @@ class Base(unittest.TestCase):
             "LOCK": self.home / "sms_forward.lock", "LOG": self.home / "sms_forward.log",
             "SERIALS": [], "SIM_NUMBERS": {}, "USE_SU": True, "FLOOD_CAP": 20,
             "SMS_LANG": "", "AGENT_TOKEN": "", "AGENT_URL": "http://127.0.0.1:9",
+            "LOCAL_AGENT_DIRS": [],
         }.items():
             self.patch(name, value)
 
@@ -1051,6 +1052,19 @@ class AgentTests(Base):
         self.assertFalse(ok)
         self.assertIn("does not accept AGENT_TOKEN", via)
         self.assertNotIn("wrong-token-456", via)
+
+    def test_local_agent_token_from_settings_or_env(self) -> None:
+        root = self.home / "bageo-dir"
+        cfg_dir = root / "data" / "calls" / "config"
+        cfg_dir.mkdir(parents=True)
+        (root / ".env").write_text("CALLS_UI_TOKEN='from-env-token'\n", encoding="utf-8")
+        self.patch("LOCAL_AGENT_DIRS", [root])
+        self.assertEqual(sf.local_agent_token(), "from-env-token")
+        (cfg_dir / "settings.json").write_text('{"ui_password": "from-settings-pw"}', encoding="utf-8")
+        self.assertEqual(sf.local_agent_token(), "from-settings-pw")
+        # Not used for a remote host.
+        self.patch("AGENT_URL", "http://198.51.100.10:8787")
+        self.assertEqual(sf.local_agent_token(), "")
 
     def test_401_reaches_the_log_and_health(self) -> None:
         self.agent.health = (200, {"active_call_count": 0, "language": "en"})

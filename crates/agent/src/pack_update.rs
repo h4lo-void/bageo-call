@@ -674,6 +674,7 @@ fn status_json() -> Value {
     let l = locales_store::current();
     json!({
         "ok": true,
+        "bageo_version": BAGEO_VERSION,
         "version": t.version,
         "date": version_date(t.version),
         "builtin": packs_store::builtin_in_use(),
