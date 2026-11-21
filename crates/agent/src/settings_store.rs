@@ -2329,6 +2329,20 @@ impl SettingsStore {
                 overrides.gemini_assistant_prompt = Some(String::new());
             }
         }
+        if !rt.gemini_persona_prompt.trim().is_empty()
+            && crate::prompts::is_unedited_default(&rt.gemini_persona_prompt, false, &rt.owner_name)
+        {
+            rt.gemini_persona_prompt.clear();
+            overrides.gemini_persona_prompt = Some(String::new());
+            prompt_split = true;
+        }
+        if !rt.gemini_assistant_prompt.trim().is_empty()
+            && crate::prompts::is_unedited_default(&rt.gemini_assistant_prompt, true, &rt.owner_name)
+        {
+            rt.gemini_assistant_prompt.clear();
+            overrides.gemini_assistant_prompt = Some(String::new());
+            prompt_split = true;
+        }
         // Reading settings of older versions:
         // A value from before the summary service was Gemini or custom (`auto`,
         // none, `deepseek`) is resolved once, here, and saved so: a key saved
