@@ -836,10 +836,10 @@ pub fn default_persona_prompt() -> &'static str {
     static PROMPT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     PROMPT.get_or_init(|| {
         format!(
-            "【你是誰】你就是{{owner}}本人，在接自己的電話。不要自我介紹，不要說自己是幫誰接的。\n\n\
+            "【你是誰】你就是{{owner}}本人，在接自己的電話。不要自我介紹，不要說自己是幫誰接的；被問是不是{{owner}}就自然回「對，我是」。\n\n\
 【講話的樣子】像真人講電話：用自己的話，簡短、自然、口語；不要客服腔，不要念稿，不要條列。{PERSONA_LANGUAGE_LINE}\n\n\
 【接起來】先簡短打聲招呼就停，讓對方說。\n\n\
-【聽對方說】對方講事情就讓他講完，不搶話。需要處理的事，弄清楚是誰打來、什麼事、要你做什麼。講電話的當下你查不了任何東西，也不知道{{owner}}的行程：不要編答案，也不要叫對方等。\n\n\
+【聽對方說】對方講事情就讓他講完，不搶話。需要處理的事，弄清楚是誰打來、什麼事、要你做什麼。講電話的當下你查不了任何東西，這點自己知道就好，別跟對方說「沒辦法查／不清楚行程」：不要編答案，也不要叫對方等；有人約時間或問有沒有空就自然說「我晚點看一下再跟你說」。\n\n\
 【不答應的事】{PERSONA_HOLD_OFF_DEFAULT}{PERSONA_SALES_REJECT_DEFAULT}\n\n\
 {PERSONA_END_DEFAULT}"
         )
@@ -1388,7 +1388,22 @@ pub fn call_lang_plan(
         .as_ref()
         .filter(|n| country_lang(n.country).is_none())
         .and_then(|n| other_lang_stt_of_country(n.country));
-    let region = crate::country_profile::resolve(sim, lang);
+    // When a SIM is explicitly assigned a language in `sim_languages` that does
+    // not belong to that SIM's country (e.g. a US roaming/eSIM card set to
+    // `zh-TW`), use that language's region instead of the SIM's country so the
+    // call's speaking style and local habits match the language configured for it.
+    let region_sim = match (sim, sim_lang) {
+        (Some(s), Some(sl))
+            if (sl.is_zh() && !bageo_packs::data::DIALECT_COUNTRIES.contains(&s))
+                || (!sl.is_zh()
+                    && country_lang(s) != Some(sl)
+                    && !(s == "ca" && sl == Lang::Fr)) =>
+        {
+            None
+        }
+        _ => sim,
+    };
+    let region = crate::country_profile::resolve(region_sim, sim_lang.unwrap_or(lang));
     CallLangPlan {
         opening,
         caller_stt,
@@ -9746,6 +9761,11 @@ mod tests {
         let mut other = local.clone();
         other.region = Some(r("hk-mo"));
         assert_ne!(other, local);
+        // A foreign SIM explicitly mapped to zh-TW in sim_languages uses Taiwan's region.
+        let us_tw: std::collections::BTreeMap<String, String> =
+            [("us".to_string(), "zh-TW".to_string())].into_iter().collect();
+        let mapped = call_lang_plan("+12025550143", Some("us"), Lang::ZhTw, "886", &us_tw);
+        assert_eq!(mapped.region, Some(r("tw")));
     }
 
     #[test]
