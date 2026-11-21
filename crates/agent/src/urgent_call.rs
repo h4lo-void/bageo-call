@@ -660,7 +660,7 @@ pub fn alert_line(alert: Alert, lang: Lang) -> &'static str {
         (Alert::AiEnded, Lang::Fr) => "L'IA s'est coupée. L'appelant est peut-être encore en ligne : rappelez tout de suite.",
         (Alert::AiEnded, Lang::De) => "Die KI ist ausgefallen. Der Anrufer ist vielleicht noch dran: Ruf sofort zurück.",
         (Alert::AiEnded, Lang::Pt) => "A IA caiu. Quem ligou pode ainda estar na linha: retorne a ligação já.",
-        (Alert::AiEnded, Lang::En) => "The AI dropped off. The caller may still be on the line: call back now.",
+        (Alert::AiEnded, Lang::En | Lang::Ext(_)) => "The AI dropped off. The caller may still be on the line: call back now.",
         (Alert::StillOnHold, Lang::ZhTw) => "對方的電話沒能從保留恢復，他可能還在等，請立刻回電。",
         (Alert::StillOnHold, Lang::ZhCn) => "对方的电话没能从保留恢复，他可能还在等，请立刻回电。",
         (Alert::StillOnHold, Lang::Ja) => "相手の通話を保留から戻せませんでした。まだ待っているかもしれません。すぐに折り返してください。",
@@ -669,7 +669,7 @@ pub fn alert_line(alert: Alert, lang: Lang) -> &'static str {
         (Alert::StillOnHold, Lang::Fr) => "L'appel n'a pas pu être repris. L'appelant attend peut-être encore : rappelez tout de suite.",
         (Alert::StillOnHold, Lang::De) => "Der Anruf konnte nicht aus dem Halten geholt werden. Ruf sofort zurück.",
         (Alert::StillOnHold, Lang::Pt) => "Não deu para tirar a ligação da espera. A pessoa pode ainda estar esperando: retorne já.",
-        (Alert::StillOnHold, Lang::En) => "The call could not be taken off hold. The caller may still be waiting: call back now.",
+        (Alert::StillOnHold, Lang::En | Lang::Ext(_)) => "The call could not be taken off hold. The caller may still be waiting: call back now.",
     }
 }
 
@@ -684,7 +684,7 @@ pub fn alert_title(lang: Lang) -> &'static str {
         Lang::Fr => "Alerte : appel urgent",
         Lang::De => "Dringender Anruf",
         Lang::Pt => "Aviso: ligação urgente",
-        Lang::En => "Urgent Call Alert",
+        Lang::En | Lang::Ext(_) => "Urgent Call Alert",
     }
 }
 

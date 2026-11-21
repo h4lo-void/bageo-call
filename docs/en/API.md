@@ -113,6 +113,7 @@ Bageo never answers preflights. This covers:
   (`POST /calls/api/contacts/import` needs an `X-Filename` header instead);
 - `POST /calls/api/errands`, `…/{id}/cancel`, `…/{id}/retry`, `…/{id}/say`;
 - `POST /calls/api/backup/run`, `…/export`, `…/file-ticket`, `…/restore`, `…/delete`, `…/unlock`, `…/apply`, `…/discard`, `…/open-folder` (`POST /calls/api/backup/import` needs an `X-Filename` header instead).
+- `POST /calls/api/packs/update` and `POST /calls/api/packs/restore`.
 
 Where a route allows an empty body, it counts as `{}`. This is the second line
 of defence. The first is setting a password (`CALLS_UI_TOKEN`) whenever your
@@ -238,6 +239,7 @@ Details for `GET /calls/api/settings`:
 - Secrets come back masked (`"abc…wxyz"`) with a `<name>_set` flag.
 - Notification channels come back with empty `url` / `token` plus `url_hint`, `token_hint`, `url_set`, `token_set`.
 - Read-only helpers: `default_prompt`, `voices`, `ambience_kinds`, `languages`, `countries` (ISO codes for *Main language for each SIM*), `seen_sim_countries` (SIM countries the phones reported since Bageo started), `notify_kinds`, `sample_lines`, `summary_ready`.
+- `languages` is a list of `{code, native, en, zh, dir, stage, reviewed}`: the nine core languages (`stage` `console`), then each other Gemini Live language the translations carry far enough. `stage` `call`: the AI can answer and talk in it (`language`, `sim_languages`); `notify`: notifications, summaries and chat replies too (`notify_language`). `reviewed` is false until a native speaker checked the translation. `dir` is `rtl` for languages written right to left. `language`, `notify_language` and `sim_languages` accept these codes; a stored code whose language no longer goes far enough (the translations went back) is kept and read as English.
 
 Fields worth knowing (all of them are in `RuntimeSettings` in
 [`settings_store.rs`](../../crates/agent/src/settings_store.rs) and on the
@@ -247,6 +249,12 @@ Fields worth knowing (all of them are in `RuntimeSettings` in
 |---|---|
 | `owner_name` | Your name, used for `{owner}`. |
 | `owner_aliases` | Up to 10 other names callers use for you, each up to 40 characters. Blanks, repeats and your own `owner_name` are dropped. |
+| `home_country` | The country you live in, two lowercase letters (`"th"`); `""` = from the phone number. |
+| `talk_style_level` | Talk style, 1 (casual) to 5 (businesslike); default 3. |
+| `about_callers` | Who calls most: `""`, `"family"`, `"work"` or `"both"`. |
+| `about_work` / `about_parcel` / `about_extra` | Your work or day (up to 120 characters), where parcels go (80), anything else (300). |
+| `about_say` / `about_avoid` | Phrases you often say / never say: up to 3 each, 24 characters each. |
+| `about_message_asks` | What the AI assistant asks for in a message: any of `"name"`, `"callback"`, `"reason"`, `"urgency"` (default all four). |
 | `answer_style` | `assistant` / `persona` (the AI answers as you). |
 | `gemini_assistant_prompt` / `gemini_persona_prompt` | Your custom prompt for `assistant` / `persona` (empty = built-in). |
 | `errand_identity` | `assistant` (default) / `owner`: who the AI says it is on an AI errand. Anything else is stored as `assistant`. |
@@ -740,6 +748,23 @@ Details:
 - The preview is `{token, source_name, created_at, app_version, kind, items, has_calls, calls_count, changes_password, changes_connections, total_size, warnings, encrypted, needs_password}`. `items` has `{id}` or `{id, count}` for each item the file really holds: `settings`, `keys`, `contacts`, `numbers`, `phones`, `errands`, `calls`, `sms` and `tasks`. An older single settings file lists `keys` too when it has key or password fields. `changes_password` is `true` only when applying `keys` would change the console password (to another one or to none), `changes_connections` only when it would change where notifications go, the forwarding number or who may control Bageo. Both compare this computer with the result of the restore, worked out the way `apply` does it. `total_size` is what the files it can restore unpack to, in bytes. `warnings` holds `newer_version` and `plain_settings_file` (an older single settings file: only the settings, and the keys if it has any, are restored). The preview never touches the backup folder named in the file.
 - `apply` restores only the ticked `items`. `settings` without `keys` replaces the other settings and keeps the whole `keys` group of this computer. With `keys`, each field the file has set replaces this computer's, and one it does not have or leaves empty stays. Only restoring this computer's own `before_import` backup from the backup folder takes the group exactly as the file has it (a missing or empty field is cleared or goes back to its default), taking back every key and connection an import brought; an uploaded file never does. `keys` without `settings` replaces only that group, and the phone pairing key when the file has one. A file that has no `keys`, or an `apply` without `keys`, never changes the group on this computer. `retention_days` and `backup_keep` never get shorter: the file's value is taken only when it is longer, and a file without them keeps this computer's. `backup_dir` and `public_url` always stay as they are on this computer. A restored call record or *To do* item keeps only the recording paths of files this restore brought back (`YYYY-MM-DD/<name>`); any other path is cleared. Before unpacking, Bageo checks there is room on the disk (HTTP 500 `disk_full`). `calls`, `sms` and `tasks` are added to the existing ones; nothing is deleted. Before it changes anything Bageo makes a `before_import` backup of the current settings (in the default folder when the chosen one cannot be written to) and names it in `before_import`. `restart_needed` says some changes only take full effect after Bageo is reopened.
 - Errors of the preview routes (HTTP 400): `not_backup`, `damaged`, `too_new` (made by a newer Bageo) and `too_large`. The limits follow what the files are, never what the manifest says: the items other than `calls`, `sms` and `tasks` may unpack to 20 MB a file and 50 MB in all, the call records to 8 GB; a file packed more than 200 times tighter than it unpacks is `damaged`. With 2 uploads already running: HTTP 409 `busy`. `unlock` answers HTTP 400 `wrong_password`, and `expired` after 5 wrong passwords. `apply` answers HTTP 409 `call_active` during a call, HTTP 400 `bad_items` for an empty `items` or ids the preview did not list, and HTTP 400 `expired` for a token that is older than 15 minutes or already used.
+
+## Local data
+
+Three routes show and update the local data the AI uses for each country's habits, and the translations of the languages beyond the nine core ones: the same as *Local data* under *More options* in the console settings. Bageo connects only when `POST …/packs/update` is called; it never checks on its own. It then downloads the index, the data file and, when the release has newer ones, the translations (`bageo-locales.json.gz`) straight from the latest release of the public `h4lo-void/bageo-packs` repository on GitHub, and nothing else is sent. Each file is checked on its own: a broken one is refused without affecting the other. They follow the console's password rule, and both `POST` routes the `Content-Type: application/json` rule above.
+
+| Method and path | What |
+|---|---|
+| `GET /calls/api/packs/update` | The data in use: `{version, date, builtin, regions, locales: {version, date, builtin, languages}, running, last_check}`. `last_check` also has `pack_result` and `locales_result`. |
+| `POST /calls/api/packs/update` | Body `{}`. Checks for newer files now and installs them: the same fields as `GET`, plus `result` (`updated` when either file was). |
+| `POST /calls/api/packs/restore` | Body `{}`. Deletes the downloaded data and translations and goes back to the ones built into Bageo: the same fields, with `result` `restored` (`busy` while a check runs; `io` when either file cannot be deleted, and then that one stays in use). |
+
+Details:
+
+- `version` is `YYYYMMDDNN`, `date` the same as `YYYY-MM-DD`; `builtin` is `true` while the version built into Bageo is in use; `regions` is how many regions it has; `running` says a check is going on; `last_check` is `null` or `{at, result, version}` of the last check since Bageo started.
+- `result`: `up_to_date`, `updated` (calls from now on use it; a call already going keeps the old data), `offline` (no connection, a time-out or GitHub did not answer: try again later), `bad_pack` (the download was refused; nothing changed), `update_bageo` (the data needs a newer Bageo), `restart` (8 updates were installed since Bageo started: restart it first), `io` (it could not be saved) or `busy` (another check is running).
+- What Bageo checks: it reads `bageo-pack-index.json` (at most 16 KiB) from `https://github.com/h4lo-void/bageo-packs/releases/latest/download/`, then the file it names (a plain file name, at most 4 MiB) in the same release. Every address, including each of at most 5 redirects, must be `https` on the standard port, without a user name, on `github.com` (under that repository's releases), `objects.githubusercontent.com` or `release-assets.githubusercontent.com`. The size and SHA-256 must match the index, the index's `format` and `min_bageo` must fit this Bageo, and the version must be newer than the one in use. The file is then checked in full, like the built-in one, and renamed into place in one step. The address cannot be changed by a setting.
+- The downloaded version is kept as `packs/bageo-pack.json` in the data folder and checked again each time Bageo starts; a download left unfinished there is deleted.
 
 ## Phones and health
 

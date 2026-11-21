@@ -319,7 +319,9 @@ impl ClosingMachine {
             return false;
         }
         (self.substance || !greeting_only(&h.before))
-            && (self.state != ClosingState::Talking || cue_before(&h.before))
+            && (self.state != ClosingState::Talking
+                || cue_before(&h.before)
+                || cue_shortly_before(h.lang, &h.before))
     }
 }
 
@@ -606,7 +608,10 @@ const GREETING_BYES: Lexicon = &[
     ("ja", &["失礼いたします", "失礼致します", "失礼します"]),
     ("ko", &["수고하십니다", "수고하셨습니다", "안녕"]),
     ("th", &["สวัสดีค่ะ", "สวัสดีครับ", "สวัสดี"]),
-    ("vi", &["chào anh ạ", "chào chị ạ", "chào anh", "chào chị", "chào em", "chào bạn", "chao anh"]),
+    ("vi", &[
+        "chào anh ạ", "chào chị ạ", "chào cô ạ", "chào chú ạ", "chào bác ạ", "chào anh", "chào chị", "chào em",
+        "chào bạn", "chào cô", "chào chú", "chào bác", "chào ông", "chào bà", "chao anh",
+    ]),
     ("id", &["selamat siang", "selamat pagi", "selamat sore", "selamat malam"]),
     // "Buon lavoro" and "alla prossima" are everyday words too ("cerco un buon lavoro").
     ("it", &["ciao", "buongiorno", "buonasera", "buon pomeriggio", "buon lavoro", "alla prossima"]),
@@ -824,6 +829,45 @@ fn ends_with_phrase<'a>(t: &'a str, p: &str) -> Option<&'a str> {
 }
 
 fn ends_with_any<'a>(t: &'a str, lex: Lexicon) -> Option<(&'static str, &'a str)> {
+    ends_with_extra(t, lex)
+}
+
+/// A "don't" right before a translated closing word: "อย่าเพิ่งลาก่อน" (don't say
+/// goodbye yet), "đừng tạm biệt".
+const EXTRA_NEGATIONS: &[&str] = &[
+    "อย่าเพิ่ง", "อย่า", "ไม่ต้อง", "ยังไม่", "đừng", "không", "don't", "do not", "non", "nie", "не", "لا", "jangan", "niet",
+    "मत", "नहीं",
+];
+
+/// What may stand right before a translated word written without spaces
+/// ("ขอบคุณค่ะลาก่อน"): anything else makes it part of another word
+/// ("ขอเวลาก่อน", give me a moment, holds "ลาก่อน").
+const UNSPACED_LEADS: &[&str] = &["ครับ", "คับ", "ค่ะ", "คะ", "นะ", "จ้า", "ขอ", "ขอตัว", "งั้น", "แล้ว", "โอเค"];
+
+/// [ends_with_extra] for the translations' words: a whole word (in scripts
+/// without spaces: at the start of a run or after one of [UNSPACED_LEADS]),
+/// not right after a negation.
+fn ends_with_extra_word<'a>(t: &'a str, lex: &[(&'static str, &'static [&'static str])]) -> Option<(&'static str, &'a str)> {
+    let last = t.chars().next_back()?;
+    for &(lang, list) in lex {
+        for p in list {
+            if p.chars().next_back() != Some(last) {
+                continue;
+            }
+            let Some(before) = ends_with_phrase(t, p) else { continue };
+            let whole = is_spaced(p)
+                || before.is_empty()
+                || t[before.len()..].starts_with(' ')
+                || UNSPACED_LEADS.iter().any(|l| before.ends_with(l));
+            if whole && !EXTRA_NEGATIONS.iter().any(|n| ends_with_phrase(before, n).is_some()) {
+                return Some((lang, before));
+            }
+        }
+    }
+    None
+}
+
+fn ends_with_extra<'a>(t: &'a str, lex: &[(&'static str, &'static [&'static str])]) -> Option<(&'static str, &'a str)> {
     // Most phrases end on another letter: skipped without a comparison.
     let last = t.chars().next_back()?;
     for &(lang, list) in lex {
@@ -1070,6 +1114,131 @@ struct Hit {
 /// The closing what was said ends on, if any: a farewell, a greeting-goodbye or
 /// a pre-closing, with particles, thanks and short replies after it allowed.
 fn classify(text: &str) -> Option<Hit> {
+    classify_with(text, crate::locales_store::current().closing_words())
+}
+
+/// Closing words of the other languages, from the translations: farewells and
+/// wrap-ups that a native speaker checked, whose examples Bageo classifies
+/// right and that leave every core sentence of [CORE_NOT_ENDS] alone.
+#[derive(Default)]
+pub(crate) struct ExtraWords {
+    farewells: Vec<(&'static str, &'static [&'static str])>,
+    wrapups: Vec<(&'static str, &'static [&'static str])>,
+}
+
+/// Core-language lines that do not end a call: a new closing word may not make
+/// any of them end one.
+const CORE_NOT_ENDS: &[&str] = &[
+    "Sure, ok",
+    "Yes, I am at home",
+    "Hello, I am calling from the bank",
+    "好，我知道了",
+    "喂，你好，我是快遞",
+    "はい、わかりました",
+    "네, 알겠습니다",
+    "Sí, claro",
+    "Oui, d'accord",
+    "Ja, genau",
+    "Sim, claro",
+];
+
+fn leak_words(words: &[String]) -> &'static [&'static str] {
+    let v: Vec<&'static str> = words
+        .iter()
+        .map(|w| norm(w))
+        .filter(|w| !w.is_empty())
+        .map(|w| &*Box::leak(w.into_boxed_str()))
+        .collect();
+    Box::leak(v.into_boxed_slice())
+}
+
+impl ExtraWords {
+    fn of(code: &'static str, c: &bageo_packs::locales::Closing) -> Self {
+        ExtraWords { farewells: vec![(code, leak_words(&c.farewells))], wrapups: vec![(code, leak_words(&c.wrapups))] }
+    }
+
+    /// The closing's examples come out right with its words, and no core line
+    /// of [CORE_NOT_ENDS] ends with them.
+    fn passes(&self, c: &bageo_packs::locales::Closing) -> bool {
+        let ends = |s: &str| ends_judged(s, self);
+        !c.examples.ends.is_empty()
+            && c.examples.ends.iter().all(|s| ends(s))
+            && c.examples.not_ends.iter().all(|s| !ends(s))
+            && CORE_NOT_ENDS.iter().all(|s| !ends(s))
+    }
+
+    /// The words of verified closings (language code, closing) that pass:
+    /// every example right and no core line of [CORE_NOT_ENDS] ending.
+    pub(crate) fn from_verified(list: &[(&'static str, bageo_packs::locales::Closing)]) -> Self {
+        let mut all = ExtraWords::default();
+        for (code, c) in list {
+            let one = ExtraWords::of(code, c);
+            if one.passes(c) {
+                all.farewells.extend(one.farewells);
+                all.wrapups.extend(one.wrapups);
+            } else {
+                tracing::warn!("closing words of {code} left out: an example or a core line is classified wrong with them");
+            }
+        }
+        all
+    }
+
+    /// The farewells of a translation's closing (verified or not) for telling
+    /// the AI's own goodbye ([ai_says_translated_farewell]), normalized; None
+    /// when its examples or a core line come out wrong with them.
+    pub(crate) fn ai_farewells(code: &'static str, c: &bageo_packs::locales::Closing) -> Option<&'static [&'static str]> {
+        let one = ExtraWords::of(code, c);
+        let words = one.farewells.first().map(|(_, w)| *w).filter(|w| !w.is_empty())?;
+        if one.passes(c) {
+            Some(words)
+        } else {
+            tracing::warn!("farewells of {code} left out of the AI's goodbye check: an example or a core line is classified wrong with them");
+            None
+        }
+    }
+}
+
+/// What was said ends the call with these words: a closing that is no
+/// greeting-goodbye, or a greeting-goodbye after a closing cue ("Cảm ơn anh,
+/// chào anh"), as it counts once the business is done.
+fn ends_judged(said: &str, w: &ExtraWords) -> bool {
+    classify_with(said, w).is_some_and(|h| !h.ambiguous || cue_before(&h.before))
+}
+
+/// Runs a closing example with the closing words under test (the translations'
+/// check, [bageo_packs::locales::ClosingJudge]): true when it ends the call.
+pub(crate) fn judge(code: &str, c: &bageo_packs::locales::Closing, said: &str) -> bool {
+    let code: &'static str = Box::leak(code.to_string().into_boxed_str());
+    ends_judged(said, &ExtraWords::of(code, c))
+}
+
+/// The AI's words end on a goodbye of a translated language (the farewells
+/// of its call speech that passed, [ExtraWords::ai_farewells]): particles,
+/// thanks and short words after it allowed, not a question, not negated
+/// ("อย่าเพิ่งลาก่อนนะ", don't say goodbye yet).
+pub(crate) fn ai_says_translated_farewell(text: &str) -> bool {
+    let lex = crate::locales_store::current().ai_farewells();
+    if lex.is_empty() || ends_as_question(text) {
+        return false;
+    }
+    let all = norm(text);
+    let mut t = all.as_str();
+    for _ in 0..=MAX_PEEL {
+        if t.is_empty() {
+            return false;
+        }
+        if ends_with_extra_word(t, lex).is_some() {
+            return true;
+        }
+        match peel(t) {
+            Some((rest, _)) => t = rest,
+            None => return false,
+        }
+    }
+    false
+}
+
+fn classify_with(text: &str, extra: &ExtraWords) -> Option<Hit> {
     if ends_as_question(text) {
         return None;
     }
@@ -1082,7 +1251,9 @@ fn classify(text: &str) -> Option<Hit> {
         let found = ends_with_any(t, FAREWELLS)
             .map(|(l, b)| (Kind::Farewell, l, b, false))
             .or_else(|| lone_bai(t).map(|b| (Kind::Farewell, "zh-TW", b, false)))
+            .or_else(|| ends_with_extra_word(t, &extra.farewells).map(|(l, b)| (Kind::Farewell, l, b, false)))
             .or_else(|| ends_with_any(t, PRE_CLOSINGS).map(|(l, b)| (Kind::PreClosing, l, b, false)))
+            .or_else(|| ends_with_extra_word(t, &extra.wrapups).map(|(l, b)| (Kind::PreClosing, l, b, false)))
             .or_else(|| ends_with_any(t, GREETING_BYES).map(|(l, b)| (Kind::Farewell, l, b, true)));
         if let Some((kind, lang, before, ambiguous)) = found {
             // 「你先不要掛啦」「請別掛囉」: a hang-up word after "don't" asks to stay on.
@@ -1098,9 +1269,35 @@ fn classify(text: &str) -> Option<Hit> {
             }
             return Some(Hit { kind, lang, ambiguous, before: before.to_string() });
         }
-        t = peel(t)?.0;
+        t = match id_time_after_bye(t) {
+            Some(rest) => rest,
+            None => peel(t)?.0,
+        };
     }
     None
+}
+
+/// Indonesian "see you" with a day after it ("Sampai ketemu Rabu pagi, Pak",
+/// "sampai jumpa hari Senin ya, Bu"): the day, time and address words come off
+/// so the goodbye before them is read. Only after "sampai jumpa／ketemu":
+/// "tunggu sampai besok pagi" (wait until tomorrow morning) keeps its words.
+const ID_TIME_WORDS: &[&str] = &[
+    "hari", "senin", "selasa", "rabu", "kamis", "jumat", "sabtu", "minggu", "besok", "lusa", "pagi", "siang", "sore",
+    "malam", "depan", "nanti", "lagi", "ya", "pak", "bu", "bapak", "ibu", "mas", "mbak", "kak",
+];
+const ID_SEE_YOU: &[&str] = &["sampai jumpa", "sampai ketemu"];
+
+fn id_time_after_bye(t: &str) -> Option<&str> {
+    let mut rest = t.trim_end();
+    let mut took = 0;
+    while let Some((head, last)) = rest.rsplit_once(' ') {
+        if took >= 4 || !ID_TIME_WORDS.contains(&last) {
+            break;
+        }
+        rest = head.trim_end();
+        took += 1;
+    }
+    (took > 0 && ID_SEE_YOU.iter().any(|s| rest == *s || rest.ends_with(&format!(" {s}")))).then_some(rest)
 }
 
 /// A hang-up word (掛／挂) right after "don't" (不要、別、唔好…): the caller asks
@@ -1154,7 +1351,7 @@ fn ends_with_ja_wrap_cue(t: &str) -> bool {
 
 /// Right before a greeting-goodbye: thanks, a short "ok", a pre-closing or a Japanese wrap cue.
 fn cue_before(before: &str) -> bool {
-    if it_farewell_before(before) {
+    if it_farewell_before(before) || th_see_you_before(before) {
         return true;
     }
     let mut t = before.trim_end();
@@ -1180,6 +1377,87 @@ fn cue_before(before: &str) -> bool {
 /// Words that may follow an Italian goodbye before a closing "ciao" ("ci
 /// sentiamo domani, ciao").
 const IT_BYE_BEFORE_WORDS: usize = 2;
+
+/// Thai "see you" ("แล้วพบกัน", "ไว้เจอกัน") with a time right after it
+/// ("…วันพฤหัสบดีหน้านะคะ", see you next Thursday): the call is closing, so a
+/// สวัสดี after it is a goodbye. Not a question ("…ได้ไหมคะ", can we meet…?),
+/// and the bare "พบกัน"/"เจอกัน" only at the start of the last run of letters
+/// ("เราเจอกันวันจันทร์ที่แล้ว…", we met last Monday, is no goodbye).
+const TH_SEE_YOU: &[&str] = &[
+    "แล้วพบกัน", "ไว้พบกัน", "ค่อยพบกัน", "งั้นพบกัน", "แล้วเจอกัน", "ไว้เจอกัน", "ค่อยเจอกัน", "งั้นเจอกัน", "เจอกัน", "พบกัน",
+];
+const TH_SEE_YOU_TIMES: &[&str] = &[
+    "พรุ่งนี้", "มะรืน", "วัน", "อาทิตย์หน้า", "สัปดาห์หน้า", "เดือนหน้า", "ปีหน้า", "คืนนี้", "เย็นนี้", "บ่ายนี้", "เช้านี้",
+    "ตอนเช้า", "ตอนบ่าย", "ตอนเย็น", "ครั้งหน้า", "คราวหน้า", "เสาร์", "อาทิตย์",
+];
+const TH_QUESTION_WORDS: &[&str] = &["ไหม", "มั้ย", "หรือเปล่า", "หรือยัง", "หรือไม่", "เมื่อไหร่", "กี่โมง", "ไหน", "อะไร", "ยังไง"];
+/// Letters a Thai time may take after "see you" ("วันพฤหัสบดีหน้า" is 15).
+const TH_SEE_YOU_TAIL: usize = 24;
+/// Runs of Thai letters read together: speech to text may put spaces inside a
+/// sentence ("แล้วพบกัน วันพฤหัสบดีหน้า นะคะ").
+const TH_SEE_YOU_RUNS: usize = 4;
+
+fn th_see_you_before(before: &str) -> bool {
+    let runs: Vec<&str> = before.split(' ').filter(|w| !w.is_empty()).collect();
+    // The bare "พบกัน"/"เจอกัน" only at the start of the last run itself.
+    (1..=runs.len().min(TH_SEE_YOU_RUNS)).any(|k| th_see_you_in(&runs[runs.len() - k..].concat(), k == 1))
+}
+
+fn th_see_you_in(run: &str, bare_ok: bool) -> bool {
+    let mut run = run;
+    'particles: loop {
+        for p in TH_PARTICLES {
+            if let Some(rest) = run.strip_suffix(*p) {
+                run = rest;
+                continue 'particles;
+            }
+        }
+        break;
+    }
+    if TH_QUESTION_WORDS.iter().any(|q| run.contains(q)) {
+        return false;
+    }
+    TH_SEE_YOU.iter().any(|m| {
+        let Some(i) = run.rfind(m) else { return false };
+        let bare = *m == "เจอกัน" || *m == "พบกัน";
+        let rest = &run[i + m.len()..];
+        (!bare || (bare_ok && i == 0))
+            && rest.chars().count() <= TH_SEE_YOU_TAIL
+            && TH_SEE_YOU_TIMES.iter().any(|t| rest.starts_with(t))
+    })
+}
+
+/// Thai, Vietnamese and Indonesian callers often thank, add one more line and
+/// only then say the greeting-goodbye ("Makasih banyak ya, Pak. Tolong kabari
+/// saya secepatnya. Selamat siang!", "Dạ em cảm ơn anh nhiều nhé. Chúc anh một
+/// ngày tốt lành ạ. Xin chào anh ạ."). For them thanks or a closing a few words
+/// back count too, unless a question comes after it (asking to meet is no
+/// goodbye). The other languages keep the rule of [`cue_before`].
+const CUE_SHORTLY_WORDS: usize = 12;
+const CUE_SHORTLY_QUESTIONS: &[(&str, &[&str])] = &[
+    ("th", TH_QUESTION_WORDS),
+    ("vi", &["không", "chưa", "nào", "sao", "gì", "bao giờ", "mấy giờ", "ở đâu"]),
+    ("id", &["apa", "apakah", "kapan", "bagaimana", "gimana", "berapa", "mana", "siapa"]),
+];
+
+fn cue_shortly_before(lang: &str, before: &str) -> bool {
+    let Some((_, questions)) = CUE_SHORTLY_QUESTIONS.iter().find(|(l, _)| *l == lang) else {
+        return false;
+    };
+    let words: Vec<&str> = before.split(' ').filter(|w| !w.is_empty()).collect();
+    let from = words.len().saturating_sub(CUE_SHORTLY_WORDS);
+    for end in (from..words.len()).rev() {
+        if !cue_before(&words[..=end].join(" ")) {
+            continue;
+        }
+        let tail = words[end + 1..].join(" ");
+        let padded = format!(" {tail} ");
+        // Thai has no spaces between words: its question words are looked for anywhere.
+        let asks = questions.iter().any(|q| if lang == "th" { tail.contains(q) } else { padded.contains(&format!(" {q} ")) });
+        return !asks;
+    }
+    false
+}
 
 /// An Italian goodbye shortly before a greeting-goodbye ("Perfetto, ci sentiamo
 /// domani. Ciao"): the call is ending already.
@@ -1737,6 +2015,51 @@ mod tests {
         let mut m = mid_call("ko");
         caller(&mut m, "네, 알겠습니다. 그럼 이만");
         assert!(caller(&mut m, "네, 수고하십니다").ends_call);
+    }
+
+    #[test]
+    fn thanks_a_line_before_a_thai_vietnamese_or_indonesian_greeting_goodbye() {
+        // Lines from multilingual call simulations where the caller hung up first.
+        for (lang, line) in [
+            ("vi", "Dạ em cảm ơn anh nhiều nhé. Chúc anh một ngày tốt lành ạ. Xin chào anh ạ."),
+            ("id", "Makasih banyak ya, Pak. Tolong kabari saya secepatnya. Selamat siang!"),
+            ("th", "ขอบคุณมากค่ะ แล้วพบกัน วันพฤหัสบดีหน้า นะคะ สวัสดีค่ะ"),
+            ("th", "ขอบคุณมากค่ะ แล้ว พบกัน วัน พฤหัสบดี หน้า นะคะ สวัสดีค่ะ"),
+        ] {
+            let mut m = mid_call(lang);
+            assert!(caller(&mut m, line).ends_call, "{line}");
+        }
+        // A question after the thanks, or no thanks at all: not a goodbye.
+        for (lang, line) in [
+            ("th", "ขอบคุณค่ะ แล้วพบกัน วันพฤหัสบดีหน้า ได้ไหมคะ สวัสดีค่ะ"),
+            ("vi", "Cảm ơn anh. Mai anh có rảnh không. Chào anh."),
+            ("id", "Terima kasih, Pak. Kapan bisa datang. Selamat siang."),
+            ("id", "Tolong kabari saya secepatnya. Selamat siang!"),
+        ] {
+            let mut m = mid_call(lang);
+            assert!(!caller(&mut m, line).ends_call, "{line}");
+        }
+        // "Tôi chào cô" from the AI after settled thanks: the goodbyes are exchanged.
+        let mut m = mid_call("vi");
+        let step = caller(&mut m, "Dạ vâng, em gửi hàng ở quầy lễ tân nhé, cảm ơn anh nhiều.");
+        assert!(!step.ends_call);
+        assert_eq!(m.on_ai_turn("Dạ vâng, cảm ơn cô. Tôi chào cô.", true, false), ClosingEvent::FarewellsExchanged);
+    }
+
+    #[test]
+    fn indonesian_see_you_with_a_day_is_a_goodbye() {
+        for line in [
+            "Makasih banyak ya atas kerja samanya. Sampai ketemu Rabu pagi, Pak.",
+            "Oke, sampai jumpa hari Senin ya, Bu.",
+            "Baik, sampai ketemu besok.",
+        ] {
+            let mut m = mid_call("id");
+            assert!(caller(&mut m, line).ends_call, "{line}");
+        }
+        for line in ["Saya tunggu sampai besok pagi.", "Tolong tunggu sampai hari Rabu ya, Pak.", "Kantornya buka sampai malam."] {
+            let mut m = mid_call("id");
+            assert!(!caller(&mut m, line).ends_call, "{line}");
+        }
     }
 
     #[test]
@@ -2859,5 +3182,106 @@ mod chinese_bye_words {
             assert_eq!(step.event, ClosingEvent::CallerFarewell, "{t}");
             assert!(step.ends_call, "{t}");
         }
+    }
+
+    fn closing_of(farewells: &[&str], wrapups: &[&str], ends: &[&str], not_ends: &[&str]) -> bageo_packs::locales::Closing {
+        let v = |l: &[&str]| l.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        bageo_packs::locales::Closing {
+            verified: true,
+            farewells: v(farewells),
+            wrapups: v(wrapups),
+            examples: bageo_packs::locales::Examples { ends: v(ends), not_ends: v(not_ends) },
+        }
+    }
+
+    #[test]
+    fn core_lines_that_guard_new_closing_words_do_not_end_today() {
+        for s in CORE_NOT_ENDS {
+            assert!(classify(s).map_or(true, |h| h.ambiguous), "{s}");
+        }
+    }
+
+    #[test]
+    fn verified_closing_words_of_another_language_join_only_when_every_check_passes() {
+        let fa = closing_of(&["خداحافظ", "خدانگهدار"], &["همین بود"], &["ممنون، خداحافظ.", "باشه، همین بود"], &["سلام، از بانک تماس می\u{200c}گیرم."]);
+        assert!(classify("ممنون، خداحافظ.").is_none(), "not known today");
+        assert!(judge("fa", &fa, "ممنون، خداحافظ.") && !judge("fa", &fa, "سلام، از بانک تماس می\u{200c}گیرم."));
+        let w = ExtraWords::from_verified(&[("fa", fa.clone())]);
+        assert!(classify_with("ممنون، خداحافظ.", &w).is_some_and(|h| h.kind == Kind::Farewell && h.lang == "fa"));
+        assert!(classify_with("باشه، همین بود", &w).is_some_and(|h| h.kind == Kind::PreClosing));
+        assert!(classify_with("خداحافظ؟", &w).is_none(), "a question is no goodbye");
+        // A word that makes a core line end is refused, with the rest of its closing.
+        let ok = closing_of(&["ok"], &[], &["Merci, ok"], &[]);
+        let w = ExtraWords::from_verified(&[("fa", fa.clone()), ("tr", ok)]);
+        assert!(classify_with("Sure, ok", &w).is_none(), "core lines stay as they were");
+        assert!(classify_with("ممنون، خداحافظ.", &w).is_some(), "the good closing still joins");
+        // An example classified wrong keeps the words out.
+        let wrong = closing_of(&["خداحافظ"], &[], &["ممنون، خداحافظ."], &["خداحافظ"]);
+        assert!(classify_with("ممنون، خداحافظ.", &ExtraWords::from_verified(&[("fa", wrong)])).is_none());
+        // Every core closing test line still reads as before with the words in.
+        let w = ExtraWords::from_verified(&[("fa", fa)]);
+        for s in ["Okay, bye, thanks for calling.", "好，再見陳小姐", "そうですね", "蛤？你可以再講一次嗎？"] {
+            assert_eq!(classify_with(s, &w).map(|h| h.kind), classify(s).map(|h| h.kind), "{s}");
+        }
+    }
+
+    #[test]
+    fn translations_add_closing_words_only_when_verified_and_reviewed() {
+        let v0 = crate::locales_store::builtin().version;
+        let verified = |status: &str, verified: bool| {
+            crate::locales_store::testing::gz(v0 + 1, |v| {
+                v["langs"]["fa"]["status"] = status.into();
+                let c = &mut v["langs"]["fa"]["speech"]["closing"];
+                c["verified"] = verified.into();
+                c["examples"]["ends"] = serde_json::json!(["ممنون، خداحافظ."]);
+            })
+        };
+        crate::locales_store::testing::use_gz(&verified("local_reviewed", true));
+        assert!(classify("ممنون، خداحافظ.").is_some_and(|h| h.lang == "fa"));
+        let mut m = after_talk();
+        assert!(m.on_caller("ممنون، خداحافظ.", "ممنون، خداحافظ.", false, false).ends_call);
+        for (status, v) in [("ai_draft", true), ("local_reviewed", false), ("ai_checked", true)] {
+            crate::locales_store::testing::use_gz(&verified(status, v));
+            assert!(classify("ممنون، خداحافظ.").is_none(), "{status} {v}");
+        }
+        crate::locales_store::testing::use_builtin();
+        assert!(classify("ممنون، خداحافظ.").is_none());
+    }
+
+    #[test]
+    fn thai_see_you_on_a_day_then_sawasdee_is_a_goodbye() {
+        let yes = "ขอบคุณมากค่ะ แล้วพบกันวันพฤหัสบดีหน้านะคะ สวัสดีค่ะ";
+        let mut m = after_talk();
+        let step = m.on_caller(yes, yes, false, false);
+        assert!(step.ends_call && step.event == ClosingEvent::CallerFarewell, "{yes}");
+        for yes in ["โอเคค่ะ ไว้เจอกันพรุ่งนี้นะคะ สวัสดีค่ะ", "ได้ครับ งั้นเจอกันอาทิตย์หน้าครับ สวัสดีครับ"] {
+            let mut m = after_talk();
+            assert!(m.on_caller(yes, yes, false, false).ends_call, "{yes}");
+        }
+        // Asking for a day, or "we met on a day", is no goodbye.
+        for no in [
+            "แล้วพบกันวันพฤหัสบดีหน้าได้ไหมคะ",
+            "ขอบคุณค่ะ แล้วพบกันวันพฤหัสบดีหน้าได้ไหมคะ สวัสดีค่ะ",
+            "เราเคยเจอกันวันจันทร์ที่ร้านกาแฟค่ะ สวัสดีค่ะ",
+            "แล้วพบกันวันไหนดีคะ สวัสดีค่ะ",
+        ] {
+            let mut m = after_talk();
+            assert!(!m.on_caller(no, no, false, false).ends_call, "{no}");
+        }
+        // At the opening a สวัสดี stays a hello.
+        let mut m = ClosingMachine::new("th");
+        assert!(!m.on_caller("สวัสดีค่ะ", "สวัสดีค่ะ", false, false).ends_call);
+        // Only Thai: other languages' cues are as before.
+        assert!(!th_see_you_before("see you tomorrow") && !th_see_you_before("我們明天見"));
+    }
+
+    #[test]
+    fn a_translated_word_written_without_spaces_must_stand_as_a_word() {
+        let th = closing_of(&["ลาก่อน"], &[], &["ขอบคุณค่ะ ลาก่อนค่ะ"], &["ขอเวลาก่อนนะคะ", "อย่าเพิ่งลาก่อนนะ"]);
+        let w = ExtraWords::of("th", &th);
+        assert!(ends_judged("ขอบคุณค่ะ ลาก่อนค่ะ", &w) && ends_judged("ขอบคุณค่ะลาก่อน", &w));
+        assert!(!ends_judged("ขอเวลาก่อนนะคะ", &w), "part of another word");
+        assert!(!ends_judged("อย่าเพิ่งลาก่อนนะ", &w), "negated");
+        assert!(ExtraWords::ai_farewells("th", &th).is_some());
     }
 }

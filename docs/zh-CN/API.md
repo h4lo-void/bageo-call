@@ -86,6 +86,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - `POST /calls/api/contacts`、`PUT /calls/api/contacts/{id}`、`POST /calls/api/contacts/batch`、`POST /calls/api/contacts/block`（`POST /calls/api/contacts/import` 则改为要带 `X-Filename` 请求头）；
 - `POST /calls/api/errands`、`…/{id}/cancel`、`…/{id}/retry`、`…/{id}/say`；
 - `POST /calls/api/backup/run`、`…/export`、`…/file-ticket`、`…/restore`、`…/delete`、`…/unlock`、`…/apply`、`…/discard`、`…/open-folder`（`POST /calls/api/backup/import` 则改成要带 `X-Filename` 标头）。
+- `POST /calls/api/packs/update` 和 `POST /calls/api/packs/restore`。
 
 允许空请求体的路由，空请求体视为 `{}`。这是第二道防线；第一道是控制台对局域网开放时一定要设置密码（`CALLS_UI_TOKEN`）。
 
@@ -212,6 +213,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - 机密字段以掩码返回（`"abc…wxyz"`），附一个 `<name>_set` 标志。
 - 通知渠道返回时 `url`／`token` 是空的，另外附 `url_hint`、`token_hint`、`url_set`、`token_set`。
 - 只读的辅助字段：`default_prompt`、`voices`、`ambience_kinds`、`languages`、`countries`（“各 SIM 卡的主要语言”可选的国家代码）、`seen_sim_countries`（Bageo 启动后手机上报过的 SIM 卡国家）、`notify_kinds`、`sample_lines`、`summary_ready`。
+- `languages` 是 `{code, native, en, zh, dir, stage, reviewed}` 的列表：先列核心九种语言（`stage` 是 `console`），再列翻译已经到位的其他 Gemini Live 语言。`stage` 是 `call`：AI 能用这个语言接听和回话（`language`、`sim_languages`）；`notify`：通知、摘要、聊天室回复也能用（`notify_language`）。当地人还没确认过翻译时 `reviewed` 是 false。从右到左书写的语言 `dir` 是 `rtl`。`language`、`notify_language`、`sim_languages` 都接受这些代码；已保存的代码如果因为翻译退回而不再到位，值照样保留，使用时按英文处理。
 
 值得了解的字段（全部都在 [`settings_store.rs`](../../crates/agent/src/settings_store.rs) 的 `RuntimeSettings` 和[设置参考](SETTINGS.md)里）：
 
@@ -219,6 +221,12 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 |---|---|
 | `owner_name` | 你的名字，用在 `{owner}`。 |
 | `owner_aliases` | 别人怎么称呼你，最多 10 个，每个最多 40 字。空白的、重复的和跟 `owner_name` 相同的会被去掉。 |
+| `home_country` | 所在国家，两个小写字母（`"th"`）；`""` = 按号码判断。 |
+| `talk_style_level` | 说话风格，1（随性）到 5（商务）；默认 3。 |
+| `about_callers` | 谁打来得比较多：`""`、`"family"`、`"work"` 或 `"both"`。 |
+| `about_work`／`about_parcel`／`about_extra` | 工作或日常（最多 120 字）、快递放哪里（80）、其他（300）。 |
+| `about_say`／`about_avoid` | 常说的话／不会说的话：各最多 3 个，每个最多 24 字。 |
+| `about_message_asks` | AI 助理留言要问的：`"name"`、`"callback"`、`"reason"`、`"urgency"` 任选（默认四个都有）。 |
 | `answer_style` | `assistant`／`persona`（AI 以你本人身份接听）。 |
 | `gemini_assistant_prompt`／`gemini_persona_prompt` | `assistant`／`persona` 各自的自定义提示词（留空 = 内置）。 |
 | `errand_identity` | `assistant`（默认）／`owner`：AI 代打时说自己是谁。其他值存为 `assistant`。 |
@@ -690,6 +698,23 @@ Content-Type: application/json
 - 预览是 `{token, source_name, created_at, app_version, kind, items, has_calls, calls_count, changes_password, changes_connections, total_size, warnings, encrypted, needs_password}`。`items` 的每条是 `{id}` 或 `{id, count}`，列出文件里真的有的项目：`settings`、`keys`、`contacts`、`numbers`、`phones`、`errands`、`calls`、`sms`、`tasks`。旧版单独的设置文件有密钥或密码字段时，也会列出 `keys`。只有还原 `keys` 会换掉控制台密码（换成别的或变成没有）时，`changes_password` 才是 `true`；会改变通知发到哪里、转接号码或谁可以远程控制时，`changes_connections` 才是 `true`。两个都是拿这台现在的跟还原后的结果比（算法跟 `apply` 一样）。`total_size` 是可以还原的文件解开后的大小（字节）。`warnings` 可能有 `newer_version`、`plain_settings_file`（旧版单独的设置文件：只还原设置，有密钥的话一起还原）。预览不会去碰文件里写的备份文件夹。
 - `apply` 只还原勾选的 `items`。选 `settings` 没选 `keys`：换掉其他设置，这台电脑整组 `keys` 都保留。选了 `keys`：文件里有值的字段换掉这台的，文件里没有或空的字段保留这台的。只有从备份文件夹还原这台自己的 `before_import` 备份时，整组完全按文件（没有或空的字段一律清空或回到默认），所以能把导入带进来的密钥和连接全部拿掉；上传的文件一律不走这条。选 `keys` 没选 `settings`：只换这一组，文件里有手机配对密钥才换。文件里没有 `keys`，或没选 `keys`，这台的整组都不会变。`retention_days` 和 `backup_keep` 只会保持或变长：文件的值比较大才采用，文件没写就保留这台的。`backup_dir` 和 `public_url` 一律保持这台电脑的设置。还原的通话记录和待处理事项，只保留这次真的还原了的录音路径（`YYYY-MM-DD/<name>`），其他路径一律清空。解开之前 Bageo 会先确认硬盘空间够（不够返回 HTTP 500 `disk_full`）。`calls`、`sms`、`tasks` 是加进现有的，不会删掉任何东西。动手之前 Bageo 会先把现在的设置做成一份 `before_import` 备份（选的文件夹写不进去就放默认文件夹），文件名放在 `before_import`。`restart_needed` 表示有些变更要重新打开 Bageo 才会全部生效。
 - 预览路由的错误（HTTP 400）：`not_backup`、`damaged`、`too_new`（来自比较新的 Bageo）、`too_large`。上限看文件实际是什么，不看 manifest 怎么说：`calls`、`sms`、`tasks` 以外的项目每个文件解开最多 20 MB、合计 50 MB，通话记录合计最多 8 GB；解开后比压缩时大 200 倍以上的文件算 `damaged`。已经有 2 个上传在跑：HTTP 409 `busy`。`unlock` 密码不对返回 HTTP 400 `wrong_password`，错 5 次返回 `expired`。`apply` 在通话中返回 HTTP 409 `call_active`；`items` 是空的或有预览没列的 id，返回 HTTP 400 `bad_items`；token 超过 15 分钟或已经用过，返回 HTTP 400 `expired`。
+
+## 当地数据
+
+三个路由用来查看和更新 AI 参考的各国生活习惯数据，以及核心九种语言以外的翻译，对应控制台设置“更多选项”里的“当地数据”。只有调用 `POST …/packs/update` 时 Bageo 才会联网，不会自己检查；联网时直接从 GitHub 公开数据库 `h4lo-void/bageo-packs` 最新的 Release 下载清单、数据文件，有更新的翻译时再下载翻译文件（`bageo-locales.json.gz`），不会发送其他数据。每个文件各自检查，坏掉的那个被拒收，不影响另一个。它们遵循控制台的密码规则，两个 `POST` 也要遵循上面的 `Content-Type: application/json` 规则。
+
+| 方法与路径 | 内容 |
+|---|---|
+| `GET /calls/api/packs/update` | 当前使用的数据：`{version, date, builtin, regions, locales: {version, date, builtin, languages}, running, last_check}`。`last_check` 另有 `pack_result` 和 `locales_result`。 |
+| `POST /calls/api/packs/update` | Body `{}`。马上检查有没有新版，有就安装：字段同 `GET`，另加 `result`（任一个文件更新了就是 `updated`）。 |
+| `POST /calls/api/packs/restore` | Body `{}`。删掉下载的数据和翻译，改回 Bageo 内置的版本：字段同上，`result` 是 `restored`（正在检查时是 `busy`；任一个文件删不掉时是 `io`，删不掉的那个继续使用）。 |
+
+细节：
+
+- `version` 是 `YYYYMMDDNN`，`date` 是同一个日期写成 `YYYY-MM-DD`；`builtin` 为 `true` 表示正在用 Bageo 内置的版本；`regions` 是地区数；`running` 表示正在检查；`last_check` 是 `null`，或 Bageo 这次启动以来最后一次检查的 `{at, result, version}`。
+- `result`：`up_to_date`、`updated`（之后的电话都用新的；正在进行的通话照用旧的）、`offline`（没有网络、超时或 GitHub 没响应，请稍后再试）、`bad_pack`（下载的文件被拒收，什么都没改）、`update_bageo`（这份数据需要更新版的 Bageo）、`restart`（这次启动已经装了 8 次更新，请先重新打开 Bageo）、`io`（无法保存）或 `busy`（已经有检查在跑）。
+- Bageo 怎么检查：从 `https://github.com/h4lo-void/bageo-packs/releases/latest/download/` 读 `bageo-pack-index.json`（最多 16 KiB），再下载同一个 Release 里它指定的文件（只能是纯文件名，最多 4 MiB）。每个网址，包括最多 5 次跳转的每一跳，都必须是 `https`、标准端口、不带用户名，主机只能是 `github.com`（限该数据库的 Release）、`objects.githubusercontent.com` 或 `release-assets.githubusercontent.com`。大小和 SHA-256 要跟 index 一致，index 的 `format` 与 `min_bageo` 要符合这版 Bageo，版本要比现在用的新。接着跟内置版本一样做完整检查，再一次改名到位。下载来源不能用设置修改。
+- 下载的版本保存在数据文件夹的 `packs/bageo-pack.json`，Bageo 每次启动都会再检查一次；没下载完的临时文件会删掉。
 
 ## 手机与健康状态
 

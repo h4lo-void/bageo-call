@@ -41,15 +41,15 @@ The few things the AI needs before it can answer your phone.
 
 | Setting | Default | What it does |
 |---|---|---|
-| Other names callers use for you | empty | One per line, up to 10: an English name, a nickname, how colleagues address you. When the AI hears one, it knows they mean you. |
 | Language of notifications and summaries | Same as the AI's language | The language you read your notifications and summaries in. The AI keeps speaking the *Language* above with callers. |
+| Country you live in | Decide from the phone number | The country whose everyday habits the AI follows, such as where parcels go (`home_country`). Type a name in any language, a code or a calling code (+66) to find it. |
 | Main language for each SIM | none | Only for a phone with SIMs from more than one country: pick a SIM's country and the language its calls start in. |
 | AI calls: call as | Your assistant | Who the AI says it is on calls it makes for you: **Your assistant** or **You in person**. Each errand can pick its own. |
 | Live model | `gemini-3.8-live` | The Gemini Live model that talks on calls; you rarely need to change it. Models with "thinking" in the name (such as `gemini-3.8-live-extended-thinking`) answer more carefully and a little slower; see *Thinking level* under [Advanced](#advanced). |
 
 Details for each:
 
-- **Other names callers use for you**: this works in both answer styles, and with your own prompt too. Call summaries still write *Your name*. Saved as `owner_aliases` (a list).
+- **Other names callers use for you** (on the *About you* card): this works in both answer styles, and with your own prompt too. Call summaries still write *Your name*. Saved as `owner_aliases` (a list).
 - **Language of notifications and summaries**: notifications, call summaries (also in the call list), appointment cards and their results, and messages from the SMS forwarder use this language. Handy abroad: the AI answers in English, your notifications stay in 繁體中文. Switching the console's display language (top right) sets this to the same language.
 - **Main language for each SIM**: e.g. *United States (US)* → English while *Language* stays 繁體中文; a Japanese number calling the US SIM still hears Japanese. Needs phone app 1.0 or later, which reports the SIM of each call. Saved as `sim_languages`, e.g. `{"us": "en"}`.
 - **AI calls: call as**: who the AI says it is on the calls it makes from the **Errands** tab ([AI errands](#ai-errands)): **Your assistant** (it calls on your behalf, and admits to being an AI when sincerely asked) or **You in person** (it speaks as you). Saved as `errand_identity` (`assistant` / `owner`; anything else reads as `assistant`).
@@ -61,7 +61,8 @@ Details for each:
 | Ring before answering | 3 s | How long the caller hears ringing before the AI picks up: 0 (at once) to 8 seconds, in half seconds. The AI gets ready during the ring. |
 | Answer hidden numbers | on | On: callers without caller ID get the AI like anyone else. Off: they hear a short "not available" announcement and the call ends. |
 | Longest normal call | 5 min | 3 to 30 minutes. About 25 seconds before the limit the AI wraps up politely and hangs up. |
-| Status note | off | One line about right now, up to 400 characters ("Deliveries: please leave the parcel at the front desk"). The AI mentions it only when it fits the call. |
+| Talk style | Natural, everyday | Five steps from *Casual and lively* to *Brisk and businesslike* (`talk_style_level`, 1 to 5). Not used while your own prompt is filled in. |
+| Status note (on the *About you* card) | off | One line about right now, up to 400 characters ("Deliveries: please leave the parcel at the front desk"). The AI mentions it only when it fits the call. |
 | Background sound, Background volume | off, Medium | A quiet room tone under the AI's voice, so it sounds like someone picking up in a real place. Volume Quiet, Medium or Loud. |
 | Forward to your phone: Turn on forwarding, how | off | Whether a call is put through to your phone, and how: *Don't answer: send to your phone* or *AI answers, puts you through if urgent* (`whitelist_mode`, which is `off` while the switch is off). A confirmation box comes first when you turn it on. The Whitelist tab on the **Contacts** page has the same setting. |
 | Forward to your phone: Your own phone number | empty | The number the phone calls when something is urgent; it also appears in the notification (`whitelist_forward_number`). |
@@ -147,13 +148,22 @@ Your own words and numbers go in `config/scam_db.local.json` in the data folder.
 
 `weight` is 1 (counts only with other words) or 2 (clear on its own); `hard` counts only for a kind of call that is a scam whoever asks. `typology` must be one of the built-in kinds in `crates/agent/data/scam_db.json`; entries Bageo cannot place are skipped and named in its log.
 
-### Prompt
+### About you
 
-How the AI talks. The built-in prompt is a short general baseline; add your own situation and style so the AI sounds more like you. To write your own, see [Writing the prompt](PROMPTS.md).
+A few short answers so the AI sounds like you, all optional. Bageo turns them into a short part of the built-in prompt. More in [Writing the prompt](PROMPTS.md).
 
-- *Your own prompt*: saved separately for *AI assistant* and *As me* (empty = built-in); **Show the built-in prompt** shows it.
-- *Notes the AI may answer from*: facts callers may ask about, one per line, up to 6,000 characters.
-- The interview prompt: lets ChatGPT, Claude or Gemini write a prompt with you.
+| Setting | Default | What it does |
+|---|---|---|
+| Who calls this phone most? | none | Family and friends, people from work, or both (`about_callers`). Picking one moves *Talk style* to step 2, 4 or 3 while you have not moved the slider yourself. |
+| Your work or day, in one line | empty | Up to 120 characters (`about_work`). |
+| Things you often say / never say | empty | *As me* only: up to 3 each, 24 characters each (`about_say`, `about_avoid`). |
+| What to ask for in a message | all four | *AI assistant* only: the caller's name, a callback number, what it is about, how urgent (`about_message_asks`). |
+| Where should parcels and deliveries go? | empty | Up to 80 characters (`about_parcel`). The hint shows your country's usual way. |
+| Anything else the AI should know | empty | Up to 300 characters (`about_extra`). |
+
+Also on this card: *Other names callers use for you*, the *Status note* and *Notes the AI may answer from* (facts callers may ask about, one per line, up to 6,000 characters).
+
+Under *Advanced*: *Your own prompt*, saved separately for *AI assistant* and *As me* (empty = built-in); **Show the built-in prompt** shows it. Your own prompt replaces the talk style and local habits.
 
 ### Blocked numbers and contact lists
 

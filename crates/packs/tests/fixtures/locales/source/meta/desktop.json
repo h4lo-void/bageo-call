@@ -1,0 +1,21 @@
+{
+  "h_ok": {
+    "where": "status when everything works",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "r_ready": {
+    "where": "how many phones are ready",
+    "who": "the owner",
+    "placeholders": [
+      "{n}"
+    ]
+  },
+  "r_phone_offline": {
+    "where": "a phone is not connected",
+    "who": "the owner",
+    "placeholders": [
+      "{name}"
+    ]
+  }
+}

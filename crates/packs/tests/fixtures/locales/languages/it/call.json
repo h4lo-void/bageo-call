@@ -1,0 +1,45 @@
+{
+  "schema": 2,
+  "layer": "it",
+  "status": "draft",
+  "stt": "it-IT",
+  "hello": {
+    "hello": "Pronto?",
+    "hello_again": "Pronto, mi sente?"
+  },
+  "common": {},
+  "speech": {
+    "im_here": "Sì, ci sono.",
+    "still_there": "Pronto? È ancora in linea?",
+    "bye": "Va bene, arrivederci.",
+    "go_ahead": "Prego, mi dica.",
+    "no_thanks": "No, grazie, non mi interessa.",
+    "think_about_it": "Ci penso e le faccio sapere.",
+    "wait_one_more": "Mi dica pure, l'ascolto.",
+    "no_wait": "Non dire mai «un attimo» o «controllo subito».",
+    "unavailable": "Ora non posso, la richiamo più tardi.",
+    "preview": [
+      "Pronto?",
+      "Sì, mi dica.",
+      "Va bene, arrivederci."
+    ],
+    "closing": {
+      "verified": false,
+      "farewells": [
+        "arrivederci",
+        "buona giornata"
+      ],
+      "wrapups": [
+        "va bene così"
+      ],
+      "examples": {
+        "ends": [
+          "Grazie, arrivederci."
+        ],
+        "not_ends": [
+          "Ciao, sono Marco della banca."
+        ]
+      }
+    }
+  }
+}

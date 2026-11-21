@@ -109,9 +109,23 @@ impl CallLanguage {
         }
     }
 
-    /// What `said` is clearly in, if anything.
+    /// What `said` is clearly in, if anything. Words in a language without a
+    /// setting read as that language when the translations carry it to the
+    /// call stage ([crate::urgency::read_other]); in a call held in such a
+    /// language, words in the same script count as it (Arabic letters do not
+    /// tell Arabic, Persian and Urdu apart).
     fn clear(&self, said: &str) -> Option<Spoken> {
         if crate::urgency::unlisted_language(said) {
+            if let Some(r) = crate::urgency::read_other(said) {
+                if let Spoken::Lang(Lang::Ext(now)) = self.now {
+                    if now.script() == r.script {
+                        return Some(self.now);
+                    }
+                }
+                if let Some(l) = r.lang {
+                    return Some(Spoken::Lang(l));
+                }
+            }
             return Some(Spoken::Other);
         }
         crate::urgency::read_language(said)
@@ -162,13 +176,19 @@ impl CallLanguage {
             Spoken::Lang(l) => l,
             Spoken::Other => return None,
         };
+        // Only a turn in a core language is a drift: another language read from
+        // its letters may be the call's own told apart wrong.
+        if !ai.is_core() {
+            return None;
+        }
         let followed = |s: Option<Spoken>| s == Some(Spoken::Lang(ai));
         if ai == call || followed(self.caller_last) || followed(self.pending) {
             return None;
         }
         // Close Latin languages share short words (a Spanish line can score a
         // point of Portuguese): a drift between them needs a clear margin.
-        if crate::urgency::is_latin_lang(ai)
+        if call.is_core()
+            && crate::urgency::is_latin_lang(ai)
             && crate::urgency::is_latin_lang(call)
             && crate::urgency::latin_margin(said, ai, call) < 2
         {
@@ -227,6 +247,8 @@ mod tests {
 
     #[test]
     fn the_first_clear_words_set_the_call_then_two_turns_change_it() {
+        // Without translations: the other languages read as languages without a setting.
+        crate::locales_store::testing::use_empty();
         // A US SIM opens in English; the caller speaks Chinese from the start.
         let mut c = CallLanguage::new(Lang::En, Lang::En);
         assert_eq!(c.caller_turn("喂？"), None);
@@ -344,6 +366,8 @@ mod close_latin_languages {
 
     #[test]
     fn multi_turn_unlisted_latin_locks_as_other_without_mislocking() {
+        // Without translations: the other languages read as languages without a setting.
+        crate::locales_store::testing::use_empty();
         let cases = [
             (
                 "it",
@@ -448,6 +472,8 @@ mod close_latin_languages {
 
     #[test]
     fn spoken_reports_variant_and_pending_survives_neutral_turn_only() {
+        // Without translations: the other languages read as languages without a setting.
+        crate::locales_store::testing::use_empty();
         let mut call = CallLanguage::new(Lang::ZhTw, Lang::ZhTw);
         assert_eq!(call.spoken(), Spoken::Lang(Lang::ZhTw));
 
@@ -472,5 +498,75 @@ mod close_latin_languages {
         assert_eq!(call2.caller_turn("こんにちは"), None);
         assert_eq!(call2.caller_turn("Confirmamos el horario de mañana"), None);
         assert_eq!(call2.lang(), Some(Lang::En));
+    }
+
+    fn ext(code: &str) -> Lang {
+        Lang::Ext(crate::locale::Ext::from_code(code).unwrap())
+    }
+
+    const IT_SAID: &str = "Buongiorno, sono il corriere, ho un pacco per lei, posso lasciarlo in portineria?";
+    const TH_SAID: &str = "สวัสดีค่ะ มีพัสดุมาส่งค่ะ อยู่บ้านไหมคะ";
+    const AR_SAID: &str = "مرحبا، أنا من شركة التوصيل، عندي طرد لك اليوم";
+    const FA_SAID: &str = "سلام، از شرکت پست تماس می‌گیرم، یک بسته برای شما دارم";
+
+    #[test]
+    fn translated_languages_are_told_by_their_words() {
+        crate::locales_store::testing::use_table();
+        for (said, code) in [(IT_SAID, "it"), (TH_SAID, "th"), (AR_SAID, "ar")] {
+            assert_eq!(crate::urgency::read_other(said).and_then(|r| r.lang), Some(ext(code)), "{said}");
+            // An English call: the caller's first clear words set it.
+            let mut c = CallLanguage::new(Lang::En, Lang::En);
+            assert_eq!(c.caller_turn(said), Some(Spoken::Lang(ext(code))), "{said}");
+            assert_eq!(c.lang(), Some(ext(code)));
+        }
+        // Without the translations they are languages without a setting.
+        crate::locales_store::testing::use_empty();
+        for said in [IT_SAID, TH_SAID, AR_SAID] {
+            assert_eq!(crate::urgency::read_other(said).and_then(|r| r.lang), None, "{said}");
+            let mut c = CallLanguage::new(Lang::En, Lang::En);
+            assert_eq!(c.caller_turn(said), Some(Spoken::Other), "{said}");
+        }
+    }
+
+    #[test]
+    fn a_call_in_a_translated_language_holds_and_changes_only_on_two_clear_turns() {
+        crate::locales_store::testing::use_table();
+        // An Italian call: Italian keeps it; an "OK" changes nothing; English
+        // twice changes it.
+        let mut c = CallLanguage::new(ext("it"), ext("it"));
+        assert_eq!(c.caller_turn(IT_SAID), None);
+        assert_eq!(c.caller_turn("OK"), None);
+        assert_eq!(c.caller_turn("Sorry, I do not speak Italian, can we talk in English please?"), None);
+        assert_eq!(c.caller_turn("Yes, I would like to talk in English if that is fine with you"), Some(Spoken::Lang(Lang::En)));
+        // An Arabic call: Persian words share its letters and keep it.
+        let mut c = CallLanguage::new(ext("ar"), ext("ar"));
+        assert_eq!(c.caller_turn(AR_SAID), None);
+        assert_eq!(c.caller_turn(FA_SAID), None);
+        assert_eq!(c.lang(), Some(ext("ar")));
+        // A Thai call: Thai holds; Japanese once does not change it.
+        let mut c = CallLanguage::new(ext("th"), ext("th"));
+        assert_eq!(c.caller_turn(TH_SAID), None);
+        assert_eq!(c.caller_turn("すみません、宅配便です。今ご自宅にいらっしゃいますか？"), None);
+        assert_eq!(c.caller_turn(TH_SAID), None);
+        assert_eq!(c.lang(), Some(ext("th")));
+    }
+
+    #[test]
+    fn the_ai_drifting_from_a_translated_language_into_a_core_one_is_told() {
+        crate::locales_store::testing::use_table();
+        let mut c = CallLanguage::new(ext("it"), ext("it"));
+        c.caller_turn(IT_SAID);
+        // Its own language, or another read from the letters: no drift.
+        assert_eq!(c.ai_turn("Sì, va bene, lo lasci pure in portineria, grazie mille.", true), None);
+        assert_eq!(c.ai_turn(TH_SAID, true), None);
+        // Clearly English: a drift, named for the call's language.
+        let d = c.ai_turn("Okay, you can leave the package at the front desk, thank you so much.", true).expect("drift");
+        assert_eq!((d.ai, d.call), (Lang::En, ext("it")));
+        let note = crate::prompts::language_drift_note(ext("it"), ext("it"));
+        assert!(note.contains("Italian"), "{note}");
+        let mut c = CallLanguage::new(ext("ar"), ext("ar"));
+        c.caller_turn(AR_SAID);
+        assert_eq!(c.ai_turn("حسنًا، اترك الطرد عند الباب، شكرًا لك.", true), None);
+        assert!(c.ai_turn("Hola, sí, puede dejar el paquete en la puerta, muchas gracias por todo.", true).is_some());
     }
 }

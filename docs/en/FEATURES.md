@@ -66,9 +66,9 @@ have asked you on the console first.
 - **30 voices in 9 languages, previewed for free.** 1,080 recorded clips ship
   with Bageo (IMA ADPCM, a quarter of the size of plain WAV), so voice
   previews and the "number not available" announcement use no API quota.
-- **Only what you wrote down.** *Notes the AI may answer from* (in **Prompt**)
+- **Only what you wrote down.** *Notes the AI may answer from* (in **About you**)
   holds facts such as where parcels go or your office hours; the *Status note* (in
-  **How it answers**) holds one line about right now ("expecting a delivery this
+  **About you** too) holds one line about right now ("expecting a delivery this
   afternoon"). Anything not written there, the AI must not make up.
 - **Blocked and hidden numbers.** Numbers on the **Blacklist** in **Contacts**
   are refused while ringing, or hear a short announcement, and never reach the
@@ -226,7 +226,7 @@ Every contact can be assigned to one of four lists (from the Contacts page, via 
   as they were said, each with a translation into your notification language.
 - **Other names callers use for you** (`owner_aliases`), such as an English
   name or a nickname, so the AI knows they mean you. Set them under **Settings →
-  Basics → More options**.
+  About you**.
 
 ## AI phone or normal phone, one switch
 
@@ -278,19 +278,20 @@ Details: [Privacy, safety and the law](PRIVACY_AND_LEGAL.md).
 
 ## Make it sound like you
 
-The built-in prompts are a short general baseline that works out of the box. To
-tailor the AI to your own situation and the way *you* talk, let another AI
-interview you:
+The built-in prompts work out of the box. To make the AI sound more like you:
 
-1. Open **Settings → Prompt**, find *Don't want to write it yourself?*, choose
-   a language and press **Copy interview prompt** (the same texts, in all nine
-   languages, are in [`docs/prompts/`](../prompts/)).
-2. Paste it into ChatGPT, Claude, Gemini or any chat AI. It asks about eight
-   questions, one at a time: your personality and phone manner, everyday
-   phrases and ones you never use, who calls you, your boundaries, and how you
-   brush off unwanted sales calls.
-3. It returns a finished prompt in your own style, ready to paste into *Your
-   own prompt*. Save, and the next call uses it.
+1. Pick a **Talk style** under **Settings → How it answers**: five steps from
+   *Casual and lively* to *Brisk and businesslike*. A small myna next to the
+   slider changes clothes with each step.
+2. Check **Country you live in** under **Settings → Basics → More options**
+   (empty: from the phone's SIM). The AI follows that country's everyday
+   habits, such as where parcels go.
+3. Answer the short questions under **Settings → About you**: who calls this
+   phone most, your work or day, phrases you often say and never say, and where
+   parcels go. All optional; Bageo turns them into a short part of the prompt.
+
+Your own prompt is still there under **About you → Advanced**; it replaces the
+talk style and local habits.
 
 More, including the techniques that make the biggest difference:
 [Writing the prompt](PROMPTS.md).

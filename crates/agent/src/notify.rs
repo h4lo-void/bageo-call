@@ -1195,7 +1195,7 @@ fn pick(t: [&str; 9]) -> String {
     let i = match locale::notify_lang() {
         locale::Lang::ZhTw => 0,
         locale::Lang::ZhCn => 1,
-        locale::Lang::En => 2,
+        locale::Lang::En | locale::Lang::Ext(_) => 2,
         locale::Lang::Ja => 3,
         locale::Lang::Ko => 4,
         locale::Lang::Es => 5,
@@ -1585,7 +1585,7 @@ pub fn device_label(serial: &str) -> String {
         return label;
     }
     if s.is_empty() {
-        locale::notify_phrases().n_unknown.to_string()
+        locale::notify_words().n_unknown.to_string()
     } else {
         s.to_string()
     }
@@ -1613,7 +1613,7 @@ pub fn listen_recording_line(settings: &Settings, call_id: &str, note: &str) -> 
     if url.is_empty() {
         return String::new();
     }
-    let label = locale::notify_phrases().n_recording;
+    let label = locale::notify_words().n_recording.as_str();
     let sep = kv_sep();
     match note.trim() {
         "" => format!("{label}{sep}{url}"),
@@ -1627,7 +1627,7 @@ pub fn call_detail_line(settings: &Settings, call_id: &str) -> String {
     if url.is_empty() {
         return String::new();
     }
-    format!("{}{}{url}", locale::notify_phrases().n_details, kv_sep())
+    format!("{}{}{url}", locale::notify_words().n_details, kv_sep())
 }
 
 /// Between a label and its value, as the owner's language writes it.
@@ -1638,7 +1638,7 @@ fn kv_sep() -> &'static str {
 fn display_or_hidden(s: &str) -> String {
     let t = s.trim();
     if t.is_empty() {
-        locale::notify_phrases().n_hidden.to_string()
+        locale::notify_words().n_hidden.to_string()
     } else {
         t.to_string()
     }
@@ -1728,14 +1728,14 @@ impl Card {
 /// The card of a call that rings on a phone: number, phone and time. `event`
 /// is `incoming` (a call came in) or `outgoing` (Bageo placed it itself).
 fn ring_message(event: &str, title: &str, caller_id: &str, serial: &str) -> Message {
-    let p = locale::notify_phrases();
+    let p = locale::notify_words();
     let caller = display_or_hidden(caller_id);
     let device = device_label(serial);
     let when = now_stamp();
     Card::new(title)
-        .code(p.n_number, &caller)
-        .row(p.n_phone, &device)
-        .row(p.n_time, &when)
+        .code(&p.n_number, &caller)
+        .row(&p.n_phone, &device)
+        .row(&p.n_time, &when)
         .message(
             event,
             format!("{title} {caller}"),
@@ -1831,10 +1831,10 @@ fn repeat_limiter() -> &'static Mutex<RepeatLimiter> {
 }
 
 /// The summary of calls that were not notified one by one.
-fn repeat_calls_message(p: &locale::Phrases, kind: &str, caller_id: &str, count: u32) -> Message {
+fn repeat_calls_message(p: &locale::Words, kind: &str, caller_id: &str, count: u32) -> Message {
     let caller = display_or_hidden(caller_id);
     let body = p.n_repeat_body.replace("{number}", &caller).replace("{count}", &count.to_string());
-    Card::new(p.n_repeat_title).tail(&body).message(
+    Card::new(&p.n_repeat_title).tail(&body).message(
         "repeat_calls",
         format!("{} {caller}", p.n_repeat_title),
         json!({ "caller_id": caller_id.trim(), "count": count, "kind": kind }),
@@ -1880,7 +1880,7 @@ async fn deliver_limited(
                         .unwrap_or_else(|e| e.into_inner())
                         .take_skipped(&key);
                     if count > 0 {
-                        let msg = repeat_calls_message(locale::notify_phrases(), kind, &caller_id, count);
+                        let msg = repeat_calls_message(locale::notify_words(), kind, &caller_id, count);
                         deliver(&http, &settings, &msg).await;
                     }
                 });
@@ -1900,7 +1900,7 @@ pub async fn notify_incoming_call(
     if !settings.call_notify {
         return false;
     }
-    let msg = ring_message("incoming", locale::notify_phrases().n_incoming, caller_id, serial);
+    let msg = ring_message("incoming", &locale::notify_words().n_incoming, caller_id, serial);
     deliver_limited(http, settings, "incoming", caller_id, &msg).await
 }
 
@@ -1917,7 +1917,7 @@ pub async fn notify_outgoing_call(
     if !settings.call_notify {
         return false;
     }
-    let msg = ring_message("outgoing", locale::notify_phrases().n_outgoing, caller_id, serial);
+    let msg = ring_message("outgoing", &locale::notify_words().n_outgoing, caller_id, serial);
     deliver(http, settings, &msg).await
 }
 
@@ -1935,18 +1935,18 @@ pub async fn notify_rejected_call(
     if !settings.call_notify {
         return false;
     }
-    let p = locale::notify_phrases();
+    let p = locale::notify_words();
     let caller = display_or_hidden(caller_id);
     let device = device_label(serial);
     let when = now_stamp();
     let reason = reason.trim();
-    let mut card = Card::new(p.n_blocked).code(p.n_number, &caller);
+    let mut card = Card::new(&p.n_blocked).code(&p.n_number, &caller);
     if !reason.is_empty() {
-        card = card.row(p.n_reason, reason);
+        card = card.row(&p.n_reason, reason);
     }
     let msg = card
-        .row(p.n_phone, &device)
-        .row(p.n_time, &when)
+        .row(&p.n_phone, &device)
+        .row(&p.n_time, &when)
         .tail(&blocked_outcome(declined))
         .message(
             "blocked",
@@ -1966,22 +1966,16 @@ pub async fn notify_rejected_call(
 /// for the "cannot be reached" announcement.
 fn blocked_outcome(declined: bool) -> String {
     if declined {
-        locale::notify_zh_or(
-            "響鈴時直接拒接，沒有接起來，沒有用 AI",
-            "Declined while it rang: not picked up, no AI",
-        )
+        locale::notify_words().n_blocked_declined.clone()
     } else {
-        let p = locale::notify_phrases();
-        p.n_blocked_done.replace("{}", p.unavailable)
+        let p = locale::notify_words();
+        p.n_blocked_done.replace("{}", locale::notify_phrases().unavailable)
     }
 }
 
 /// Headline of a call the phone refused because it was already on a call.
 fn call_waiting_headline(caller: &str, device: &str) -> String {
-    locale::notify_zh_or(
-        &format!("通話中插播未接：{caller}（{device}）"),
-        &format!("Missed while on another call: {caller} ({device})"),
-    )
+    locale::notify_fill(&locale::notify_words().n_cw_headline, &[("caller", caller), ("device", device)])
 }
 
 /// A second call came in during a call and the phone turned it away (busy).
@@ -1996,12 +1990,12 @@ pub async fn notify_call_waiting_rejected(
     if !settings.call_notify {
         return false;
     }
-    let p = locale::notify_phrases();
+    let p = locale::notify_words();
     let caller = display_or_hidden(caller_id);
     let device = device_label(serial);
     let when = now_stamp();
     let headline = call_waiting_headline(&caller, &device);
-    let msg = Card::new(&headline).row(p.n_time, &when).message(
+    let msg = Card::new(&headline).row(&p.n_time, &when).message(
         "call_waiting",
         headline.clone(),
         json!({
@@ -2025,7 +2019,7 @@ pub async fn notify_ai_request(
     if !settings.call_notify {
         return false;
     }
-    let p = locale::notify_phrases();
+    let p = locale::notify_words();
     let caller = display_or_hidden(caller_id);
     let device = device_label(serial);
     let when = now_stamp();
@@ -2036,9 +2030,9 @@ pub async fn notify_ai_request(
         None => p.n_summary.to_string(),
     };
     let mut msg = Card::new(&headline)
-        .code(p.n_number, &caller)
-        .row(p.n_phone, &device)
-        .row(p.n_time, &when)
+        .code(&p.n_number, &caller)
+        .row(&p.n_phone, &device)
+        .row(&p.n_time, &when)
         .tail(summary_body)
         .message(
             "summary",
@@ -2063,7 +2057,7 @@ pub async fn notify_ai_request(
             locale::Lang::Fr => ("Liste noire", "Les faire parler", "Liste blanche"),
             locale::Lang::De => ("Sperrliste", "Hinhalten", "Whitelist"),
             locale::Lang::Pt => ("Bloquear", "Manter falando", "Lista branca"),
-            locale::Lang::En => ("Block", "Stall", "Whitelist"),
+            locale::Lang::En | locale::Lang::Ext(_) => ("Block", "Stall", "Whitelist"),
         };
         for (lbl, act) in [(lbl_blk, "block"), (lbl_stl, "stall"), (lbl_wht, "white")] {
             let u = crate::calendar::quick_action_url(&console, act, caller_id.trim(), name_hint);
@@ -2138,7 +2132,7 @@ pub async fn notify_pending_appointment_non_tg(
     if non_tg.is_empty() {
         return false;
     }
-    let p = locale::notify_phrases();
+    let p = locale::notify_words();
     let console = card_console_url(rt, &Settings::from_env());
     let confirm_url = crate::calendar::quick_action_url(&console, "confirm_task", task_id, "");
     let ignore_url = crate::calendar::quick_action_url(&console, "ignore_task", task_id, "");
@@ -2213,15 +2207,15 @@ pub async fn notify_voicemail(
     if !settings.call_notify {
         return false;
     }
-    let p = locale::notify_phrases();
+    let p = locale::notify_words();
     let caller = display_or_hidden(caller_id);
     let device = device_label(serial);
     let when = now_stamp();
-    let msg = Card::new(p.n_voicemail)
-        .code(p.n_number, &caller)
-        .row(p.n_phone, &device)
-        .row(p.n_length, &format!("{secs:.0} {}", p.n_seconds))
-        .row(p.n_time, &when)
+    let msg = Card::new(&p.n_voicemail)
+        .code(&p.n_number, &caller)
+        .row(&p.n_phone, &device)
+        .row(&p.n_length, &format!("{secs:.0} {}", p.n_seconds))
+        .row(&p.n_time, &when)
         .tail(reply_line)
         .message(
             "voicemail",
@@ -2249,12 +2243,12 @@ pub async fn notify_ai_callback(
 }
 
 fn ai_callback_message(caller_id: &str, device: &str, when: &str, headline: &str, body: &str) -> Message {
-    let p = locale::notify_phrases();
+    let p = locale::notify_words();
     let caller = display_or_hidden(caller_id);
     Card::new(headline)
-        .code(p.n_number, &caller)
-        .row(p.n_phone, device)
-        .row(p.n_time, when)
+        .code(&p.n_number, &caller)
+        .row(&p.n_phone, device)
+        .row(&p.n_time, when)
         .tail(body)
         .message(
             "ai_callback",
@@ -2286,11 +2280,11 @@ pub async fn notify_ai_errand(
 }
 
 fn ai_errand_message(number: &str, device: &str, when: &str, headline: &str, body: &str) -> Message {
-    let p = locale::notify_phrases();
+    let p = locale::notify_words();
     Card::new(headline)
-        .code(p.n_number, &display_or_hidden(number))
-        .row(p.n_phone, device)
-        .row(p.n_time, when)
+        .code(&p.n_number, &display_or_hidden(number))
+        .row(&p.n_phone, device)
+        .row(&p.n_time, when)
         .tail(body)
         .message(
             "ai_errand",
@@ -2320,10 +2314,10 @@ pub async fn notify_event(http: &Client, settings: &Settings, title: &str, body:
 
 /// The test message of the settings page.
 pub fn test_message() -> Message {
-    let p = locale::notify_phrases();
-    Card::new(p.n_test_title)
-        .row(p.n_time, &now_stamp())
-        .tail(p.n_test_body)
+    let p = locale::notify_words();
+    Card::new(&p.n_test_title)
+        .row(&p.n_time, &now_stamp())
+        .tail(&p.n_test_body)
         .message("test", p.n_test_title.to_string(), json!({}))
 }
 
@@ -3208,26 +3202,26 @@ mod tests {
     /// never the `incoming` one; both carry the same fields.
     #[test]
     fn an_own_call_is_an_outgoing_card_not_an_incoming_one() {
-        let p = locale::notify_phrases();
-        let out = ring_message("outgoing", p.n_outgoing, "0223456701", "pixel-test-77011");
-        let inc = ring_message("incoming", p.n_incoming, "0223456701", "pixel-test-77011");
+        let p = locale::notify_words();
+        let out = ring_message("outgoing", &p.n_outgoing, "0223456701", "pixel-test-77011");
+        let inc = ring_message("incoming", &p.n_incoming, "0223456701", "pixel-test-77011");
         assert_eq!((out.event.as_str(), inc.event.as_str()), ("outgoing", "incoming"));
-        assert!(out.title.starts_with(p.n_outgoing) && out.title.contains("0223456701"), "{}", out.title);
-        assert!(out.body.starts_with(p.n_outgoing) && !out.body.contains(p.n_incoming), "{}", out.body);
+        assert!(out.title.starts_with(&p.n_outgoing) && out.title.contains("0223456701"), "{}", out.title);
+        assert!(out.body.starts_with(&p.n_outgoing) && !out.body.contains(&p.n_incoming), "{}", out.body);
         assert_eq!(out.data["caller_id"], "0223456701");
         assert!(out.data["device"].is_string() && out.data["time"].is_string());
-        assert!(inc.title.starts_with(p.n_incoming) && inc.body.starts_with(p.n_incoming));
+        assert!(inc.title.starts_with(&p.n_incoming) && inc.body.starts_with(&p.n_incoming));
     }
 
     #[test]
     fn the_outgoing_title_is_written_in_all_nine_languages() {
         for lang in locale::ALL {
-            let p = locale::phrases(lang);
+            let p = locale::words(lang);
             assert!(!p.n_outgoing.trim().is_empty(), "{lang:?}");
             assert_ne!(p.n_outgoing, p.n_incoming, "{lang:?}");
         }
-        assert_eq!(locale::phrases(locale::Lang::ZhTw).n_outgoing, "去電");
-        assert_eq!(locale::phrases(locale::Lang::En).n_outgoing, "Outgoing call");
+        assert_eq!(locale::words(locale::Lang::ZhTw).n_outgoing, "去電");
+        assert_eq!(locale::words(locale::Lang::En).n_outgoing, "Outgoing call");
     }
 
     #[test]
@@ -3391,7 +3385,7 @@ mod tests {
     #[test]
     fn the_summary_is_written_in_every_language_with_the_count() {
         for l in locale::ALL {
-            let m = repeat_calls_message(locale::phrases(l), "incoming", "+15550100123", 7);
+            let m = repeat_calls_message(locale::words(l), "incoming", "+15550100123", 7);
             assert!(!m.title.trim().is_empty() && m.title.contains("+15550100123"), "{l:?}");
             assert!(m.body.contains("+15550100123") && m.body.contains('7'), "{l:?}: {}", m.body);
             assert!(!m.body.contains('{'), "{l:?}: {}", m.body);

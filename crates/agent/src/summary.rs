@@ -105,18 +105,18 @@ pub fn summary_system_prompt(lang: Lang, owner: &str, aliases: &[String]) -> Str
             .replace("{owner}", &owner),
         ),
         other => {
-            let p = locale::phrases(other);
+            let (p, w) = (locale::phrases(other), locale::words(other));
             let (sales, scam) = sales_labels(other);
             format!("{SUMMARY_SYSTEM_PROMPT_EN}{}", rule(SUMMARY_ALIASES_RULE_EN))
                 .replace("{owner}", &owner)
                 .replace("{language}", p.name_en)
-                .replace("{s_caller}", p.s_caller)
-                .replace("{s_matter}", p.s_matter)
+                .replace("{s_caller}", &w.s_caller)
+                .replace("{s_matter}", &w.s_matter)
                 .replace("{s_sales}", sales)
                 .replace("{s_scam}", scam)
-                .replace("{s_reply}", p.s_reply)
-                .replace("{s_todo}", p.s_todo)
-                .replace("{s_ai_failed}", p.s_ai_failed)
+                .replace("{s_reply}", &w.s_reply)
+                .replace("{s_todo}", &w.s_todo)
+                .replace("{s_ai_failed}", &w.s_ai_failed)
         }
     };
     // The names go in last: the Simplified conversion leaves them as written.
@@ -422,7 +422,7 @@ fn empty_transcript_summary(lang: Lang) -> String {
         Lang::ZhTw => TW.to_string(),
         Lang::ZhCn => crate::zh_convert::to_cn(TW),
         _ => {
-            let p = locale::phrases(lang);
+            let p = locale::words(lang);
             format!("{}{}{}", p.s_matter, p.sep, p.s_no_summary)
         }
     }
@@ -437,8 +437,8 @@ fn fallback_summary_in(lang: Lang, caller: &str, transcript: &str) -> String {
         Lang::ZhCn => return crate::zh_convert::to_cn(&fallback_summary(caller, transcript)),
         _ => {}
     }
-    let p = locale::phrases(lang);
-    let sep = p.sep;
+    let p = locale::words(lang);
+    let sep = p.sep.as_str();
     let first = transcript
         .lines()
         .map(str::trim)
@@ -465,7 +465,7 @@ fn fallback_summary_in(lang: Lang, caller: &str, transcript: &str) -> String {
 pub fn is_fallback_summary(text: &str) -> bool {
     text.contains("（摘要服務暫時沒回應）")
         || text.contains("（摘要服务暂时没回应）")
-        || text.contains(locale::notify_phrases().s_no_summary)
+        || text.contains(locale::notify_words().s_no_summary.as_str())
 }
 
 /// How the summary prompt tells the model to mark a sales call and a likely
@@ -475,7 +475,7 @@ pub(crate) fn sales_labels(lang: Lang) -> (&'static str, &'static str) {
     match lang {
         Lang::ZhTw => ("推銷電話", "疑似詐騙"),
         Lang::ZhCn => ("推销电话", "疑似诈骗"),
-        Lang::En => ("Sales call", "Suspected scam"),
+        Lang::En | Lang::Ext(_) => ("Sales call", "Suspected scam"),
         Lang::Ja => ("営業電話", "詐欺の疑い"),
         Lang::Ko => ("영업 전화", "사기 의심"),
         Lang::Es => ("Llamada comercial", "Posible estafa"),
@@ -511,7 +511,7 @@ pub fn summary_says_sales(lang: Lang, summary: &str) -> bool {
         Lang::ZhTw | Lang::ZhCn => &[
             "語音廣告", "语音广告", "催收騷擾", "催收骚扰", "討債騷擾", "讨债骚扰", "惡意騷擾", "恶意骚扰",
         ],
-        Lang::En => &[
+        Lang::En | Lang::Ext(_) => &[
             "sales pitch", "likely scam", "probable scam", "sales call", "debt-collection harassment", "debt collection harassment", "abusive harassment", "malicious harassment",
         ],
         Lang::Ja => &["セールス電話", "詐欺電話", "悪質な取り立て", "嫌がらせ電話", "脅迫電話"],
@@ -521,11 +521,17 @@ pub fn summary_says_sales(lang: Lang, summary: &str) -> bool {
         Lang::De => &["verkaufsanruf", "betrugsversuch", "aggressives inkasso", "belästigungsanruf", "drohanruf"],
         Lang::Pt => &["ligação comercial", "tentativa de golpe", "cobrança abusiva", "ligação de assédio"],
     };
-    let label = locale::phrases(lang).s_matter;
+    let label = locale::words(lang).s_matter.as_str();
+    // A translated label is a draft the model may not copy: English's counts too.
+    let en_label = (!lang.is_core()).then(|| locale::words(Lang::En).s_matter.as_str());
     summary
         .lines()
         .map(str::trim)
-        .filter_map(|l| l.strip_prefix(label).or_else(|| l.strip_prefix("事情")))
+        .filter_map(|l| {
+            l.strip_prefix(label)
+                .or_else(|| en_label.and_then(|en| l.strip_prefix(en)))
+                .or_else(|| l.strip_prefix("事情"))
+        })
         .map(|l| l.trim_start_matches(|c: char| c.is_whitespace() || c == ':' || c == '：').to_lowercase())
         .any(|line| {
             let marked = if lang.is_zh() {
@@ -1020,6 +1026,7 @@ fn latin_function_words(lang: Lang) -> &'static [&'static str] {
 /// `owner`: one of them has at least two of its common words in it, more than
 /// the owner's language has.
 fn latin_line_in_other_language(text: &str, owner: Lang) -> bool {
+    let owner = owner.base();
     let words: Vec<String> = text
         .split(|c: char| !(c.is_alphabetic() || c == '\'' || c == '’'))
         .map(|w| w.trim_matches(|c| c == '\'' || c == '’').replace('’', "'").to_lowercase())

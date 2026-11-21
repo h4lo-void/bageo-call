@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "lang": "it",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "n_incoming": "Chiamata in arrivo",
+    "n_hidden": "Numero nascosto",
+    "n_repeat_body": "{number} ha chiamato {count} volte",
+    "sep": ": ",
+    "u_sec": "{} s"
+  },
+  "lists": {
+    "ap_weekdays": [
+      "lun",
+      "mar",
+      "mer",
+      "gio",
+      "ven",
+      "sab",
+      "dom"
+    ]
+  },
+  "formats": {
+    "dt_fmt": "%-d %b, %H:%M"
+  }
+}

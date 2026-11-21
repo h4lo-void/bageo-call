@@ -1257,6 +1257,34 @@ async fn settings_get(
     .into_response()
 }
 
+/// The regions of the region data pack in use (the built-in one, or an
+/// installed newer one), for the console's country picker. No secrets.
+async fn packs_regions(State(state): State<CallsState>, headers: HeaderMap, Query(query): Query<TokenQuery>) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    let pack = crate::packs_store::current();
+    let regions: Vec<Value> = pack
+        .regions
+        .values()
+        .map(|r| {
+            json!({
+                "code": r.code,
+                "countries": r.countries,
+                "name": {
+                    "en": r.name.en,
+                    "native": r.name.native,
+                    "zh": r.name.zh.as_deref().unwrap_or(&r.name.en),
+                },
+                "lang": r.lang,
+                "status": r.status,
+                "delivery": { "en": r.delivery.en, "zh": r.delivery.zh },
+            })
+        })
+        .collect();
+    Json(json!({ "version": pack.version, "regions": regions })).into_response()
+}
+
 /// The console's address as other devices open it (empty: this computer only).
 fn console_url(state: &CallsState) -> String {
     crate::settings_store::effective_console_url(&state.settings_store.snapshot().effective(&state.settings))
@@ -3305,7 +3333,7 @@ fn quick_words(lang: crate::locale::Lang) -> QuickWords {
         Lang::Fr => w("Faire ceci ?", "Confirmer", "Ce lien a expiré", "Ouvrez la console pour le faire.", "Ce lien ne fonctionne pas", "Ouvrez la console pour le faire.", "Liste noire", "Les faire parler", "Liste blanche", "Retirer de la liste"),
         Lang::De => w("Wirklich ausführen?", "Bestätigen", "Dieser Link ist abgelaufen", "Öffne die Konsole und erledige es dort.", "Dieser Link funktioniert nicht", "Öffne die Konsole und erledige es dort.", "Sperrliste", "Hinhalten", "Whitelist", "Von der Liste nehmen"),
         Lang::Pt => w("Fazer isto?", "Confirmar", "Este link expirou", "Abra o console para fazer por lá.", "Este link não funciona", "Abra o console para fazer por lá.", "Bloquear", "Manter falando", "Lista branca", "Tirar da lista"),
-        Lang::En => w("Do this?", "Confirm", "This link has expired", "Open the console to do it there.", "This link doesn't work", "Open the console to do it there.", "Block", "Stall", "Whitelist", "Remove from list"),
+        Lang::En | Lang::Ext(_) => w("Do this?", "Confirm", "This link has expired", "Open the console to do it there.", "This link doesn't work", "Open the console to do it there.", "Block", "Stall", "Whitelist", "Remove from list"),
     }
 }
 
@@ -3340,7 +3368,7 @@ fn quick_action_page(title: &str, detail: &str, status: StatusCode, form: &str) 
         Lang::Fr => ("fr", "Ouvrir la console Bageo"),
         Lang::De => ("de", "Bageo-Konsole öffnen"),
         Lang::Pt => ("pt-BR", "Abrir o console do Bageo"),
-        Lang::En => ("en", "Open Bageo Console"),
+        Lang::En | Lang::Ext(_) => ("en", "Open Bageo Console"),
     };
     let tone = if status.is_success() { "" } else { " warn" };
     let esc = html_escape;
@@ -3440,11 +3468,11 @@ async fn quick_action_run(
     }
     if method != axum::http::Method::POST {
         let w = crate::control::words::words(lang);
-        let p = crate::locale::phrases(lang);
+        let p = crate::locale::words(lang);
         let name = q.name.as_deref().unwrap_or("").trim();
         let detail = match op {
             "confirm_task" | "ignore_task" => {
-                let label = if op == "confirm_task" { p.ap_confirm } else { p.ap_decline };
+                let label = if op == "confirm_task" { &p.ap_confirm } else { &p.ap_decline };
                 let about = match state.task_store.get(target).await {
                     Some(t) => t.summary.lines().next().unwrap_or("").chars().take(200).collect::<String>(),
                     None => String::new(),
@@ -3500,7 +3528,7 @@ async fn quick_action_run(
                 return reply_out(false, &crate::control::words::fmt(w.not_found, &[target]), target);
             }
             let confirm = op == "confirm_task";
-            let p = crate::locale::phrases(lang);
+            let p = crate::locale::words(lang);
             if let Some(task) = state.task_store.get(target).await {
                 if task.appointment.is_some() {
                     let console =
@@ -3520,7 +3548,7 @@ async fn quick_action_run(
                     {
                         Ok((_, msg)) => reply_out(
                             true,
-                            if confirm { p.ap_confirm } else { p.ap_decline },
+                            if confirm { &p.ap_confirm } else { &p.ap_decline },
                             &msg,
                         ),
                         Err(e) => reply_out(false, &crate::control::words::fmt(w.failed, &[""]), &format!("{e:#}")),
@@ -3542,7 +3570,7 @@ async fn quick_action_run(
             match res {
                 Ok(t) => reply_out(
                     true,
-                    if confirm { p.ap_confirm } else { p.ap_decline },
+                    if confirm { &p.ap_confirm } else { &p.ap_decline },
                     &t.summary,
                 ),
                 Err(e) => reply_out(false, &crate::control::words::fmt(w.failed, &[""]), &format!("{e:#}")),
@@ -3580,7 +3608,7 @@ async fn quick_action_run(
                 Lang::Fr => "Opération inconnue",
                 Lang::De => "Unbekannte Aktion",
                 Lang::Pt => "Operação desconhecida",
-                Lang::En => "Unknown operation",
+                Lang::En | Lang::Ext(_) => "Unknown operation",
             };
             reply_out(false, unknown, op)
         }
@@ -4920,37 +4948,42 @@ mod tests {
         assert_eq!(parse_mode_body(b""), Err("bad_request"));
     }
 
-    #[test]
-    fn interview_prompts_in_html_match_docs_files_word_for_word() {
-        let codes = ["en", "zh-TW", "zh-CN", "ja", "ko", "es", "fr", "de", "pt"];
-        let prompts_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/prompts");
-        for (const_name, prefix) in [
-            ("const INTERVIEW = {", "interview"),
-            ("const INTERVIEW_ASSISTANT = {", "interview_assistant"),
-        ] {
-            let start = UI_HTML.find(const_name).unwrap_or_else(|| panic!("{const_name} start"));
-            let after = &UI_HTML[start + const_name.len() - 1..];
-            let end = after.find("\n};").or_else(|| after.find("\r\n};")).expect("INTERVIEW end");
-            // Turn the JS object literal (trailing comma before closing brace) into JSON.
-            let body = after[..end].trim_end();
-            let json_str = format!("{}}}", body.strip_suffix(',').unwrap_or(body));
-            let map: serde_json::Map<String, Value> =
-                serde_json::from_str(&json_str).expect("INTERVIEW is valid JSON once trailing comma is stripped");
-            assert_eq!(map.len(), codes.len());
-            for code in codes {
-                let got = map
-                    .get(code)
-                    .and_then(Value::as_str)
-                    .unwrap_or_else(|| panic!("missing {code} in {const_name}"));
-                assert!(got.contains("{owner}"), "{prefix}.{code} missing {{owner}} placeholder");
-                let file = prompts_dir.join(format!("{prefix}.{code}.txt"));
-                assert!(file.is_file(), "missing {}", file.display());
-                let raw = std::fs::read_to_string(&file).expect("read interview file");
-                let expected = raw.replace("\r\n", "\n");
-                let expected = expected.trim_end_matches('\n');
-                assert_eq!(got, expected, "calls.html {prefix}[{code}] drifted from {}", file.display());
+    #[tokio::test]
+    async fn regions_api_lists_the_built_in_pack_and_wants_the_password() {
+        let root = std::env::temp_dir().join(format!("bageo-regions-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut state = quick_state(&root);
+        state.settings.calls_ui_token = "regions-test-pw".into();
+        let no_token = packs_regions(State(state.clone()), HeaderMap::new(), Query(TokenQuery { token: None })).await;
+        assert_eq!(no_token.status(), StatusCode::UNAUTHORIZED);
+        let wrong = packs_regions(State(state.clone()), HeaderMap::new(), Query(TokenQuery { token: Some("nope".into()) })).await;
+        assert_eq!(wrong.status(), StatusCode::UNAUTHORIZED);
+
+        let ok = packs_regions(State(state.clone()), HeaderMap::new(), Query(TokenQuery { token: Some("regions-test-pw".into()) })).await;
+        assert_eq!(ok.status(), StatusCode::OK);
+        let got: Value = serde_json::from_str(&body_text(ok).await).unwrap();
+        let pack = crate::packs_store::current();
+        assert_eq!(got["version"], json!(pack.version));
+        let regions = got["regions"].as_array().expect("regions is a list");
+        assert_eq!(regions.len(), pack.regions.len());
+        assert!(regions.len() > 10, "{} regions", regions.len());
+        for r in regions {
+            let code = r["code"].as_str().unwrap_or_default();
+            assert!(!code.is_empty(), "{r}");
+            assert!(r["countries"].is_array(), "{code}: countries");
+            for key in ["en", "native", "zh"] {
+                assert!(r["name"][key].as_str().is_some_and(|s| !s.is_empty()), "{code}: name.{key}");
+            }
+            assert!(r["lang"].as_str().is_some_and(|s| !s.is_empty()), "{code}: lang");
+            assert!(r["status"].as_str().is_some_and(|s| !s.is_empty()), "{code}: status");
+            for key in ["en", "zh"] {
+                assert!(r["delivery"][key].as_str().is_some_and(|s| !s.is_empty()), "{code}: delivery.{key}");
             }
         }
+        let tw = regions.iter().find(|r| r["code"] == json!("tw")).expect("the pack has tw");
+        assert!(tw["countries"].as_array().unwrap().contains(&json!("tw")));
+        assert_eq!(tw["lang"], json!(pack.region("tw").unwrap().lang));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     async fn spawn_router(state: CallsState) -> String {
@@ -5322,6 +5355,7 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/audio/{id}/vm", get(audio_vm))
         .route("/api/audio/{id}/remote", get(audio_remote))
         .route("/api/settings", get(settings_get).put(settings_put))
+        .route("/api/packs/regions", get(packs_regions))
         .route("/api/preview", get(preview))
         .route("/api/notify/test", post(notify_test))
         .route("/api/notify/send", post(notify_send))
@@ -5347,5 +5381,6 @@ pub fn router(state: CallsState) -> Router {
         .merge(crate::contacts::router())
         .merge(crate::errands::router())
         .merge(crate::backup::router())
+        .merge(crate::pack_update::router())
         .with_state(state)
 }
