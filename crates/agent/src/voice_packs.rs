@@ -368,7 +368,7 @@ fn make_packs_for(samples: &Path, out: &Path, regions: &[String]) -> anyhow::Res
         entries.push(entry);
     }
     entries.sort_by_key(Entry::id);
-    let today: u64 = chrono::Local::now().format("%Y%m%d01").to_string().parse().unwrap_or(1);
+    let today: u64 = chrono::Local::now().format("%Y%m%d01").to_string().parse().unwrap_or(1).max(builtin().version);
     let version = old.map_or(today, |i| (i.version + 1).max(today));
     let text = serde_json::to_string_pretty(&json!({"format": FORMAT, "version": version, "voices": entries}))? + "\n";
     parse_index(&text).map_err(|e| anyhow::anyhow!("the index made here is refused: {e:?}"))?;
@@ -978,7 +978,7 @@ mod tests {
     }
 
     fn index_text(entries: &[Entry]) -> String {
-        serde_json::to_string(&json!({"format": FORMAT, "version": 2026112101u64, "voices": entries})).unwrap()
+        serde_json::to_string(&json!({"format": FORMAT, "version": builtin().version + 1, "voices": entries})).unwrap()
     }
 
     /// A zip whose files are deflated (the zips Bageo writes keep recordings as they are).
@@ -1085,10 +1085,10 @@ mod tests {
     #[test]
     fn the_builtin_index_is_empty_and_valid() {
         let ix = parse_index(BUILTIN_INDEX).expect("built-in voice index");
-        assert!(ix.voices.is_empty());
+        assert_eq!(ix.voices.len(), crate::voice_lines::codes().len());
         let d = tmp();
         let v = list_json(&d.0, &d.0.join("bundled"), &[]);
-        assert_eq!((v["packs"].as_array().map(Vec::len), v["downloaded"].as_array().map(Vec::len)), (Some(0), Some(0)));
+        assert_eq!((v["packs"].as_array().map(Vec::len), v["downloaded"].as_array().map(Vec::len)), (Some(ix.voices.len()), Some(0)));
     }
 
     #[test]
@@ -1531,14 +1531,14 @@ mod tests {
         let bad = release(index_text(std::slice::from_ref(&e)), vec![(e.file.clone(), changed)]);
         assert_eq!(run(&bad.source(), &d.0, "fr").await, Outcome::BadPack);
         assert_eq!(run(&bad.source(), &d.0, "ko").await, Outcome::NotListed);
-        assert!(!kept_index(&d.0) && known_index(&d.0).voices.is_empty(), "a list nothing was installed from is not kept");
+        assert!(!kept_index(&d.0) && known_index(&d.0) == *builtin(), "a list nothing was installed from is not kept");
         let good = release(index_text(std::slice::from_ref(&e)), vec![(e.file.clone(), zip)]);
         assert_eq!(run(&good.source(), &d.0, "fr").await, Outcome::Installed);
         assert!(kept_index(&d.0));
-        assert_eq!((known_index(&d.0).version, known_index(&d.0).voices.len()), (2026112101, 1));
+        assert_eq!((known_index(&d.0).version, known_index(&d.0).voices.len()), (builtin().version + 1, 1));
         // "Restore the built-in version" of the local data puts the built-in list back.
         assert_eq!(crate::pack_update::restore_all(&d.0), "restored");
-        assert!(!kept_index(&d.0) && known_index(&d.0).voices.is_empty());
+        assert!(!kept_index(&d.0) && known_index(&d.0) == *builtin());
         assert!(d.0.join("fr").is_dir(), "the downloaded voices stay");
         restore_builtin_index(&d.0).unwrap();
     }
