@@ -87,6 +87,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - `POST /calls/api/errands`、`…/{id}/cancel`、`…/{id}/retry`、`…/{id}/say`；
 - `POST /calls/api/backup/run`、`…/export`、`…/file-ticket`、`…/restore`、`…/delete`、`…/unlock`、`…/apply`、`…/discard`、`…/open-folder`（`POST /calls/api/backup/import` 则改成要带 `X-Filename` 标头）。
 - `POST /calls/api/packs/update` 和 `POST /calls/api/packs/restore`。
+- `POST /calls/api/voices/download` 和 `POST /calls/api/voices/delete`（`POST /calls/api/voices/import` 改为用 `application/zip` 发送 zip 文件）。
 
 允许空请求体的路由，空请求体视为 `{}`。这是第二道防线；第一道是控制台对局域网开放时一定要设置密码（`CALLS_UI_TOKEN`）。
 
@@ -313,6 +314,7 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 | `lang` | `ja`、`zh-TW`… |
 
 内置的 30 个声音在 9 种语言下都已预先录好试听和拒接语音（`assets/voices/` 里共 1,080 段），所以试听不用连接 Gemini。只有 `regen=true` 或没有预录的声音才会开一次连接。
+Bageo 没有自带的语言和地区，可以另外下载语音包（见[语音下载](#语音下载)）。
 
 错误：400 `unknown_voice`／`unknown_background`、404 `background_missing`（背景音文件没加载）、502 `preview_failed`。
 
@@ -705,9 +707,9 @@ Content-Type: application/json
 
 | 方法与路径 | 内容 |
 |---|---|
-| `GET /calls/api/packs/update` | 当前使用的数据：`{version, date, builtin, regions, locales: {version, date, builtin, languages}, running, last_check}`。`last_check` 另有 `pack_result` 和 `locales_result`。 |
+| `GET /calls/api/packs/update` | 当前使用的数据：`{version, date, builtin, regions, locales: {version, date, builtin, languages}, voice_list_kept, running, last_check}`。`last_check` 另有 `pack_result` 和 `locales_result`。 |
 | `POST /calls/api/packs/update` | Body `{}`。马上检查有没有新版，有就安装：字段同 `GET`，另加 `result`（任一个文件更新了就是 `updated`）。 |
-| `POST /calls/api/packs/restore` | Body `{}`。删掉下载的数据和翻译，改回 Bageo 内置的版本：字段同上，`result` 是 `restored`（正在检查时是 `busy`；任一个文件删不掉时是 `io`，删不掉的那个继续使用）。 |
+| `POST /calls/api/packs/restore` | Body `{}`。删掉下载的数据和翻译，以及下载的语音列表（`voice_list_kept`），改回 Bageo 内置的版本：字段同上，`result` 是 `restored`（正在检查时是 `busy`；有文件删不掉时是 `io`，删不掉的那个继续使用）。 |
 
 细节：
 
@@ -715,6 +717,27 @@ Content-Type: application/json
 - `result`：`up_to_date`、`updated`（之后的电话都用新的；正在进行的通话照用旧的）、`offline`（没有网络、超时或 GitHub 没响应，请稍后再试）、`bad_pack`（下载的文件被拒收，什么都没改）、`update_bageo`（这份数据需要更新版的 Bageo）、`restart`（这次启动已经装了 8 次更新，请先重新打开 Bageo）、`io`（无法保存）或 `busy`（已经有检查在跑）。
 - Bageo 怎么检查：从 `https://github.com/h4lo-void/bageo-packs/releases/latest/download/` 读 `bageo-pack-index.json`（最多 16 KiB），再下载同一个 Release 里它指定的文件（只能是纯文件名，最多 4 MiB）。每个网址，包括最多 5 次跳转的每一跳，都必须是 `https`、标准端口、不带用户名，主机只能是 `github.com`（限该数据库的 Release）、`objects.githubusercontent.com` 或 `release-assets.githubusercontent.com`。大小和 SHA-256 要跟 index 一致，index 的 `format` 与 `min_bageo` 要符合这版 Bageo，版本要比现在用的新。接着跟内置版本一样做完整检查，再一次改名到位。下载来源不能用设置修改。
 - 下载的版本保存在数据文件夹的 `packs/bageo-pack.json`，Bageo 每次启动都会再检查一次；没下载完的临时文件会删掉。
+
+## 语音下载
+
+四个路由用来列出、下载、删除和导入语音包：一种语言（或某个地区的这种语言）预先录好的试听句和拒接语音。对应控制台设置“更多选项”里的“语音下载”，以及控制台用到还没下载的语音时出现的提示卡。只有调用 `POST …/voices/download` 时 Bageo 才会联网，直接连到 GitHub 上 `h4lo-void/bageo-packs` 最新的 Release。没有语音包也不会出问题：这种语言第一次试听时照旧请 Gemini 现场生成。这些路由遵循控制台的密码规则，`download` 和 `delete` 也要遵循上面的 `Content-Type: application/json` 规则。
+
+| 方法与路径 | 内容 |
+|---|---|
+| `GET /calls/api/voices` | `{version, packs, downloaded, dismissed, running}`：`packs` 是可以下载的（`{id, lang, region, bytes, downloaded, bundled}`），`downloaded` 是这台电脑上已有的（`{id, lang, region, bytes}`），`dismissed` 是设置 `dismissed_pack_prompts`。还没有发布任何语音包时，列表都是空的。 |
+| `POST /calls/api/voices/download` | Body `{"id": "ja"}` 或 `{"id": "es-latam"}`。下载并安装这一包：字段同上，另加 `result`。 |
+| `POST /calls/api/voices/delete` | Body `{"id": "ja"}`。删掉下载的语音包：`result` 是 `removed`；没有这一包时是 `not_listed`；删不掉时是 `io`，这时什么都不会改。 |
+| `POST /calls/api/voices/import` | Body 就是 zip 文件本身，`Content-Type: application/zip`。给没有网络的电脑用：文件的大小和 SHA-256 要跟列表里某一包相同，否则返回 `not_listed`。 |
+
+细节：
+
+- `id` 是 `<语言>` 或 `<语言>-<地区>`（`zh-tw-tw`、`es-latam`），地区代号跟当地数据一样。Bageo 返回一律小写，接收时大小写都可以；Windows 的设备名称（`con`、`nul`、`com1`…）不能当语言或地区。
+- `result`：`installed`（之后的试听和拒接语音都用它）、`removed`、`not_listed`、`offline`（请稍后再试）、`bad_pack`（被拒收，什么都没改）、`update_bageo`、`io` 或 `busy`（已经有下载、导入或删除在跑）。
+- 一包是 `voices-<id>.zip`，里面只能有列表列出的每个声音的 `<声音名>_<0|1|2|reject>.wav`（30 个声音就是 120 个文件）。列表是同一个 Release 里的 `bageo-voices-index.json`：`{format, version, voices: [{lang, region?, file, bytes, sha256, voices}]}`。Bageo 内置一份，下载时拿到更新的会留下来用。
+- Bageo 怎么检查：网址、跳转和 https 的规则跟“当地数据”一样；列表最多 256 KiB，一包最多 16 MiB，大小和 SHA-256 要跟列表一致。zip 用备份功能的 zip 读取程序打开：文件要正好是列表说的那些、文件名完全相同，每个最多 512 KiB、不能像压缩炸弹那样压得太紧、要是 Bageo 能播放的 WAV，试听句每段最长 13 秒、拒接语音最长 16 秒。先解压到临时文件夹，再一次改名成数据文件夹里的 `voices/<id>/`；要换掉的旧语音包在新的放不进去时会放回原位（崩溃后下次启动也会放回），其他没做完的东西下次启动时删掉。列表要等至少一包装好才会保留。
+- 装好语音包时，会清掉这种语言、这几个声音以前请 Gemini 做的试听，之后改播语音包的录音。删除语音包不会动这些试听。
+- 试听从哪里来：这台电脑以前做过的，其次是这个地区的语音包，再次是这种语言的语音包或 Bageo 自带的（`assets/voices/<语言>`，旧版安装留下的也照用），都没有才请 Gemini 生成。地区按所在国家，没设置就用这种语言的主要国家。
+- 设置 `dismissed_pack_prompts`（`PUT /calls/api/settings`）列出主人按过“先不用”的语音包，提示卡不会再问。
 
 ## 手机与健康状态
 

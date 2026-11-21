@@ -789,6 +789,12 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
     <span class="grow" id="netBannerText"></span>
     <button type="button" class="btn sm" id="netRetry" data-i18n="retry"></button>
   </div>
+  <!-- Offers the voices of a language this console uses (never shown while nothing can be downloaded) -->
+  <div class="banner info" id="vpCard" hidden role="status">
+    <span class="grow"><b id="vpCardAsk"></b> <span id="vpCardHelp"></span><span class="help" id="vpCardEn" style="display:block"></span></span>
+    <button type="button" class="btn sm" id="vpCardGet" data-i18n="vp_get"></button>
+    <button type="button" class="btn sm ghost" id="vpCardLater" data-i18n="vp_not_now"></button>
+  </div>
 
   <!-- ======================= Calls ======================= -->
   <section id="view-calls" data-view="calls">
@@ -1137,6 +1143,10 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
               <button type="button" class="btn" id="btnPvVoice" data-i18n="pv_voice"></button>
             </div>
             <div class="help" data-i18n="f_voice_h"></div></div>
+          <div class="pv" id="vpVoiceBox" hidden>
+            <button type="button" class="btn sm ghost" id="btnVpVoice"></button>
+            <span class="pv-status" id="vpVoiceStatus" aria-live="polite"></span>
+          </div>
           <div class="pv" id="pvVoiceBox" hidden>
             <span class="pv-status" id="pvVoiceStatus" aria-live="polite"></span>
             <audio id="pvVoiceAudio" controls preload="none" hidden></audio>
@@ -1160,6 +1170,14 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
                 <span class="pv-status" id="pkStatus" aria-live="polite"></span>
               </div>
               <div class="help" data-i18n="pk_h"></div></div>
+            <div class="field" id="vpField" hidden><div class="lbl" data-i18n="vp_title"></div>
+              <div id="vpRows"></div>
+              <div class="pv">
+                <button type="button" class="btn sm" id="btnVpImport" data-i18n="vp_import"></button>
+                <input type="file" id="vpFile" accept=".zip,application/zip" hidden />
+                <span class="pv-status" id="vpStatus" aria-live="polite"></span>
+              </div>
+              <div class="help" data-i18n="vp_h"></div></div>
             <div class="field" id="simLangField"><div class="lbl" id="lbl-simlang" data-i18n="f_simlang"></div>
               <div class="rows" id="simLangRows" data-k="sim_languages" data-t="simlangs" role="group" aria-labelledby="lbl-simlang"></div>
               <div class="pv" style="margin-top:0">
@@ -6021,6 +6039,7 @@ function populate() {
   bkLoad();
   loadPackRegions();
   pkLoad();
+  vpLoad();
   // The environment's bot can take commands only when it is set up.
   $("tgEnvCtl").hidden = !(S.telegram_bot_token_set && String(S.telegram_chat_id || "").trim());
 }
@@ -6043,6 +6062,7 @@ function relabelSettings(skipRows) {
   bkRender();
   renderHomeCountry();
   pkRender();
+  vpRender();
   renderAboutHints();
   tsRender(false);
   updateDirty();
@@ -6769,13 +6789,14 @@ async function loadPackRegions() {
   renderHomeCountry();
   renderAboutHints();
   tsRender(false);
+  vpRender();
 }
 // ----- the local data pack in use, "Check for updates" and going back to the built-in one
 let pkInfo = null; // GET packs/update
 let pkMsg = ""; // the key of the last result shown
 function pkRender() {
   $("pkVersion").textContent = pkInfo ? t(pkInfo.builtin ? "pk_ver_builtin" : "pk_ver_updated", { date: pkInfo.date || String(pkInfo.version || "") }) : "";
-  $("btnPkRestore").hidden = !pkInfo || !!pkInfo.builtin;
+  $("btnPkRestore").hidden = !pkInfo || (!!pkInfo.builtin && !pkInfo.voice_list_kept);
   $("pkStatus").textContent = pkMsg ? t(pkMsg) : "";
 }
 async function pkLoad() {
@@ -6804,6 +6825,152 @@ async function pkRun(btn, path, working) {
 }
 $("btnPkCheck").addEventListener("click", () => pkRun($("btnPkCheck"), "/packs/update", "pk_checking"));
 $("btnPkRestore").addEventListener("click", () => pkRun($("btnPkRestore"), "/packs/restore", "pk_restoring"));
+// ----- voice packs: downloaded when needed, the card that offers one, "Voice downloads"
+let vpInfo = null; // GET voices
+let vpMsg = ""; // the key of the work going on
+const vpSize = (b) => `${Math.max(1, Math.round((Number(b) || 0) / 1e6))} MB`;
+// A text in one language (English when that language has none).
+function tIn(l, key, vars) {
+  let s = (I18N[l] && I18N[l][key]) ?? I18N.en[key] ?? key;
+  return vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : s;
+}
+// A pack's name in a language: "繁體中文（台灣）", "Spanish (Latin America)".
+function vpName(p, inLang) {
+  const loc = LANG_INTL[inLang] || inLang;
+  let ln = "";
+  try { ln = new Intl.DisplayNames([loc], { type: "language" }).of(LANG_INTL[p.lang] || p.lang) || ""; } catch (_) { ln = ""; }
+  if (!ln || ln === p.lang) ln = (inLang === "en" ? LANG_EN[p.lang] : LANG_NAMES[p.lang]) || p.lang;
+  if (!p.region) return ln;
+  const reg = (packRegions || []).find((r) => r.code === p.region);
+  let rn = reg && Array.isArray(reg.countries) && reg.countries.length === 1 ? countryNameIn(loc, reg.countries[0]) : "";
+  if (!rn && reg && reg.name && typeof reg.name === "object") rn = reg.name[inLang] || reg.name.en || reg.name.native || "";
+  return tIn(inLang, "vp_name", { lang: ln, region: rn || String(p.region).toUpperCase() });
+}
+// Regions this console is used in: the home country, the phones' SIMs, the browser's languages.
+function vpRegions() {
+  const out = [];
+  for (const c of [$("f-home_country").value, ...connectedCountries(), ...browserCountries()]) {
+    const r = regionOfCountry(String(c || "").toLowerCase());
+    if (r && !out.includes(r.code)) out.push(r.code);
+  }
+  return out;
+}
+// The pack worth getting for a language here (the region's, else the language's own);
+// null when none is listed or one is here already.
+function vpPackFor(l) {
+  const packs = ((vpInfo && vpInfo.packs) || []).filter((p) => p.lang === l);
+  if (!packs.length) return null;
+  const regions = vpRegions();
+  const usable = (p) => !p.region || regions.includes(p.region);
+  if (packs.some((p) => usable(p) && (p.downloaded || p.bundled))) {
+    // Only a region's own pack is still worth offering then.
+    const own = regions.map((r) => packs.find((p) => p.region === r)).find(Boolean);
+    return own && !own.downloaded ? own : null;
+  }
+  return regions.map((r) => packs.find((p) => p.region === r)).find(Boolean) || packs.find((p) => !p.region) || null;
+}
+// The pack the card offers: for the console's language, the language setting or a SIM's
+// language, unless "Not now" was pressed for it.
+function vpOffer() {
+  const langs = [];
+  const add = (l) => { const m = matchLang(l); if (m && !langs.includes(m)) langs.push(m); };
+  add(lang);
+  add(S && S.language);
+  Object.values((S && S.sim_languages) || {}).forEach(add);
+  add(browserLang());
+  const dismissed = (S && S.dismissed_pack_prompts) || [];
+  return langs.map(vpPackFor).find((p) => p && !dismissed.includes(p.id)) || null;
+}
+function vpRender() {
+  const has = !!vpInfo && (((vpInfo.packs || []).length > 0) || ((vpInfo.downloaded || []).length > 0));
+  $("vpField").hidden = !has;
+  const rows = $("vpRows");
+  rows.textContent = "";
+  for (const d of (vpInfo && vpInfo.downloaded) || []) {
+    const row = document.createElement("div");
+    row.className = "pv";
+    const name = document.createElement("span");
+    name.className = "pv-status";
+    name.textContent = `${vpName(d, lang)} · ${vpSize(d.bytes)}`;
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "btn sm ghost";
+    del.textContent = t("vp_delete");
+    del.addEventListener("click", () => vpRun("/voices/delete", jsonBody("POST", { id: d.id }), "", del));
+    row.append(name, del);
+    rows.append(row);
+  }
+  if (has && !rows.children.length) rows.textContent = t("vp_none");
+  const working = vpMsg ? t(vpMsg) : "";
+  $("vpStatus").textContent = working;
+  $("vpVoiceStatus").textContent = working;
+  const offer = vpOffer();
+  $("vpCard").hidden = !offer;
+  if (offer) {
+    const pl = LANGS.includes(offer.lang) ? offer.lang : "en";
+    const vars = (l) => ({ name: vpName(offer, l), size: vpSize(offer.bytes) });
+    $("vpCardAsk").textContent = tIn(pl, "vp_ask", vars(pl));
+    $("vpCardHelp").textContent = tIn(pl, "vp_ask_h");
+    $("vpCardAsk").lang = $("vpCardHelp").lang = pl;
+    $("vpCardEn").hidden = pl === "en";
+    $("vpCardEn").textContent = pl === "en" ? "" : `${tIn("en", "vp_ask", vars("en"))} ${tIn("en", "vp_ask_h")}`;
+    $("vpCard").dataset.id = offer.id;
+  }
+  const pick = vpPackFor(pvLang() || lang);
+  $("vpVoiceBox").hidden = !pick;
+  if (pick) {
+    $("btnVpVoice").textContent = t("vp_get_voice", { name: vpName(pick, lang), size: vpSize(pick.bytes) });
+    $("btnVpVoice").dataset.id = pick.id;
+  }
+}
+async function vpLoad() {
+  try { vpInfo = await api("/voices"); } catch (_) { vpInfo = null; }
+  vpRender();
+}
+const vpButtons = () => [$("vpCardGet"), $("vpCardLater"), $("btnVpVoice"), $("btnVpImport"), ...$("vpRows").querySelectorAll("button")];
+async function vpRun(path, opts, working, btn) {
+  vpButtons().forEach((b) => { b.disabled = true; });
+  vpMsg = working;
+  vpRender();
+  try {
+    const d = await api(path, opts);
+    vpInfo = d;
+    const key = "vp_r_" + d.result;
+    const ok = d.result === "installed" || d.result === "removed";
+    toast(t(I18N.en[key] != null ? key : "vp_r_bad_pack"), !ok);
+  } catch (e) {
+    if (e.status !== 401) toast(e.message, true);
+  } finally {
+    vpMsg = "";
+    vpRender();
+    vpButtons().forEach((b) => { b.disabled = false; });
+    if (btn && btn.isConnected) btn.focus();
+  }
+}
+const vpDownload = (id, btn) => vpRun("/voices/download", jsonBody("POST", { id }), "vp_working", btn);
+$("vpCardGet").addEventListener("click", () => vpDownload($("vpCard").dataset.id, null));
+$("btnVpVoice").addEventListener("click", () => vpDownload($("btnVpVoice").dataset.id, $("btnVpVoice")));
+// "Not now": that pack is not offered again (saved in the settings).
+$("vpCardLater").addEventListener("click", async () => {
+  const id = $("vpCard").dataset.id;
+  const list = [...((S && S.dismissed_pack_prompts) || [])];
+  if (id && !list.includes(id)) list.push(id);
+  $("vpCard").hidden = true;
+  try {
+    const d = await api("/settings", jsonBody("PUT", { dismissed_pack_prompts: list }));
+    if (S) S.dismissed_pack_prompts = (d.settings && d.settings.dismissed_pack_prompts) || list;
+  } catch (e) {
+    if (e.status !== 401) toast(t("save_failed", { msg: e.message }), true);
+  }
+  vpRender();
+});
+$("btnVpImport").addEventListener("click", () => $("vpFile").click());
+$("vpFile").addEventListener("change", () => {
+  const file = $("vpFile").files[0];
+  $("vpFile").value = "";
+  if (file) vpRun("/voices/import", { method: "POST", headers: { "Content-Type": "application/zip" }, body: file }, "vp_importing", $("btnVpImport"));
+});
+$("f-language").addEventListener("change", vpRender);
 const regionOfCountry = (cc) => (cc && packRegions && packRegions.find((r) => Array.isArray(r.countries) && r.countries.includes(cc))) || null;
 const regionNamers = {};
 // A country's name in one language ("" when the browser has none for it).

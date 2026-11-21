@@ -3,9 +3,10 @@
 
 //! Preview on the settings page: a few phone lines in a Gemini voice with the
 //! chosen background sound under them — what a caller hears. A voice's lines come from
-//! the samples that come with the program (every voice in every language, recorded
-//! with `agent make-voice-samples`), else from one short Live session the first
-//! time, kept on disk after that.
+//! what was made here before, else a downloaded voice pack for the region, else
+//! one for the language or the samples that come with the program (recorded with
+//! `agent make-voice-samples`; see [crate::voice_packs]), else from one short
+//! Live session the first time, kept on disk after that.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -77,6 +78,9 @@ pub struct VoicePreviews {
     /// Samples that come with the program: `<lang>/<Voice>_<0|1|2|reject>.wav`
     /// (IMA ADPCM, see [`make_bundle`]). Used before anything is asked of Gemini.
     bundled: PathBuf,
+    /// Downloaded voice packs, `<lang>[-<region>]/<Voice>_<part>.wav`
+    /// ([crate::voice_packs]); looked at before the bundled samples.
+    packs: Option<PathBuf>,
     /// One Live session at a time.
     gen_lock: tokio::sync::Mutex<()>,
 }
@@ -111,8 +115,20 @@ impl VoicePreviews {
         Self {
             dir,
             bundled,
+            packs: None,
             gen_lock: tokio::sync::Mutex::new(()),
         }
+    }
+
+    /// Also read the voice packs downloaded into `dir`.
+    pub fn with_packs(mut self, dir: PathBuf) -> Self {
+        self.packs = Some(dir);
+        self
+    }
+
+    /// Where the previews made with Gemini are kept (`<model>/<lang>/<Voice>_<part>.pcm`).
+    pub(crate) fn cache_dir(&self) -> &Path {
+        &self.dir
     }
 
     fn paths(&self, model: &str, voice: &str, lang: Lang) -> Vec<PathBuf> {
@@ -123,12 +139,24 @@ impl VoicePreviews {
             .collect()
     }
 
-    /// A bundled sample (`part` = line number or `reject`) as s16le, when there is
-    /// one recorded at `sample_rate`.
+    /// A recorded sample (`part` = line number or `reject`) as s16le, when there is
+    /// one recorded at `sample_rate`: from the pack of the language's region
+    /// ([crate::voice_packs::region_for]), the language's pack or the bundled ones.
     fn bundled_clip(&self, lang: Lang, voice: &str, part: &str, sample_rate: u32) -> Option<Vec<u8>> {
-        let path = self.bundled.join(lang.base().code()).join(format!("{}_{part}.wav", file_voice(voice)));
-        let (rate, pcm) = crate::adpcm::decode_wav(&std::fs::read(path).ok()?).ok()?;
-        (rate == sample_rate && pcm.len() >= 3_200).then_some(pcm)
+        self.clip_in(lang, crate::voice_packs::region_for(lang), voice, part, sample_rate)
+    }
+
+    /// [Self::bundled_clip] for `region`: the region's pack, then the language's
+    /// pack, then the bundled samples (a language without its own: English);
+    /// the first that has the clip.
+    pub(crate) fn clip_in(&self, lang: Lang, region: Option<&str>, voice: &str, part: &str, sample_rate: u32) -> Option<Vec<u8>> {
+        let name = format!("{}_{part}.wav", file_voice(voice));
+        let mut dirs = self.packs.as_deref().map(|p| crate::voice_packs::pack_dirs(p, lang.code(), region)).unwrap_or_default();
+        dirs.push(self.bundled.join(lang.base().code()));
+        dirs.into_iter().find_map(|d| {
+            let (rate, pcm) = crate::adpcm::decode_wav(&std::fs::read(d.join(&name)).ok()?).ok()?;
+            (rate == sample_rate && pcm.len() >= 3_200).then_some(pcm)
+        })
     }
 
     fn bundled_lines(&self, lang: Lang, voice: &str, sample_rate: u32) -> Option<Vec<Vec<u8>>> {
@@ -137,9 +165,14 @@ impl VoicePreviews {
             .collect()
     }
 
+    /// The voice's lines on disk: made here before, else recorded ones ([Self::bundled_clip]).
+    pub(crate) fn disk_lines(&self, model: &str, voice: &str, lang: Lang, sample_rate: u32) -> Option<Vec<Vec<u8>>> {
+        read_lines(&self.paths(model, voice, lang)).or_else(|| self.bundled_lines(lang, voice, sample_rate))
+    }
+
     /// The voice's lines in `lang` (s16le at `sample_rate`): made here before, else
-    /// the bundled ones, else a fresh Live session (`regen` forces one). `voice`
-    /// must be [`valid_voice`].
+    /// a voice pack or the bundled ones, else a fresh Live session (`regen` forces
+    /// one). `voice` must be [`valid_voice`].
     #[allow(clippy::too_many_arguments)]
     pub async fn lines(
         &self,
@@ -154,7 +187,7 @@ impl VoicePreviews {
         anyhow::ensure!(valid_voice(voice), "unknown voice {voice}");
         let paths = self.paths(model, voice, lang);
         if !regen {
-            if let Some(lines) = read_lines(&paths).or_else(|| self.bundled_lines(lang, voice, sample_rate)) {
+            if let Some(lines) = self.disk_lines(model, voice, lang, sample_rate) {
                 return Ok(lines);
             }
         }
@@ -193,7 +226,7 @@ impl VoicePreviews {
     }
 
     /// The blocked-number announcement in `voice` and `lang`: made here before, else
-    /// the bundled one. The call path only ever reads this — it never calls Gemini.
+    /// a voice pack's or the bundled one. The call path only ever reads this — it never calls Gemini.
     pub fn cached_reject_clip(&self, model: &str, voice: &str, lang: Lang, sample_rate: u32) -> Option<Vec<u8>> {
         std::fs::read(self.reject_path(model, voice, lang))
             .ok()
@@ -600,6 +633,50 @@ mod tests {
         assert!(p.bundled_lines(Lang::Ja, "Kore", 8_000).is_none());
         assert!(p.cached_reject_clip("gemini-3.8-live", "Kore", Lang::Ja, 16_000).is_some());
         assert!(p.cached_reject_clip("gemini-3.8-live", "Kore", Lang::ZhTw, 16_000).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn samples_are_looked_for_in_the_cache_region_pack_language_pack_then_bundled() {
+        let dir = std::env::temp_dir().join(format!("vp-order-{}", uuid::Uuid::new_v4()));
+        let (packs, bundled) = (dir.join("packs"), dir.join("bundled"));
+        let p = VoicePreviews::new(dir.join("cache"), bundled.clone()).with_packs(packs.clone());
+        let tone = |n: i32| -> Vec<u8> { (0..n).flat_map(|i| (((i % 40) - 20) as i16 * 500).to_le_bytes()).collect() };
+        // Each place holds recordings of its own length, so the test can tell where one came from.
+        let put = |d: &Path, n: i32| -> usize {
+            std::fs::create_dir_all(d).unwrap();
+            let wav = crate::adpcm::encode_wav(&tone(n), 16_000);
+            for part in ["0", "1", "2", "reject"] {
+                std::fs::write(d.join(format!("Kore_{part}.wav")), &wav).unwrap();
+            }
+            crate::adpcm::decode_wav(&wav).unwrap().1.len()
+        };
+        let len = |lang: Lang, region: &str| p.clip_in(lang, Some(region), "Kore", "1", 16_000).map(|c| c.len());
+        for (lang, region) in [(Lang::ZhTw, "tw"), (Lang::En, "us"), (Lang::Ja, "jp"), (Lang::Es, "latam")] {
+            // Nothing recorded: the preview is made by Gemini.
+            assert_eq!(len(lang, region), None, "{lang:?}");
+            let b = put(&bundled.join(lang.code()), 4_000);
+            assert_eq!(len(lang, region), Some(b), "{lang:?} bundled");
+            // Pack folders are lowercase (voice_packs::Entry::id).
+            let l = put(&packs.join(lang.code().to_ascii_lowercase()), 5_000);
+            assert_eq!(len(lang, region), Some(l), "{lang:?} language pack");
+            let r = put(&packs.join(format!("{}-{region}", lang.code()).to_ascii_lowercase()), 6_000);
+            assert_eq!(len(lang, region), Some(r), "{lang:?} region pack");
+            // Another region's pack is not this region's.
+            assert_eq!(len(lang, "zz"), Some(l), "{lang:?} other region");
+            assert!(b != l && l != r);
+        }
+        // Made here before comes first.
+        let made = vec![1u8; 9_000];
+        for path in p.paths("gemini-3.8-live", "Kore", Lang::Ja) {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, &made).unwrap();
+        }
+        assert_eq!(p.disk_lines("gemini-3.8-live", "Kore", Lang::Ja, 16_000).unwrap()[0].len(), 9_000);
+        // Without a packs folder (older installs, tests): the bundled samples, as before.
+        let plain = VoicePreviews::new(dir.join("cache2"), bundled.clone());
+        let bundled_len = crate::adpcm::decode_wav(&std::fs::read(bundled.join("ja").join("Kore_1.wav")).unwrap()).unwrap().1.len();
+        assert_eq!(plain.clip_in(Lang::Ja, Some("jp"), "Kore", "1", 16_000).map(|c| c.len()), Some(bundled_len));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

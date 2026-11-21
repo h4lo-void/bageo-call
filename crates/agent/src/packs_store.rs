@@ -214,14 +214,14 @@ thread_local! {
 
 /// Where Bageo keeps its data (CALLS_DATA_DIR, as the rest of the agent).
 #[cfg(not(test))]
-fn data_dir() -> PathBuf {
+pub(crate) fn data_dir() -> PathBuf {
     let default_dir = if Path::new("/data/calls").is_dir() { "/data/calls" } else { "data/calls" };
     PathBuf::from(crate::config::env_or("CALLS_DATA_DIR", default_dir))
 }
 
 /// Tests keep their files in a folder of their own, never in the working directory.
 #[cfg(test)]
-fn data_dir() -> PathBuf {
+pub(crate) fn data_dir() -> PathBuf {
     thread_local! {
         static DIR: PathBuf = std::env::temp_dir().join(format!("bageo-agent-test-{}", uuid::Uuid::new_v4()));
     }
