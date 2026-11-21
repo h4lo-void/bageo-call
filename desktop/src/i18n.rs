@@ -32,6 +32,16 @@ pub fn is_valid_ext_code(code: &str) -> bool {
         && !base().contains_key(code)
 }
 
+/// Extracts the string map from `/calls/i18n/desktop/<code>.json` (`{"schema":1,"lang":"...","strings":{...}}`).
+pub fn parse_desktop_payload(body: &serde_json::Value) -> HashMap<String, String> {
+    let Some(obj) = body.get("strings").and_then(serde_json::Value::as_object) else {
+        return HashMap::new();
+    };
+    obj.iter()
+        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+        .collect()
+}
+
 /// Replaces the currently loaded extra language strings (if `code` is valid and non-core).
 pub fn set_extra(code: &str, strings: HashMap<String, String>) {
     if !is_valid_ext_code(code) {
@@ -203,6 +213,15 @@ mod tests {
         assert_eq!(t("ja", "quit"), base()["ja"]["quit"]);
         // A key the extra language lacks falls back to English.
         assert_eq!(t("it", "lang_unreviewed"), t("en", "lang_unreviewed"));
+        let payload = serde_json::json!({
+            "schema": 1,
+            "lang": "it",
+            "strings": { "h_ok": "Tutto pronto", "quit": "Esci" }
+        });
+        let parsed = parse_desktop_payload(&payload);
+        assert_eq!(parsed.get("h_ok").map(String::as_str), Some("Tutto pronto"));
+        assert_eq!(parsed.get("quit").map(String::as_str), Some("Esci"));
+        assert!(!parsed.contains_key("lang"));
         clear_extra();
     }
 

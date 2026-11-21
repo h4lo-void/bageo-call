@@ -6526,6 +6526,120 @@
     "who": "the owner",
     "placeholders": []
   },
+  "vp_ask": {
+    "where": "the voice downloads section. English: Download the {name} voices? ({size})",
+    "who": "the owner",
+    "placeholders": [
+      "{name}",
+      "{size}"
+    ]
+  },
+  "vp_ask_h": {
+    "where": "the voice downloads section. English: Downloaded straight from GitHub to this computer, never through us.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "vp_delete": {
+    "where": "the voice downloads section. English: Delete",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "vp_get": {
+    "where": "the voice downloads section. English: Download",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "vp_get_voice": {
+    "where": "the voice downloads section. English: Download {name} voices ({size})",
+    "who": "the owner",
+    "placeholders": [
+      "{name}",
+      "{size}"
+    ]
+  },
+  "vp_h": {
+    "where": "the voice downloads section. English: No internet? Import a voice file you downloaded from GitHub.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "vp_import": {
+    "where": "the voice downloads section. English: Import a file",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "vp_importing": {
+    "where": "the voice downloads section. English: Importing…",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "vp_name": {
+    "where": "the voice downloads section. English: {lang} ({region})",
+    "who": "the owner",
+    "placeholders": [
+      "{lang}",
+      "{region}"
+    ]
+  },
+  "vp_none": {
+    "where": "the voice downloads section. English: No voices downloaded yet",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "vp_not_now": {
+    "where": "the voice downloads section. English: Not now",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "vp_r_bad_pack": {
+    "where": "the voice downloads section. English: Something is wrong with this file, so it wasn't used.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "vp_r_busy": {
+    "where": "the voice downloads section. English: Still working on it. Try again in a moment.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "vp_r_installed": {
+    "where": "the voice downloads section. English: Downloaded. Previews use it now.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "vp_r_io": {
+    "where": "the voice downloads section. English: Can't save it. Check there is free disk space.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "vp_r_not_listed": {
+    "where": "the voice downloads section. English: This isn't a voice file Bageo knows.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "vp_r_offline": {
+    "where": "the voice downloads section. English: Can't connect. Try again later.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "vp_r_removed": {
+    "where": "the voice downloads section. English: Deleted.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "vp_r_update_bageo": {
+    "where": "the voice downloads section. English: Update Bageo first.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "vp_title": {
+    "where": "the voice downloads section. English: Voice downloads",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "vp_working": {
+    "where": "the voice downloads section. English: Downloading…",
+    "who": "the owner",
+    "placeholders": []
+  },
   "who_ai": {
     "where": "a label or sentence in the console. English: AI",
     "who": "the owner",

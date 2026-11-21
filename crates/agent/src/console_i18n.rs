@@ -245,6 +245,11 @@ mod tests {
         // Every key the markup asks for is in English (the fallback of every language).
         let lost: Vec<_> = markup_keys(TEMPLATE).into_iter().filter(|k| k != "key" && !en.contains_key(k)).collect();
         assert!(lost.is_empty(), "markup keys missing from English: {lost:?}");
+        // Every English key has translator notes in static/i18n/_meta.json.
+        let meta: Map<String, Value> = serde_json::from_str(include_str!("../static/i18n/_meta.json")).expect("_meta.json");
+        let no_meta: Vec<_> = en.keys().filter(|k| !meta.contains_key(*k)).collect();
+        let stale_meta: Vec<_> = meta.keys().filter(|k| !en.contains_key(*k)).collect();
+        assert!(no_meta.is_empty() && stale_meta.is_empty(), "console _meta.json: missing {no_meta:?} extra {stale_meta:?}");
     }
 
     #[test]

@@ -186,10 +186,10 @@ pub fn export_app(ls: &LocaleSources, commit: Option<&str>) -> AppExport {
     AppExport { android, desktop, langs: langs.into_iter().collect(), issues }
 }
 
-/// Writes the export (check = false) or only compares it (check = true).
+/// Writes the Android export (check = false) or only compares it (check = true).
 /// Returns the files that differ: missing, changed, or generated earlier for
 /// a language that is no longer exported (those are removed when writing).
-pub fn apply_app_export(e: &AppExport, res: &Path, desktop: &Path, check: bool) -> io::Result<Vec<String>> {
+pub fn apply_android_export(e: &AppExport, res: &Path, check: bool) -> io::Result<Vec<String>> {
     let mut changed = Vec::new();
     let mut wanted: BTreeSet<PathBuf> = BTreeSet::new();
     for (rel, body) in &e.android {
@@ -223,6 +223,12 @@ pub fn apply_app_export(e: &AppExport, res: &Path, desktop: &Path, check: bool) 
             }
         }
     }
+    Ok(changed)
+}
+
+/// Writes the Android and desktop export (check = false) or only compares it (check = true).
+pub fn apply_app_export(e: &AppExport, res: &Path, desktop: &Path, check: bool) -> io::Result<Vec<String>> {
+    let mut changed = apply_android_export(e, res, check)?;
     if fs::read_to_string(desktop).ok().as_deref() != Some(e.desktop.as_str()) {
         changed.push(desktop.display().to_string());
         if !check {

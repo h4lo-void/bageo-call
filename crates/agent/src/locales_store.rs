@@ -57,9 +57,9 @@ const DESKTOP_EN: &str = include_str!("../../../desktop/ui/i18n.json");
 
 /// Writing direction is compiled in (never taken from a download).
 const RTL: &[&str] = &["ar", "he", "fa", "ur", "ps", "sd"];
-/// Off until the page follows writing direction (L6). Right-to-left languages
-/// stay at Notify and are left out of the console's language menu.
-pub const RTL_CONSOLE: bool = false;
+/// On once the page follows writing direction (L6): right-to-left languages
+/// with console text reach [Stage::Console] and appear in the console menu.
+pub const RTL_CONSOLE: bool = true;
 
 pub(crate) fn writing_rtl(code: &str) -> bool {
     RTL.contains(&code)
@@ -1114,10 +1114,10 @@ mod tests {
             let p = t.phrases(e).unwrap();
             assert!(!p.hello.is_empty() && p.stt == e.official(), "{e:?}");
         }
-        // Core Mandarin Chinese uses closing.rs's built-in classifier directly; other languages carry closing examples.
+        // Every shipped language's farewells pass their closing examples.
         let left_out: Vec<&str> = t.langs().filter(|(e, _)| t.phrases(*e).is_some_and(|p| p.farewells.is_empty())).map(|(e, _)| e.code()).collect();
-        assert!(left_out.len() <= 8, "{left_out:?}");
-        assert_eq!(t.ai_farewells().len(), t.langs().count() - left_out.len());
+        assert!(left_out.is_empty(), "{left_out:?}");
+        assert_eq!(t.ai_farewells().len(), t.langs().count());
         testing::use_builtin();
         assert_eq!(menu().len(), 9, "undownloaded extra languages stay out of the menu");
         let with_used = menu_for(&["it", "ar"]);
@@ -1138,9 +1138,9 @@ mod tests {
         assert_eq!(stage("it"), "console");
         // Thai has console text but no notifications in this test table: the console needs Notify first.
         assert_eq!(stage("th"), "call");
-        // Arabic has console text but writes right to left: it stays at Notify.
-        assert_eq!(stage("ar"), "notify");
-        assert_eq!(t.get(ext("ar")).unwrap().stage, Stage::Notify);
+        // Arabic has both notifications and console text, and RTL console support is enabled.
+        assert_eq!(stage("ar"), "console");
+        assert_eq!(t.get(ext("ar")).unwrap().stage, Stage::Console);
         // fa has no console text: still Call.
         assert_eq!(stage("fa"), "call");
         let it = menu.iter().find(|x| x["code"] == "it").unwrap();
@@ -1149,6 +1149,7 @@ mod tests {
         let file: Value = serde_json::from_str(&console_file("it").unwrap()).unwrap();
         assert_eq!((file["schema"].as_u64(), file["lang"].as_str()), (Some(1), Some("it")));
         assert!(file["strings"].as_object().unwrap().len() >= 1250);
+        assert!(console_file("ar").is_some());
         assert!(console_file("zz").is_none() && console_file("fa").is_none());
         testing::use_builtin();
     }

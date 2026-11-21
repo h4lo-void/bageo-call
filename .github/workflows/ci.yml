@@ -83,13 +83,13 @@ jobs:
         run: sh ./gradlew :app:assembleDebug :app:testDebugUnitTest --no-daemon
 
   i18n:
-    name: i18n (core app locales)
+    name: i18n (Android app locales)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Check the core Android locale list and no extra generated folders
+      - name: Check the 79 Android app locales, folder qualifiers and format tokens
         run: cargo test -p bageo-packs --test exported_files
 
   sms-forward:

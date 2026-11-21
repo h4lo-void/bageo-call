@@ -5938,9 +5938,10 @@ function exRender() {
   for (const r of rows) {
     const sub = exLangLocalizedName(r);
     const title = (r.native === sub ? r.native : `${r.native} · ${sub}`) + (r.reviewed === false ? ` ${t("lang_unreviewed")}` : "");
+    const inUse = !!(r.in_use || r.code === lang || ($("f-language") && $("f-language").value === r.code) || ($("f-notify_language") && $("f-notify_language").value === r.code));
     const parts = [exLevelText(r)];
     if (r.bytes > 0) parts.push(vpSize(r.bytes));
-    if (r.downloaded && r.in_use) parts.push(t("ex_in_use"));
+    if (r.downloaded && inUse) parts.push(t("ex_in_use"));
     const acts = h("div", { class: "ex-acts" });
     if (exBusy === r.code) {
       acts.append(h("button", { type: "button", class: "btn sm", disabled: true, text: t(exBusyAct === "del" ? "ex_deleting" : "ex_downloading") }));
@@ -5952,8 +5953,8 @@ function exRender() {
         acts.append(h("button", { type: "button", class: "btn sm primary", disabled: !!exBusy, text: t("ex_use"), onclick: () => exUseLang(r.code) }));
       }
       acts.append(h("button", {
-        type: "button", class: "btn sm ghost", disabled: !!exBusy || !!r.in_use,
-        title: r.in_use ? t("ex_in_use") : "", text: t("vp_delete"), onclick: () => exRun(r.code, "del")
+        type: "button", class: "btn sm ghost", disabled: !!exBusy || inUse,
+        title: inUse ? t("ex_in_use") : "", text: t("vp_delete"), onclick: () => exRun(r.code, "del")
       }));
     }
     list.append(h("div", { class: "ex-row" },
@@ -6276,10 +6277,21 @@ function tsMountExtArt(code, art) {
 }
 function tsLoadArt(code) {
   if (!code || TS_REGIONS[code] || TS_EXT_ART[code] || TS_EXT_LOADING[code] || TS_EXT_MISS[code]) return;
-  TS_EXT_LOADING[code] = fetch("/calls/extras/art/art-" + encodeURIComponent(code) + ".json", { cache: "no-store" })
-    .then((res) => {
-      if (!res.ok) { TS_EXT_MISS[code] = true; return null; }
-      return res.json();
+  const artUrl = "/calls/extras/art/art-" + encodeURIComponent(code) + ".json";
+  TS_EXT_LOADING[code] = fetch(artUrl, { cache: "no-store" })
+    .then(async (res) => {
+      if (res.ok) return res.json();
+      if (res.status === 404 && S && S.extras_auto !== false) {
+        try {
+          const dl = await api("/extras/download", jsonBody("POST", { art: code }));
+          if (dl && (dl.result === "installed" || dl.result === "up_to_date")) {
+            const res2 = await fetch(artUrl, { cache: "no-store" });
+            if (res2.ok) return res2.json();
+          }
+        } catch (_) {}
+      }
+      TS_EXT_MISS[code] = true;
+      return null;
     })
     .then((d) => {
       if (d && d.region === code && d.look && d.draw) {

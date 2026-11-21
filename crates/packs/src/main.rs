@@ -18,7 +18,7 @@ use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 
-use bageo_packs::export::{apply_app_export, export_app};
+use bageo_packs::export::{apply_android_export, apply_app_export, export_app};
 use bageo_packs::extras::EXTRAS_INDEX_FILE;
 use bageo_packs::sync::{keep_same_ok, sync_source};
 use bageo_packs::util::{now_rfc3339, valid_rfc3339_utc};
@@ -447,11 +447,12 @@ fn cmd_sync_source(args: &[String]) -> ExitCode {
 
 fn cmd_export_app(args: &[String]) -> ExitCode {
     let Some(a) = parse_args(args, &["--packs", "--android", "--desktop", "--commit"], &["--check"]) else { return usage() };
-    let (true, Some(packs), Some(res), Some(desktop)) =
-        (a.pos.is_empty(), a.opts.get("--packs"), a.opts.get("--android"), a.opts.get("--desktop"))
+    let (true, Some(packs), Some(res)) =
+        (a.pos.is_empty(), a.opts.get("--packs"), a.opts.get("--android"))
     else {
         return usage();
     };
+    let desktop = a.opts.get("--desktop");
     let commit = a.opts.get("--commit").map(String::as_str);
     if commit.is_some_and(|c| !valid_commit_arg(c)) {
         return usage();
@@ -468,7 +469,11 @@ fn cmd_export_app(args: &[String]) -> ExitCode {
         println!("left out: {i}");
     }
     let check = a.flags.contains("--check");
-    let changed = match apply_app_export(&e, Path::new(res), Path::new(desktop), check) {
+    let changed = match desktop {
+        Some(d) => apply_app_export(&e, Path::new(res), Path::new(d), check),
+        None => apply_android_export(&e, Path::new(res), check),
+    };
+    let changed = match changed {
         Ok(c) => c,
         Err(err) => return fail(format!("cannot write the app files: {err}")),
     };

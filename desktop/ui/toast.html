@@ -77,6 +77,7 @@ body.top .toast{transform:translateY(-6px)}
       return s;
     };
     document.documentElement.lang = lang;
+    document.documentElement.dir = ["ar", "he", "fa", "ur", "ps", "sd"].includes(lang) ? "rtl" : "ltr";
     const summary = n.kind === "summary";
     const label = t(summary ? "n_summary" : n.kind === "sms" ? "n_sms" : "n_call");
     const who = String(n.who || "").trim();

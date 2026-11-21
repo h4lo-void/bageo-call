@@ -630,6 +630,9 @@ async fn download(State(state): State<CallsState>, headers: HeaderMap, Query(q):
         .await
     });
     let out = task.await.unwrap_or(Outcome::Offline);
+    if out == Outcome::Installed {
+        state.settings_store.snapshot().apply_globals();
+    }
     with_result(&state, out)
 }
 
@@ -663,6 +666,9 @@ async fn delete(State(state): State<CallsState>, headers: HeaderMap, Query(q): Q
         Target::Lang(ext) => remove_lang_with(|| locales_store::remove_extra_lang(ext)),
         Target::Art(region) => remove_art(&root, &region),
     };
+    if out == Outcome::Removed {
+        state.settings_store.snapshot().apply_globals();
+    }
     with_result(&state, out)
 }
 
@@ -692,6 +698,11 @@ impl AutoCooldowns {
 }
 
 static COOLDOWNS: LazyLock<Mutex<AutoCooldowns>> = LazyLock::new(|| Mutex::new(AutoCooldowns::default()));
+
+/// Clears the 10-minute index fetch cooldown when the user explicitly clicks "Check for updates".
+pub(crate) fn clear_index_cooldown() {
+    COOLDOWNS.lock().unwrap_or_else(|e| e.into_inner()).last_index_fetch = None;
+}
 
 fn browser_to_ext(tag: &str) -> Option<Ext> {
     let low = tag.trim().to_ascii_lowercase();
@@ -854,9 +865,14 @@ async fn auto(State(state): State<CallsState>, headers: HeaderMap, Query(q): Que
             guard.record(&list, now);
             let started: Vec<Value> = list.iter().map(Target::id_json).collect();
             if let Ok(client) = pack_update::client_with(TOTAL_TIMEOUT) {
-                tokio::spawn(run_auto_batch(client, Source::official(), root, list, running, |staged, ext, ver| {
-                    locales_store::install_extra_lang(staged, ext, Some(ver)).map(|_| ())
-                }));
+                let store = state.settings_store.clone();
+                tokio::spawn(async move {
+                    run_auto_batch(client, Source::official(), root, list, running, |staged, ext, ver| {
+                        locales_store::install_extra_lang(staged, ext, Some(ver)).map(|_| ())
+                    })
+                    .await;
+                    store.snapshot().apply_globals();
+                });
             }
             return Json(json!({ "ok": true, "started": started })).into_response();
         }

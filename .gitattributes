@@ -24,3 +24,7 @@ android/magisk/** text eol=lf
 *.jar binary
 *.apk binary
 *.png binary
+
+# Generated Android extra locale string files.
+android/app/src/main/res/values-*/strings.xml linguist-generated=true
+android/app/src/main/res/xml/locales_config.xml linguist-generated=true

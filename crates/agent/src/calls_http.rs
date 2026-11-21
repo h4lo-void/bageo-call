@@ -3945,7 +3945,7 @@ pub(crate) mod tests {
         h.insert(header::IF_NONE_MATCH, it.headers()[header::ETAG].clone());
         assert_eq!(i18n_file(Path("it.json".into()), h).await.status(), StatusCode::NOT_MODIFIED);
         assert_eq!(i18n_file(Path("fa.json".into()), HeaderMap::new()).await.status(), StatusCode::NOT_FOUND);
-        assert_eq!(i18n_file(Path("ar.json".into()), HeaderMap::new()).await.status(), StatusCode::NOT_FOUND);
+        assert_eq!(i18n_file(Path("ar.json".into()), HeaderMap::new()).await.status(), StatusCode::OK);
         testing::use_builtin();
     }
 

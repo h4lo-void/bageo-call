@@ -281,18 +281,32 @@ impl Poller {
             }
         }
 
-        // Fetch extra desktop strings on demand when Bageo announces an unbundled notify_language.
-        if let Some(wanted) = health_json.get("notify_language").and_then(Value::as_str) {
-            if crate::i18n::is_valid_ext_code(wanted) && !crate::i18n::has_extra(wanted) {
+        // Fetch extra desktop strings on demand when Bageo announces an unbundled notify_language
+        // (or when the computer's system locale is an extra language).
+        let sys_code = {
+            let norm = self.system_locale.trim().replace('_', "-").to_lowercase();
+            let first = norm.split(['-', '.', '@']).next().unwrap_or("");
+            match first {
+                "iw" => "he",
+                "in" => "id",
+                other => other,
+            }
+            .to_string()
+        };
+        let wanted_ext = health_json
+            .get("notify_language")
+            .and_then(Value::as_str)
+            .filter(|c| crate::i18n::is_valid_ext_code(c))
+            .map(str::to_string)
+            .or_else(|| crate::i18n::is_valid_ext_code(&sys_code).then_some(sys_code));
+        if let Some(wanted) = wanted_ext {
+            if !crate::i18n::has_extra(&wanted) {
                 let url = format!("{base}calls/i18n/desktop/{wanted}.json");
-                if let Some((200, Some(Value::Object(map)))) = get(&self.client, &url, None).await {
-                    let strings: std::collections::HashMap<String, String> = map
-                        .into_iter()
-                        .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
-                        .collect();
+                if let Some((200, Some(body))) = get(&self.client, &url, None).await {
+                    let strings = crate::i18n::parse_desktop_payload(&body);
                     if !strings.is_empty() {
-                        crate::i18n::set_extra(wanted, strings.clone());
-                        config::save_i18n_cache(app, wanted, &strings);
+                        crate::i18n::set_extra(&wanted, strings.clone());
+                        config::save_i18n_cache(app, &wanted, &strings);
                     }
                 }
             }

@@ -197,6 +197,7 @@
   }
   function applyTexts() {
     document.documentElement.lang = lang;
+    document.documentElement.dir = ["ar", "he", "fa", "ur", "ps", "sd"].includes(lang) ? "rtl" : "ltr";
     document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
     $("secLang").hidden = !EXT.has(lang);
   }
@@ -225,7 +226,7 @@
       extFetching = target;
       loadExtra().then((loaded) => {
         if (extFetching === target) extFetching = "";
-        if (loaded) render();
+        if (loaded && I18N[target]) render();
       });
     }
     const wanted = s.lang && I18N[s.lang] ? s.lang : systemLang();

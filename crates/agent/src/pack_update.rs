@@ -720,7 +720,9 @@ async fn update(State(state): State<CallsState>, headers: HeaderMap, Query(q): Q
     if !json_request(&headers) {
         return json_required();
     }
+    crate::extras::clear_index_cooldown();
     let outcome = check_now().await;
+    state.settings_store.snapshot().apply_globals();
     let mut body = status_json();
     body["result"] = json!(outcome.code());
     Json(body).into_response()
@@ -735,6 +737,7 @@ async fn restore_route(State(state): State<CallsState>, headers: HeaderMap, Quer
         return json_required();
     }
     let result = restore();
+    state.settings_store.snapshot().apply_globals();
     let mut body = status_json();
     body["result"] = json!(result);
     Json(body).into_response()
