@@ -9,12 +9,37 @@ use std::sync::OnceLock;
 use crate::status::{Reason, Snapshot};
 
 const RAW: &str = include_str!("../ui/i18n.json");
+/// The languages `packs export-app` writes (see tools/bageo-packs.ref). Their text
+/// still waits for a native speaker to confirm, so the nine built-in languages win on any clash.
+const EXT_RAW: &str = include_str!("../ui/i18n.ext.json");
 
 type Table = HashMap<String, HashMap<String, String>>;
 
+fn base() -> &'static Table {
+    static BASE: OnceLock<Table> = OnceLock::new();
+    BASE.get_or_init(|| serde_json::from_str(RAW).unwrap_or_default())
+}
+
+fn ext() -> &'static Table {
+    static EXT: OnceLock<Table> = OnceLock::new();
+    EXT.get_or_init(|| serde_json::from_str(EXT_RAW).unwrap_or_default())
+}
+
 fn table() -> &'static Table {
     static TABLE: OnceLock<Table> = OnceLock::new();
-    TABLE.get_or_init(|| serde_json::from_str(RAW).unwrap_or_default())
+    TABLE.get_or_init(|| {
+        let mut all = base().clone();
+        for (code, strings) in ext() {
+            all.entry(code.clone()).or_insert_with(|| strings.clone());
+        }
+        all
+    })
+}
+
+/// The code of an extra (not yet confirmed) language the program has text for.
+pub fn ext_code(code: &str) -> Option<&'static str> {
+    let (k, _) = ext().get_key_value(code)?;
+    (!base().contains_key(code)).then_some(k.as_str())
 }
 
 /// Looks a key up in the given language, then in English, then returns the key itself.
@@ -108,5 +133,41 @@ mod tests {
     fn unknown_language_and_key_fall_back() {
         assert_eq!(t("xx", "quit"), t("en", "quit"));
         assert_eq!(t("en", "no_such_key"), "no_such_key");
+    }
+
+    #[test]
+    fn extra_languages_come_from_the_export_and_keep_to_the_english_keys() {
+        let en = &base()["en"];
+        assert_eq!(ext().len(), 20, "the export carries 20 languages");
+        for (lang, strings) in ext() {
+            assert!(!base().contains_key(lang), "{lang} is one of the nine");
+            for key in KEYS {
+                assert!(strings.get(key).is_some_and(|s| !s.is_empty()), "{lang} is missing {key}");
+            }
+            for (key, value) in strings {
+                let english = en.get(key).unwrap_or_else(|| panic!("{lang} has {key}, English does not"));
+                for ph in ["{n}", "{name}"] {
+                    assert_eq!(value.contains(ph), english.contains(ph), "{lang} {key} placeholder {ph}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn extra_language_text_is_found_and_the_nine_are_not_taken_over() {
+        assert_eq!(ext_code("it"), Some("it"));
+        assert_eq!(ext_code("ja"), None);
+        assert_eq!(ext_code("xx"), None);
+        assert_ne!(t("it", "quit"), t("en", "quit"));
+        assert_eq!(t("ja", "quit"), base()["ja"]["quit"]);
+        // A key the extra language lacks falls back to English.
+        assert_eq!(t("it", "lang_unreviewed"), t("en", "lang_unreviewed"));
+    }
+
+    #[test]
+    fn every_built_in_language_says_its_text_waits_for_a_native_speaker() {
+        for lang in LANGS {
+            assert!(base()[lang].get("lang_unreviewed").is_some_and(|s| !s.is_empty()), "{lang}");
+        }
     }
 }

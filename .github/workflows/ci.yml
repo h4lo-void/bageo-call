@@ -82,6 +82,44 @@ jobs:
         working-directory: android
         run: sh ./gradlew :app:assembleDebug :app:testDebugUnitTest --no-daemon
 
+  i18n:
+    name: i18n (exported translations)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check the folder names, language list and arguments in the exported files
+        run: cargo test -p bageo-packs --test exported_files
+      - name: Read the pinned translations
+        id: ref
+        # tools/bageo-packs.ref holds the bageo-packs commit the files came from.
+        # Until that repository is published it holds a source name instead, and
+        # the comparison below has nothing to fetch.
+        run: |
+          pin=$(tr -d '[:space:]' < tools/bageo-packs.ref)
+          if echo "$pin" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "commit=$pin" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::tools/bageo-packs.ref is not a bageo-packs commit yet; skipping export-app --check"
+          fi
+      - name: Get the pinned translations (bageo-packs)
+        if: steps.ref.outputs.commit != ''
+        uses: actions/checkout@v4
+        with:
+          repository: h4lo-void/bageo-packs
+          ref: ${{ steps.ref.outputs.commit }}
+          path: packs
+      - name: Exported files match the translations
+        if: steps.ref.outputs.commit != ''
+        run: >
+          cargo run -p bageo-packs --release -- export-app
+          --packs packs
+          --android android/app/src/main/res
+          --desktop desktop/ui/i18n.ext.json
+          --commit ${{ steps.ref.outputs.commit }}
+          --check
+
   sms-forward:
     name: sms_forward tests
     runs-on: ubuntu-latest

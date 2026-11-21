@@ -106,6 +106,8 @@
       </div>
     </div>
 
+    <div class="sec" id="secLang" hidden><span class="hint" data-i18n="lang_unreviewed"></span></div>
+
     <footer class="foot">
       <span class="ver grow" id="ver">Bageo</span>
       <button type="button" class="btn ghost" id="btnSet" data-i18n="settings"></button>
@@ -167,6 +169,8 @@
   const $ = (id) => document.getElementById(id);
 
   let I18N = {};
+  // Languages from i18n.ext.json: their text still waits for a native speaker to confirm.
+  let EXT = new Set();
   let lang = "en";
   let snap = null;
   let hasPassword = false;
@@ -178,6 +182,10 @@
     const l = (navigator.language || "en").toLowerCase();
     if (l.startsWith("zh")) return /hant|tw|hk|mo/.test(l) ? "zh-TW" : "zh-CN";
     for (const k of ["ja", "ko", "es", "fr", "de", "pt"]) if (l.startsWith(k)) return k;
+    // Android and Java still say "iw" and "in" for Hebrew and Indonesian.
+    const first = l.split(/[-_]/)[0];
+    const code = { iw: "he", in: "id" }[first] || first;
+    if (EXT.has(code)) return code;
     return "en";
   }
   function t(key, vars) {
@@ -188,6 +196,7 @@
   function applyTexts() {
     document.documentElement.lang = lang;
     document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+    $("secLang").hidden = !EXT.has(lang);
   }
   function reasonText(s) {
     switch (s.reason) {
@@ -356,8 +365,13 @@
   document.addEventListener("contextmenu", (ev) => ev.preventDefault());
 
   async function start() {
+    let base = {};
+    let ext = {};
+    try { base = await (await fetch("i18n.json")).json(); } catch (_) { /* English keys show as is */ }
+    try { ext = await (await fetch("i18n.ext.json")).json(); } catch (_) { /* the nine languages still work */ }
+    EXT = new Set(Object.keys(ext).filter((k) => !(k in base)));
+    I18N = Object.assign({}, ext, base);
     lang = systemLang();
-    try { I18N = await (await fetch("i18n.json")).json(); } catch (_) { I18N = {}; }
     render();
     T.event.listen("snapshot", (e) => { snap = e.payload; render(); });
     T.event.listen("shown", async () => {

@@ -8,6 +8,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::i18n;
+
 pub const LANGS: [&str; 9] = ["en", "zh-TW", "zh-CN", "ja", "ko", "es", "fr", "de", "pt"];
 
 #[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug)]
@@ -123,7 +125,8 @@ pub enum DevicesResult {
     Unavailable,
 }
 
-/// Maps a system locale such as "zh_Hant_TW" or "pt-BR" to one of the nine UI languages.
+/// Maps a system locale such as "zh_Hant_TW" or "pt-BR" to a UI language: one of the
+/// nine, an extra language the program has text for (Italian, Thai, ...), or English.
 pub fn locale_to_lang(locale: &str) -> &'static str {
     let norm = locale.trim().replace('_', "-").to_lowercase();
     let mut parts = norm.split(|c| c == '-' || c == '.' || c == '@');
@@ -142,7 +145,10 @@ pub fn locale_to_lang(locale: &str) -> &'static str {
         "fr" => "fr",
         "de" => "de",
         "pt" => "pt",
-        _ => "en",
+        // Android and Java still say "iw" and "in" for Hebrew and Indonesian.
+        "iw" => i18n::ext_code("he").unwrap_or("en"),
+        "in" => i18n::ext_code("id").unwrap_or("en"),
+        other => i18n::ext_code(other).unwrap_or("en"),
     }
 }
 
@@ -150,6 +156,9 @@ pub fn locale_to_lang(locale: &str) -> &'static str {
 pub fn resolve_lang(notify_language: Option<&str>, system_locale: &str) -> &'static str {
     if let Some(n) = notify_language {
         if let Some(found) = LANGS.iter().find(|l| **l == n) {
+            return found;
+        }
+        if let Some(found) = i18n::ext_code(n) {
             return found;
         }
     }
@@ -641,7 +650,12 @@ mod tests {
         assert_eq!(locale_to_lang("fr-CA"), "fr");
         assert_eq!(locale_to_lang("de-AT"), "de");
         assert_eq!(locale_to_lang("pt-BR"), "pt");
-        assert_eq!(locale_to_lang("it-IT"), "en");
+        assert_eq!(locale_to_lang("it-IT"), "it");
+        assert_eq!(locale_to_lang("iw-IL"), "he");
+        assert_eq!(locale_to_lang("in_ID"), "id");
+        assert_eq!(locale_to_lang("th"), "th");
+        assert_eq!(locale_to_lang("ar-EG"), "ar");
+        assert_eq!(locale_to_lang("xx-XX"), "en");
         assert_eq!(locale_to_lang(""), "en");
     }
 
@@ -650,6 +664,8 @@ mod tests {
         assert_eq!(resolve_lang(Some("ja"), "en-US"), "ja");
         assert_eq!(resolve_lang(Some("zh-CN"), "fr-FR"), "zh-CN");
         assert_eq!(resolve_lang(Some("xx"), "de-DE"), "de");
+        assert_eq!(resolve_lang(Some("it"), "en-US"), "it");
+        assert_eq!(resolve_lang(Some("he"), "de-DE"), "he");
         assert_eq!(resolve_lang(None, "pt-PT"), "pt");
         let mut h = health();
         h["notify_language"] = json!("ko");
