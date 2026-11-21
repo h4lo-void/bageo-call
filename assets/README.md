@@ -15,7 +15,8 @@ sound comes from and how to add or re-record your own.
 
 A background sound sets the room the AI seems to be in: a quiet bed under its voice,
 chosen in the web console (*Settings → How it answers → Background sound*). The agent
-loads every `ambience_<kind>.wav` it finds here at start-up (16 kHz mono, 16-bit PCM).
+loads every `ambience_<kind>.wav` it finds here at start-up (16 kHz mono, IMA ADPCM,
+a quarter of the size of plain 16-bit WAV; plain 16-bit PCM WAV files are read too).
 
 All recordings are **CC0 (public domain)** from [Freesound](https://freesound.org).
 The numbers below are Freesound sound IDs (`https://freesound.org/s/<id>/`). Sounds
@@ -52,7 +53,7 @@ construction beds.
 ### Adding your own
 
 - **Replace a sound:** overwrite the file of an existing kind with a 16 kHz mono
-  16-bit WAV. No code change is needed.
+  16-bit WAV (ADPCM or plain PCM). No code change is needed.
 - **Add a new kind:** drop `ambience_<kind>.wav` here, add the kind to `KINDS` in
   `crates/agent/src/ambience.rs` and add its name to the web console's translations.
 
