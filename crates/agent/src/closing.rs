@@ -1269,9 +1269,35 @@ fn classify_with(text: &str, extra: &ExtraWords) -> Option<Hit> {
             }
             return Some(Hit { kind, lang, ambiguous, before: before.to_string() });
         }
-        t = peel(t)?.0;
+        t = match id_time_after_bye(t) {
+            Some(rest) => rest,
+            None => peel(t)?.0,
+        };
     }
     None
+}
+
+/// Indonesian "see you" with a day after it ("Sampai ketemu Rabu pagi, Pak",
+/// "sampai jumpa hari Senin ya, Bu"): the day, time and address words come off
+/// so the goodbye before them is read. Only after "sampai jumpa／ketemu":
+/// "tunggu sampai besok pagi" (wait until tomorrow morning) keeps its words.
+const ID_TIME_WORDS: &[&str] = &[
+    "hari", "senin", "selasa", "rabu", "kamis", "jumat", "sabtu", "minggu", "besok", "lusa", "pagi", "siang", "sore",
+    "malam", "depan", "nanti", "lagi", "ya", "pak", "bu", "bapak", "ibu", "mas", "mbak", "kak",
+];
+const ID_SEE_YOU: &[&str] = &["sampai jumpa", "sampai ketemu"];
+
+fn id_time_after_bye(t: &str) -> Option<&str> {
+    let mut rest = t.trim_end();
+    let mut took = 0;
+    while let Some((head, last)) = rest.rsplit_once(' ') {
+        if took >= 4 || !ID_TIME_WORDS.contains(&last) {
+            break;
+        }
+        rest = head.trim_end();
+        took += 1;
+    }
+    (took > 0 && ID_SEE_YOU.iter().any(|s| rest == *s || rest.ends_with(&format!(" {s}")))).then_some(rest)
 }
 
 /// A hang-up word (掛／挂) right after "don't" (不要、別、唔好…): the caller asks
@@ -2018,6 +2044,22 @@ mod tests {
         let step = caller(&mut m, "Dạ vâng, em gửi hàng ở quầy lễ tân nhé, cảm ơn anh nhiều.");
         assert!(!step.ends_call);
         assert_eq!(m.on_ai_turn("Dạ vâng, cảm ơn cô. Tôi chào cô.", true, false), ClosingEvent::FarewellsExchanged);
+    }
+
+    #[test]
+    fn indonesian_see_you_with_a_day_is_a_goodbye() {
+        for line in [
+            "Makasih banyak ya atas kerja samanya. Sampai ketemu Rabu pagi, Pak.",
+            "Oke, sampai jumpa hari Senin ya, Bu.",
+            "Baik, sampai ketemu besok.",
+        ] {
+            let mut m = mid_call("id");
+            assert!(caller(&mut m, line).ends_call, "{line}");
+        }
+        for line in ["Saya tunggu sampai besok pagi.", "Tolong tunggu sampai hari Rabu ya, Pak.", "Kantornya buka sampai malam."] {
+            let mut m = mid_call("id");
+            assert!(!caller(&mut m, line).ends_call, "{line}");
+        }
     }
 
     #[test]
