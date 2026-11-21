@@ -21,6 +21,7 @@ on:
     paths:
       - Dockerfile
       - .dockerignore
+      - scripts/bundle-assets.sh
       - .github/workflows/docker.yml
   workflow_dispatch:
     inputs:
