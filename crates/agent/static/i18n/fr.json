@@ -1274,6 +1274,8 @@
     "lang_unreviewed": "(à faire vérifier par un locuteur natif)",
     "lang_partial": "Certaines fonctions ne prennent pas encore en charge cette langue : faire durer les appels de démarchage et d'arnaque, les conseils selon l'appel, les réponses courtes et les extraits de voix.",
     "lang_fallback": "Cette langue n'est pas disponible pour l'instant : les appels se feront en anglais en attendant.",
-    "lang_load_failed": "Impossible de charger cette langue. La langue actuelle est conservée."
+    "lang_load_failed": "Impossible de charger cette langue. La langue actuelle est conservée.",
+    "lang_unreviewed_note": "Cette langue n'a pas encore été relue par un locuteur natif.",
+    "lang_help_fix": "Aider à la corriger"
   }
 }

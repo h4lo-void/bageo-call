@@ -118,6 +118,11 @@ fn asset(body: String) -> Asset {
     Asset { body, gzip, etag }
 }
 
+/// A body ready to send, for a language file that is not compiled in.
+pub(crate) fn asset_of(body: String) -> Asset {
+    asset(body)
+}
+
 fn strings_of(code: &str) -> Option<Value> {
     serde_json::from_str::<Value>(file(code)?).ok()?.get("strings").cloned()
 }

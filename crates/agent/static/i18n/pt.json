@@ -1274,6 +1274,8 @@
     "lang_unreviewed": "(falta revisão de um falante nativo)",
     "lang_partial": "Algumas funções ainda não aceitam este idioma: segurar ligações de venda e golpe, dicas conforme a ligação, respostas curtas e amostras de voz.",
     "lang_fallback": "Este idioma não está disponível agora, então por enquanto as ligações serão em inglês.",
-    "lang_load_failed": "Não foi possível carregar esse idioma. Continuamos no atual."
+    "lang_load_failed": "Não foi possível carregar esse idioma. Continuamos no atual.",
+    "lang_unreviewed_note": "Este idioma ainda não foi conferido por um falante nativo.",
+    "lang_help_fix": "Ajudar a corrigir"
   }
 }
