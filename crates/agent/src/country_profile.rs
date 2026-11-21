@@ -217,6 +217,46 @@ pub fn delivery_key(region: Region, lang: Lang) -> Option<&'static str> {
     if lang.is_zh() { k.zh.as_deref() } else { k.en.as_deref() }.filter(|s| !s.is_empty())
 }
 
+/// The regional identity and speaking-style sentence placed right at the front
+/// of a call's prompt (`【你是誰】` / `[Who you are] `): tells the model where
+/// it is from and to use that place's speaking style and accent. Empty for the
+/// generic fallback region (`default`).
+pub fn identity_line(region: Region, lang: Lang) -> String {
+    if region.0.code == "default" {
+        return String::new();
+    }
+    if lang.is_zh() {
+        let place = region
+            .0
+            .name
+            .zh
+            .as_deref()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(&region.0.name.en);
+        let multi = place.contains('、')
+            || place.contains('與')
+            || place.ends_with('區')
+            || place.ends_with('家');
+        let tw = if multi {
+            format!("你是{place}當地人，請多用當地人說話方式跟腔調。")
+        } else {
+            format!("你是{place}人，請多用{place}人說話方式跟腔調。")
+        };
+        if lang == Lang::ZhCn {
+            crate::zh_convert::to_cn(&tw)
+        } else {
+            tw
+        }
+    } else {
+        let place = region.0.name.en.trim();
+        if place.is_empty() {
+            String::new()
+        } else {
+            format!("You are from {place}; use the local speaking style and accent. ")
+        }
+    }
+}
+
 /// The region's local ways of talking (words to use and avoid, date order…),
 /// led by a line break; empty when it has none. Only with the built-in prompt.
 pub fn habits_block(region: Region, lang: Lang) -> String {

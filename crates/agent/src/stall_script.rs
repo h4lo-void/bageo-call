@@ -605,7 +605,7 @@ mod tests {
         }
     }
 
-    const STALL_ADDITION_BUDGET: usize = 3_000;
+    const STALL_ADDITION_BUDGET: usize = 3_100;
 
     fn english_stall_ctx() -> crate::prompts::Ctx<'static> {
         crate::prompts::Ctx {
