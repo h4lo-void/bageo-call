@@ -1540,15 +1540,11 @@ mod tests {
             assert!(!w.to_lowercase().contains("emergency"), "{w}");
         }
         // The console: this section and the call record's labels, in every language.
-        let html = include_str!("../static/calls.html");
-        let block = |code: &str| {
-            let start = html.find(&format!("I18N[\"{code}\"] = {{")).expect("language block");
-            let rest = &html[start..];
-            &rest[..rest.find("\n};").expect("end of block")]
-        };
         for code in ["en", "zh-TW", "zh-CN", "ja", "ko", "es", "fr", "de", "pt"] {
-            for line in block(code).lines().map(str::trim) {
-                let Some((key, value)) = line.split_once(": ") else { continue };
+            let texts = crate::console_i18n::texts(code);
+            assert!(!texts.is_empty(), "{code}: no console texts");
+            for (key, value) in texts {
+                let line = format!("{key}: {value}");
                 if key.starts_with("ev_whitelist") || key == "wl_title" || key == "wl_desc" || key.starts_with("f_wl_mode_h_") {
                     for name in list_names {
                         assert!(!value.to_lowercase().contains(name), "{code} {line}");
