@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "h_ok": "All good",
+    "r_ready": "Phones ready: {n}",
+    "r_phone_offline": "{name} is not connected"
+  }
+}

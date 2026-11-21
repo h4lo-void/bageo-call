@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "lang": "ar",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "n_incoming": "مكالمة واردة",
+    "n_hidden": "رقم مخفي",
+    "n_repeat_body": "اتصل {number} {count} مرات",
+    "u_sec": "{} ث"
+  },
+  "lists": {
+    "quote": [
+      "«",
+      "»"
+    ]
+  }
+}

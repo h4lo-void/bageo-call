@@ -25,6 +25,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Test
         run: cargo test -p agent
+      - name: Test packs
+        run: cargo test -p bageo-packs
       - name: Build
         run: cargo build --release -p agent
 
@@ -79,6 +81,16 @@ jobs:
       - name: Build debug APK and run unit tests
         working-directory: android
         run: sh ./gradlew :app:assembleDebug :app:testDebugUnitTest --no-daemon
+
+  i18n:
+    name: i18n (Android app locales)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check the 79 Android app locales, folder qualifiers and format tokens
+        run: cargo test -p bageo-packs --test exported_files
 
   sms-forward:
     name: sms_forward tests

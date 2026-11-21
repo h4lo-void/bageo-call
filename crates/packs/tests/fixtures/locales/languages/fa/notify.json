@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "lang": "fa",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "n_incoming": "تماس ورودی",
+    "n_hidden": "شماره\u200cی پنهان",
+    "n_repeat_body": "{number} {count} بار تماس گرفت",
+    "u_sec": "{} ثانیه"
+  },
+  "formats": {
+    "ap_dt_fmt": "{}، %-d %b، %H:%M"
+  }
+}

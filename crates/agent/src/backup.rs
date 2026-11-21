@@ -465,7 +465,7 @@ struct CentralEntry {
 }
 
 /// A zip file written front to back (deflate; zip64 where sizes need it).
-struct ZipOut<W: Write + Seek> {
+pub(crate) struct ZipOut<W: Write + Seek> {
     out: W,
     entries: Vec<CentralEntry>,
     time: u16,
@@ -499,13 +499,13 @@ fn dos_time(at: NaiveDateTime) -> (u16, u16) {
 }
 
 impl<W: Write + Seek> ZipOut<W> {
-    fn new(out: W, at: NaiveDateTime) -> Self {
+    pub(crate) fn new(out: W, at: NaiveDateTime) -> Self {
         let (time, date) = dos_time(at);
         Self { out, entries: Vec::new(), time, date }
     }
 
     /// One file, what `src` reads: its size and SHA-256 (hex).
-    fn add(&mut self, name: &str, src: &mut dyn Read, size_hint: u64) -> io::Result<(u64, String)> {
+    pub(crate) fn add(&mut self, name: &str, src: &mut dyn Read, size_hint: u64) -> io::Result<(u64, String)> {
         let offset = self.out.stream_position()?;
         let zip64 = size_hint >= BIG_FILE;
         // Recordings are kept as they are: they hardly pack, and a file of
@@ -564,7 +564,7 @@ impl<W: Write + Seek> ZipOut<W> {
     }
 
     /// The central directory; the writer back.
-    fn finish(mut self) -> io::Result<W> {
+    pub(crate) fn finish(mut self) -> io::Result<W> {
         let start = self.out.stream_position()?;
         for e in &self.entries {
             let mut wide = Vec::new();
@@ -683,7 +683,7 @@ fn write_zip<W: Write + Seek>(out: W, sources: Vec<(String, Source)>, kind: Kind
 
 /// Why a file is not restored.
 #[derive(Debug)]
-enum Bad {
+pub(crate) enum Bad {
     NotBackup,
     Damaged,
     TooNew,
@@ -722,22 +722,29 @@ fn read_at(f: &mut File, at: u64, len: usize) -> Result<Vec<u8>, Bad> {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct ZipEntry {
+pub(crate) struct ZipEntry {
     method: u64,
-    packed: u64,
-    size: u64,
+    pub(crate) packed: u64,
+    pub(crate) size: u64,
     offset: u64,
 }
 
+impl ZipEntry {
+    /// Packed far tighter than any real file: a zip bomb.
+    pub(crate) fn too_tight(&self) -> bool {
+        self.size > RATIO_FREE_BYTES && self.size / self.packed.max(1) > RATIO_MAX
+    }
+}
+
 /// A zip file read from disk, one file at a time (zip64 too).
-struct ZipIn {
+pub(crate) struct ZipIn {
     file: File,
     len: u64,
-    entries: HashMap<String, ZipEntry>,
+    pub(crate) entries: HashMap<String, ZipEntry>,
 }
 
 impl ZipIn {
-    fn open(mut file: File) -> Result<Self, Bad> {
+    pub(crate) fn open(mut file: File) -> Result<Self, Bad> {
         let len = file.metadata()?.len();
         if len < 22 {
             return Err(Bad::NotBackup);
@@ -841,7 +848,7 @@ impl ZipIn {
     }
 
     /// The file `name` (at most `max` bytes), or None when the zip has none.
-    fn read_entry(&mut self, name: &str, max: u64) -> Result<Option<Vec<u8>>, Bad> {
+    pub(crate) fn read_entry(&mut self, name: &str, max: u64) -> Result<Option<Vec<u8>>, Bad> {
         let Some(e) = self.entries.get(name).copied() else {
             return Ok(None);
         };
@@ -1044,8 +1051,7 @@ fn inspect_zip(f: File) -> Result<Inspected, Bad> {
         if e.size != f.size {
             return Err(Bad::Damaged);
         }
-        // Packed far tighter than any real file: a zip bomb.
-        if e.size > RATIO_FREE_BYTES && e.size / e.packed.max(1) > RATIO_MAX {
+        if e.too_tight() {
             return Err(Bad::Damaged);
         }
     }
@@ -1726,7 +1732,7 @@ pub fn failure_text(lang: Lang, code: &str) -> (&'static str, String) {
             "保存时出了问题。",
             "Bageo 每小时会再试一次。请到控制台的“备份”看看存放位置。",
         ),
-        Lang::En => (
+        Lang::En | Lang::Ext(_) => (
             "Bageo couldn't finish the automatic backup",
             "The backup folder can't be written to right now. It may have been moved or renamed, or an external drive isn't connected.",
             "The disk that holds the backups is full.",

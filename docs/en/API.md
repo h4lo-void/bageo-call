@@ -113,6 +113,9 @@ Bageo never answers preflights. This covers:
   (`POST /calls/api/contacts/import` needs an `X-Filename` header instead);
 - `POST /calls/api/errands`, `…/{id}/cancel`, `…/{id}/retry`, `…/{id}/say`;
 - `POST /calls/api/backup/run`, `…/export`, `…/file-ticket`, `…/restore`, `…/delete`, `…/unlock`, `…/apply`, `…/discard`, `…/open-folder` (`POST /calls/api/backup/import` needs an `X-Filename` header instead).
+- `POST /calls/api/packs/update` and `POST /calls/api/packs/restore`.
+- `POST /calls/api/voices/download` and `POST /calls/api/voices/delete` (`POST /calls/api/voices/import` takes the zip as `application/zip` instead);
+- `POST /calls/api/extras/download`, `POST /calls/api/extras/delete` and `POST /calls/api/extras/auto`.
 
 Where a route allows an empty body, it counts as `{}`. This is the second line
 of defence. The first is setting a password (`CALLS_UI_TOKEN`) whenever your
@@ -238,6 +241,7 @@ Details for `GET /calls/api/settings`:
 - Secrets come back masked (`"abc…wxyz"`) with a `<name>_set` flag.
 - Notification channels come back with empty `url` / `token` plus `url_hint`, `token_hint`, `url_set`, `token_set`.
 - Read-only helpers: `default_prompt`, `voices`, `ambience_kinds`, `languages`, `countries` (ISO codes for *Main language for each SIM*), `seen_sim_countries` (SIM countries the phones reported since Bageo started), `notify_kinds`, `sample_lines`, `summary_ready`.
+- `languages` is a list of `{code, native, en, zh, dir, stage, reviewed, downloaded, help}`: the nine core languages (`stage` `console`, `downloaded` `true`), plus each extra Gemini Live language already downloaded on this computer or referenced in `language`, `notify_language` or `sim_languages`. `stage` `call`: the AI can answer and talk in it (`language`, `sim_languages`); `notify`: notifications, summaries and chat replies too (`notify_language`); `console`: the console can switch to it too. `reviewed` is false until a native speaker checked the translation. `dir` is `rtl` for languages written right to left.
 
 Fields worth knowing (all of them are in `RuntimeSettings` in
 [`settings_store.rs`](../../crates/agent/src/settings_store.rs) and on the
@@ -247,6 +251,12 @@ Fields worth knowing (all of them are in `RuntimeSettings` in
 |---|---|
 | `owner_name` | Your name, used for `{owner}`. |
 | `owner_aliases` | Up to 10 other names callers use for you, each up to 40 characters. Blanks, repeats and your own `owner_name` are dropped. |
+| `home_country` | The country you live in, two lowercase letters (`"th"`); `""` = from the phone number. |
+| `talk_style_level` | Talk style, 1 (casual) to 5 (businesslike); default 3. |
+| `about_callers` | Who calls most: `""`, `"family"`, `"work"` or `"both"`. |
+| `about_work` / `about_parcel` / `about_extra` | Your work or day (up to 120 characters), where parcels go (80), anything else (300). |
+| `about_say` / `about_avoid` | Phrases you often say / never say: up to 3 each, 24 characters each. |
+| `about_message_asks` | What the AI assistant asks for in a message: any of `"name"`, `"callback"`, `"reason"`, `"urgency"` (default all four). |
 | `answer_style` | `assistant` / `persona` (the AI answers as you). |
 | `gemini_assistant_prompt` / `gemini_persona_prompt` | Your custom prompt for `assistant` / `persona` (empty = built-in). |
 | `errand_identity` | `assistant` (default) / `owner`: who the AI says it is on an AI errand. Anything else is stored as `assistant`. |
@@ -263,6 +273,7 @@ Fields worth knowing (all of them are in `RuntimeSettings` in
 | `ui_password` | Password for external console/API access (masked on read; `"ui_password_clear": true` clears it). |
 | `country_code` | Digits only (`886`, `1`). Not shown in the console; a value here wins over `COUNTRY_CODE`. |
 | `gemini_thinking_level` | `low` (default) / `medium` / `high`, for thinking models only. |
+| `extras_auto` | `true` (default) / `false`: when the console opens, download missing extra language packs matching settings or the browser and the home country's mascot art from GitHub (`POST /calls/api/extras/auto`). |
 
 Rules for `PUT`:
 
@@ -338,6 +349,8 @@ setting:
 All 30 built-in voices come recorded in all 9 languages, both the preview and
 the announcement (1,080 clips in `assets/voices/`), so a preview needs no
 Gemini session. Only `regen=true` or a voice without a recording opens one.
+Languages and regions whose recordings do not come with Bageo can be added as
+voice packs ([Voice downloads](#voice-downloads)).
 
 Errors: 400 `unknown_voice` / `unknown_background`, 404 `background_missing`
 (the sound file is not loaded), 502 `preview_failed`.
@@ -740,6 +753,51 @@ Details:
 - The preview is `{token, source_name, created_at, app_version, kind, items, has_calls, calls_count, changes_password, changes_connections, total_size, warnings, encrypted, needs_password}`. `items` has `{id}` or `{id, count}` for each item the file really holds: `settings`, `keys`, `contacts`, `numbers`, `phones`, `errands`, `calls`, `sms` and `tasks`. An older single settings file lists `keys` too when it has key or password fields. `changes_password` is `true` only when applying `keys` would change the console password (to another one or to none), `changes_connections` only when it would change where notifications go, the forwarding number or who may control Bageo. Both compare this computer with the result of the restore, worked out the way `apply` does it. `total_size` is what the files it can restore unpack to, in bytes. `warnings` holds `newer_version` and `plain_settings_file` (an older single settings file: only the settings, and the keys if it has any, are restored). The preview never touches the backup folder named in the file.
 - `apply` restores only the ticked `items`. `settings` without `keys` replaces the other settings and keeps the whole `keys` group of this computer. With `keys`, each field the file has set replaces this computer's, and one it does not have or leaves empty stays. Only restoring this computer's own `before_import` backup from the backup folder takes the group exactly as the file has it (a missing or empty field is cleared or goes back to its default), taking back every key and connection an import brought; an uploaded file never does. `keys` without `settings` replaces only that group, and the phone pairing key when the file has one. A file that has no `keys`, or an `apply` without `keys`, never changes the group on this computer. `retention_days` and `backup_keep` never get shorter: the file's value is taken only when it is longer, and a file without them keeps this computer's. `backup_dir` and `public_url` always stay as they are on this computer. A restored call record or *To do* item keeps only the recording paths of files this restore brought back (`YYYY-MM-DD/<name>`); any other path is cleared. Before unpacking, Bageo checks there is room on the disk (HTTP 500 `disk_full`). `calls`, `sms` and `tasks` are added to the existing ones; nothing is deleted. Before it changes anything Bageo makes a `before_import` backup of the current settings (in the default folder when the chosen one cannot be written to) and names it in `before_import`. `restart_needed` says some changes only take full effect after Bageo is reopened.
 - Errors of the preview routes (HTTP 400): `not_backup`, `damaged`, `too_new` (made by a newer Bageo) and `too_large`. The limits follow what the files are, never what the manifest says: the items other than `calls`, `sms` and `tasks` may unpack to 20 MB a file and 50 MB in all, the call records to 8 GB; a file packed more than 200 times tighter than it unpacks is `damaged`. With 2 uploads already running: HTTP 409 `busy`. `unlock` answers HTTP 400 `wrong_password`, and `expired` after 5 wrong passwords. `apply` answers HTTP 409 `call_active` during a call, HTTP 400 `bad_items` for an empty `items` or ids the preview did not list, and HTTP 400 `expired` for a token that is older than 15 minutes or already used.
+
+## Local data
+
+Three routes show and update the local data the AI uses for each country's habits, and the translations of the languages beyond the nine core ones: the same as *Local data* under *More options* in the console settings. Bageo connects only when `POST …/packs/update` is called; it never checks on its own. It then downloads the index, the data file and, when the release has newer ones, the translations (`bageo-locales.json.gz`) straight from the latest release of the public `h4lo-void/bageo-packs` repository on GitHub, and nothing else is sent. Each file is checked on its own: a broken one is refused without affecting the other. They follow the console's password rule, and both `POST` routes the `Content-Type: application/json` rule above.
+
+| Method and path | What |
+|---|---|
+| `GET /calls/api/packs/update` | The data in use: `{version, date, builtin, regions, locales: {version, date, builtin, languages}, voice_list_kept, running, last_check}`. `last_check` also has `pack_result` and `locales_result`. |
+| `POST /calls/api/packs/update` | Body `{}`. Checks for newer files now and installs them: the same fields as `GET`, plus `result` (`updated` when either file was). |
+| `POST /calls/api/packs/restore` | Body `{}`. Deletes the downloaded data and translations, and a downloaded voice list (`voice_list_kept`) and extras index (`extras_index_kept`), and goes back to the ones built into Bageo: the same fields, with `result` `restored` (`busy` while a check runs; `io` when a file cannot be deleted, and then that one stays in use). |
+| `GET /calls/api/extras` | All 70 extra languages and known region art: `{ok, version, extras_auto, running, langs, art}`. |
+| `POST /calls/api/extras/download` | Body `{"lang": "<code>"}` or `{"art": "<region>"}`. Downloads and installs one extra language pack or region mascot art file straight from GitHub; returns `{..., result}`. |
+| `POST /calls/api/extras/delete` | Body `{"lang": "<code>"}` or `{"art": "<region>"}`. Deletes a downloaded extra file (`in_use` if the language is still set in settings, `removed`, `not_listed`, `restart`). |
+| `POST /calls/api/extras/auto` | Body `{"browser": ["..."]}`. When `extras_auto` is `true`, queues up to 3 missing items (settings languages, first browser tag, `local_reviewed` home region art) in the background: `{ok: true, started}`. |
+| `GET /calls/extras/art/{file}` | Public static route serving an already-downloaded and verified `art-<region>.json` file (never triggers a download; `no-cache`, `nosniff`). |
+| `GET /calls/i18n/desktop/{file}` | Public static route serving a downloaded extra language's desktop widget strings (`<code>.json`) with English fallback per missing key. |
+
+Details:
+
+- `version` is `YYYYMMDDNN`, `date` the same as `YYYY-MM-DD`; `builtin` is `true` while the version built into Bageo is in use; `regions` is how many regions it has; `running` says a check is going on; `last_check` is `null` or `{at, result, version}` of the last check since Bageo started.
+- `result`: `up_to_date`, `updated` (calls from now on use it; a call already going keeps the old data), `offline` (no connection, a time-out or GitHub did not answer: try again later), `bad_pack` (the download was refused; nothing changed), `update_bageo` (the data needs a newer Bageo), `restart` (8 updates were installed since Bageo started: restart it first), `io` (it could not be saved) or `busy` (another check is running).
+- What Bageo checks: it reads `bageo-pack-index.json` (at most 16 KiB) from `https://github.com/h4lo-void/bageo-packs/releases/latest/download/`, then the file it names (a plain file name, at most 4 MiB) in the same release. Every address, including each of at most 5 redirects, must be `https` on the standard port, without a user name, on `github.com` (under that repository's releases), `objects.githubusercontent.com` or `release-assets.githubusercontent.com`. The size and SHA-256 must match the index, the index's `format` and `min_bageo` must fit this Bageo, and the version must be newer than the one in use. The file is then checked in full, like the built-in one, and renamed into place in one step. The address cannot be changed by a setting.
+- The downloaded version is kept as `packs/bageo-pack.json` in the data folder and checked again each time Bageo starts; a download left unfinished there is deleted.
+- On-demand extra language packs (`lang-<code>.json.gz`, up to 600 KiB compressed and unpacked; calls already have all 70 languages built in) and region art files (`art-<region>.json`, up to 64 KiB, strict SVG element/attribute allowlist) come from `bageo-extras-index.json` (up to 256 KiB) in the same GitHub repository and live under `packs/extras/`. Extra packs are not backed up.
+
+## Voice downloads
+
+Four routes list, download, delete and import voice packs: the recorded preview lines and blocked-number announcement of a language, or of a language in one region. They are the same as *Voice downloads* under *More options* in the console settings, and as the card the console shows when it uses a language whose voices are not on this computer. Bageo connects only when `POST …/voices/download` is called, straight to the latest release of `h4lo-void/bageo-packs` on GitHub. Without a pack nothing breaks: the first preview in that language is made by Gemini, as before. The routes follow the console's password rule; `download` and `delete` also the `Content-Type: application/json` rule above.
+
+| Method and path | What |
+|---|---|
+| `GET /calls/api/voices` | `{version, packs, downloaded, dismissed, running}`: `packs` can be downloaded (`{id, lang, region, bytes, downloaded, bundled}`), `downloaded` are on this computer (`{id, lang, region, bytes}`), `dismissed` is the setting `dismissed_pack_prompts`. The lists are empty while no pack is published. |
+| `POST /calls/api/voices/download` | Body `{"id": "ja"}` or `{"id": "es-latam"}`. Downloads and installs that pack: the same fields, plus `result`. |
+| `POST /calls/api/voices/delete` | Body `{"id": "ja"}`. Deletes a downloaded pack: `result` `removed`, `not_listed` when there is none, `io` when it cannot be deleted (nothing changes then). |
+| `POST /calls/api/voices/import` | The zip itself as the body, with `Content-Type: application/zip`. For a computer without internet: the file must have the size and SHA-256 of a pack in the list, else `not_listed`. |
+
+Details:
+
+- `id` is `<language>` or `<language>-<region>` (`zh-tw-tw`, `es-latam`), with the region codes of the local data. Bageo answers with it in lowercase and takes it in any case; Windows device names (`con`, `nul`, `com1`…) are never a language or region.
+- `result`: `installed` (previews and the announcement use it from now on), `removed`, `not_listed`, `offline` (try again later), `bad_pack` (refused; nothing changed), `update_bageo`, `io` or `busy` (another download, import or deletion is running).
+- A pack is `voices-<id>.zip` holding only `<Voice>_<0|1|2|reject>.wav` for each voice its entry lists (120 files for all 30 voices). The list is `bageo-voices-index.json` in the same release: `{format, version, voices: [{lang, region?, file, bytes, sha256, voices}]}`. Bageo ships with its own copy and keeps a newer one it downloads.
+- What Bageo checks: the same addresses, redirects and https rules as *Local data*; the list at most 256 KiB, a pack at most 16 MiB with the size and SHA-256 the list gives. The zip is opened with the backup's zip reader: exactly the files the list promises, by exact name, each at most 512 KiB, none packed like a zip bomb, each a WAV Bageo plays, a preview line at most 13 s and an announcement at most 16 s. The files are unpacked into a temporary folder and renamed to `voices/<id>/` in the data folder in one step; a pack being replaced is put back when the new one cannot take its place (also at the next start after a crash), and anything else left unfinished is deleted then. The list is kept only once a pack from it is installed.
+- Installing a pack forgets the previews Gemini made for its language and voices, so the recordings are played from then on. Deleting a pack leaves those previews alone.
+- Where a preview comes from: what was made on this computer before, then the region's pack, then the language's pack or the samples that came with Bageo (`assets/voices/<language>`, also when an older install left them), then Gemini. The region is the home country's, else the language's own country.
+- The setting `dismissed_pack_prompts` (`PUT /calls/api/settings`) lists the packs the owner answered *Not now* to; the card does not offer them again.
 
 ## Phones and health
 

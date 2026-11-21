@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "terms": [
+    {
+      "en": "Bageo",
+      "keep": true,
+      "note": "never translated"
+    },
+    {
+      "en": "console",
+      "note": "the web page where Bageo is set up"
+    }
+  ]
+}

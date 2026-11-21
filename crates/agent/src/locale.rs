@@ -12,6 +12,58 @@
 //! The settings value lives in a process-wide slot ([`set_current`]) because
 //! the Live session's helpers are free functions. Unset (unit tests) = zh-TW.
 
+use bageo_packs::data::{OfficialLang, Script, OFFICIAL_LANG_INFO};
+
+mod notify_words;
+
+pub(crate) use notify_words::words_over_english;
+pub use notify_words::{notify_words, words, Words};
+
+/// A Gemini Live language outside the nine core ones (Italian, Thai, Arabic,
+/// ...): an index into [`OFFICIAL_LANG_INFO`] that only ever points at a
+/// non-core entry. Until a language has its own phrases and prompts, every
+/// part of the agent treats it the way it treats English.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Ext(u8);
+
+impl Ext {
+    /// The non-core language whose primary code is `code` (`it`, `fil`,
+    /// `nb`; lower case). Core codes (`en`, `ja`, ...) give None.
+    pub fn from_code(code: &str) -> Option<Ext> {
+        bageo_packs::data::official_ext_index(code).and_then(|i| u8::try_from(i).ok()).map(Ext)
+    }
+
+    /// Every non-core official language, in the order of the official list.
+    pub fn all() -> impl Iterator<Item = Ext> {
+        OFFICIAL_LANG_INFO.iter().enumerate().filter(|(_, l)| !l.core).filter_map(|(i, _)| u8::try_from(i).ok()).map(Ext)
+    }
+
+    fn info(self) -> &'static OfficialLang {
+        &OFFICIAL_LANG_INFO[usize::from(self.0)]
+    }
+
+    /// Settings code: the primary code (`it`, `fil`, `nb`).
+    pub fn code(self) -> &'static str {
+        self.info().code
+    }
+
+    /// The code exactly as the official list writes it (`it-IT`, `fil`).
+    pub fn official(self) -> &'static str {
+        self.info().official
+    }
+
+    /// The script it is written in.
+    pub fn script(self) -> Script {
+        self.info().script
+    }
+}
+
+impl std::fmt::Debug for Ext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.code())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Lang {
     ZhTw,
@@ -23,9 +75,13 @@ pub enum Lang {
     Fr,
     De,
     Pt,
+    /// A language outside the nine core ones. [`Lang::parse`] never returns
+    /// it; only [`Lang::parse_any`] does.
+    Ext(Ext),
 }
 
-pub const ALL: [Lang; 9] = [
+/// The nine core languages: the ones settings accept and the UI lists.
+pub const CORE: [Lang; 9] = [
     Lang::En,
     Lang::ZhTw,
     Lang::ZhCn,
@@ -37,8 +93,12 @@ pub const ALL: [Lang; 9] = [
     Lang::Pt,
 ];
 
+/// Same as [`CORE`]. Code that walks every language a user can pick today.
+pub const ALL: [Lang; 9] = CORE;
+
 impl Lang {
-    /// Settings / UI code (`en`, `zh-TW`, …). Unknown → English.
+    /// Settings / UI code (`en`, `zh-TW`, …). Unknown → English. Only ever
+    /// returns one of the nine core languages.
     pub fn parse(s: &str) -> Lang {
         let t = s.trim().to_ascii_lowercase().replace('_', "-");
         match t.as_str() {
@@ -56,6 +116,41 @@ impl Lang {
         }
     }
 
+    /// Like [`Lang::parse`], but also knows the other official languages, and
+    /// says None for a code it does not know instead of falling back to English.
+    ///
+    /// Order: a core language (whatever [`Lang::parse`] recognises, plus
+    /// `cmn` read as `zh`), then a non-core official language by its official
+    /// code (`it-IT`) or primary code (`it`, `it-CH`). Legacy and macro codes
+    /// browsers and Android still send are mapped first: `no` → `nb`,
+    /// `iw` → `he`, `in` → `id`, `tl` → `fil`.
+    pub fn parse_any(s: &str) -> Option<Lang> {
+        let t = s.trim().to_ascii_lowercase().replace('_', "-");
+        let mut parts = t.splitn(2, '-');
+        let primary = parts.next().unwrap_or("");
+        let rest = parts.next();
+        let primary = match primary {
+            "cmn" => "zh",
+            "no" => "nb",
+            "iw" => "he",
+            "in" => "id",
+            "tl" => "fil",
+            p => p,
+        };
+        if primary.is_empty() {
+            return None;
+        }
+        let norm = match rest {
+            Some(r) => format!("{primary}-{r}"),
+            None => primary.to_string(),
+        };
+        let core = Lang::parse(&norm);
+        if core != Lang::En || primary == "en" {
+            return Some(core);
+        }
+        Ext::from_code(primary).map(Lang::Ext)
+    }
+
     pub fn code(self) -> &'static str {
         match self {
             Lang::ZhTw => "zh-TW",
@@ -67,6 +162,37 @@ impl Lang {
             Lang::Fr => "fr",
             Lang::De => "de",
             Lang::Pt => "pt",
+            Lang::Ext(e) => e.code(),
+        }
+    }
+
+    /// One of the nine core languages.
+    pub fn is_core(self) -> bool {
+        !matches!(self, Lang::Ext(_))
+    }
+
+    /// The language's name in English (`Italian`, `Traditional Chinese (Taiwan Mandarin)`).
+    pub fn name_en(self) -> &'static str {
+        match self {
+            Lang::Ext(e) => e.info().name_en,
+            core => phrases(core).name_en,
+        }
+    }
+
+    /// Written right to left (Arabic, Hebrew, Persian, Urdu, ...).
+    pub fn rtl(self) -> bool {
+        match self {
+            Lang::Ext(e) => e.info().rtl,
+            _ => false,
+        }
+    }
+
+    /// The language whose settings, phrases and prompts stand in for this one
+    /// until it has its own: English for every non-core language.
+    pub fn base(self) -> Lang {
+        match self {
+            Lang::Ext(_) => Lang::En,
+            core => core,
         }
     }
 
@@ -96,6 +222,13 @@ pub struct Active {
     /// Names speech-to-text keeps getting wrong → how they should read
     /// (settings `name_corrections`).
     pub name_fixes: Vec<(String, String)>,
+    /// The country the owner lives in (settings `home_country`, ISO 3166
+    /// alpha-2, lowercase): a call's region when its SIM does not say. None =
+    /// worked out automatically.
+    pub home_country: Option<String>,
+    /// Talk-style slider, 1 to 5 (settings `talk_style_level`); None when the
+    /// owner's own prompt is in use, which replaces the talk style.
+    pub talk_style: Option<u8>,
 }
 
 impl Default for Active {
@@ -110,6 +243,8 @@ impl Default for Active {
             owner_aliases: Vec::new(),
             country_code: "886".to_string(),
             name_fixes: Vec::new(),
+            home_country: None,
+            talk_style: None,
         }
     }
 }
@@ -138,29 +273,53 @@ pub fn notify_lang() -> Lang {
     active().notify_lang
 }
 
-/// The phrases of what the owner reads (notifications, summaries, cards).
+/// The call phrases in the language the owner reads (the blocked-number
+/// announcement quoted in notifications); everything else the owner reads is
+/// in [`notify_words`].
 pub fn notify_phrases() -> &'static Phrases {
     phrases(notify_lang())
 }
 
 /// [`kv_sep`] for what the owner reads.
 pub fn notify_kv_sep() -> &'static str {
-    notify_phrases().sep
+    &notify_words().sep
 }
 
-/// [`zh_or`] for what the owner reads (fallback summaries, notes for the
-/// summary model).
-pub fn notify_zh_or(zh_tw: &str, en: &str) -> String {
-    zh_or_in(notify_lang(), zh_tw, en)
+/// [`fill_in`] for what the owner reads.
+pub fn notify_fill(template: &str, slots: &[(&str, &str)]) -> String {
+    fill_in(notify_lang(), template, slots)
 }
 
-/// [`zh_or`] in a given language: Chinese for the two Chinese languages,
-/// English for every other one.
-pub fn zh_or_in(lang: Lang, zh_tw: &str, en: &str) -> String {
-    match lang {
-        Lang::ZhTw => zh_tw.to_string(),
-        Lang::ZhCn => crate::zh_convert::to_cn(zh_tw),
-        _ => en.to_string(),
+/// A text of [`Words`] with its named `{slots}` filled in one pass; a slot the
+/// text does not name is left out, a `{name}` that is no slot stays as it is.
+/// For Simplified Chinese the filled text goes through the converter, so a
+/// value written in Traditional characters (a contact's name, a phone's label)
+/// reads as Simplified, as it always did.
+pub fn fill_in(lang: Lang, template: &str, slots: &[(&str, &str)]) -> String {
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(i) = rest.find('{') {
+        out.push_str(&rest[..i]);
+        let after = &rest[i + 1..];
+        let slot = after
+            .find('}')
+            .and_then(|j| slots.iter().find(|s| s.0 == &after[..j]).map(|s| (j, s.1)));
+        match slot {
+            Some((j, value)) => {
+                out.push_str(value);
+                rest = &after[j + 1..];
+            }
+            None => {
+                out.push('{');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    if lang == Lang::ZhCn && !slots.is_empty() {
+        crate::zh_convert::to_cn(&out)
+    } else {
+        out
     }
 }
 
@@ -418,20 +577,9 @@ pub fn country_lang(iso: &str) -> Option<Lang> {
         .map(|&(_, lang)| lang)
 }
 
-/// A line that exists in Chinese and English only (fallback summaries, notes
-/// for the summary model): Chinese for the two Chinese settings, English for
-/// every other language.
-pub fn zh_or(zh_tw: &str, en: &str) -> String {
-    match current() {
-        Lang::ZhTw => zh_tw.to_string(),
-        Lang::ZhCn => crate::zh_convert::to_cn(zh_tw),
-        _ => en.to_string(),
-    }
-}
-
 /// Between a label and its value in the agent's language ("Number: …", "號碼：…").
 pub fn kv_sep() -> &'static str {
-    phrases(current()).sep
+    &words(current()).sep
 }
 
 /// A phrase template with its `{}` filled in.
@@ -441,7 +589,7 @@ pub fn fill(template: &str, value: &str) -> String {
 
 /// `text` in the language's quotation marks.
 pub fn quoted(lang: Lang, text: &str) -> String {
-    let (open, close) = phrases(lang).quote;
+    let [open, close] = &words(lang).quote;
     format!("{open}{text}{close}")
 }
 
@@ -449,23 +597,23 @@ pub fn quoted(lang: Lang, text: &str) -> String {
 /// "Nov 13, 08:09", "11月13日 08:09", "13.11. 08:09". The time is whatever
 /// zone the caller converted it to (the machine's local time, see `TZ`).
 pub fn date_time(lang: Lang, t: &chrono::NaiveDateTime) -> String {
-    t.format(phrases(lang).dt_fmt).to_string()
+    t.format(&words(lang).dt_fmt).to_string()
 }
 
 /// A date alone ("Nov 13", "11月13日", "13.11.").
 pub fn date_only(lang: Lang, d: &chrono::NaiveDate) -> String {
-    d.format(phrases(lang).date_fmt).to_string()
+    d.format(&words(lang).date_fmt).to_string()
 }
 
 /// How long something lasted, the way people say it: seconds under a minute
 /// and a half, whole minutes from there ("72 秒", "10 min").
 pub fn duration(lang: Lang, secs: f64) -> String {
-    let p = phrases(lang);
+    let p = words(lang);
     let secs = if secs.is_finite() { secs.max(0.0) } else { 0.0 };
     if secs < 90.0 {
-        fill(p.u_sec, &format!("{secs:.0}"))
+        fill(&p.u_sec, &format!("{secs:.0}"))
     } else {
-        fill(p.u_min, &format!("{:.0}", secs / 60.0))
+        fill(&p.u_min, &format!("{:.0}", secs / 60.0))
     }
 }
 
@@ -489,174 +637,12 @@ pub struct Phrases {
     /// Lines that make the caller wait or say the AI is looking something up,
     /// in this language (the prompt names them as things not to say).
     pub no_wait: &'static str,
-    /// Speaker labels of the dialogue in the web record: the caller, the AI.
-    pub d_caller: &'static str,
-    pub d_ai: &'static str,
     /// Stand-in when no owner name is set.
     pub owner_fallback: &'static str,
     /// Blocked-number announcement.
     pub unavailable: &'static str,
     /// Voice sample on the settings page (AI's three lines).
     pub preview: [&'static str; 3],
-    // Notifications
-    pub n_incoming: &'static str,
-    pub n_outgoing: &'static str,
-    pub n_summary: &'static str,
-    pub n_blocked: &'static str,
-    pub n_voicemail: &'static str,
-    pub n_number: &'static str,
-    pub n_phone: &'static str,
-    pub n_time: &'static str,
-    pub n_reason: &'static str,
-    pub n_length: &'static str,
-    pub n_seconds: &'static str,
-    pub n_hidden: &'static str,
-    pub n_unknown: &'static str,
-    pub n_details: &'static str,
-    pub n_recording: &'static str,
-    /// `{}` = the announcement text.
-    pub n_blocked_done: &'static str,
-    /// Label of the calendar suggestion line.
-    pub n_calendar: &'static str,
-    pub n_test_title: &'static str,
-    pub n_test_body: &'static str,
-    /// Held-back calls of one number, in one message. `{number}` = the number,
-    /// `{count}` = how many calls.
-    pub n_repeat_title: &'static str,
-    pub n_repeat_body: &'static str,
-    // Post-call summary lines
-    pub s_caller: &'static str,
-    pub s_matter: &'static str,
-    pub s_reply: &'static str,
-    pub s_todo: &'static str,
-    pub s_no_summary: &'static str,
-    pub s_ai_failed: &'static str,
-    // Formats
-    /// Between a label and its value ("Number: …", "號碼：…").
-    pub sep: &'static str,
-    /// Between listed words.
-    pub list_sep: &'static str,
-    /// Quotation marks around a quoted phrase.
-    pub quote: (&'static str, &'static str),
-    /// chrono format of a date and time in notifications ([`date_time`]).
-    pub dt_fmt: &'static str,
-    /// chrono format of a date alone ([`date_only`]).
-    pub date_fmt: &'static str,
-    /// `{}` seconds / `{}` minutes ([`duration`]).
-    pub u_sec: &'static str,
-    pub u_min: &'static str,
-    // Summaries written without the summary model. `{}` = a length
-    // ([`duration`]) or the words that were named.
-    pub s_no_service: &'static str,
-    pub s_see_transcript: &'static str,
-    pub s_no_transcript: &'static str,
-    pub s_listen_recording: &'static str,
-    pub s_unclear: &'static str,
-    pub s_ai_fail_matter: &'static str,
-    pub s_call_back_if_known: &'static str,
-    /// First line put above a summary when the AI never connected.
-    pub s_ai_fail_prefix: &'static str,
-    pub s_stall_topic: &'static str,
-    pub s_stall_topic_kw: &'static str,
-    pub s_stall_reply: &'static str,
-    /// Nothing to do.
-    pub s_nothing: &'static str,
-    // Voicemail (older menu flow): how the caller wants an answer. `{}` = the
-    // number or address, or a length.
-    pub vm_call_back_to: &'static str,
-    pub vm_call_back_unknown: &'static str,
-    pub vm_email_to: &'static str,
-    pub vm_email_unknown: &'static str,
-    pub vm_call_back_unchecked: &'static str,
-    pub vm_no_reply: &'static str,
-    pub vm_no_choice: &'static str,
-    pub vm_decide_callback: &'static str,
-    pub vm_length: &'static str,
-    pub vm_no_transcript: &'static str,
-    pub vm_task_failed: &'static str,
-    // Telegram task cards, their buttons and the follow-up message
-    pub tc_status: &'static str,
-    pub tc_pending: &'static str,
-    pub tc_transcript: &'static str,
-    pub tc_confirm: &'static str,
-    pub tc_ignore: &'static str,
-    pub tc_confirm_ack: &'static str,
-    pub tc_ignore_ack: &'static str,
-    pub tc_task: &'static str,
-    pub tc_ignored_task: &'static str,
-    pub tc_done: &'static str,
-    pub tc_in_progress: &'static str,
-    pub tc_failed: &'static str,
-    pub tc_confirm_failed: &'static str,
-    pub tc_ignore_failed: &'static str,
-    // Why a task could not be carried out (`fulfill`, Gmail).
-    // `{}` = the time that was not understood / the error.
-    pub f_callback_waiting: &'static str,
-    pub f_callback_whitelist: &'static str,
-    pub f_callback_no_number: &'static str,
-    pub f_callback_send_failed: &'static str,
-    pub f_email_no_address: &'static str,
-    pub f_gmail_missing: &'static str,
-    pub f_bad_time: &'static str,
-    pub f_openclaw_failed: &'static str,
-    pub g_bad_address: &'static str,
-    pub g_no_recipient: &'static str,
-    pub g_bad_recipient: &'static str,
-    pub g_short_password: &'static str,
-    // The e-mail and the calendar event a task sends. `{}` = the caller.
-    pub e_subject: &'static str,
-    pub e_summary: &'static str,
-    pub e_empty: &'static str,
-    pub e_appointment: &'static str,
-    // Appointments the AI takes on a call (`appointments`): the Telegram card,
-    // its buttons and results, the summary line and the text to the caller.
-    /// Weekday names, Monday first.
-    pub ap_weekdays: [&'static str; 7],
-    /// chrono format of an appointment's time; `{}` = the weekday.
-    pub ap_dt_fmt: &'static str,
-    /// chrono format of an end time on the same day ("15:00–16:00").
-    pub ap_end_fmt: &'static str,
-    pub ap_confirm: &'static str,
-    pub ap_decline: &'static str,
-    pub ap_card_title: &'static str,
-    pub ap_what: &'static str,
-    pub ap_name: &'static str,
-    pub ap_sms: &'static str,
-    pub ap_sms_will: &'static str,
-    pub ap_sms_off: &'static str,
-    pub ap_sms_cannot: &'static str,
-    pub ap_pending: &'static str,
-    pub ap_replaced: &'static str,
-    pub ap_time_unconfirmed: &'static str,
-    pub ap_confirmed: &'static str,
-    pub ap_declined: &'static str,
-    pub ap_already: &'static str,
-    /// The link that adds an accepted appointment to the owner's calendar; `{}` = the link.
-    pub ap_cal_link: &'static str,
-    pub ap_sms_sent: &'static str,
-    pub ap_sms_not_sent: &'static str,
-    pub ap_sms_old_app: &'static str,
-    pub ap_sms_offline: &'static str,
-    pub ap_sms_timeout: &'static str,
-    pub ap_sms_code: &'static str,
-    pub ap_sms_hi_owner: &'static str,
-    pub ap_sms_hi: &'static str,
-    pub ap_sms_ok: &'static str,
-    pub ap_sms_no: &'static str,
-    /// The same text is already on its way.
-    pub ap_sms_busy: &'static str,
-    /// An event that no longer stands could not be deleted; `{}` = when and what.
-    pub ap_void_failed: &'static str,
-    /// The summary judged the call a sales call afterwards: the event the call
-    /// put in the calendar was deleted; `{}` = when and what.
-    pub ap_sales_voided: &'static str,
-    /// After the pending line of the summary: where to confirm; `{}` = the
-    /// call's page in the web console.
-    pub ap_web_confirm: &'static str,
-    /// The same without a known console address.
-    pub ap_web_console: &'static str,
-    /// Label of the web link on the Telegram card.
-    pub ap_web_label: &'static str,
     /// A goodbye when it ends what was said.
     pub farewells: &'static [&'static str],
     /// The caller is done ("that's all") when it ends what they said.
@@ -668,6 +654,9 @@ pub fn phrases(lang: Lang) -> &'static Phrases {
         Lang::ZhTw => &ZH_TW,
         Lang::ZhCn => &ZH_CN,
         Lang::En => &EN,
+        // A language with call speech in the translations uses it; any other
+        // reads English.
+        Lang::Ext(e) => crate::locales_store::current().phrases(e).unwrap_or(&EN),
         Lang::Ja => &JA,
         Lang::Ko => &KO,
         Lang::Es => &ES,
@@ -692,8 +681,6 @@ static ZH_TW: Phrases = Phrases {
     think_about_it: "這個我要再想一下",
     wait_one_more: "欸等一下，我還有一個問題",
     no_wait: "「等一下」「我查一下」「我看一下行程」「稍等」",
-    d_caller: "對方",
-    d_ai: "接聽",
     owner_fallback: "機主",
     unavailable: "此號碼目前無法接通，請稍後再撥。",
     preview: [
@@ -701,128 +688,6 @@ static ZH_TW: Phrases = Phrases {
         "喔，是包裹喔，好啊，那你先幫我放管理室就好，謝謝喔。",
         "好，掰掰。",
     ],
-    n_incoming: "來電",
-    n_outgoing: "去電",
-    n_summary: "通話摘要",
-    n_blocked: "黑名單來電",
-    n_voicemail: "語音留言",
-    n_number: "號碼",
-    n_phone: "手機",
-    n_time: "時間",
-    n_reason: "原因",
-    n_length: "長度",
-    n_seconds: "秒",
-    n_hidden: "未顯示號碼",
-    n_unknown: "未知",
-    n_details: "逐字稿／錄音",
-    n_recording: "聽錄音",
-    n_blocked_done: "已播「{}」後掛斷，沒有用 AI",
-    n_calendar: "行事曆",
-    n_test_title: "測試通知",
-    n_test_body: "這是 Bageo 的測試通知，看到這則就代表設定成功。",
-    n_repeat_title: "同一號碼連續來電",
-    n_repeat_body: "{number} 這一分鐘內又打了 {count} 通，沒有另外通知。",
-    s_caller: "對方",
-    s_matter: "事情",
-    s_reply: "AI 回覆",
-    s_todo: "要處理",
-    s_no_summary: "（沒有摘要，請看網頁逐字稿）",
-    s_ai_failed: "AI 沒接上，沒講話",
-    sep: "：",
-    list_sep: "、",
-    quote: ("「", "」"),
-    dt_fmt: "%-m月%-d日 %H:%M",
-    date_fmt: "%-m月%-d日",
-    u_sec: "{} 秒",
-    u_min: "{} 分鐘",
-    s_no_service: "（沒有設定摘要服務，沒有摘要）",
-    s_see_transcript: "請看網頁逐字稿",
-    s_no_transcript: "通話約 {}，沒有可用的逐字稿",
-    s_listen_recording: "請到網頁聽錄音",
-    s_unclear: "聽不清楚",
-    s_ai_fail_matter: "AI 沒接上，約 {}後系統掛斷，對方沒聽到回應",
-    s_call_back_if_known: "認得這號碼的話回電",
-    s_ai_fail_prefix: "【AI 沒接上，系統直接掛斷】",
-    s_stall_topic: "推銷／詐騙電話",
-    s_stall_topic_kw: "推銷／詐騙電話（提到：{}）",
-    s_stall_reply: "故意陪他聊了約 {}，沒給資料也沒答應",
-    s_nothing: "不用",
-    vm_call_back_to: "要求回電：{}（已按1確認）",
-    vm_call_back_unknown: "要求回電此來電號碼（已按1確認，但號碼未知）",
-    vm_email_to: "要求回信：{}（已按1確認）",
-    vm_email_unknown: "要求回信（已按1確認，但地址未知）",
-    vm_call_back_unchecked: "要求回電（未核對號碼）",
-    vm_no_reply: "不需回覆（純轉達）",
-    vm_no_choice: "未選擇回覆方式（通話提前結束）",
-    vm_decide_callback: "要不要回電請自己確認",
-    vm_length: "留言約 {}",
-    vm_no_transcript: "留言約 {}，逐字稿失敗，請聽錄音",
-    vm_task_failed: "語音留言（轉錄失敗，待人工處理）",
-    tc_status: "狀態",
-    tc_pending: "待確認",
-    tc_transcript: "逐字稿",
-    tc_confirm: "確認",
-    tc_ignore: "忽略",
-    tc_confirm_ack: "已確認，執行中…",
-    tc_ignore_ack: "已忽略",
-    tc_task: "任務",
-    tc_ignored_task: "已忽略任務",
-    tc_done: "已完成",
-    tc_in_progress: "已確認（進行中）",
-    tc_failed: "履行失敗",
-    tc_confirm_failed: "確認失敗",
-    tc_ignore_failed: "忽略失敗",
-    f_callback_waiting: "回撥已排程，但手機的控制連線離線 — 請確認手機已連上主程式後再按一次確認",
-    f_callback_whitelist: "回撥號碼不在白名單 — 請至「設定」加入允許回撥的號碼（或前綴*）後再確認",
-    f_callback_no_number: "回撥號碼缺失 — 任務沒有聯絡方式，來電號碼也是空的",
-    f_callback_send_failed: "回撥發送失敗",
-    f_email_no_address: "此任務要寄信，但沒有回覆信箱 — 請從通話逐字稿補齊聯絡方式，或改忽略",
-    f_gmail_missing: "Gmail 憑證未設定 — 請至「設定」分頁填寫 Gmail 帳號與應用程式密碼後再確認",
-    f_bad_time: "無法解析時間提示「{}」",
-    f_openclaw_failed: "OpenClaw 轉派失敗：{}（請檢查設定中的 OpenClaw URL / Token）",
-    g_bad_address: "Gmail 帳號格式不正確 — 請至「設定」分頁檢查 Gmail 帳號",
-    g_no_recipient: "寄件失敗：收件信箱是空的",
-    g_bad_recipient: "寄件失敗：收件信箱格式不正確",
-    g_short_password: "Gmail 應用程式密碼太短 — 請至「設定」分頁重新填寫（不會顯示密碼內容）",
-    e_subject: "語音留言回覆",
-    e_summary: "摘要",
-    e_empty: "（沒有摘要或逐字稿）",
-    e_appointment: "預約 — {}",
-    ap_weekdays: ["週一", "週二", "週三", "週四", "週五", "週六", "週日"],
-    ap_dt_fmt: "%-m/%-d（{}）%H:%M",
-    ap_end_fmt: "%H:%M",
-    ap_confirm: "同意",
-    ap_decline: "不同意",
-    ap_card_title: "預約待確認",
-    ap_what: "事由",
-    ap_name: "稱呼",
-    ap_sms: "簡訊",
-    ap_sms_will: "按同意或不同意後會傳簡訊告訴對方",
-    ap_sms_off: "不會傳（設定裡「傳簡訊告訴對方」沒開）",
-    ap_sms_cannot: "對方號碼收不到簡訊，請自己回電",
-    ap_pending: "預約待你確認",
-    ap_replaced: "通話中改過時間，先排入的「{}」還在行事曆上，請自己刪掉",
-    ap_time_unconfirmed: "對方沒有確認過這個時間，回覆前請先跟對方確認",
-    ap_confirmed: "已同意預約",
-    ap_declined: "已婉拒預約",
-    ap_already: "這個預約已經處理過了",
-    ap_cal_link: "加入行事曆：{}",
-    ap_sms_sent: "已傳簡訊給 {}",
-    ap_sms_not_sent: "簡訊沒傳出：{}",
-    ap_sms_old_app: "手機 App 太舊，不支援傳簡訊",
-    ap_sms_offline: "手機沒連線",
-    ap_sms_timeout: "手機沒有回應（逾時）",
-    ap_sms_code: "失敗代碼 {}",
-    ap_sms_hi_owner: "您好，我是{}。",
-    ap_sms_hi: "您好。",
-    ap_sms_ok: "約在{}沒問題，到時見。",
-    ap_sms_no: "不好意思，{}我沒辦法，我們再約別的時間好嗎？",
-    ap_sms_busy: "同一則簡訊正在傳送中",
-    ap_void_failed: "通話中排入的「{}」已作廢，但沒能從行事曆刪掉，請自己刪",
-    ap_sales_voided: "判定是推銷電話，已取消通話中排入的預約：{}",
-    ap_web_confirm: "到網頁確認：{}",
-    ap_web_console: "到網頁控制台確認",
-    ap_web_label: "網頁確認",
     farewells: &[],
     wrapups: &[],
 };
@@ -840,8 +705,6 @@ static ZH_CN: Phrases = Phrases {
     think_about_it: "这个我得再想想",
     wait_one_more: "哎等一下，我还有个问题",
     no_wait: "“等一下”“我查一下”“我看一下行程”“稍等”",
-    d_caller: "对方",
-    d_ai: "接听",
     owner_fallback: "机主",
     unavailable: "您拨打的号码暂时无法接通，请稍后再拨。",
     preview: [
@@ -849,128 +712,6 @@ static ZH_CN: Phrases = Phrases {
         "哦，是快递啊，行，那你先帮我放门口就好，谢谢啊。",
         "好，拜拜。",
     ],
-    n_incoming: "来电",
-    n_outgoing: "去电",
-    n_summary: "通话摘要",
-    n_blocked: "黑名单来电",
-    n_voicemail: "语音留言",
-    n_number: "号码",
-    n_phone: "手机",
-    n_time: "时间",
-    n_reason: "原因",
-    n_length: "时长",
-    n_seconds: "秒",
-    n_hidden: "未显示号码",
-    n_unknown: "未知",
-    n_details: "通话记录／录音",
-    n_recording: "听录音",
-    n_blocked_done: "已播放「{}」后挂断，没有使用 AI",
-    n_calendar: "日历",
-    n_test_title: "测试通知",
-    n_test_body: "这是 Bageo 的测试通知，看到这条就说明设置成功。",
-    n_repeat_title: "同一号码连续来电",
-    n_repeat_body: "{number} 这一分钟内又打了 {count} 个电话，没有另外通知。",
-    s_caller: "对方",
-    s_matter: "事情",
-    s_reply: "AI 回复",
-    s_todo: "要处理",
-    s_no_summary: "（没有摘要，请看网页通话记录）",
-    s_ai_failed: "AI 没接上，没说话",
-    sep: "：",
-    list_sep: "、",
-    quote: ("“", "”"),
-    dt_fmt: "%-m月%-d日 %H:%M",
-    date_fmt: "%-m月%-d日",
-    u_sec: "{} 秒",
-    u_min: "{} 分钟",
-    s_no_service: "（没有设置摘要服务，没有摘要）",
-    s_see_transcript: "请看网页通话记录",
-    s_no_transcript: "通话约 {}，没有可用的通话记录",
-    s_listen_recording: "请到网页听录音",
-    s_unclear: "听不清楚",
-    s_ai_fail_matter: "AI 没接上，约 {}后系统挂断，对方没听到回应",
-    s_call_back_if_known: "认得这个号码的话回电",
-    s_ai_fail_prefix: "【AI 没接上，系统直接挂断】",
-    s_stall_topic: "推销／诈骗电话",
-    s_stall_topic_kw: "推销／诈骗电话（提到：{}）",
-    s_stall_reply: "故意陪他聊了约 {}，没给信息也没答应",
-    s_nothing: "不用",
-    vm_call_back_to: "要求回电：{}（已按1确认）",
-    vm_call_back_unknown: "要求回电到这个来电号码（已按1确认，但号码未知）",
-    vm_email_to: "要求回邮件：{}（已按1确认）",
-    vm_email_unknown: "要求回邮件（已按1确认，但地址未知）",
-    vm_call_back_unchecked: "要求回电（未核对号码）",
-    vm_no_reply: "不需要回复（只是转达）",
-    vm_no_choice: "没有选择回复方式（通话提前结束）",
-    vm_decide_callback: "要不要回电请自己确认",
-    vm_length: "留言约 {}",
-    vm_no_transcript: "留言约 {}，转写失败，请听录音",
-    vm_task_failed: "语音留言（转写失败，待人工处理）",
-    tc_status: "状态",
-    tc_pending: "待确认",
-    tc_transcript: "文字记录",
-    tc_confirm: "确认",
-    tc_ignore: "忽略",
-    tc_confirm_ack: "已确认，正在处理…",
-    tc_ignore_ack: "已忽略",
-    tc_task: "任务",
-    tc_ignored_task: "已忽略任务",
-    tc_done: "已完成",
-    tc_in_progress: "已确认（处理中）",
-    tc_failed: "执行失败",
-    tc_confirm_failed: "确认失败",
-    tc_ignore_failed: "忽略失败",
-    f_callback_waiting: "回拨已排好，但手机的控制连接已断开 — 请确认手机已连上主程序后再点一次确认",
-    f_callback_whitelist: "回拨号码不在白名单里 — 请到“设置”添加允许回拨的号码（或前缀*）后再确认",
-    f_callback_no_number: "缺少回拨号码 — 任务没有联系方式，来电号码也是空的",
-    f_callback_send_failed: "回拨发送失败",
-    f_email_no_address: "这个任务要发邮件，但没有回复邮箱 — 请从文字记录补上联系方式，或者忽略",
-    f_gmail_missing: "Gmail 凭据未设置 — 请到“设置”填写 Gmail 账号和应用专用密码后再确认",
-    f_bad_time: "无法解析时间提示“{}”",
-    f_openclaw_failed: "OpenClaw 转交失败：{}（请检查设置里的 OpenClaw URL / Token）",
-    g_bad_address: "Gmail 账号格式不对 — 请到“设置”检查 Gmail 账号",
-    g_no_recipient: "发送失败：收件邮箱是空的",
-    g_bad_recipient: "发送失败：收件邮箱格式不对",
-    g_short_password: "Gmail 应用专用密码太短 — 请到“设置”重新填写（不会显示密码内容）",
-    e_subject: "语音留言回复",
-    e_summary: "摘要",
-    e_empty: "（没有摘要或文字记录）",
-    e_appointment: "预约 — {}",
-    ap_weekdays: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
-    ap_dt_fmt: "%-m月%-d日（{}）%H:%M",
-    ap_end_fmt: "%H:%M",
-    ap_confirm: "同意",
-    ap_decline: "不同意",
-    ap_card_title: "预约待确认",
-    ap_what: "事由",
-    ap_name: "称呼",
-    ap_sms: "短信",
-    ap_sms_will: "按同意或不同意后会发短信告诉对方",
-    ap_sms_off: "不会发（设置里“发短信告诉对方”没开）",
-    ap_sms_cannot: "对方号码收不到短信，请自己回电",
-    ap_pending: "预约待你确认",
-    ap_replaced: "通话中改过时间，先排入的“{}”还在日历上，请自己删掉",
-    ap_time_unconfirmed: "对方没有确认过这个时间，回复前请先跟对方确认",
-    ap_confirmed: "已同意预约",
-    ap_declined: "已婉拒预约",
-    ap_already: "这个预约已经处理过了",
-    ap_cal_link: "添加到日历：{}",
-    ap_sms_sent: "已发短信给 {}",
-    ap_sms_not_sent: "短信没发出：{}",
-    ap_sms_old_app: "手机 App 太旧，不支持发短信",
-    ap_sms_offline: "手机没连线",
-    ap_sms_timeout: "手机没有回应（超时）",
-    ap_sms_code: "失败代码 {}",
-    ap_sms_hi_owner: "你好，我是{}。",
-    ap_sms_hi: "你好。",
-    ap_sms_ok: "约在{}没问题，到时见。",
-    ap_sms_no: "不好意思，{}我没办法，我们再约别的时间好吗？",
-    ap_sms_busy: "同一条短信正在发送中",
-    ap_void_failed: "通话中排入的“{}”已作废，但没能从日历删掉，请自己删",
-    ap_sales_voided: "判定是推销电话，已取消通话中排入的预约：{}",
-    ap_web_confirm: "到网页确认：{}",
-    ap_web_console: "到网页控制台确认",
-    ap_web_label: "网页确认",
     farewells: &[],
     wrapups: &[],
 };
@@ -988,8 +729,6 @@ static EN: Phrases = Phrases {
     think_about_it: "I'd have to think about that",
     wait_one_more: "Oh wait, I've got one more question",
     no_wait: "\"just a sec\", \"give me a moment\", \"let me see\"",
-    d_caller: "Caller",
-    d_ai: "AI",
     owner_fallback: "the owner",
     unavailable: "The number you have dialed is not available right now. Please try again later.",
     preview: [
@@ -997,128 +736,6 @@ static EN: Phrases = Phrases {
         "Oh, a package? Sure, just leave it at the front door, thanks a lot.",
         "Okay, bye.",
     ],
-    n_incoming: "Incoming call",
-    n_outgoing: "Outgoing call",
-    n_summary: "Call summary",
-    n_blocked: "Blocked number called",
-    n_voicemail: "Voicemail",
-    n_number: "Number",
-    n_phone: "Phone",
-    n_time: "Time",
-    n_reason: "Reason",
-    n_length: "Length",
-    n_seconds: "s",
-    n_hidden: "Hidden number",
-    n_unknown: "Unknown",
-    n_details: "Transcript / recording",
-    n_recording: "Recording",
-    n_blocked_done: "Played \"{}\" and hung up. The AI was not used.",
-    n_calendar: "Calendar",
-    n_test_title: "Test notification",
-    n_test_body: "This is a test notification from Bageo. If you can read it, the channel works.",
-    n_repeat_title: "Repeated calls from one number",
-    n_repeat_body: "More calls from {number} in the last minute: {count}. They were not sent one by one.",
-    s_caller: "Caller",
-    s_matter: "About",
-    s_reply: "AI said",
-    s_todo: "To do",
-    s_no_summary: "(No summary — see the transcript in the web console.)",
-    s_ai_failed: "The AI did not connect and said nothing",
-    sep: ": ",
-    list_sep: ", ",
-    quote: ("\"", "\""),
-    dt_fmt: "%b %-d, %H:%M",
-    date_fmt: "%b %-d",
-    u_sec: "{} s",
-    u_min: "{} min",
-    s_no_service: "No summary service is set up",
-    s_see_transcript: "See the transcript in the web console",
-    s_no_transcript: "The call lasted about {}; there is no usable transcript",
-    s_listen_recording: "Listen to the recording in the web console",
-    s_unclear: "Unclear",
-    s_ai_fail_matter: "The AI did not connect; the system hung up after about {} and the caller heard nothing",
-    s_call_back_if_known: "Call back if you know the number",
-    s_ai_fail_prefix: "[The AI did not connect; the system hung up]",
-    s_stall_topic: "Sales / scam call",
-    s_stall_topic_kw: "Sales / scam call (mentioned: {})",
-    s_stall_reply: "Kept them talking for about {}; gave no data and agreed to nothing",
-    s_nothing: "Nothing",
-    vm_call_back_to: "Wants a call back: {} (confirmed with 1)",
-    vm_call_back_unknown: "Wants a call back on this number (confirmed with 1, but the number is unknown)",
-    vm_email_to: "Wants a reply by email: {} (confirmed with 1)",
-    vm_email_unknown: "Wants a reply by email (confirmed with 1, but the address is unknown)",
-    vm_call_back_unchecked: "Wants a call back (number not checked)",
-    vm_no_reply: "No reply needed (message only)",
-    vm_no_choice: "No reply method chosen (the call ended early)",
-    vm_decide_callback: "Decide whether to call back",
-    vm_length: "about {}",
-    vm_no_transcript: "A message of about {}; it could not be transcribed. Listen to the recording",
-    vm_task_failed: "Voicemail (could not be transcribed; needs a look)",
-    tc_status: "Status",
-    tc_pending: "Waiting for you",
-    tc_transcript: "Transcript",
-    tc_confirm: "Confirm",
-    tc_ignore: "Ignore",
-    tc_confirm_ack: "Confirmed, working on it…",
-    tc_ignore_ack: "Ignored",
-    tc_task: "Task",
-    tc_ignored_task: "Task ignored",
-    tc_done: "Done",
-    tc_in_progress: "Confirmed (in progress)",
-    tc_failed: "Failed",
-    tc_confirm_failed: "Could not confirm",
-    tc_ignore_failed: "Could not ignore",
-    f_callback_waiting: "The call back is scheduled, but the phone's control link is offline. Make sure the phone is connected to the agent, then confirm again.",
-    f_callback_whitelist: "The call-back number is not on the allowed list. Add it (or a prefix ending in *) in Settings, then confirm again.",
-    f_callback_no_number: "No number to call back: the task has no contact and the caller's number is empty.",
-    f_callback_send_failed: "Could not send the call back",
-    f_email_no_address: "This task sends an email but has no reply address. Add the contact from the transcript, or ignore the task.",
-    f_gmail_missing: "Gmail is not set up. Enter the Gmail address and app password in Settings, then confirm again.",
-    f_bad_time: "Could not read the time \"{}\"",
-    f_openclaw_failed: "Could not hand the task to OpenClaw: {} (check the OpenClaw URL and token in Settings)",
-    g_bad_address: "The Gmail address does not look right. Check it in Settings.",
-    g_no_recipient: "Not sent: no recipient address",
-    g_bad_recipient: "Not sent: the recipient address does not look right",
-    g_short_password: "The Gmail app password is too short. Enter it again in Settings (it is never shown).",
-    e_subject: "Reply to your voicemail",
-    e_summary: "Summary",
-    e_empty: "(No summary or transcript)",
-    e_appointment: "Appointment — {}",
-    ap_weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    ap_dt_fmt: "{}, %b %-d, %-I:%M %p",
-    ap_end_fmt: "%-I:%M %p",
-    ap_confirm: "Accept",
-    ap_decline: "Decline",
-    ap_card_title: "Appointment to confirm",
-    ap_what: "What",
-    ap_name: "Name",
-    ap_sms: "Text to caller",
-    ap_sms_will: "sent when you tap Accept or Decline",
-    ap_sms_off: "won't be sent (\"Text the caller\" is off in Settings)",
-    ap_sms_cannot: "can't text this number, so call them back yourself",
-    ap_pending: "Appointment to confirm",
-    ap_replaced: "The time changed during the call; the earlier \"{}\" is still in your calendar. Please delete it.",
-    ap_time_unconfirmed: "The caller never confirmed this time read back; check it with them before you answer",
-    ap_confirmed: "Appointment accepted",
-    ap_declined: "Appointment declined",
-    ap_already: "This appointment has already been handled",
-    ap_cal_link: "Add it to your calendar: {}",
-    ap_sms_sent: "Text sent to {}",
-    ap_sms_not_sent: "Text not sent: {}",
-    ap_sms_old_app: "the phone app is too old to send texts",
-    ap_sms_offline: "the phone is not connected",
-    ap_sms_timeout: "the phone didn't respond (timed out)",
-    ap_sms_code: "error code {}",
-    ap_sms_hi_owner: "Hi, it's {}. ",
-    ap_sms_hi: "Hi! ",
-    ap_sms_ok: "{} works for me. See you then!",
-    ap_sms_no: "Sorry, {} won't work for me after all. Could we find another time?",
-    ap_sms_busy: "the same text is already being sent",
-    ap_void_failed: "\"{}\" from the call was canceled but couldn't be removed from your calendar. Please delete it yourself.",
-    ap_sales_voided: "Judged a sales call, so the appointment booked during the call was canceled: {}",
-    ap_web_confirm: "confirm in the web console: {}",
-    ap_web_console: "confirm in the web console",
-    ap_web_label: "Confirm on the web",
     farewells: &[
         "bye", "bye bye", "bye now", "goodbye", "good bye", "see you", "see ya", "see you later",
         "talk to you later", "talk later", "talk soon", "speak soon", "take care",
@@ -1146,8 +763,6 @@ static JA: Phrases = Phrases {
     think_about_it: "それはちょっと考えさせてください",
     wait_one_more: "あ、すみません、もう一つだけ聞いてもいいですか",
     no_wait: "「ちょっと待って」「確認するから待って」「調べてみるね」「少々お待ちください」",
-    d_caller: "相手",
-    d_ai: "AI",
     owner_fallback: "持ち主",
     unavailable: "おかけになった電話は、現在おつなぎできません。しばらくしてからおかけ直しください。",
     preview: [
@@ -1155,128 +770,6 @@ static JA: Phrases = Phrases {
         "あ、荷物ですか。じゃあ玄関の前に置いといてください、ありがとうございます。",
         "はい、失礼します。",
     ],
-    n_incoming: "着信",
-    n_outgoing: "発信",
-    n_summary: "通話の要約",
-    n_blocked: "拒否リストの番号から着信",
-    n_voicemail: "留守番電話",
-    n_number: "番号",
-    n_phone: "端末",
-    n_time: "時刻",
-    n_reason: "理由",
-    n_length: "長さ",
-    n_seconds: "秒",
-    n_hidden: "非通知",
-    n_unknown: "不明",
-    n_details: "文字起こし／録音",
-    n_recording: "録音",
-    n_blocked_done: "「{}」を流して切断しました（AI は使っていません）",
-    n_calendar: "カレンダー",
-    n_test_title: "テスト通知",
-    n_test_body: "Bageo からのテスト通知です。これが届いていれば設定は完了です。",
-    n_repeat_title: "同じ番号から連続着信",
-    n_repeat_body: "{number} から、この1分間にさらに{count}回の着信がありましたが、1回ずつの通知は省きました。",
-    s_caller: "相手",
-    s_matter: "用件",
-    s_reply: "AI の返答",
-    s_todo: "対応",
-    s_no_summary: "（要約なし。Web の文字起こしを確認してください）",
-    s_ai_failed: "AI が接続できず、何も話していません",
-    sep: "：",
-    list_sep: "、",
-    quote: ("「", "」"),
-    dt_fmt: "%-m月%-d日 %H:%M",
-    date_fmt: "%-m月%-d日",
-    u_sec: "{}秒",
-    u_min: "{}分",
-    s_no_service: "要約サービスが設定されていないため、要約はありません",
-    s_see_transcript: "Web の文字起こしを確認してください",
-    s_no_transcript: "約{}の通話で、使える文字起こしがありません",
-    s_listen_recording: "Web で録音を聞いてください",
-    s_unclear: "聞き取れず",
-    s_ai_fail_matter: "AI が接続できず、約{}後にシステムが切断しました。相手には何も聞こえていません",
-    s_call_back_if_known: "心当たりのある番号なら折り返してください",
-    s_ai_fail_prefix: "【AI が接続できず、システムが切断】",
-    s_stall_topic: "営業／詐欺の電話",
-    s_stall_topic_kw: "営業／詐欺の電話（話に出たもの：{}）",
-    s_stall_reply: "わざと約{}話を引き延ばしました。情報は渡さず、何も約束していません",
-    s_nothing: "なし",
-    vm_call_back_to: "折り返し希望：{}（1 で確認済み）",
-    vm_call_back_unknown: "この番号への折り返し希望（1 で確認済み、ただし番号不明）",
-    vm_email_to: "メールでの返信希望：{}（1 で確認済み）",
-    vm_email_unknown: "メールでの返信希望（1 で確認済み、ただしアドレス不明）",
-    vm_call_back_unchecked: "折り返し希望（番号は未確認）",
-    vm_no_reply: "返信不要（伝言のみ）",
-    vm_no_choice: "返信方法の選択なし（通話が途中で終了）",
-    vm_decide_callback: "折り返すかどうかはご自身で判断してください",
-    vm_length: "約{}",
-    vm_no_transcript: "約{}の伝言。文字起こしに失敗したので録音を聞いてください",
-    vm_task_failed: "留守番電話（文字起こし失敗、要確認）",
-    tc_status: "状態",
-    tc_pending: "確認待ち",
-    tc_transcript: "文字起こし",
-    tc_confirm: "確認",
-    tc_ignore: "無視",
-    tc_confirm_ack: "確認しました。処理中…",
-    tc_ignore_ack: "無視しました",
-    tc_task: "タスク",
-    tc_ignored_task: "タスクを無視しました",
-    tc_done: "完了",
-    tc_in_progress: "確認済み（処理中）",
-    tc_failed: "失敗",
-    tc_confirm_failed: "確認できませんでした",
-    tc_ignore_failed: "無視できませんでした",
-    f_callback_waiting: "折り返しは予約しましたが、スマホの制御接続がオフラインです。スマホがエージェントに接続されていることを確かめて、もう一度確認を押してください",
-    f_callback_whitelist: "折り返し先の番号が許可リストにありません。「設定」で番号（または * で終わる先頭部分）を追加してから確認してください",
-    f_callback_no_number: "折り返し先の番号がありません。タスクに連絡先がなく、着信番号も空です",
-    f_callback_send_failed: "折り返しを送れませんでした",
-    f_email_no_address: "このタスクはメールを送りますが、返信先アドレスがありません。文字起こしから連絡先を補うか、無視してください",
-    f_gmail_missing: "Gmail が設定されていません。「設定」で Gmail アドレスとアプリ パスワードを入力してから確認してください",
-    f_bad_time: "時刻「{}」を読み取れませんでした",
-    f_openclaw_failed: "OpenClaw に引き渡せませんでした：{}（「設定」の OpenClaw URL とトークンを確認してください）",
-    g_bad_address: "Gmail アドレスの形式が正しくありません。「設定」で確認してください",
-    g_no_recipient: "送信できません：宛先アドレスが空です",
-    g_bad_recipient: "送信できません：宛先アドレスの形式が正しくありません",
-    g_short_password: "Gmail のアプリ パスワードが短すぎます。「設定」で入力し直してください（内容は表示されません）",
-    e_subject: "留守番電話へのお返事",
-    e_summary: "要約",
-    e_empty: "（要約も文字起こしもありません）",
-    e_appointment: "予約 — {}",
-    ap_weekdays: ["月", "火", "水", "木", "金", "土", "日"],
-    ap_dt_fmt: "%-m/%-d（{}）%H:%M",
-    ap_end_fmt: "%H:%M",
-    ap_confirm: "承諾",
-    ap_decline: "お断り",
-    ap_card_title: "予約の確認待ち",
-    ap_what: "用件",
-    ap_name: "お名前",
-    ap_sms: "SMS",
-    ap_sms_will: "承諾またはお断りの後、相手に SMS で伝えます",
-    ap_sms_off: "送りません（設定の「相手に SMS で伝える」がオフ）",
-    ap_sms_cannot: "相手の番号は SMS を受け取れません。折り返し電話してください",
-    ap_pending: "予約の確認待ち",
-    ap_replaced: "通話中に時間が変わりました。先に登録した「{}」がカレンダーに残っているので削除してください",
-    ap_time_unconfirmed: "相手はこの時間を確認していません。返事の前に相手に確認してください",
-    ap_confirmed: "予約を承諾しました",
-    ap_declined: "予約をお断りしました",
-    ap_already: "この予約はすでに処理済みです",
-    ap_cal_link: "カレンダーに追加：{}",
-    ap_sms_sent: "{} に SMS を送りました",
-    ap_sms_not_sent: "SMS は送れませんでした：{}",
-    ap_sms_old_app: "スマホのアプリが古く SMS を送れません",
-    ap_sms_offline: "スマホが接続されていません",
-    ap_sms_timeout: "スマホから応答がありません（タイムアウト）",
-    ap_sms_code: "エラーコード {}",
-    ap_sms_hi_owner: "こんにちは、{}です。",
-    ap_sms_hi: "こんにちは。",
-    ap_sms_ok: "{}で大丈夫です。よろしくお願いします。",
-    ap_sms_no: "申し訳ありません、{}は都合が悪くなってしまいました。別の日時でご相談できますか？",
-    ap_sms_busy: "同じ SMS をすでに送信中です",
-    ap_void_failed: "通話中に登録した「{}」は取り消しになりましたが、カレンダーから削除できませんでした。ご自身で削除してください",
-    ap_sales_voided: "営業電話と判断したため、通話中に登録した予約を取り消しました：{}",
-    ap_web_confirm: "Web 画面で確認：{}",
-    ap_web_console: "Web コンソールで確認してください",
-    ap_web_label: "Web で確認",
     farewells: &[
         "さようなら", "失礼します", "失礼いたします", "失礼致します", "じゃあね", "じゃあまた",
         "ではまた", "またね", "バイバイ", "ばいばい", "切りますね", "お疲れ様でした",
@@ -1306,8 +799,6 @@ static KO: Phrases = Phrases {
     think_about_it: "그건 좀 생각해 볼게요",
     wait_one_more: "아 그런데요, 하나만 더 물어볼게요",
     no_wait: "\"잠깐만요\", \"확인해 볼게요\", \"잠시만 기다려 주세요\", \"조금만 기다려 주세요\", \"기다려 줄래?\"",
-    d_caller: "상대",
-    d_ai: "AI",
     owner_fallback: "주인",
     unavailable: "지금은 전화를 받을 수 없습니다. 잠시 후 다시 걸어 주시기 바랍니다.",
     preview: [
@@ -1315,128 +806,6 @@ static KO: Phrases = Phrases {
         "아, 택배요? 네, 그럼 문 앞에 놔 주세요. 감사합니다.",
         "네, 들어가세요.",
     ],
-    n_incoming: "수신 전화",
-    n_outgoing: "발신 전화",
-    n_summary: "통화 요약",
-    n_blocked: "차단 번호에서 전화",
-    n_voicemail: "음성 메시지",
-    n_number: "번호",
-    n_phone: "기기",
-    n_time: "시간",
-    n_reason: "사유",
-    n_length: "길이",
-    n_seconds: "초",
-    n_hidden: "발신번호 표시 제한",
-    n_unknown: "알 수 없음",
-    n_details: "대화 기록／녹음",
-    n_recording: "녹음",
-    n_blocked_done: "「{}」 안내 후 끊었습니다 (AI 사용 안 함)",
-    n_calendar: "캘린더",
-    n_test_title: "테스트 알림",
-    n_test_body: "Bageo 테스트 알림입니다. 이 메시지가 보이면 설정이 완료된 것입니다.",
-    n_repeat_title: "같은 번호에서 연속 전화",
-    n_repeat_body: "{number} 번호에서 지난 1분 동안 {count}번 더 전화가 왔지만, 하나씩 알리지는 않았습니다.",
-    s_caller: "상대",
-    s_matter: "용건",
-    s_reply: "AI 답변",
-    s_todo: "할 일",
-    s_no_summary: "(요약 없음. 웹 콘솔의 대화 기록을 확인하세요)",
-    s_ai_failed: "AI가 연결되지 않아 아무 말도 하지 않았습니다",
-    sep: ": ",
-    list_sep: ", ",
-    quote: ("\"", "\""),
-    dt_fmt: "%-m월 %-d일 %H:%M",
-    date_fmt: "%-m월 %-d일",
-    u_sec: "{}초",
-    u_min: "{}분",
-    s_no_service: "요약 서비스가 설정되지 않아 요약이 없습니다",
-    s_see_transcript: "웹 콘솔에서 대화 기록을 확인하세요",
-    s_no_transcript: "약 {} 통화했지만 쓸 수 있는 대화 기록이 없습니다",
-    s_listen_recording: "웹 콘솔에서 녹음을 들어 보세요",
-    s_unclear: "알아듣기 어려움",
-    s_ai_fail_matter: "AI가 연결되지 않아 약 {} 뒤 시스템이 끊었습니다. 상대는 아무 말도 듣지 못했습니다",
-    s_call_back_if_known: "아는 번호라면 다시 전화하세요",
-    s_ai_fail_prefix: "[AI 연결 실패, 시스템이 끊음]",
-    s_stall_topic: "영업/사기 전화",
-    s_stall_topic_kw: "영업/사기 전화 (언급: {})",
-    s_stall_reply: "일부러 약 {} 동안 붙잡아 두었습니다. 정보는 주지 않았고 아무것도 동의하지 않았습니다",
-    s_nothing: "없음",
-    vm_call_back_to: "회신 전화 요청: {} (1번으로 확인)",
-    vm_call_back_unknown: "이 번호로 회신 전화 요청 (1번으로 확인, 번호는 알 수 없음)",
-    vm_email_to: "이메일 회신 요청: {} (1번으로 확인)",
-    vm_email_unknown: "이메일 회신 요청 (1번으로 확인, 주소는 알 수 없음)",
-    vm_call_back_unchecked: "회신 전화 요청 (번호 확인 안 됨)",
-    vm_no_reply: "회신 필요 없음 (전달만)",
-    vm_no_choice: "회신 방법 선택 안 함 (통화가 일찍 끝남)",
-    vm_decide_callback: "다시 전화할지 직접 판단하세요",
-    vm_length: "약 {}",
-    vm_no_transcript: "약 {} 길이의 메시지입니다. 받아쓰기에 실패했으니 녹음을 들어 보세요",
-    vm_task_failed: "음성 메시지 (받아쓰기 실패, 확인 필요)",
-    tc_status: "상태",
-    tc_pending: "확인 대기",
-    tc_transcript: "대화 기록",
-    tc_confirm: "확인",
-    tc_ignore: "무시",
-    tc_confirm_ack: "확인했습니다. 처리 중…",
-    tc_ignore_ack: "무시했습니다",
-    tc_task: "작업",
-    tc_ignored_task: "작업을 무시했습니다",
-    tc_done: "완료",
-    tc_in_progress: "확인됨 (진행 중)",
-    tc_failed: "실패",
-    tc_confirm_failed: "확인하지 못했습니다",
-    tc_ignore_failed: "무시하지 못했습니다",
-    f_callback_waiting: "회신 전화를 예약했지만 휴대폰 제어 연결이 끊겨 있습니다. 휴대폰이 에이전트에 연결됐는지 확인한 뒤 다시 확인을 누르세요",
-    f_callback_whitelist: "회신할 번호가 허용 목록에 없습니다. 설정에서 번호(또는 *로 끝나는 앞자리)를 추가한 뒤 다시 확인하세요",
-    f_callback_no_number: "회신할 번호가 없습니다. 작업에 연락처가 없고 발신 번호도 비어 있습니다",
-    f_callback_send_failed: "회신 전화를 보내지 못했습니다",
-    f_email_no_address: "이메일을 보내는 작업인데 회신 주소가 없습니다. 대화 기록에서 연락처를 채우거나 무시하세요",
-    f_gmail_missing: "Gmail이 설정되지 않았습니다. 설정에서 Gmail 주소와 앱 비밀번호를 입력한 뒤 다시 확인하세요",
-    f_bad_time: "시간 \"{}\"을(를) 읽지 못했습니다",
-    f_openclaw_failed: "OpenClaw에 넘기지 못했습니다: {} (설정의 OpenClaw URL과 토큰을 확인하세요)",
-    g_bad_address: "Gmail 주소 형식이 올바르지 않습니다. 설정에서 확인하세요",
-    g_no_recipient: "보내지 못했습니다: 받는 주소가 비어 있습니다",
-    g_bad_recipient: "보내지 못했습니다: 받는 주소 형식이 올바르지 않습니다",
-    g_short_password: "Gmail 앱 비밀번호가 너무 짧습니다. 설정에서 다시 입력하세요 (내용은 표시되지 않습니다)",
-    e_subject: "음성 메시지에 대한 회신",
-    e_summary: "요약",
-    e_empty: "(요약이나 대화 기록이 없습니다)",
-    e_appointment: "예약 — {}",
-    ap_weekdays: ["월", "화", "수", "목", "금", "토", "일"],
-    ap_dt_fmt: "%-m/%-d({}) %H:%M",
-    ap_end_fmt: "%H:%M",
-    ap_confirm: "수락",
-    ap_decline: "거절",
-    ap_card_title: "예약 확인 대기",
-    ap_what: "용건",
-    ap_name: "이름",
-    ap_sms: "문자",
-    ap_sms_will: "수락하거나 거절하면 상대에게 문자로 알려 줍니다",
-    ap_sms_off: "보내지 않음(설정의 \"상대에게 문자로 알리기\"가 꺼져 있음)",
-    ap_sms_cannot: "상대 번호는 문자를 받을 수 없습니다. 직접 전화해 주세요",
-    ap_pending: "예약 확인 대기",
-    ap_replaced: "통화 중에 시간이 바뀌었습니다. 먼저 등록한 \"{}\" 일정이 캘린더에 남아 있으니 직접 지워 주세요",
-    ap_time_unconfirmed: "상대방이 이 시간을 확인하지 않았습니다. 답하기 전에 먼저 확인해 주세요",
-    ap_confirmed: "예약을 수락했습니다",
-    ap_declined: "예약을 거절했습니다",
-    ap_already: "이미 처리된 예약입니다",
-    ap_cal_link: "캘린더에 추가: {}",
-    ap_sms_sent: "{} 번호로 문자를 보냈습니다",
-    ap_sms_not_sent: "문자를 보내지 못했습니다: {}",
-    ap_sms_old_app: "휴대폰 앱이 오래되어 문자를 보낼 수 없습니다",
-    ap_sms_offline: "휴대폰이 연결되어 있지 않습니다",
-    ap_sms_timeout: "휴대폰이 응답하지 않습니다(시간 초과)",
-    ap_sms_code: "오류 코드 {}",
-    ap_sms_hi_owner: "안녕하세요, {}입니다. ",
-    ap_sms_hi: "안녕하세요. ",
-    ap_sms_ok: "{} 괜찮습니다. 그때 뵙겠습니다.",
-    ap_sms_no: "죄송하지만 {}에는 어렵습니다. 다른 시간으로 다시 잡을 수 있을까요?",
-    ap_sms_busy: "같은 문자를 이미 보내는 중입니다",
-    ap_void_failed: "통화 중에 등록한 \"{}\" 일정은 취소됐지만 캘린더에서 지우지 못했습니다. 직접 지워 주세요",
-    ap_sales_voided: "영업 전화로 판단해 통화 중에 등록한 예약을 취소했습니다: {}",
-    ap_web_confirm: "웹에서 확인: {}",
-    ap_web_console: "웹 콘솔에서 확인하세요",
-    ap_web_label: "웹에서 확인",
     farewells: &[
         "안녕히 계세요", "안녕히계세요", "안녕히 가세요", "들어가세요", "끊을게요", "끊겠습니다",
         "수고하세요", "좋은 하루 되세요", "좋은 하루 보내세요", "바이바이", "다음에 봬요", "다음에 뵙겠습니다",
@@ -1460,8 +829,6 @@ static ES: Phrases = Phrases {
     think_about_it: "Eso tendría que pensarlo",
     wait_one_more: "Ay, una cosa más, tengo otra pregunta",
     no_wait: "\"un momento\", \"espera, que lo miro\", \"déjame ver\"",
-    d_caller: "Llamante",
-    d_ai: "IA",
     owner_fallback: "el dueño",
     unavailable: "El número al que llama no está disponible en este momento. Por favor, inténtelo más tarde.",
     preview: [
@@ -1469,128 +836,6 @@ static ES: Phrases = Phrases {
         "Ah, ¿un paquete? Vale, déjelo en la puerta, muchas gracias.",
         "Vale, adiós.",
     ],
-    n_incoming: "Llamada entrante",
-    n_outgoing: "Llamada saliente",
-    n_summary: "Resumen de la llamada",
-    n_blocked: "Llamada de un número bloqueado",
-    n_voicemail: "Mensaje de voz",
-    n_number: "Número",
-    n_phone: "Teléfono",
-    n_time: "Hora",
-    n_reason: "Motivo",
-    n_length: "Duración",
-    n_seconds: "s",
-    n_hidden: "Número oculto",
-    n_unknown: "Desconocido",
-    n_details: "Transcripción / grabación",
-    n_recording: "Grabación",
-    n_blocked_done: "Se reprodujo «{}» y se colgó. No se usó la IA.",
-    n_calendar: "Calendario",
-    n_test_title: "Notificación de prueba",
-    n_test_body: "Esta es una notificación de prueba de Bageo. Si la ves, el canal funciona.",
-    n_repeat_title: "Llamadas repetidas de un mismo número",
-    n_repeat_body: "Más llamadas de {number} en el último minuto: {count}. No se avisó de cada una.",
-    s_caller: "Quién",
-    s_matter: "Asunto",
-    s_reply: "La IA dijo",
-    s_todo: "Pendiente",
-    s_no_summary: "(Sin resumen: consulta la transcripción en la consola web.)",
-    s_ai_failed: "La IA no se conectó y no dijo nada",
-    sep: ": ",
-    list_sep: ", ",
-    quote: ("«", "»"),
-    dt_fmt: "%d/%m %H:%M",
-    date_fmt: "%d/%m",
-    u_sec: "{} s",
-    u_min: "{} min",
-    s_no_service: "No hay ningún servicio de resúmenes configurado",
-    s_see_transcript: "Consulta la transcripción en la consola web",
-    s_no_transcript: "La llamada duró unos {} y no hay transcripción útil",
-    s_listen_recording: "Escucha la grabación en la consola web",
-    s_unclear: "No se entiende",
-    s_ai_fail_matter: "La IA no se conectó; el sistema colgó tras unos {} y la persona no oyó nada",
-    s_call_back_if_known: "Devuelve la llamada si conoces el número",
-    s_ai_fail_prefix: "[La IA no se conectó; el sistema colgó]",
-    s_stall_topic: "Llamada de ventas / estafa",
-    s_stall_topic_kw: "Llamada de ventas / estafa (mencionó: {})",
-    s_stall_reply: "Lo entretuvo unos {}; no dio datos ni aceptó nada",
-    s_nothing: "Nada",
-    vm_call_back_to: "Pide que le devuelvas la llamada: {} (confirmado con 1)",
-    vm_call_back_unknown: "Pide que le devuelvas la llamada a este número (confirmado con 1, pero el número es desconocido)",
-    vm_email_to: "Pide respuesta por correo: {} (confirmado con 1)",
-    vm_email_unknown: "Pide respuesta por correo (confirmado con 1, pero la dirección es desconocida)",
-    vm_call_back_unchecked: "Pide que le devuelvas la llamada (número sin comprobar)",
-    vm_no_reply: "No hace falta responder (solo un recado)",
-    vm_no_choice: "No eligió cómo responder (la llamada terminó antes)",
-    vm_decide_callback: "Decide si devuelves la llamada",
-    vm_length: "unos {}",
-    vm_no_transcript: "Un mensaje de unos {}; no se pudo transcribir. Escucha la grabación",
-    vm_task_failed: "Mensaje de voz (no se pudo transcribir; hay que revisarlo)",
-    tc_status: "Estado",
-    tc_pending: "Pendiente de confirmar",
-    tc_transcript: "Transcripción",
-    tc_confirm: "Confirmar",
-    tc_ignore: "Ignorar",
-    tc_confirm_ack: "Confirmado, en marcha…",
-    tc_ignore_ack: "Ignorado",
-    tc_task: "Tarea",
-    tc_ignored_task: "Tarea ignorada",
-    tc_done: "Hecha",
-    tc_in_progress: "Confirmada (en curso)",
-    tc_failed: "Falló",
-    tc_confirm_failed: "No se pudo confirmar",
-    tc_ignore_failed: "No se pudo ignorar",
-    f_callback_waiting: "La devolución de llamada está programada, pero la conexión de control del teléfono está desconectada. Comprueba que el teléfono esté conectado al agente y vuelve a confirmar.",
-    f_callback_whitelist: "El número para devolver la llamada no está en la lista permitida. Añádelo (o un prefijo terminado en *) en Ajustes y vuelve a confirmar.",
-    f_callback_no_number: "No hay número para devolver la llamada: la tarea no tiene contacto y el número de quien llamó está vacío.",
-    f_callback_send_failed: "No se pudo enviar la devolución de llamada",
-    f_email_no_address: "Esta tarea envía un correo, pero no tiene dirección de respuesta. Añade el contacto a partir de la transcripción o ignora la tarea.",
-    f_gmail_missing: "Gmail no está configurado. Escribe la dirección de Gmail y la contraseña de aplicación en Ajustes y vuelve a confirmar.",
-    f_bad_time: "No se pudo entender la hora «{}»",
-    f_openclaw_failed: "No se pudo pasar la tarea a OpenClaw: {} (revisa la URL y el token de OpenClaw en Ajustes)",
-    g_bad_address: "La dirección de Gmail no parece correcta. Revísala en Ajustes.",
-    g_no_recipient: "No se envió: falta la dirección del destinatario",
-    g_bad_recipient: "No se envió: la dirección del destinatario no parece correcta",
-    g_short_password: "La contraseña de aplicación de Gmail es demasiado corta. Vuelve a escribirla en Ajustes (nunca se muestra).",
-    e_subject: "Respuesta a su mensaje de voz",
-    e_summary: "Resumen",
-    e_empty: "(Sin resumen ni transcripción)",
-    e_appointment: "Cita — {}",
-    ap_weekdays: ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"],
-    ap_dt_fmt: "{} %-d/%-m, %H:%M",
-    ap_end_fmt: "%H:%M",
-    ap_confirm: "Aceptar",
-    ap_decline: "Rechazar",
-    ap_card_title: "Cita por confirmar",
-    ap_what: "Motivo",
-    ap_name: "Nombre",
-    ap_sms: "SMS",
-    ap_sms_will: "se enviará a quien llamó cuando aceptes o rechaces",
-    ap_sms_off: "no se envía (\"Avisar por SMS\" está desactivado en los ajustes)",
-    ap_sms_cannot: "ese número no puede recibir SMS; devuelve tú la llamada",
-    ap_pending: "Cita por confirmar",
-    ap_replaced: "La hora cambió durante la llamada; \"{}\" sigue en tu calendario, bórralo tú",
-    ap_time_unconfirmed: "Quien llamó no confirmó esta hora; compruébala con esa persona antes de responder",
-    ap_confirmed: "Cita aceptada",
-    ap_declined: "Cita rechazada",
-    ap_already: "Esta cita ya se gestionó",
-    ap_cal_link: "Añádela al calendario: {}",
-    ap_sms_sent: "SMS enviado a {}",
-    ap_sms_not_sent: "SMS no enviado: {}",
-    ap_sms_old_app: "la app del teléfono es demasiado antigua para enviar SMS",
-    ap_sms_offline: "el teléfono no está conectado",
-    ap_sms_timeout: "el teléfono no respondió (tiempo agotado)",
-    ap_sms_code: "código de error {}",
-    ap_sms_hi_owner: "Hola, soy {}. ",
-    ap_sms_hi: "Hola. ",
-    ap_sms_ok: "El {} me va bien. ¡Nos vemos!",
-    ap_sms_no: "Lo siento, el {} al final no me viene bien. ¿Podemos buscar otro momento?",
-    ap_sms_busy: "ese mismo SMS ya se está enviando",
-    ap_void_failed: "\"{}\" de la llamada quedó anulada, pero no se pudo quitar del calendario; bórrala tú",
-    ap_sales_voided: "Se consideró una llamada comercial, así que se canceló la cita reservada durante la llamada: {}",
-    ap_web_confirm: "confírmala en la consola web: {}",
-    ap_web_console: "confírmala en la consola web",
-    ap_web_label: "Confirmar en la web",
     farewells: &[
         "adiós", "adios", "hasta luego", "hasta pronto", "hasta mañana", "nos vemos", "chao",
         "chau", "que tenga buen día", "que tenga un buen día", "que tengas buen día",
@@ -1618,8 +863,6 @@ static FR: Phrases = Phrases {
     think_about_it: "Ça, il faudrait que j'y réfléchisse",
     wait_one_more: "Ah, attendez, j'ai encore une question",
     no_wait: "« un instant », « attendez, je regarde », « laissez-moi vérifier »",
-    d_caller: "Appelant",
-    d_ai: "IA",
     owner_fallback: "le propriétaire",
     unavailable: "Le numéro que vous avez composé n'est pas disponible pour le moment. Veuillez rappeler ultérieurement.",
     preview: [
@@ -1627,128 +870,6 @@ static FR: Phrases = Phrases {
         "Ah, un colis ? D'accord, laissez-le devant la porte, merci beaucoup.",
         "D'accord, au revoir.",
     ],
-    n_incoming: "Appel entrant",
-    n_outgoing: "Appel sortant",
-    n_summary: "Résumé de l'appel",
-    n_blocked: "Appel d'un numéro bloqué",
-    n_voicemail: "Message vocal",
-    n_number: "Numéro",
-    n_phone: "Téléphone",
-    n_time: "Heure",
-    n_reason: "Motif",
-    n_length: "Durée",
-    n_seconds: "s",
-    n_hidden: "Numéro masqué",
-    n_unknown: "Inconnu",
-    n_details: "Transcription / enregistrement",
-    n_recording: "Enregistrement",
-    n_blocked_done: "Annonce « {} » diffusée, puis raccroché. L'IA n'a pas été utilisée.",
-    n_calendar: "Agenda",
-    n_test_title: "Notification de test",
-    n_test_body: "Ceci est une notification de test de Bageo. Si vous la voyez, le canal fonctionne.",
-    n_repeat_title: "Appels répétés du même numéro",
-    n_repeat_body: "Autres appels de {number} en une minute : {count}. Ils n'ont pas été signalés un par un.",
-    s_caller: "Qui",
-    s_matter: "Objet",
-    s_reply: "Réponse de l'IA",
-    s_todo: "À faire",
-    s_no_summary: "(Pas de résumé : voir la transcription dans la console web.)",
-    s_ai_failed: "L'IA ne s'est pas connectée et n'a rien dit",
-    sep: " : ",
-    list_sep: ", ",
-    quote: ("« ", " »"),
-    dt_fmt: "%d/%m %H:%M",
-    date_fmt: "%d/%m",
-    u_sec: "{} s",
-    u_min: "{} min",
-    s_no_service: "Aucun service de résumé n'est configuré",
-    s_see_transcript: "Voir la transcription dans la console web",
-    s_no_transcript: "L'appel a duré environ {} et aucune transcription n'est exploitable",
-    s_listen_recording: "Écouter l'enregistrement dans la console web",
-    s_unclear: "Pas clair",
-    s_ai_fail_matter: "L'IA ne s'est pas connectée ; le système a raccroché après environ {} et l'appelant n'a rien entendu",
-    s_call_back_if_known: "Rappeler si vous connaissez le numéro",
-    s_ai_fail_prefix: "[L'IA ne s'est pas connectée ; le système a raccroché]",
-    s_stall_topic: "Démarchage / arnaque",
-    s_stall_topic_kw: "Démarchage / arnaque (a parlé de : {})",
-    s_stall_reply: "L'a fait parler environ {} ; aucune donnée transmise, rien accepté",
-    s_nothing: "Rien",
-    vm_call_back_to: "Souhaite être rappelé : {} (confirmé avec 1)",
-    vm_call_back_unknown: "Souhaite être rappelé à ce numéro (confirmé avec 1, mais le numéro est inconnu)",
-    vm_email_to: "Souhaite une réponse par e-mail : {} (confirmé avec 1)",
-    vm_email_unknown: "Souhaite une réponse par e-mail (confirmé avec 1, mais l'adresse est inconnue)",
-    vm_call_back_unchecked: "Souhaite être rappelé (numéro non vérifié)",
-    vm_no_reply: "Pas de réponse nécessaire (simple message)",
-    vm_no_choice: "Aucun moyen de réponse choisi (l'appel s'est terminé avant)",
-    vm_decide_callback: "À vous de voir s'il faut rappeler",
-    vm_length: "environ {}",
-    vm_no_transcript: "Un message d'environ {} ; la transcription a échoué. Écoutez l'enregistrement",
-    vm_task_failed: "Message vocal (transcription impossible, à vérifier)",
-    tc_status: "État",
-    tc_pending: "En attente de confirmation",
-    tc_transcript: "Transcription",
-    tc_confirm: "Confirmer",
-    tc_ignore: "Ignorer",
-    tc_confirm_ack: "Confirmé, en cours…",
-    tc_ignore_ack: "Ignoré",
-    tc_task: "Tâche",
-    tc_ignored_task: "Tâche ignorée",
-    tc_done: "Terminée",
-    tc_in_progress: "Confirmée (en cours)",
-    tc_failed: "Échec",
-    tc_confirm_failed: "Confirmation impossible",
-    tc_ignore_failed: "Impossible d'ignorer",
-    f_callback_waiting: "Le rappel est programmé, mais la liaison de contrôle du téléphone est hors ligne. Vérifiez que le téléphone est connecté à l'agent, puis confirmez à nouveau.",
-    f_callback_whitelist: "Le numéro à rappeler n'est pas dans la liste autorisée. Ajoutez-le (ou un préfixe terminé par *) dans les réglages, puis confirmez à nouveau.",
-    f_callback_no_number: "Aucun numéro à rappeler : la tâche n'a pas de contact et le numéro de l'appelant est vide.",
-    f_callback_send_failed: "Impossible d'envoyer le rappel",
-    f_email_no_address: "Cette tâche envoie un e-mail mais n'a pas d'adresse de réponse. Ajoutez le contact à partir de la transcription, ou ignorez la tâche.",
-    f_gmail_missing: "Gmail n'est pas configuré. Saisissez l'adresse Gmail et le mot de passe d'application dans les réglages, puis confirmez à nouveau.",
-    f_bad_time: "Impossible de comprendre l'heure « {} »",
-    f_openclaw_failed: "Impossible de transmettre la tâche à OpenClaw : {} (vérifiez l'URL et le jeton OpenClaw dans les réglages)",
-    g_bad_address: "L'adresse Gmail ne semble pas correcte. Vérifiez-la dans les réglages.",
-    g_no_recipient: "Non envoyé : aucune adresse de destinataire",
-    g_bad_recipient: "Non envoyé : l'adresse du destinataire ne semble pas correcte",
-    g_short_password: "Le mot de passe d'application Gmail est trop court. Saisissez-le à nouveau dans les réglages (il n'est jamais affiché).",
-    e_subject: "Réponse à votre message vocal",
-    e_summary: "Résumé",
-    e_empty: "(Ni résumé ni transcription)",
-    e_appointment: "Rendez-vous — {}",
-    ap_weekdays: ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."],
-    ap_dt_fmt: "{} %d/%m à %Hh%M",
-    ap_end_fmt: "%Hh%M",
-    ap_confirm: "Accepter",
-    ap_decline: "Refuser",
-    ap_card_title: "Rendez-vous à confirmer",
-    ap_what: "Objet",
-    ap_name: "Nom",
-    ap_sms: "SMS",
-    ap_sms_will: "envoyé à l'appelant quand vous acceptez ou refusez",
-    ap_sms_off: "non envoyé (« Prévenir par SMS » est désactivé dans les réglages)",
-    ap_sms_cannot: "ce numéro ne reçoit pas de SMS, rappelez cette personne vous-même",
-    ap_pending: "Rendez-vous à confirmer",
-    ap_replaced: "L'heure a changé pendant l'appel ; « {} » est toujours dans votre agenda, supprimez-le vous-même",
-    ap_time_unconfirmed: "Le correspondant n'a pas confirmé cette heure ; vérifiez-la avec lui avant de répondre",
-    ap_confirmed: "Rendez-vous accepté",
-    ap_declined: "Rendez-vous refusé",
-    ap_already: "Ce rendez-vous a déjà été traité",
-    ap_cal_link: "Ajoutez-le à votre agenda : {}",
-    ap_sms_sent: "SMS envoyé au {}",
-    ap_sms_not_sent: "SMS non envoyé : {}",
-    ap_sms_old_app: "l'application du téléphone est trop ancienne pour envoyer des SMS",
-    ap_sms_offline: "le téléphone n'est pas connecté",
-    ap_sms_timeout: "le téléphone n'a pas répondu (délai dépassé)",
-    ap_sms_code: "code d'erreur {}",
-    ap_sms_hi_owner: "Bonjour, c'est {}. ",
-    ap_sms_hi: "Bonjour. ",
-    ap_sms_ok: "Le {}, c'est bon pour moi. À bientôt !",
-    ap_sms_no: "Malheureusement, le {} ne m'arrange finalement pas. Pourrait-on trouver un autre moment ?",
-    ap_sms_busy: "ce même SMS est déjà en cours d'envoi",
-    ap_void_failed: "« {} » de l'appel n'est plus valable mais n'a pas pu être retiré de l'agenda ; supprimez-le vous-même",
-    ap_sales_voided: "Appel jugé commercial : le rendez-vous ajouté pendant l'appel a été annulé : {}",
-    ap_web_confirm: "à confirmer dans la console web : {}",
-    ap_web_console: "à confirmer dans la console web",
-    ap_web_label: "Confirmer sur le web",
     farewells: &[
         "au revoir", "à bientôt", "a bientot", "à plus", "à plus tard", "à tout à l'heure",
         "à demain", "bonne journée", "bonne journee", "excellente journée", "très bonne journée",
@@ -1774,8 +895,6 @@ static DE: Phrases = Phrases {
     think_about_it: "Das müsste ich mir noch überlegen",
     wait_one_more: "Ach, eine Frage hab ich noch",
     no_wait: "„Moment mal“, „warte, ich schau nach“, „lass mich kurz nachsehen“",
-    d_caller: "Anrufer",
-    d_ai: "KI",
     owner_fallback: "der Besitzer",
     unavailable: "Der gewünschte Gesprächspartner ist zurzeit nicht erreichbar. Bitte versuchen Sie es später noch einmal.",
     preview: [
@@ -1783,128 +902,6 @@ static DE: Phrases = Phrases {
         "Ach, ein Paket? Gut, stellen Sie es einfach vor die Tür, vielen Dank.",
         "Okay, tschüss.",
     ],
-    n_incoming: "Eingehender Anruf",
-    n_outgoing: "Ausgehender Anruf",
-    n_summary: "Anrufzusammenfassung",
-    n_blocked: "Anruf von gesperrter Nummer",
-    n_voicemail: "Sprachnachricht",
-    n_number: "Nummer",
-    n_phone: "Telefon",
-    n_time: "Zeit",
-    n_reason: "Grund",
-    n_length: "Dauer",
-    n_seconds: "s",
-    n_hidden: "Unterdrückte Nummer",
-    n_unknown: "Unbekannt",
-    n_details: "Transkript / Aufnahme",
-    n_recording: "Aufnahme",
-    n_blocked_done: "Ansage „{}“ abgespielt und aufgelegt. Die KI wurde nicht verwendet.",
-    n_calendar: "Kalender",
-    n_test_title: "Testbenachrichtigung",
-    n_test_body: "Dies ist eine Testbenachrichtigung von Bageo. Wenn du sie siehst, funktioniert der Kanal.",
-    n_repeat_title: "Wiederholte Anrufe derselben Nummer",
-    n_repeat_body: "Weitere Anrufe von {number} in der letzten Minute: {count}. Sie wurden nicht einzeln gemeldet.",
-    s_caller: "Anrufer",
-    s_matter: "Anliegen",
-    s_reply: "KI-Antwort",
-    s_todo: "Zu tun",
-    s_no_summary: "(Keine Zusammenfassung – siehe Transkript in der Web-Konsole.)",
-    s_ai_failed: "Die KI konnte sich nicht verbinden und hat nichts gesagt",
-    sep: ": ",
-    list_sep: ", ",
-    quote: ("„", "“"),
-    dt_fmt: "%d.%m. %H:%M",
-    date_fmt: "%d.%m.",
-    u_sec: "{} s",
-    u_min: "{} Min.",
-    s_no_service: "Es ist kein Zusammenfassungsdienst eingerichtet",
-    s_see_transcript: "Transkript in der Web-Konsole ansehen",
-    s_no_transcript: "Der Anruf dauerte etwa {}; es gibt kein brauchbares Transkript",
-    s_listen_recording: "Aufnahme in der Web-Konsole anhören",
-    s_unclear: "Unklar",
-    s_ai_fail_matter: "Die KI konnte sich nicht verbinden; das System hat nach etwa {} aufgelegt, der Anrufer hat nichts gehört",
-    s_call_back_if_known: "Zurückrufen, wenn du die Nummer kennst",
-    s_ai_fail_prefix: "[KI nicht verbunden; das System hat aufgelegt]",
-    s_stall_topic: "Werbe- / Betrugsanruf",
-    s_stall_topic_kw: "Werbe- / Betrugsanruf (erwähnt: {})",
-    s_stall_reply: "Etwa {} hingehalten; keine Daten gegeben, nichts zugesagt",
-    s_nothing: "Nichts",
-    vm_call_back_to: "Möchte zurückgerufen werden: {} (mit 1 bestätigt)",
-    vm_call_back_unknown: "Möchte unter dieser Nummer zurückgerufen werden (mit 1 bestätigt, Nummer aber unbekannt)",
-    vm_email_to: "Möchte eine Antwort per E-Mail: {} (mit 1 bestätigt)",
-    vm_email_unknown: "Möchte eine Antwort per E-Mail (mit 1 bestätigt, Adresse aber unbekannt)",
-    vm_call_back_unchecked: "Möchte zurückgerufen werden (Nummer nicht geprüft)",
-    vm_no_reply: "Keine Antwort nötig (nur zur Info)",
-    vm_no_choice: "Keine Antwortart gewählt (der Anruf endete vorher)",
-    vm_decide_callback: "Selbst entscheiden, ob du zurückrufst",
-    vm_length: "etwa {}",
-    vm_no_transcript: "Eine Nachricht von etwa {}; sie konnte nicht transkribiert werden. Bitte die Aufnahme anhören",
-    vm_task_failed: "Sprachnachricht (Transkription fehlgeschlagen, bitte ansehen)",
-    tc_status: "Status",
-    tc_pending: "Wartet auf Bestätigung",
-    tc_transcript: "Transkript",
-    tc_confirm: "Bestätigen",
-    tc_ignore: "Ignorieren",
-    tc_confirm_ack: "Bestätigt, wird erledigt…",
-    tc_ignore_ack: "Ignoriert",
-    tc_task: "Aufgabe",
-    tc_ignored_task: "Aufgabe ignoriert",
-    tc_done: "Erledigt",
-    tc_in_progress: "Bestätigt (läuft)",
-    tc_failed: "Fehlgeschlagen",
-    tc_confirm_failed: "Bestätigen fehlgeschlagen",
-    tc_ignore_failed: "Ignorieren fehlgeschlagen",
-    f_callback_waiting: "Der Rückruf ist geplant, aber die Steuerverbindung des Telefons ist offline. Prüfe, ob das Telefon mit dem Agenten verbunden ist, und bestätige dann erneut.",
-    f_callback_whitelist: "Die Rückrufnummer steht nicht auf der erlaubten Liste. Füge sie (oder einen Anfang mit * am Ende) in den Einstellungen hinzu und bestätige dann erneut.",
-    f_callback_no_number: "Keine Rückrufnummer: Die Aufgabe hat keinen Kontakt und die Nummer des Anrufers ist leer.",
-    f_callback_send_failed: "Rückruf konnte nicht gesendet werden",
-    f_email_no_address: "Diese Aufgabe sendet eine E-Mail, hat aber keine Antwortadresse. Ergänze den Kontakt aus dem Transkript oder ignoriere die Aufgabe.",
-    f_gmail_missing: "Gmail ist nicht eingerichtet. Gib in den Einstellungen die Gmail-Adresse und das App-Passwort ein und bestätige dann erneut.",
-    f_bad_time: "Die Zeitangabe „{}“ war nicht lesbar",
-    f_openclaw_failed: "Übergabe an OpenClaw fehlgeschlagen: {} (OpenClaw-URL und -Token in den Einstellungen prüfen)",
-    g_bad_address: "Die Gmail-Adresse sieht nicht richtig aus. Bitte in den Einstellungen prüfen.",
-    g_no_recipient: "Nicht gesendet: keine Empfängeradresse",
-    g_bad_recipient: "Nicht gesendet: Die Empfängeradresse sieht nicht richtig aus",
-    g_short_password: "Das Gmail-App-Passwort ist zu kurz. Bitte in den Einstellungen neu eingeben (es wird nie angezeigt).",
-    e_subject: "Antwort auf Ihre Sprachnachricht",
-    e_summary: "Zusammenfassung",
-    e_empty: "(Keine Zusammenfassung und kein Transkript)",
-    e_appointment: "Termin — {}",
-    ap_weekdays: ["Mo.", "Di.", "Mi.", "Do.", "Fr.", "Sa.", "So."],
-    ap_dt_fmt: "{}, %d.%m., %H:%M",
-    ap_end_fmt: "%H:%M",
-    ap_confirm: "Zusagen",
-    ap_decline: "Absagen",
-    ap_card_title: "Termin zu bestätigen",
-    ap_what: "Anlass",
-    ap_name: "Name",
-    ap_sms: "SMS",
-    ap_sms_will: "geht an den Anrufer, sobald du zusagst oder absagst",
-    ap_sms_off: "wird nicht gesendet („Per SMS Bescheid geben“ ist in den Einstellungen aus)",
-    ap_sms_cannot: "die Nummer kann keine SMS empfangen, ruf selbst zurück",
-    ap_pending: "Termin zu bestätigen",
-    ap_replaced: "Die Zeit hat sich im Gespräch geändert; „{}“ steht noch in deinem Kalender, lösch es selbst",
-    ap_time_unconfirmed: "Der Anrufer hat diese Uhrzeit nicht bestätigt; kläre sie mit ihm, bevor du antwortest",
-    ap_confirmed: "Termin zugesagt",
-    ap_declined: "Termin abgesagt",
-    ap_already: "Dieser Termin wurde bereits bearbeitet",
-    ap_cal_link: "In den Kalender eintragen: {}",
-    ap_sms_sent: "SMS an {} gesendet",
-    ap_sms_not_sent: "SMS nicht gesendet: {}",
-    ap_sms_old_app: "die App auf dem Telefon ist zu alt für SMS",
-    ap_sms_offline: "das Telefon ist nicht verbunden",
-    ap_sms_timeout: "das Telefon hat nicht geantwortet (Zeitüberschreitung)",
-    ap_sms_code: "Fehlercode {}",
-    ap_sms_hi_owner: "Hallo, hier ist {}. ",
-    ap_sms_hi: "Hallo. ",
-    ap_sms_ok: "{} passt mir. Bis dann!",
-    ap_sms_no: "Tut mir leid, {} passt mir doch nicht. Können wir einen anderen Termin finden?",
-    ap_sms_busy: "dieselbe SMS wird schon gesendet",
-    ap_void_failed: "„{}“ aus dem Gespräch gilt nicht mehr, konnte aber nicht aus dem Kalender gelöscht werden; lösch es selbst",
-    ap_sales_voided: "Als Werbeanruf eingestuft, daher wurde der im Gespräch eingetragene Termin gelöscht: {}",
-    ap_web_confirm: "im Web bestätigen: {}",
-    ap_web_console: "in der Web-Konsole bestätigen",
-    ap_web_label: "Im Web bestätigen",
     farewells: &[
         "tschüss", "tschüs", "tschuess", "auf wiederhören", "auf wiedersehen", "wiederhören",
         "bis bald", "bis später", "bis dann", "schönen tag noch", "schönen tag", "einen schönen tag",
@@ -1929,8 +926,6 @@ static PT: Phrases = Phrases {
     think_about_it: "Isso eu teria que pensar",
     wait_one_more: "Ah, espera, tenho mais uma pergunta",
     no_wait: "\"só um momento\", \"espera que eu vou ver\", \"deixa eu verificar\"",
-    d_caller: "Chamador",
-    d_ai: "IA",
     owner_fallback: "o dono",
     unavailable: "O número chamado não está disponível no momento. Por favor, tente novamente mais tarde.",
     preview: [
@@ -1938,128 +933,6 @@ static PT: Phrases = Phrases {
         "Ah, uma encomenda? Tá bom, pode deixar na porta, muito obrigado.",
         "Tá bom, tchau.",
     ],
-    n_incoming: "Chamada recebida",
-    n_outgoing: "Chamada efetuada",
-    n_summary: "Resumo da chamada",
-    n_blocked: "Chamada de número bloqueado",
-    n_voicemail: "Mensagem de voz",
-    n_number: "Número",
-    n_phone: "Telefone",
-    n_time: "Hora",
-    n_reason: "Motivo",
-    n_length: "Duração",
-    n_seconds: "s",
-    n_hidden: "Número oculto",
-    n_unknown: "Desconhecido",
-    n_details: "Transcrição / gravação",
-    n_recording: "Gravação",
-    n_blocked_done: "Foi reproduzido \"{}\" e a chamada foi encerrada. A IA não foi usada.",
-    n_calendar: "Calendário",
-    n_test_title: "Notificação de teste",
-    n_test_body: "Esta é uma notificação de teste do Bageo. Se você está vendo isto, o canal funciona.",
-    n_repeat_title: "Chamadas repetidas do mesmo número",
-    n_repeat_body: "Mais chamadas de {number} no último minuto: {count}. Elas não foram avisadas uma a uma.",
-    s_caller: "Quem",
-    s_matter: "Assunto",
-    s_reply: "A IA disse",
-    s_todo: "A fazer",
-    s_no_summary: "(Sem resumo — veja a transcrição no console web.)",
-    s_ai_failed: "A IA não conectou e não disse nada",
-    sep: ": ",
-    list_sep: ", ",
-    quote: ("\"", "\""),
-    dt_fmt: "%d/%m %H:%M",
-    date_fmt: "%d/%m",
-    u_sec: "{} s",
-    u_min: "{} min",
-    s_no_service: "Nenhum serviço de resumo configurado",
-    s_see_transcript: "Veja a transcrição no console web",
-    s_no_transcript: "A chamada durou cerca de {} e não há transcrição utilizável",
-    s_listen_recording: "Ouça a gravação no console web",
-    s_unclear: "Não deu para entender",
-    s_ai_fail_matter: "A IA não conectou; o sistema desligou depois de cerca de {} e a pessoa não ouviu nada",
-    s_call_back_if_known: "Retorne a ligação se conhecer o número",
-    s_ai_fail_prefix: "[A IA não conectou; o sistema desligou]",
-    s_stall_topic: "Ligação de vendas / golpe",
-    s_stall_topic_kw: "Ligação de vendas / golpe (mencionou: {})",
-    s_stall_reply: "Prendeu a pessoa na linha por cerca de {}; não deu dados nem concordou com nada",
-    s_nothing: "Nada",
-    vm_call_back_to: "Pede retorno da ligação: {} (confirmado com 1)",
-    vm_call_back_unknown: "Pede retorno para este número (confirmado com 1, mas o número é desconhecido)",
-    vm_email_to: "Pede resposta por e-mail: {} (confirmado com 1)",
-    vm_email_unknown: "Pede resposta por e-mail (confirmado com 1, mas o endereço é desconhecido)",
-    vm_call_back_unchecked: "Pede retorno da ligação (número não conferido)",
-    vm_no_reply: "Não precisa responder (só um recado)",
-    vm_no_choice: "Não escolheu como receber a resposta (a chamada terminou antes)",
-    vm_decide_callback: "Decida se vai retornar a ligação",
-    vm_length: "cerca de {}",
-    vm_no_transcript: "Uma mensagem de cerca de {}; não foi possível transcrever. Ouça a gravação",
-    vm_task_failed: "Mensagem de voz (não foi possível transcrever; precisa de atenção)",
-    tc_status: "Status",
-    tc_pending: "Aguardando confirmação",
-    tc_transcript: "Transcrição",
-    tc_confirm: "Confirmar",
-    tc_ignore: "Ignorar",
-    tc_confirm_ack: "Confirmado, em andamento…",
-    tc_ignore_ack: "Ignorado",
-    tc_task: "Tarefa",
-    tc_ignored_task: "Tarefa ignorada",
-    tc_done: "Concluída",
-    tc_in_progress: "Confirmada (em andamento)",
-    tc_failed: "Falhou",
-    tc_confirm_failed: "Não foi possível confirmar",
-    tc_ignore_failed: "Não foi possível ignorar",
-    f_callback_waiting: "O retorno está agendado, mas a conexão de controle do telefone está offline. Verifique se o telefone está conectado ao agente e confirme de novo.",
-    f_callback_whitelist: "O número de retorno não está na lista permitida. Adicione-o (ou um prefixo terminado em *) nas Configurações e confirme de novo.",
-    f_callback_no_number: "Não há número para retornar: a tarefa não tem contato e o número de quem ligou está vazio.",
-    f_callback_send_failed: "Não foi possível enviar o retorno",
-    f_email_no_address: "Esta tarefa envia um e-mail, mas não tem endereço de resposta. Complete o contato a partir da transcrição ou ignore a tarefa.",
-    f_gmail_missing: "O Gmail não está configurado. Informe o endereço do Gmail e a senha de app nas Configurações e confirme de novo.",
-    f_bad_time: "Não foi possível entender o horário \"{}\"",
-    f_openclaw_failed: "Não foi possível passar a tarefa para o OpenClaw: {} (confira a URL e o token do OpenClaw nas Configurações)",
-    g_bad_address: "O endereço do Gmail não parece certo. Confira nas Configurações.",
-    g_no_recipient: "Não enviado: falta o endereço do destinatário",
-    g_bad_recipient: "Não enviado: o endereço do destinatário não parece certo",
-    g_short_password: "A senha de app do Gmail é curta demais. Digite de novo nas Configurações (ela nunca é exibida).",
-    e_subject: "Resposta à sua mensagem de voz",
-    e_summary: "Resumo",
-    e_empty: "(Sem resumo nem transcrição)",
-    e_appointment: "Compromisso — {}",
-    ap_weekdays: ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"],
-    ap_dt_fmt: "{}, %d/%m %H:%M",
-    ap_end_fmt: "%H:%M",
-    ap_confirm: "Aceitar",
-    ap_decline: "Recusar",
-    ap_card_title: "Compromisso a confirmar",
-    ap_what: "Assunto",
-    ap_name: "Nome",
-    ap_sms: "SMS",
-    ap_sms_will: "enviado a quem ligou quando você aceitar ou recusar",
-    ap_sms_off: "não será enviado (\"Avisar por SMS\" está desligado nas configurações)",
-    ap_sms_cannot: "esse número não recebe SMS; ligue de volta você mesmo",
-    ap_pending: "Compromisso a confirmar",
-    ap_replaced: "O horário mudou durante a ligação; \"{}\" continua na sua agenda, apague você mesmo",
-    ap_time_unconfirmed: "Quem ligou não confirmou este horário; confirme com a pessoa antes de responder",
-    ap_confirmed: "Compromisso aceito",
-    ap_declined: "Compromisso recusado",
-    ap_already: "Este compromisso já foi resolvido",
-    ap_cal_link: "Adicione à agenda: {}",
-    ap_sms_sent: "SMS enviado para {}",
-    ap_sms_not_sent: "SMS não enviado: {}",
-    ap_sms_old_app: "o app do telefone é antigo demais para enviar SMS",
-    ap_sms_offline: "o telefone não está conectado",
-    ap_sms_timeout: "o telefone não respondeu (tempo esgotado)",
-    ap_sms_code: "código de erro {}",
-    ap_sms_hi_owner: "Olá, aqui é {}. ",
-    ap_sms_hi: "Olá. ",
-    ap_sms_ok: "Combinado: {}. Até lá!",
-    ap_sms_no: "Desculpe, mas {} não vou conseguir. Podemos marcar outro horário?",
-    ap_sms_busy: "esse mesmo SMS já está sendo enviado",
-    ap_void_failed: "\"{}\" da ligação não vale mais, mas não foi possível tirar da agenda; apague você mesmo",
-    ap_sales_voided: "Considerada uma ligação de vendas, o compromisso marcado durante a ligação foi cancelado: {}",
-    ap_web_confirm: "confirme no console web: {}",
-    ap_web_console: "confirme no console web",
-    ap_web_label: "Confirmar na web",
     farewells: &[
         "tchau", "adeus", "até logo", "até mais", "até breve", "até amanhã", "tenha um bom dia",
         "tenha um ótimo dia", "tenha uma boa tarde", "tenha uma ótima tarde",
@@ -2083,7 +956,7 @@ fn lowercase(text: &str) -> String {
 }
 
 /// Lowercase words of `text`, punctuation dropped (apostrophes kept inside words).
-fn words(text: &str) -> Vec<String> {
+fn word_list(text: &str) -> Vec<String> {
     lowercase(text)
         .replace('’', "'")
         .split(|c: char| !(c.is_alphanumeric() || c == '\''))
@@ -2123,7 +996,7 @@ fn words_after_marks(text: &str) -> (Vec<String>, Vec<bool>) {
 /// `phrase` (space-separated words) ends `words`, with at most `slack` words after it.
 /// `after_mark`: where the punctuation was ([`words_after_marks`]).
 fn phrase_near_end(words: &[String], after_mark: &[bool], phrase: &str, slack: usize) -> bool {
-    let p = self::words(phrase);
+    let p = self::word_list(phrase);
     if p.is_empty() || words.len() < p.len() {
         return false;
     }
@@ -2396,7 +1269,7 @@ pub fn asks_to_hold(text: &str) -> bool {
     if HOLD_RUNS.iter().any(|m| runs.contains(squeeze(m).as_str())) {
         return true;
     }
-    let ws = words(text);
+    let ws = word_list(text);
     HOLD_WORDS.iter().any(|m| has_phrase(&ws, m))
 }
 
@@ -2591,7 +1464,7 @@ const GREETING_BYES: &[GreetingBye] = &[
 impl GreetingBye {
     fn ends(&self, ws: &[String]) -> bool {
         self.heads.iter().any(|head| {
-            let h = words(head);
+            let h = word_list(head);
             if h.is_empty() || ws.len() < h.len() {
                 return false;
             }
@@ -2613,7 +1486,7 @@ impl GreetingBye {
 fn cue_window(before: &[String]) -> &[String] {
     let mut start = before.len().saturating_sub(GREETING_BYE_CUE_WORDS);
     for h in HELLOS {
-        let p = words(h);
+        let p = word_list(h);
         if p.is_empty() || before.len() < p.len() {
             continue;
         }
@@ -2629,7 +1502,7 @@ fn cue_window(before: &[String]) -> &[String] {
 
 /// `phrase` (space-separated words) appears anywhere in `ws`.
 fn has_phrase(ws: &[String], phrase: &str) -> bool {
-    let p = words(phrase);
+    let p = word_list(phrase);
     !p.is_empty() && ws.windows(p.len()).any(|w| w == &p[..])
 }
 
@@ -2778,7 +1651,7 @@ const IT_FAREWELL_CUE_WORDS: usize = 2;
 
 fn it_cued_farewell(ws: &[String]) -> bool {
     IT_CUED_FAREWELLS.iter().any(|f| {
-        let h = words(f);
+        let h = word_list(f);
         if ws.len() <= h.len() || !ws.ends_with(&h) {
             return false;
         }
@@ -2818,7 +1691,7 @@ fn falou_closing(ws: &[String], after_mark: &[bool]) -> bool {
     last == "falou"
         && (before.is_empty()
             || after_mark.last().copied().unwrap_or(false)
-            || FALOU_CUES.iter().any(|c| before.ends_with(&words(c))))
+            || FALOU_CUES.iter().any(|c| before.ends_with(&word_list(c))))
 }
 
 /// What was said ends on a goodbye, in any supported language other than
@@ -2838,7 +1711,7 @@ pub fn caller_wraps_up(text: &str) -> bool {
         && (ends_with_farewell(text, 2)
             || wrapup(text)
             || wrapup(strip_trailing_thanks(text))
-            || VI_THANKS_CLOSING.ends(&words(text))
+            || VI_THANKS_CLOSING.ends(&word_list(text))
             || ja_thanks_closing(text))
 }
 
@@ -2962,7 +1835,7 @@ mod tests {
             " ' ",
         ] {
             let (ws, after_mark) = words_after_marks(s);
-            assert_eq!(ws, words(s), "{s}");
+            assert_eq!(ws, word_list(s), "{s}");
             assert_eq!(ws.len(), after_mark.len(), "{s}");
         }
         assert_eq!(words_after_marks("Certo, falou").1, [false, true]);
@@ -3016,9 +1889,8 @@ mod tests {
         assert_eq!(for_owner_in(Lang::ZhCn, "听录音"), "听录音");
         assert_eq!(for_owner_in(Lang::Ja, "会議の件"), "会議の件");
         assert_eq!(for_owner_in(Lang::En, "Call back"), "Call back");
-        assert_eq!(zh_or_in(Lang::ZhTw, "中間省略", "left out"), "中間省略");
-        assert_eq!(zh_or_in(Lang::ZhCn, "中間省略", "left out"), "中间省略");
-        assert_eq!(zh_or_in(Lang::De, "中間省略", "left out"), "left out");
+        assert_eq!(fill_in(Lang::ZhCn, "{n}（{m}）", &[("n", "號碼"), ("m", "王小明")]), "号码（王小明）");
+        assert_eq!(fill_in(Lang::De, "{n} ({m}) {x} {", &[("n", "{m}"), ("m", "b")]), "{m} (b) {x} {");
     }
 
     #[test]
@@ -3369,11 +2241,11 @@ mod tests {
     #[test]
     fn every_language_has_its_phrases() {
         for l in ALL {
-            let p = phrases(l);
+            let (p, w) = (phrases(l), words(l));
             assert!(!p.hello.is_empty() && !p.bye.is_empty() && !p.unavailable.is_empty(), "{l:?}");
-            assert!(p.n_blocked_done.contains("{}"), "{l:?}");
-            assert!(!p.n_repeat_title.is_empty(), "{l:?}");
-            assert!(p.n_repeat_body.contains("{number}") && p.n_repeat_body.contains("{count}"), "{l:?}");
+            assert!(w.n_blocked_done.contains("{}"), "{l:?}");
+            assert!(!w.n_repeat_title.is_empty(), "{l:?}");
+            assert!(w.n_repeat_body.contains("{number}") && w.n_repeat_body.contains("{count}"), "{l:?}");
             if !l.is_zh() {
                 assert!(!p.farewells.is_empty(), "{l:?}");
             }
@@ -3409,24 +2281,24 @@ mod tests {
     #[test]
     fn every_template_has_exactly_one_slot() {
         for l in ALL {
-            let p = phrases(l);
+            let p = words(l);
             for t in [
-                p.u_sec, p.u_min, p.s_no_transcript, p.s_ai_fail_matter, p.s_stall_topic_kw,
-                p.s_stall_reply, p.vm_call_back_to, p.vm_email_to, p.vm_length, p.vm_no_transcript,
-                p.f_bad_time, p.f_openclaw_failed, p.e_appointment,
+                &p.u_sec, &p.u_min, &p.s_no_transcript, &p.s_ai_fail_matter, &p.s_stall_topic_kw,
+                &p.s_stall_reply, &p.vm_call_back_to, &p.vm_email_to, &p.vm_length, &p.vm_no_transcript,
+                &p.f_bad_time, &p.f_openclaw_failed, &p.e_appointment,
             ] {
                 assert_eq!(t.matches("{}").count(), 1, "{l:?}: {t}");
             }
             for t in [
-                p.s_no_service, p.s_see_transcript, p.s_listen_recording, p.s_ai_fail_prefix,
-                p.s_stall_topic, p.vm_call_back_unknown, p.tc_confirm, p.tc_ignore, p.tc_confirm_ack,
-                p.f_callback_waiting, p.f_gmail_missing, p.g_short_password,
-                p.e_subject, p.e_empty,
+                &p.s_no_service, &p.s_see_transcript, &p.s_listen_recording, &p.s_ai_fail_prefix,
+                &p.s_stall_topic, &p.vm_call_back_unknown, &p.tc_confirm, &p.tc_ignore, &p.tc_confirm_ack,
+                &p.f_callback_waiting, &p.f_gmail_missing, &p.g_short_password,
+                &p.e_subject, &p.e_empty,
             ] {
                 assert!(!t.contains('{') && !t.trim().is_empty(), "{l:?}: {t}");
             }
             assert!(p.sep.contains(':') || p.sep.contains('：'), "{l:?}");
-            assert_eq!(fill(p.vm_call_back_to, "0912").matches("0912").count(), 1, "{l:?}");
+            assert_eq!(fill(&p.vm_call_back_to, "0912").matches("0912").count(), 1, "{l:?}");
         }
     }
 
@@ -3696,5 +2568,261 @@ mod tests {
         assert!(ends_with_farewell("Vale, hasta luego.", 1));
         assert!(!ends_with_farewell("Gracias", 1));
         assert_eq!(strip_trailing_thanks("Vale, gracias."), "Vale");
+    }
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+    use bageo_packs::data::{OFFICIAL_LANGS, OFFICIAL_LANG_INFO};
+
+    /// [Lang::parse] as it was before non-core languages existed.
+    fn parse_before(s: &str) -> Lang {
+        let t = s.trim().to_ascii_lowercase().replace('_', "-");
+        match t.as_str() {
+            "zh-tw" | "zh-hant" | "zh-hk" | "zh" => Lang::ZhTw,
+            "zh-cn" | "zh-hans" | "zh-sg" => Lang::ZhCn,
+            _ => match t.split('-').next().unwrap_or("") {
+                "ja" => Lang::Ja,
+                "ko" => Lang::Ko,
+                "es" => Lang::Es,
+                "fr" => Lang::Fr,
+                "de" => Lang::De,
+                "pt" => Lang::Pt,
+                _ => Lang::En,
+            },
+        }
+    }
+
+    fn ext(code: &str) -> Lang {
+        Lang::Ext(Ext::from_code(code).unwrap_or_else(|| panic!("{code}")))
+    }
+
+    #[test]
+    fn parse_is_unchanged_for_every_input() {
+        let mut inputs: Vec<String> = [
+            "zh-TW", "zh_TW", "zh-tw", "ZH-HANT", "zh-Hant", "zh-HK", "zh", " zh ", "zh-CN", "zh_cn", "zh-Hans", "zh-SG",
+            "zh-MO", "zh-Hant-TW", "cmn", "cmn-TW", "en", "EN", "en-US", "en-GB", "en_IN", "ja", "ja-JP", "JA_jp", "ko",
+            "ko-KR", "es", "es-US", "es-ES", "es-419", "fr", "fr-FR", "fr-CA", "de", "de-DE", "de-CH", "pt", "pt-BR",
+            "pt-PT", "it", "it-IT", "th", "th-TH", "ar", "ar-EG", "ru", "ru-RU", "hi", "hi-IN", "fil", "nb", "nn", "no",
+            "iw", "in", "tl", "xx", "", "  ", "-", "--", "_", "english", "日本語", "it-", "-it",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        for code in OFFICIAL_LANGS {
+            inputs.push(code.to_string());
+            inputs.push(code.to_ascii_uppercase());
+            inputs.push(code.replace('-', "_"));
+        }
+        for s in &inputs {
+            let l = Lang::parse(s);
+            assert_eq!(l, parse_before(s), "{s:?}");
+            assert!(l.is_core(), "{s:?}");
+        }
+    }
+
+    #[test]
+    fn core_list() {
+        assert_eq!(ALL, CORE);
+        assert_eq!(CORE.len(), 9);
+        for l in CORE {
+            assert!(l.is_core());
+            assert!(!l.rtl());
+            assert_eq!(l.base(), l);
+            assert_eq!(Lang::parse_any(l.code()), Some(l));
+            assert_eq!(l.name_en(), phrases(l).name_en);
+        }
+    }
+
+    #[test]
+    fn every_official_code_round_trips() {
+        assert_eq!(Ext::all().count(), 70);
+        for info in &OFFICIAL_LANG_INFO {
+            for input in [info.official.to_string(), info.official.to_ascii_lowercase(), info.official.replace('-', "_")] {
+                let l = Lang::parse_any(&input).unwrap_or_else(|| panic!("{input}"));
+                assert_eq!(l.is_core(), info.core, "{input}");
+                assert_eq!(Lang::parse_any(l.code()), Some(l), "{input}");
+                if !info.core {
+                    assert_eq!(l.code(), info.code);
+                    assert_eq!(l.name_en(), info.name_en);
+                    assert_eq!(l.rtl(), info.rtl);
+                    assert_eq!(l.base(), Lang::En);
+                    let Lang::Ext(e) = l else { unreachable!() };
+                    assert_eq!(e.official(), info.official);
+                    assert_eq!(format!("{e:?}"), info.code);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn parse_any_examples() {
+        assert_eq!(Lang::parse_any("it-IT"), Some(ext("it")));
+        assert_eq!(Lang::parse_any("it_CH"), Some(ext("it")));
+        assert_eq!(Lang::parse_any("th"), Some(ext("th")));
+        assert_eq!(Lang::parse_any("ar-EG"), Some(ext("ar")));
+        assert_eq!(Lang::parse_any("ar-SA"), Some(ext("ar")));
+        assert_eq!(Lang::parse_any(" RU "), Some(ext("ru")));
+        assert_eq!(Lang::parse_any("hi_IN"), Some(ext("hi")));
+        assert_eq!(Lang::parse_any("fil-PH"), Some(ext("fil")));
+        // Legacy and macro codes browsers and Android still send.
+        assert_eq!(Lang::parse_any("no"), Some(ext("nb")));
+        assert_eq!(Lang::parse_any("nb-NO"), Some(ext("nb")));
+        assert_eq!(Lang::parse_any("nn"), Some(ext("nn")));
+        assert_ne!(ext("nb"), ext("nn"));
+        assert_eq!(Lang::parse_any("iw"), Some(ext("he")));
+        assert_eq!(Lang::parse_any("in-ID"), Some(ext("id")));
+        assert_eq!(Lang::parse_any("tl"), Some(ext("fil")));
+        // Core languages as before, Mandarin's official code read as zh.
+        assert_eq!(Lang::parse_any("cmn"), Some(Lang::ZhTw));
+        assert_eq!(Lang::parse_any("zh_TW"), Some(Lang::ZhTw));
+        assert_eq!(Lang::parse_any("zh-Hans"), Some(Lang::ZhCn));
+        assert_eq!(Lang::parse_any("en-IN"), Some(Lang::En));
+        assert_eq!(Lang::parse_any("es-US"), Some(Lang::Es));
+        assert_eq!(Lang::parse_any("pt-BR"), Some(Lang::Pt));
+        // Unknown stays unknown: no fallback to English.
+        for s in ["", " ", "xx", "zh-MO", "yue", "nan", "hak", "-", "english"] {
+            assert_eq!(Lang::parse_any(s), None, "{s:?}");
+        }
+        assert!(ext("ar").rtl() && ext("he").rtl() && ext("fa").rtl() && ext("ur").rtl());
+        assert!(!ext("it").rtl() && !ext("th").rtl() && !ext("ru").rtl() && !ext("hi").rtl());
+        assert_eq!(format!("{:?}", ext("th")), "Ext(th)");
+        assert!(Ext::from_code("ar").unwrap() < Ext::from_code("ur").unwrap());
+        assert_eq!(Ext::from_code("en"), None);
+        assert_eq!(Ext::from_code("cmn"), None);
+    }
+
+    /// Until a non-core language has its own phrases and prompts, every entry
+    /// point treats it exactly like English and none of them panics.
+    #[test]
+    fn every_ext_language_works_like_english() {
+        // Without translations every other language works like English.
+        crate::locales_store::testing::use_empty();
+        use crate::stall_script::Family;
+        let en = Lang::En;
+        let dt = chrono::NaiveDate::from_ymd_opt(2026, 11, 21).unwrap().and_hms_opt(15, 30, 0).unwrap();
+        let rt = crate::settings_store::RuntimeSettings::from_base(&crate::config::Settings::from_env());
+        let regions = crate::country_profile::all();
+        let families = [
+            Family::Investment,
+            Family::Insurance,
+            Family::Credit,
+            Family::Impersonation,
+            Family::Collection,
+            Family::Harassment,
+            Family::General,
+        ];
+        let lines = [
+            "Buongiorno, sono il corriere, ha un pacco per lei.",
+            "สวัสดีครับ มีพัสดุมาส่งครับ",
+            "مرحبا، لدي طرد لك، هل أنت في المنزل؟",
+            "Здравствуйте, вам посылка, вы дома?",
+            "नमस्ते, आपके लिए एक पार्सल है, क्या आप घर पर हैं?",
+            "Hello, I have a delivery for you.",
+        ];
+        for e in Ext::all() {
+            let l = Lang::Ext(e);
+            assert!(std::ptr::eq(phrases(l), phrases(en)), "{l:?}");
+            assert!(std::ptr::eq(crate::prompts::pack(l), crate::prompts::pack(en)), "{l:?}");
+            assert!(std::ptr::eq(crate::control::words::words(l), crate::control::words::words(en)));
+            for a in [false, true] {
+                assert_eq!(crate::prompts::kick_open(l, a, None), crate::prompts::kick_open(en, a, None));
+                assert_eq!(crate::prompts::kick_open_call(l, a, None, true), crate::prompts::kick_open_call(en, a, None, true));
+                assert_eq!(crate::prompts::default_prompt(l, a, "Alex"), crate::prompts::default_prompt(en, a, "Alex"));
+                assert_eq!(crate::prompts::default_prompt_template(l, a), crate::prompts::default_prompt_template(en, a));
+                assert_eq!(crate::prompts::persona_chars(l, a, "Alex", ""), crate::prompts::persona_chars(en, a, "Alex", ""));
+                assert_eq!(crate::contacts::caller_block(l, a, "Alex", "Sam", "note"), crate::contacts::caller_block(en, a, "Alex", "Sam", "note"));
+                assert_eq!(crate::urgent_call::not_answered_turn(l, a, "Alex"), crate::urgent_call::not_answered_turn(en, a, "Alex"));
+                assert_eq!(crate::urgent_call::callback_turn(l, a, "Alex"), crate::urgent_call::callback_turn(en, a, "Alex"));
+                for who in [crate::urgent_call::TransferWho::Whitelist, crate::urgent_call::TransferWho::Contact, crate::urgent_call::TransferWho::Stranger] {
+                    for will_call in [false, true] {
+                        assert_eq!(
+                            crate::contacts::urgent_block(l, a, "Alex", who, will_call),
+                            crate::contacts::urgent_block(en, a, "Alex", who, will_call)
+                        );
+                    }
+                }
+            }
+            let _ = crate::prompts::kick_open(Lang::ZhTw, false, Some(l));
+            let _ = crate::prompts::call_language_note(l, Lang::Ja);
+            let _ = crate::prompts::call_language_note(Lang::ZhTw, l);
+            let _ = crate::prompts::language_drift_note(Lang::De, l);
+            assert_eq!(crate::prompts::other_call_language_note(l), crate::prompts::other_call_language_note(en));
+            assert_eq!(crate::prompts::owner_label(l, "Alex"), crate::prompts::owner_label(en, "Alex"));
+            let aliases = vec!["Al".to_string()];
+            assert_eq!(crate::prompts::alias_list(l, "Alex", &aliases), crate::prompts::alias_list(en, "Alex", &aliases));
+            assert_eq!(crate::prompts::with_caller_language_note("x", l), crate::prompts::with_caller_language_note("x", en));
+            assert_eq!(crate::prompts::wait_one_more(l), crate::prompts::wait_one_more(en));
+            assert_eq!(rt.gemini_system_prompt_for_call_in(Some(l)), rt.gemini_system_prompt_for_call_in(Some(en)));
+            assert_eq!(rt.persona_stall_system_prompt_in(Some(l)), rt.persona_stall_system_prompt_in(Some(en)));
+            assert_eq!(rt.persona_user_chars(Some(l)), rt.persona_user_chars(Some(en)));
+            // Owner-facing words: notifications, summaries, alerts.
+            assert_eq!(crate::summary::summary_system_prompt(l, "Alex", &aliases), crate::summary::summary_system_prompt(en, "Alex", &aliases));
+            assert_eq!(crate::summary::sales_labels(l), crate::summary::sales_labels(en));
+            assert_eq!(crate::summary::summary_says_sales(l, "Sales call"), crate::summary::summary_says_sales(en, "Sales call"));
+            assert_eq!(crate::extract::intent_system_prompt(l), crate::extract::intent_system_prompt(en));
+            assert_eq!(crate::urgent_call::alert_title(l), crate::urgent_call::alert_title(en));
+            for alert in [crate::urgent_call::Alert::AiEnded, crate::urgent_call::Alert::StillOnHold] {
+                assert_eq!(crate::urgent_call::alert_line(alert, l), crate::urgent_call::alert_line(alert, en));
+            }
+            assert_eq!(crate::urgent_call::with_caller_language("x", Some(l)), crate::urgent_call::with_caller_language("x", Some(en)));
+            assert_eq!(crate::urgency::language_name(l), "English");
+            assert!(crate::urgency::is_latin_lang(l));
+            assert_eq!(crate::direct_transfer_words(l), crate::direct_transfer_words(en));
+            assert_eq!(for_owner_in(l, "Ciao"), "Ciao");
+            assert_eq!(quoted(l, "ok"), quoted(en, "ok"));
+            assert_eq!(date_time(l, &dt), date_time(en, &dt));
+            assert_eq!(date_only(l, &dt.date()), date_only(en, &dt.date()));
+            assert_eq!(duration(l, 75.0), duration(en, 75.0));
+            assert_eq!(crate::zh_tw::to_tw_in(l, "这个"), crate::zh_tw::to_tw_in(en, "这个"));
+            assert_eq!(crate::backup::failure_text(l, "io"), crate::backup::failure_text(en, "io"));
+            assert_eq!(crate::lan::bad_host_words(l), crate::lan::bad_host_words(en));
+            assert_eq!(crate::lan::page_words(l), crate::lan::page_words(en));
+            let _ = crate::lan::need_password_page(l);
+            assert_eq!(crate::appointments::sms_code_text(l, "busy"), crate::appointments::sms_code_text(en, "busy"));
+            assert_eq!(crate::appointments::callback_headline(l, "+15550100"), crate::appointments::callback_headline(en, "+15550100"));
+            assert_eq!(crate::appointments::callback_result_line(l, "busy", "+15550100"), crate::appointments::callback_result_line(en, "busy", "+15550100"));
+            assert_eq!(crate::appointments::when_text(l, &dt), crate::appointments::when_text(en, &dt));
+            assert_eq!(crate::calendar::extraction_prompt(l, "Alex", dt), crate::calendar::extraction_prompt(en, "Alex", dt));
+            assert_eq!(crate::preflight::opening(l), crate::preflight::opening(en));
+            assert_eq!(crate::preflight::card_text(l, &[]), crate::preflight::card_text(en, &[]));
+            // Voice preview.
+            assert_eq!(crate::voice_preview::sample_lines(l), crate::voice_preview::sample_lines(en));
+            assert_eq!(crate::voice_preview::reject_announce_text_in(l), crate::voice_preview::reject_announce_text_in(en));
+            // Regions, scenarios, stalling.
+            assert_eq!(crate::country_profile::lang_default_country(l), "us");
+            assert_eq!(crate::country_profile::prompt_overhead(l), crate::country_profile::prompt_overhead(en));
+            assert_eq!(crate::country_profile::stall_overhead(l), crate::country_profile::stall_overhead(en));
+            let _ = crate::country_profile::resolve(None, l);
+            for r in regions.iter().copied().take(4) {
+                assert_eq!(crate::country_profile::block(r, l, false), crate::country_profile::block(r, en, false));
+                assert_eq!(crate::country_profile::habits_block(r, l), crate::country_profile::habits_block(r, en));
+                assert_eq!(crate::country_profile::style_line(r, l, false, 3, "Alex"), crate::country_profile::style_line(r, en, false, 3, "Alex"));
+                assert_eq!(crate::country_profile::stall_line(r, l), crate::country_profile::stall_line(r, en));
+                assert_eq!(crate::country_profile::stall_block(r, l), crate::country_profile::stall_block(r, en));
+                assert_eq!(crate::prompts::dialect_note(r, l), crate::prompts::dialect_note(r, en));
+            }
+            for f in families {
+                assert_eq!(crate::stall_script::script(f, l), crate::stall_script::script(f, en));
+            }
+            for sc in crate::scenario::Scenario::ALL {
+                for booking in [false, true] {
+                    assert_eq!(crate::scenario::cue(sc, l, None, booking), crate::scenario::cue(sc, en, None, booking));
+                }
+            }
+            assert_eq!(crate::scenario::note_mark(l), crate::scenario::note_mark(en));
+            // Language checks on lines in several languages.
+            for text in lines {
+                assert_eq!(crate::summary::needs_translation(text, l), crate::summary::needs_translation(text, en), "{l:?}: {text}");
+                assert_eq!(crate::urgency::latin_margin(text, l, Lang::Es), crate::urgency::latin_margin(text, en, Lang::Es));
+                let _ = crate::summary::lines_to_translate(&format!("對方：{text}\n接聽：Ok"), l);
+                let mut call = crate::lang_lock::CallLanguage::new(l, l);
+                let _ = call.caller_turn(text);
+                let _ = call.ai_turn(text, true);
+            }
+            let _ = crate::gemini_live::callback_lang_plan(l, en);
+            let _ = crate::gemini_live::callback_lang_plan(Lang::Ja, l);
+        }
     }
 }

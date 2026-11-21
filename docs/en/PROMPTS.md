@@ -8,7 +8,7 @@ situation and speaking style, answer from your own facts, or treat certain
 callers your way.
 
 - [What the AI is told on every call](#what-the-ai-is-told-on-every-call)
-- [The quick way: let an AI interview you](#the-quick-way-let-an-ai-interview-you)
+- [The quick way: answer About you](#the-quick-way-answer-about-you)
 - [Notes the AI may answer from](#notes-the-ai-may-answer-from)
 - [Status note](#status-note)
 - [Contacts and the names people use for you](#contacts-and-the-names-people-use-for-you)
@@ -27,7 +27,7 @@ in this order:
 
 | # | Part | Added when |
 |---|---|---|
-| 1 | **The prompt**: the built-in one for your language and answer style, or your text in *Settings → Prompt → Your own prompt* | always |
+| 1 | **The prompt**: the built-in one for your language and answer style (with your *Talk style*, your country's habits and your *About you* answers), or your text in *Settings → About you → Advanced → Your own prompt* | always |
 | 2 | **Status note** ("Waiting for a parcel today") | it is switched on |
 | 3 | **Notes the AI may answer from** | you wrote some |
 | 4 | **Stall Mode instructions** (see [below](#sales-and-scam-calls-stall-mode)) | the call is confirmed as sales or scam |
@@ -68,7 +68,7 @@ rule.
 `{owner}` anywhere in a prompt becomes the name in *Settings → Basics → Your
 name*. Changes apply from the next call; nothing needs restarting.
 
-To read the built-in prompt, open *Settings → Prompt → Show the built-in
+To read the built-in prompt, open *Settings → About you → Advanced → Show the built-in
 prompt*. It is shown for the saved language, answer style and name, so save
 first if you just changed them.
 
@@ -78,46 +78,33 @@ first if you just changed them.
 A copy you save without editing still counts as the built-in prompt: switch the
 language and the AI uses that language's built-in prompt.
 
-## The quick way: let an AI interview you
+## The quick way: answer About you
 
-You do not need to know how to write prompts. A chat AI can interview you and
-write one.
+You do not need to write a prompt. Two settings and five short questions cover
+most of it, and Bageo turns the answers into a short paragraph of the built-in
+prompt.
 
-1. In the console open *Settings → Prompt*, find the card *Don't want to
-   write it yourself?* (which automatically switches between the *AI assistant*
-   and *As me* interview prompts to match your answer style above), choose the
-   language and press **Copy interview prompt**.
-2. Paste it into a new chat in ChatGPT, Claude, Gemini or any other chat AI.
-3. It asks about eight questions tailored to that answer style, one at a time —
-   either shaping your AI assistant's persona, message-taking and hand-off
-   rules, or capturing how you personally sound and handle calls. Answer in your
-   own words; say "skip" to take a default.
-4. It gives you **the finished prompt** in one code block → paste it into
-   *Settings → Prompt → Your own prompt*. (Facts for callers, your answer style
-   and *Keep them talking* are set directly on the Settings page.)
-5. Save, call your number, listen. If something is off, tell the chat AI what
-   happened ("it talks too much", "it asked my caller for their name twice")
-   and ask for a corrected prompt.
+- **Talk style** (*Settings → How it answers*): five steps from *Casual and
+  lively* to *Brisk and businesslike*. The myna beside the slider changes
+  clothes with each step.
+- **Country you live in** (*Settings → Basics → More options*): the everyday
+  habits the AI follows, such as where parcels go. Empty: from the phone's SIM.
+- **About you** (*Settings → About you*), all optional: who calls this phone
+  most, your work or day in one line, phrases you often say and never say (up
+  to three each), where parcels and deliveries go, and anything else (up to 300
+  characters). With *AI assistant*, the phrases question becomes *What to ask
+  for in a message*: the caller's name, a callback number, what it is about and
+  how urgent.
 
-The interview applies the techniques below on its own and keeps the rules the
-call engine relies on.
+Answering *Who calls this phone most?* also moves the talk style to a matching
+step (family 2, work 4, both 3) while you have not moved the slider yourself.
 
-The same texts are in [`docs/prompts/`](../prompts/), if you would rather open
-a file (*As me* / *AI assistant*):
-
-- [English](../prompts/interview.en.txt) · [AI assistant](../prompts/interview_assistant.en.txt)
-- [繁體中文](../prompts/interview.zh-TW.txt) · [AI 助理](../prompts/interview_assistant.zh-TW.txt)
-- [简体中文](../prompts/interview.zh-CN.txt) · [AI 助理](../prompts/interview_assistant.zh-CN.txt)
-- [日本語](../prompts/interview.ja.txt) · [AI アシスタント](../prompts/interview_assistant.ja.txt)
-- [한국어](../prompts/interview.ko.txt) · [AI 비서](../prompts/interview_assistant.ko.txt)
-- [Español](../prompts/interview.es.txt) · [Asistente de IA](../prompts/interview_assistant.es.txt)
-- [Français](../prompts/interview.fr.txt) · [Assistant IA](../prompts/interview_assistant.fr.txt)
-- [Deutsch](../prompts/interview.de.txt) · [KI-Assistent](../prompts/interview_assistant.de.txt)
-- [Português](../prompts/interview.pt.txt) · [Assistente de IA](../prompts/interview_assistant.pt.txt)
+Your own prompt under *Advanced* replaces the talk style and local habits. Keep
+it empty unless you need something they cannot do.
 
 ## Notes the AI may answer from
 
-*Settings → Prompt → Notes the AI may answer from* is a small knowledge base:
+*Settings → About you → Notes the AI may answer from* is a small knowledge base:
 plain facts, one per line.
 
 ```text
@@ -148,7 +135,7 @@ Two settings outside the prompt change what the AI knows:
   answering your phone: "my sister, call her Mei", "the landlord, usually
   about repairs". Saved contacts are also protected in the scam check: a
   relative talking about a transfer is not mistaken for a scammer.
-- **Other names callers use for you** (*Settings → Basics → More options*): up
+- **Other names callers use for you** (*Settings → About you*): up
   to ten, one per line. People who know you as "Lex" or by your English name are
   understood as asking for you, in both answer styles and with your own prompt
   too. Summaries still use *Your name*.

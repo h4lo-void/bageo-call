@@ -200,6 +200,10 @@ pub fn gate(f: &Facts) -> Gate {
         "/calls/api/control/inbound" if f.mcp_token_set => return Gate::Pass,
         _ => {}
     }
+    // The console's language files and mascot region art: static assets, nothing private.
+    if f.path.starts_with("/calls/i18n/") || f.path.starts_with("/calls/extras/art/") {
+        return Gate::Pass;
+    }
     if ics_what(f.path).is_some() && f.ics_key_ok {
         return Gate::Pass;
     }
@@ -375,7 +379,7 @@ pub fn bad_host_words(lang: Lang) -> (&'static str, &'static str) {
     match lang {
         Lang::ZhTw => ("用這個網址打不開控制台", "請改用「系統 → 關於」裡的網址。用自己的網域時，先把它填進「通知裡的網址」。"),
         Lang::ZhCn => ("用这个地址打不开控制台", "请改用“系统 → 关于”里的地址。用自己的域名时，先把它填进“通知里的地址”。"),
-        Lang::En => ("This address can't open the console", "Use the address under System → About. For your own domain, first enter it under Address in notifications."),
+        Lang::En | Lang::Ext(_) => ("This address can't open the console", "Use the address under System → About. For your own domain, first enter it under Address in notifications."),
         Lang::Ja => ("このアドレスではコンソールを開けません", "「システム → 情報」のアドレスを使ってください。独自のドメインを使うときは、先に「通知に使うアドレス」に入力してください。"),
         Lang::Ko => ("이 주소로는 콘솔을 열 수 없습니다", "‘시스템 → 정보’에 나온 주소를 쓰세요. 자기 도메인을 쓸 때는 먼저 ‘알림에 쓰는 주소’에 입력하세요."),
         Lang::Es => ("Con esta dirección no se abre la consola", "Usa la dirección de «Sistema → Acerca de». Para tu propio dominio, escríbelo antes en «Dirección en las notificaciones»."),
@@ -641,7 +645,7 @@ pub fn page_words(lang: Lang) -> (&'static str, &'static str, &'static str) {
     match lang {
         Lang::ZhTw => ("zh-Hant", "請先設密碼", "要從其他裝置打開控制台，請先在 Bageo 所在的電腦打開控制台、設好密碼。"),
         Lang::ZhCn => ("zh-Hans", "请先设置密码", "要从其他设备打开控制台，请先在 Bageo 所在的电脑上打开控制台，设好密码。"),
-        Lang::En => ("en", "Set a password first", "To open the console from another device, first open the console on the computer running Bageo and set a password."),
+        Lang::En | Lang::Ext(_) => ("en", "Set a password first", "To open the console from another device, first open the console on the computer running Bageo and set a password."),
         Lang::Ja => ("ja", "先にパスワードを設定してください", "ほかの端末からコンソールを開くには、まず Bageo が動いているパソコンでコンソールを開き、パスワードを設定してください。"),
         Lang::Ko => ("ko", "먼저 비밀번호를 정하세요", "다른 기기에서 콘솔을 열려면 먼저 Bageo가 실행 중인 컴퓨터에서 콘솔을 열고 비밀번호를 정하세요."),
         Lang::Es => ("es", "Primero pon una contraseña", "Para abrir la consola desde otro dispositivo, primero ábrela en el equipo donde está Bageo y pon una contraseña."),
@@ -749,6 +753,8 @@ mod tests {
             "/calls/api/backup/export",
             "/calls/api/control/inbound",
             "/calls/api/call/abc/event.ics",
+            "/calls/api/extras",
+            "/calls/api/extras/download",
             "/v1/turn",
         ] {
             assert_eq!(gate(&outside(path)), Gate::NeedPassword, "{path}");
@@ -758,6 +764,9 @@ mod tests {
             "/favicon.ico",
             "/calls/manifest.webmanifest",
             "/calls/icon-192.png",
+            "/calls/i18n/ja.json",
+            "/calls/i18n/desktop/it.json",
+            "/calls/extras/art/art-vn.json",
             "/calls/api/quick-action",
             "/mcp",
             "/api/phone-pairing/claim",

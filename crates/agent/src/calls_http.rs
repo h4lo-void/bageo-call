@@ -4,7 +4,7 @@
 //! LAN web console: call history + runtime settings + tasks (`/calls`).
 
 use axum::body::Body;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query, RawQuery, State};
 use axum::http::{header, Extensions, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -12,8 +12,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::io::Write as _;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use tokio::sync::oneshot;
 use tracing::info;
 
@@ -45,7 +44,6 @@ pub struct CallsState {
     pub sms: Arc<crate::sms_store::SmsStore>,
 }
 
-const UI_HTML: &str = include_str!("../static/calls.html");
 // "Add to home screen": the app manifest and its icons (the bird of docs/images/bageo.svg).
 const MANIFEST: &[u8] = include_bytes!("../static/manifest.webmanifest");
 const ICON_192: &[u8] = include_bytes!("../static/icon-192.png");
@@ -66,28 +64,6 @@ fn static_file(bytes: &'static [u8], content_type: &'static str) -> Response {
 /// `/favicon.ico` (also at the site root, where browsers look for it).
 pub async fn favicon() -> Response {
     static_file(FAVICON, "image/x-icon")
-}
-
-/// Embedded UI: raw bytes, gzip bytes and a strong ETag, computed once.
-struct UiAsset {
-    gzip: Vec<u8>,
-    etag: String,
-}
-
-fn ui_asset() -> &'static UiAsset {
-    static ASSET: OnceLock<UiAsset> = OnceLock::new();
-    ASSET.get_or_init(|| {
-        let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
-        let _ = enc.write_all(UI_HTML.as_bytes());
-        let gzip = enc.finish().unwrap_or_default();
-        use sha2::Digest;
-        let digest = sha2::Sha256::digest(UI_HTML.as_bytes());
-        let etag = format!(
-            "\"{}\"",
-            digest.iter().take(8).map(|b| format!("{b:02x}")).collect::<String>()
-        );
-        UiAsset { gzip, etag }
-    })
 }
 
 fn accepts_gzip(headers: &HeaderMap) -> bool {
@@ -325,30 +301,9 @@ fn fulfill_err_response(e: anyhow::Error) -> Response {
     api_error(StatusCode::INTERNAL_SERVER_ERROR, "fulfill_failed", format!("fulfill failed: {msg}"))
 }
 
-async fn ui(headers: HeaderMap) -> Response {
-    // The page itself holds nothing private and is served to anyone: it asks
-    // for the console token when the API answers 401 (a link from a
-    // notification has no token in it).
-    // `CALLS_UI_FILE`: serve the page from disk on every request (working on the
-    // page without rebuilding, or a page of your own).
-    if let Ok(path) = std::env::var("CALLS_UI_FILE") {
-        if !path.trim().is_empty() {
-            return match tokio::fs::read(path.trim()).await {
-                Ok(bytes) => Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-                    .header(header::CACHE_CONTROL, "no-store")
-                    .body(Body::from(bytes))
-                    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response()),
-                Err(e) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("CALLS_UI_FILE {}: {e}", path.trim()),
-                )
-                    .into_response(),
-            };
-        }
-    }
-    let asset = ui_asset();
+/// An embedded text (the page, a language file) with its ETag: a 304 when the
+/// browser has it, else the gzip when it takes gzip.
+pub(crate) fn asset_response(headers: &HeaderMap, asset: &crate::console_i18n::Asset, content_type: &'static str, vary: &'static str) -> Response {
     let not_modified = headers
         .get(header::IF_NONE_MATCH)
         .and_then(|v| v.to_str().ok())
@@ -358,26 +313,73 @@ async fn ui(headers: HeaderMap) -> Response {
         .header(header::ETAG, asset.etag.as_str())
         // Revalidate every load (cheap 304) so a rebuilt agent ships the new UI at once.
         .header(header::CACHE_CONTROL, "no-cache")
-        .header(header::VARY, "Accept-Encoding");
+        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+        .header(header::VARY, vary);
     if not_modified {
         return builder
             .status(StatusCode::NOT_MODIFIED)
             .body(Body::empty())
             .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response());
     }
-    if accepts_gzip(&headers) && !asset.gzip.is_empty() {
+    let builder = builder.status(StatusCode::OK).header(header::CONTENT_TYPE, content_type);
+    if accepts_gzip(headers) && !asset.gzip.is_empty() {
         return builder
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
             .header(header::CONTENT_ENCODING, "gzip")
             .body(Body::from(asset.gzip.clone()))
             .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response());
     }
     builder
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-        .body(Body::from(UI_HTML))
+        .body(Body::from(asset.body.clone()))
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+/// `GET /calls/i18n/<code>.json`: one language of the console, for the page to
+/// fetch when it is chosen. Public like the page.
+async fn i18n_file(Path(file): Path<String>, headers: HeaderMap) -> Response {
+    let Some(code) = file.strip_suffix(".json") else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if let Some(asset) = crate::console_i18n::language_file(code) {
+        return asset_response(&headers, &asset, "application/json; charset=utf-8", "Accept-Encoding");
+    }
+    // A language outside the nine, from the translations pack. Same headers.
+    if let Some(body) = crate::locales_store::console_file(code) {
+        let asset = crate::console_i18n::asset_of(body);
+        return asset_response(&headers, &asset, "application/json; charset=utf-8", "Accept-Encoding");
+    }
+    StatusCode::NOT_FOUND.into_response()
+}
+
+async fn ui(headers: HeaderMap, RawQuery(query): RawQuery) -> Response {
+    // The page itself holds nothing private and is served to anyone: it asks
+    // for the console token when the API answers 401 (a link from a
+    // notification has no token in it).
+    // `CALLS_UI_FILE`: serve the page from disk on every request (working on the
+    // page without rebuilding, or a page of your own).
+    // The page comes with English and one more language: the address (?lang=),
+    // else the language cookie, else the browser's languages decide which.
+    let text_of = |name: header::HeaderName| headers.get(name).and_then(|v| v.to_str().ok());
+    let code = crate::console_i18n::pick(query.as_deref(), text_of(header::COOKIE), text_of(header::ACCEPT_LANGUAGE));
+    if let Ok(path) = std::env::var("CALLS_UI_FILE") {
+        if !path.trim().is_empty() {
+            return match tokio::fs::read(path.trim()).await {
+                Ok(bytes) => Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+                    .header(header::CACHE_CONTROL, "no-store")
+                    .body(Body::from(crate::console_i18n::render(&String::from_utf8_lossy(&bytes), code)))
+                    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response()),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("CALLS_UI_FILE {}: {e}", path.trim()),
+                )
+                    .into_response(),
+            };
+        }
+    }
+    let asset = crate::console_i18n::page(code);
+    // The language comes from the address, the cookie and the browser: all three vary the answer.
+    asset_response(&headers, &asset, "text/html; charset=utf-8", "Cookie, Accept-Language, Accept-Encoding")
 }
 
 async fn list(
@@ -1255,6 +1257,34 @@ async fn settings_get(
         "language_chosen": state.settings_store.language_chosen(),
     }))
     .into_response()
+}
+
+/// The regions of the region data pack in use (the built-in one, or an
+/// installed newer one), for the console's country picker. No secrets.
+async fn packs_regions(State(state): State<CallsState>, headers: HeaderMap, Query(query): Query<TokenQuery>) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    let pack = crate::packs_store::current();
+    let regions: Vec<Value> = pack
+        .regions
+        .values()
+        .map(|r| {
+            json!({
+                "code": r.code,
+                "countries": r.countries,
+                "name": {
+                    "en": r.name.en,
+                    "native": r.name.native,
+                    "zh": r.name.zh.as_deref().unwrap_or(&r.name.en),
+                },
+                "lang": r.lang,
+                "status": r.status,
+                "delivery": { "en": r.delivery.en, "zh": r.delivery.zh },
+            })
+        })
+        .collect();
+    Json(json!({ "version": pack.version, "regions": regions })).into_response()
 }
 
 /// The console's address as other devices open it (empty: this computer only).
@@ -3305,7 +3335,7 @@ fn quick_words(lang: crate::locale::Lang) -> QuickWords {
         Lang::Fr => w("Faire ceci ?", "Confirmer", "Ce lien a expiré", "Ouvrez la console pour le faire.", "Ce lien ne fonctionne pas", "Ouvrez la console pour le faire.", "Liste noire", "Les faire parler", "Liste blanche", "Retirer de la liste"),
         Lang::De => w("Wirklich ausführen?", "Bestätigen", "Dieser Link ist abgelaufen", "Öffne die Konsole und erledige es dort.", "Dieser Link funktioniert nicht", "Öffne die Konsole und erledige es dort.", "Sperrliste", "Hinhalten", "Whitelist", "Von der Liste nehmen"),
         Lang::Pt => w("Fazer isto?", "Confirmar", "Este link expirou", "Abra o console para fazer por lá.", "Este link não funciona", "Abra o console para fazer por lá.", "Bloquear", "Manter falando", "Lista branca", "Tirar da lista"),
-        Lang::En => w("Do this?", "Confirm", "This link has expired", "Open the console to do it there.", "This link doesn't work", "Open the console to do it there.", "Block", "Stall", "Whitelist", "Remove from list"),
+        Lang::En | Lang::Ext(_) => w("Do this?", "Confirm", "This link has expired", "Open the console to do it there.", "This link doesn't work", "Open the console to do it there.", "Block", "Stall", "Whitelist", "Remove from list"),
     }
 }
 
@@ -3340,7 +3370,7 @@ fn quick_action_page(title: &str, detail: &str, status: StatusCode, form: &str) 
         Lang::Fr => ("fr", "Ouvrir la console Bageo"),
         Lang::De => ("de", "Bageo-Konsole öffnen"),
         Lang::Pt => ("pt-BR", "Abrir o console do Bageo"),
-        Lang::En => ("en", "Open Bageo Console"),
+        Lang::En | Lang::Ext(_) => ("en", "Open Bageo Console"),
     };
     let tone = if status.is_success() { "" } else { " warn" };
     let esc = html_escape;
@@ -3440,11 +3470,11 @@ async fn quick_action_run(
     }
     if method != axum::http::Method::POST {
         let w = crate::control::words::words(lang);
-        let p = crate::locale::phrases(lang);
+        let p = crate::locale::words(lang);
         let name = q.name.as_deref().unwrap_or("").trim();
         let detail = match op {
             "confirm_task" | "ignore_task" => {
-                let label = if op == "confirm_task" { p.ap_confirm } else { p.ap_decline };
+                let label = if op == "confirm_task" { &p.ap_confirm } else { &p.ap_decline };
                 let about = match state.task_store.get(target).await {
                     Some(t) => t.summary.lines().next().unwrap_or("").chars().take(200).collect::<String>(),
                     None => String::new(),
@@ -3500,7 +3530,7 @@ async fn quick_action_run(
                 return reply_out(false, &crate::control::words::fmt(w.not_found, &[target]), target);
             }
             let confirm = op == "confirm_task";
-            let p = crate::locale::phrases(lang);
+            let p = crate::locale::words(lang);
             if let Some(task) = state.task_store.get(target).await {
                 if task.appointment.is_some() {
                     let console =
@@ -3520,7 +3550,7 @@ async fn quick_action_run(
                     {
                         Ok((_, msg)) => reply_out(
                             true,
-                            if confirm { p.ap_confirm } else { p.ap_decline },
+                            if confirm { &p.ap_confirm } else { &p.ap_decline },
                             &msg,
                         ),
                         Err(e) => reply_out(false, &crate::control::words::fmt(w.failed, &[""]), &format!("{e:#}")),
@@ -3542,7 +3572,7 @@ async fn quick_action_run(
             match res {
                 Ok(t) => reply_out(
                     true,
-                    if confirm { p.ap_confirm } else { p.ap_decline },
+                    if confirm { &p.ap_confirm } else { &p.ap_decline },
                     &t.summary,
                 ),
                 Err(e) => reply_out(false, &crate::control::words::fmt(w.failed, &[""]), &format!("{e:#}")),
@@ -3580,7 +3610,7 @@ async fn quick_action_run(
                 Lang::Fr => "Opération inconnue",
                 Lang::De => "Unbekannte Aktion",
                 Lang::Pt => "Operação desconhecida",
-                Lang::En => "Unknown operation",
+                Lang::En | Lang::Ext(_) => "Unknown operation",
             };
             reply_out(false, unknown, op)
         }
@@ -3588,10 +3618,10 @@ async fn quick_action_run(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn quick_state(root: &std::path::Path) -> CallsState {
+    pub(crate) fn quick_state(root: &std::path::Path) -> CallsState {
         let mut base = Settings::from_env();
         base.calls_data_dir = root.to_string_lossy().into_owned();
         base.telegram_bot_token = String::new();
@@ -3623,7 +3653,7 @@ mod tests {
         }
     }
 
-    async fn body_text(r: Response) -> String {
+    pub(crate) async fn body_text(r: Response) -> String {
         let b = axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap();
         String::from_utf8_lossy(&b).into_owned()
     }
@@ -3870,17 +3900,53 @@ mod tests {
         );
     }
 
-    #[test]
-    fn ui_asset_gzip_roundtrip() {
-        use std::io::Read;
-        let a = ui_asset();
-        assert!(a.etag.starts_with('"') && a.etag.len() > 4);
-        let mut out = String::new();
-        flate2::read::GzDecoder::new(&a.gzip[..])
-            .read_to_string(&mut out)
-            .unwrap();
-        assert_eq!(out, UI_HTML);
-        assert!(a.gzip.len() < UI_HTML.len() / 2);
+    #[tokio::test]
+    async fn the_page_has_an_etag_per_language_and_answers_304() {
+        let with_cookie = |v: &str| {
+            let mut h = HeaderMap::new();
+            h.insert(header::COOKIE, v.parse().unwrap());
+            h
+        };
+        let ja = ui(with_cookie("pca_lang=ja"), RawQuery(None)).await;
+        assert_eq!(ja.status(), StatusCode::OK);
+        let etag = ja.headers()[header::ETAG].clone();
+        let vary = ja.headers()[header::VARY].to_str().unwrap().to_string();
+        assert!(vary.contains("Cookie") && vary.contains("Accept-Language"), "{vary}");
+        let mut again = with_cookie("pca_lang=ja");
+        again.insert(header::IF_NONE_MATCH, etag.clone());
+        assert_eq!(ui(again, RawQuery(None)).await.status(), StatusCode::NOT_MODIFIED);
+        let de = ui(with_cookie("pca_lang=de"), RawQuery(None)).await;
+        assert_ne!(de.headers()[header::ETAG], etag);
+        // The address wins over the cookie.
+        let q = ui(with_cookie("pca_lang=de"), RawQuery(Some("lang=ja".into()))).await;
+        assert_eq!(q.headers()[header::ETAG], etag);
+        // One language's file: ETag, 304, and nothing for a code it does not have.
+        let f = i18n_file(Path("ko.json".into()), HeaderMap::new()).await;
+        assert_eq!(f.status(), StatusCode::OK);
+        let mut h = HeaderMap::new();
+        h.insert(header::IF_NONE_MATCH, f.headers()[header::ETAG].clone());
+        assert_eq!(i18n_file(Path("ko.json".into()), h).await.status(), StatusCode::NOT_MODIFIED);
+        // Not a language file name. ar.json comes from the pack when that pack has console text.
+        assert_eq!(i18n_file(Path("nope.json".into()), HeaderMap::new()).await.status(), StatusCode::NOT_FOUND);
+        assert_eq!(i18n_file(Path("ko".into()), HeaderMap::new()).await.status(), StatusCode::NOT_FOUND);
+        // A language outside the nine comes from the translations pack, with the same headers.
+        // Right to left stays out until the page can show it.
+        use crate::locales_store::testing;
+        let packed = testing::gz(2026112199, |v| {
+            for (code, word) in [("it", "Consola"), ("ar", "لوحة")] {
+                v["langs"][code]["console"] = testing::console(word);
+            }
+        });
+        testing::use_gz(&packed);
+        let it = i18n_file(Path("it.json".into()), HeaderMap::new()).await;
+        assert_eq!(it.status(), StatusCode::OK);
+        assert_eq!(it.headers()[header::CACHE_CONTROL], "no-cache");
+        let mut h = HeaderMap::new();
+        h.insert(header::IF_NONE_MATCH, it.headers()[header::ETAG].clone());
+        assert_eq!(i18n_file(Path("it.json".into()), h).await.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(i18n_file(Path("fa.json".into()), HeaderMap::new()).await.status(), StatusCode::NOT_FOUND);
+        assert_eq!(i18n_file(Path("ar.json".into()), HeaderMap::new()).await.status(), StatusCode::OK);
+        testing::use_builtin();
     }
 
     #[test]
@@ -4920,37 +4986,42 @@ mod tests {
         assert_eq!(parse_mode_body(b""), Err("bad_request"));
     }
 
-    #[test]
-    fn interview_prompts_in_html_match_docs_files_word_for_word() {
-        let codes = ["en", "zh-TW", "zh-CN", "ja", "ko", "es", "fr", "de", "pt"];
-        let prompts_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/prompts");
-        for (const_name, prefix) in [
-            ("const INTERVIEW = {", "interview"),
-            ("const INTERVIEW_ASSISTANT = {", "interview_assistant"),
-        ] {
-            let start = UI_HTML.find(const_name).unwrap_or_else(|| panic!("{const_name} start"));
-            let after = &UI_HTML[start + const_name.len() - 1..];
-            let end = after.find("\n};").or_else(|| after.find("\r\n};")).expect("INTERVIEW end");
-            // Turn the JS object literal (trailing comma before closing brace) into JSON.
-            let body = after[..end].trim_end();
-            let json_str = format!("{}}}", body.strip_suffix(',').unwrap_or(body));
-            let map: serde_json::Map<String, Value> =
-                serde_json::from_str(&json_str).expect("INTERVIEW is valid JSON once trailing comma is stripped");
-            assert_eq!(map.len(), codes.len());
-            for code in codes {
-                let got = map
-                    .get(code)
-                    .and_then(Value::as_str)
-                    .unwrap_or_else(|| panic!("missing {code} in {const_name}"));
-                assert!(got.contains("{owner}"), "{prefix}.{code} missing {{owner}} placeholder");
-                let file = prompts_dir.join(format!("{prefix}.{code}.txt"));
-                assert!(file.is_file(), "missing {}", file.display());
-                let raw = std::fs::read_to_string(&file).expect("read interview file");
-                let expected = raw.replace("\r\n", "\n");
-                let expected = expected.trim_end_matches('\n');
-                assert_eq!(got, expected, "calls.html {prefix}[{code}] drifted from {}", file.display());
+    #[tokio::test]
+    async fn regions_api_lists_the_built_in_pack_and_wants_the_password() {
+        let root = std::env::temp_dir().join(format!("bageo-regions-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut state = quick_state(&root);
+        state.settings.calls_ui_token = "regions-test-pw".into();
+        let no_token = packs_regions(State(state.clone()), HeaderMap::new(), Query(TokenQuery { token: None })).await;
+        assert_eq!(no_token.status(), StatusCode::UNAUTHORIZED);
+        let wrong = packs_regions(State(state.clone()), HeaderMap::new(), Query(TokenQuery { token: Some("nope".into()) })).await;
+        assert_eq!(wrong.status(), StatusCode::UNAUTHORIZED);
+
+        let ok = packs_regions(State(state.clone()), HeaderMap::new(), Query(TokenQuery { token: Some("regions-test-pw".into()) })).await;
+        assert_eq!(ok.status(), StatusCode::OK);
+        let got: Value = serde_json::from_str(&body_text(ok).await).unwrap();
+        let pack = crate::packs_store::current();
+        assert_eq!(got["version"], json!(pack.version));
+        let regions = got["regions"].as_array().expect("regions is a list");
+        assert_eq!(regions.len(), pack.regions.len());
+        assert!(regions.len() > 10, "{} regions", regions.len());
+        for r in regions {
+            let code = r["code"].as_str().unwrap_or_default();
+            assert!(!code.is_empty(), "{r}");
+            assert!(r["countries"].is_array(), "{code}: countries");
+            for key in ["en", "native", "zh"] {
+                assert!(r["name"][key].as_str().is_some_and(|s| !s.is_empty()), "{code}: name.{key}");
+            }
+            assert!(r["lang"].as_str().is_some_and(|s| !s.is_empty()), "{code}: lang");
+            assert!(r["status"].as_str().is_some_and(|s| !s.is_empty()), "{code}: status");
+            for key in ["en", "zh"] {
+                assert!(r["delivery"][key].as_str().is_some_and(|s| !s.is_empty()), "{code}: delivery.{key}");
             }
         }
+        let tw = regions.iter().find(|r| r["code"] == json!("tw")).expect("the pack has tw");
+        assert!(tw["countries"].as_array().unwrap().contains(&json!("tw")));
+        assert_eq!(tw["lang"], json!(pack.region("tw").unwrap().lang));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     async fn spawn_router(state: CallsState) -> String {
@@ -5300,6 +5371,7 @@ mod tests {
 pub fn router(state: CallsState) -> Router {
     Router::new()
         .route("/", get(ui))
+        .route("/i18n/{file}", get(i18n_file))
         .route("/manifest.webmanifest", get(|| async { static_file(MANIFEST, "application/manifest+json") }))
         .route("/icon-192.png", get(|| async { static_file(ICON_192, "image/png") }))
         .route("/icon-512.png", get(|| async { static_file(ICON_512, "image/png") }))
@@ -5322,6 +5394,7 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/audio/{id}/vm", get(audio_vm))
         .route("/api/audio/{id}/remote", get(audio_remote))
         .route("/api/settings", get(settings_get).put(settings_put))
+        .route("/api/packs/regions", get(packs_regions))
         .route("/api/preview", get(preview))
         .route("/api/notify/test", post(notify_test))
         .route("/api/notify/send", post(notify_send))
@@ -5347,5 +5420,8 @@ pub fn router(state: CallsState) -> Router {
         .merge(crate::contacts::router())
         .merge(crate::errands::router())
         .merge(crate::backup::router())
+        .merge(crate::pack_update::router())
+        .merge(crate::voice_packs::router())
+        .merge(crate::extras::router())
         .with_state(state)
 }

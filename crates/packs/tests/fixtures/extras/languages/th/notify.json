@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "lang": "th",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "n_incoming": "สายเรียกเข้า",
+    "n_hidden": "หมายเลขที่ซ่อนไว้",
+    "n_repeat_body": "{number} โทรมา {count} ครั้ง",
+    "u_sec": "{} วินาที",
+    "n_brand": "Bageo Status"
+  },
+  "lists": {
+    "ap_weekdays": [
+      "จ.",
+      "อ.",
+      "พ.",
+      "พฤ.",
+      "ศ.",
+      "ส.",
+      "อา."
+    ]
+  }
+}

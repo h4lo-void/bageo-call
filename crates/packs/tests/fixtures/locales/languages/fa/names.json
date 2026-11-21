@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "code": "fa",
+  "official": "fa",
+  "native": "فارسی",
+  "en": "Persian",
+  "zh": "波斯文",
+  "aliases": [
+    "پارسی"
+  ],
+  "country": "ir",
+  "status": "ai_draft"
+}

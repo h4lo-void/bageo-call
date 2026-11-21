@@ -163,7 +163,7 @@ pub fn cue(scenario: Scenario, lang: Lang, _region: Option<Region>, booking: boo
         Scenario::WrongNumber => 6,
         Scenario::None => return None,
     };
-    let row_lang = if lang == Lang::ZhCn { Lang::ZhTw } else { lang };
+    let row_lang = if lang == Lang::ZhCn { Lang::ZhTw } else { lang.base() };
     let (_, mark, texts) = CUES.iter().find(|(l, _, _)| *l == row_lang)?;
     let text = format!("{mark}{}", texts[i]);
     Some(if lang == Lang::ZhCn { crate::zh_convert::to_cn(&text) } else { text })
@@ -172,7 +172,7 @@ pub fn cue(scenario: Scenario, lang: Lang, _region: Option<Region>, booking: boo
 /// The note mark the cues of `lang` start with (Traditional for both Chinese
 /// scripts: the caller converts the whole note).
 pub fn note_mark(lang: Lang) -> &'static str {
-    let row_lang = if lang == Lang::ZhCn { Lang::ZhTw } else { lang };
+    let row_lang = if lang == Lang::ZhCn { Lang::ZhTw } else { lang.base() };
     CUES.iter().find(|(l, _, _)| *l == row_lang).map_or("[Note] ", |(_, mark, _)| *mark)
 }
 
@@ -472,11 +472,9 @@ const OTHER_LANGUAGE_MARK: &str = "[Note, in caller's language] ";
 mod tests {
     use super::*;
 
-    const REGIONS: [Region; 22] = [
-        Region::Tw, Region::HkMo, Region::Cn, Region::MySg, Region::Us, Region::Ca, Region::GbIe,
-        Region::AuNz, Region::In, Region::Jp, Region::Kr, Region::EsEu, Region::EsAm, Region::EsRp,
-        Region::Fr, Region::Be, Region::De, Region::At, Region::Ch, Region::Br, Region::Pt, Region::Tr,
-    ];
+    fn r(code: &str) -> Region {
+        Region::of_code(code).unwrap()
+    }
 
     #[test]
     fn labels_round_trip() {
@@ -492,7 +490,7 @@ mod tests {
         for lang in crate::locale::ALL {
             for s in Scenario::ALL.into_iter().filter(|s| *s != Scenario::None) {
                 for booking in [false, true] {
-                    for region in REGIONS.iter().copied().map(Some).chain([None]) {
+                    for region in crate::country_profile::all().into_iter().map(Some).chain([None]) {
                         let c = cue(s, lang, region, booking).unwrap();
                         assert!(c.chars().count() <= MAX_CUE_CHARS, "{lang:?} {s:?} {region:?} {} {c}", c.chars().count());
                     }
@@ -506,10 +504,10 @@ mod tests {
     fn delivery_asks_for_the_goodbye_and_leaves_the_local_habit_to_the_prompt() {
         use crate::country_profile::block;
         for (lang, region, habit, bye) in [
-            (Lang::ZhTw, Region::Tw, "管理室", "掰掰"),
-            (Lang::En, Region::Us, "front porch", "say bye"),
-            (Lang::Ja, Region::Jp, "置き配", "挨拶を返す"),
-            (Lang::De, Region::De, "Packstation", "verabschiede dich"),
+            (Lang::ZhTw, r("tw"), "管理室", "掰掰"),
+            (Lang::En, r("us"), "porch", "say bye"),
+            (Lang::Ja, r("jp"), "置き配", "挨拶を返す"),
+            (Lang::De, r("de"), "Packstation", "verabschiede dich"),
         ] {
             let c = cue(Scenario::Delivery, lang, Some(region), false).unwrap();
             assert!(c.contains(bye) && !c.contains(habit), "{c}");
@@ -519,7 +517,7 @@ mod tests {
                 assert!(!c.contains(brief), "{c}");
             }
         }
-        let cn = cue(Scenario::Delivery, Lang::ZhCn, Some(Region::Cn), false).unwrap();
+        let cn = cue(Scenario::Delivery, Lang::ZhCn, Some(r("cn")), false).unwrap();
         assert!(cn.contains("快递"), "{cn}");
     }
 
@@ -611,7 +609,7 @@ mod tests {
 
     #[test]
     fn one_cue_per_scenario_and_none_while_stalling() {
-        let mut r = Router::new(Lang::ZhTw, Some(Region::Tw), false);
+        let mut r = Router::new(Lang::ZhTw, Some(self::r("tw")), false);
         assert_eq!(r.on_review(Scenario::None, Verdict::Normal, Confidence::High, false), RouteAction::None);
         assert_eq!(r.on_review(Scenario::Delivery, Verdict::ScamOrSales, Confidence::High, false), RouteAction::NotNormal);
         assert_eq!(r.on_review(Scenario::Delivery, Verdict::Normal, Confidence::Low, false), RouteAction::LowConfidence);
@@ -636,22 +634,22 @@ mod tests {
     #[test]
     fn the_cue_is_in_the_language_the_caller_speaks() {
         // A Chinese-set call where the caller speaks Japanese: the cue is Japanese.
-        let mut r = Router::new(Lang::ZhTw, Some(Region::Jp), false);
+        let mut r = Router::new(Lang::ZhTw, Some(self::r("jp")), false);
         r.on_review(Scenario::Delivery, Verdict::Normal, Confidence::High, false);
         let (_, text) = r.take_pending(false, Some(Lang::Ja), false).unwrap();
         assert!(text.starts_with("[メモ]") && text.contains("宅配"), "{text}");
         // Chinese of the other script keeps the call's own.
-        let mut r = Router::new(Lang::ZhTw, Some(Region::Tw), false);
+        let mut r = Router::new(Lang::ZhTw, Some(self::r("tw")), false);
         r.on_review(Scenario::WrongNumber, Verdict::Normal, Confidence::High, false);
         let (_, text) = r.take_pending(false, Some(Lang::ZhCn), false).unwrap();
         assert!(text.contains("打錯"), "{text}");
         // An English caller on the same call: English.
-        let mut r = Router::new(Lang::ZhTw, Some(Region::Tw), false);
+        let mut r = Router::new(Lang::ZhTw, Some(self::r("tw")), false);
         r.on_review(Scenario::Delivery, Verdict::Normal, Confidence::High, false);
         assert!(r.take_pending(false, Some(Lang::En), false).unwrap().1.starts_with("[Note]"));
         // A Thai caller on a Taiwan SIM's Chinese call (their earlier Chinese still
         // in the transcript): the cue in English, said in Thai.
-        let mut r = Router::new(Lang::ZhTw, Some(Region::Tw), false);
+        let mut r = Router::new(Lang::ZhTw, Some(self::r("tw")), false);
         r.on_review(Scenario::Delivery, Verdict::Normal, Confidence::High, false);
         let (_, text) = r.take_pending(false, Some(Lang::ZhTw), true).unwrap();
         assert!(text.starts_with(OTHER_LANGUAGE_MARK) && !text.contains("系統小抄") && !text.contains("[Note] "), "{text}");

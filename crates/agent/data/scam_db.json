@@ -2965,6 +2965,643 @@
       ["బ్యాంకు ఖాతా",1,"fake_bank_account_alert"],
       ["ప్రత్యేక ఆఫర్",1,"general_promotion"]
     ]
+    },
+    {
+      "lang": "sv", "match": "word", "words": [
+      ["säkerhetskonto",2,"fake_official","hard"],
+      ["skyddat konto",2,"fake_official","hard"],
+      ["verifieringskod",2,"otp_theft","hard"],
+      ["engångskod",2,"otp_theft","hard"],
+      ["koden från bankdosan",2,"otp_theft","hard"],
+      ["dela skärmen",2,"tech_support_remote","hard"],
+      ["fjärrstyrningsprogram",2,"tech_support_remote","hard"],
+      ["betala med presentkort",2,"gift_card_payment","hard"],
+      ["garanterad avkastning",2,"investment_group_scam","hard"],
+      ["förskottsavgift",2,"loan_advance_fee","hard"],
+      ["du har vunnit",2,"prize_lottery"],
+      ["kryptovaluta",2,"crypto_scam"],
+      ["penningtvätt",2,"fake_official"],
+      ["ditt bankkonto",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "nb", "match": "word", "words": [
+      ["trygg konto",2,"fake_official","hard"],
+      ["sikker konto",2,"fake_official","hard"],
+      ["bekreftelseskode",2,"otp_theft","hard"],
+      ["engangskode",2,"otp_theft","hard"],
+      ["del skjermen",2,"tech_support_remote","hard"],
+      ["fjerntilgang",2,"tech_support_remote","hard"],
+      ["betale med gavekort",2,"gift_card_payment","hard"],
+      ["garantert avkastning",2,"investment_group_scam","hard"],
+      ["forhåndsgebyr",2,"loan_advance_fee","hard"],
+      ["du har vunnet",2,"prize_lottery"],
+      ["kryptovaluta",2,"crypto_scam"],
+      ["hvitvasking",2,"fake_official"],
+      ["bankkontoen din",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "da", "match": "word", "words": [
+      ["sikkerhedskonto",2,"fake_official","hard"],
+      ["sikker konto",2,"fake_official","hard"],
+      ["bekræftelseskode",2,"otp_theft","hard"],
+      ["engangskode",2,"otp_theft","hard"],
+      ["del din skærm",2,"tech_support_remote","hard"],
+      ["fjernadgang",2,"tech_support_remote","hard"],
+      ["betale med gavekort",2,"gift_card_payment","hard"],
+      ["garanteret afkast",2,"investment_group_scam","hard"],
+      ["gebyr på forhånd",2,"loan_advance_fee","hard"],
+      ["du har vundet",2,"prize_lottery"],
+      ["kryptovaluta",2,"crypto_scam"],
+      ["hvidvask",2,"fake_official"],
+      ["din bankkonto",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "fi", "match": "word", "words": [
+      ["turvatili",2,"fake_official","hard"],
+      ["vahvistuskoodi",2,"otp_theft","hard"],
+      ["kertakäyttökoodi",2,"otp_theft","hard"],
+      ["jaa näyttö",2,"tech_support_remote","hard"],
+      ["etähallinta",2,"tech_support_remote","hard"],
+      ["maksa lahjakorteilla",2,"gift_card_payment","hard"],
+      ["taattu tuotto",2,"investment_group_scam","hard"],
+      ["ennakkomaksu lainasta",2,"loan_advance_fee","hard"],
+      ["olet voittanut",2,"prize_lottery"],
+      ["kryptovaluut",2,"crypto_scam"],
+      ["rahanpesu",2,"fake_official"],
+      ["pankkitilisi",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "is", "match": "word", "words": [
+      ["öryggisreikning",2,"fake_official","hard"],
+      ["staðfestingarkóð",2,"otp_theft","hard"],
+      ["öryggiskóð",2,"otp_theft","hard"],
+      ["deila skjánum",2,"tech_support_remote","hard"],
+      ["fjaraðgang",2,"tech_support_remote","hard"],
+      ["borga með gjafakort",2,"gift_card_payment","hard"],
+      ["tryggð ávöxtun",2,"investment_group_scam","hard"],
+      ["fyrirframgjald",2,"loan_advance_fee","hard"],
+      ["þú hefur unnið vinning",2,"prize_lottery"],
+      ["rafmynt",2,"crypto_scam"],
+      ["peningaþvætti",2,"fake_official"],
+      ["bankareikninginn þinn",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "cs", "match": "word", "words": [
+      ["bezpečný účet",2,"fake_official","hard"],
+      ["bezpečného účtu",2,"fake_official","hard"],
+      ["bezpečnostní účet",2,"fake_official","hard"],
+      ["ověřovací kód",2,"otp_theft","hard"],
+      ["jednorázový kód",2,"otp_theft","hard"],
+      ["vzdálený přístup",2,"tech_support_remote","hard"],
+      ["sdílení obrazovky",2,"tech_support_remote","hard"],
+      ["zaplatit dárkovými kartami",2,"gift_card_payment","hard"],
+      ["garantovaný výnos",2,"investment_group_scam","hard"],
+      ["poplatek předem",2,"loan_advance_fee","hard"],
+      ["vyhrál jste",2,"prize_lottery"],
+      ["vyhrála jste",2,"prize_lottery"],
+      ["kryptoměn",2,"crypto_scam"],
+      ["praní špinavých peněz",2,"fake_official"],
+      ["váš bankovní účet",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "sk", "match": "word", "words": [
+      ["bezpečný účet",2,"fake_official","hard"],
+      ["vyšetrovací účet",2,"fake_official","hard"],
+      ["overovací kód",2,"otp_theft","hard"],
+      ["jednorazový kód",2,"otp_theft","hard"],
+      ["vzdialený prístup",2,"tech_support_remote","hard"],
+      ["zdieľanie obrazovky",2,"tech_support_remote","hard"],
+      ["zaplatiť darčekovými kartami",2,"gift_card_payment","hard"],
+      ["garantovaný výnos",2,"investment_group_scam","hard"],
+      ["poplatok vopred",2,"loan_advance_fee","hard"],
+      ["vyhrali ste",2,"prize_lottery"],
+      ["kryptomien",2,"crypto_scam"],
+      ["pranie špinavých peňazí",2,"fake_official"],
+      ["váš bankový účet",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "hu", "match": "word", "words": [
+      ["biztonsági számla",2,"fake_official","hard"],
+      ["védett számla",2,"fake_official","hard"],
+      ["megerősítő kód",2,"otp_theft","hard"],
+      ["egyszer használatos kód",2,"otp_theft","hard"],
+      ["távoli hozzáférés",2,"tech_support_remote","hard"],
+      ["képernyőmegosztás",2,"tech_support_remote","hard"],
+      ["ajándékkártyával fizet",2,"gift_card_payment","hard"],
+      ["garantált hozam",2,"investment_group_scam","hard"],
+      ["folyósítás előtt fizet",2,"loan_advance_fee","hard"],
+      ["ön nyert",2,"prize_lottery"],
+      ["kriptovaluta",2,"crypto_scam"],
+      ["pénzmosás",2,"fake_official"],
+      ["az ön bankszámlája",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "bg", "match": "word", "words": [
+      ["защитена сметка",2,"fake_official","hard"],
+      ["сигурна сметка",2,"fake_official","hard"],
+      ["продиктувайте кода",2,"otp_theft","hard"],
+      ["код за потвърждение",2,"otp_theft","hard"],
+      ["отдалечен достъп",2,"tech_support_remote","hard"],
+      ["споделяне на екрана",2,"tech_support_remote","hard"],
+      ["платете с подаръчни карти",2,"gift_card_payment","hard"],
+      ["гарантирана доходност",2,"investment_group_scam","hard"],
+      ["такса предварително",2,"loan_advance_fee","hard"],
+      ["спечелихте",2,"prize_lottery"],
+      ["криптовалута",2,"crypto_scam"],
+      ["пране на пари",2,"fake_official"],
+      ["вашата банкова сметка",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "el", "match": "word", "words": [
+      ["ασφαλή λογαριασμό",2,"fake_official","hard"],
+      ["ασφαλής λογαριασμός",2,"fake_official","hard"],
+      ["κωδικό επιβεβαίωσης",2,"otp_theft","hard"],
+      ["κωδικό otp",2,"otp_theft","hard"],
+      ["εξαψήφιο κωδικό",2,"otp_theft","hard"],
+      ["απομακρυσμένη πρόσβαση",2,"tech_support_remote","hard"],
+      ["κοινή χρήση οθόνης",2,"tech_support_remote","hard"],
+      ["με δωροκάρτες",2,"gift_card_payment","hard"],
+      ["εγγυημένη απόδοση",2,"investment_group_scam","hard"],
+      ["προκαταβολή για το δάνειο",2,"loan_advance_fee","hard"],
+      ["κερδίσατε",2,"prize_lottery"],
+      ["κρυπτονομίσμ",2,"crypto_scam"],
+      ["κρυπτονομισμ",2,"crypto_scam"],
+      ["ξέπλυμα χρήματος",2,"fake_official"],
+      ["τον τραπεζικό σας λογαριασμό",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "hr", "match": "word", "words": [
+      ["siguran račun",2,"fake_official","hard"],
+      ["sigurni račun",2,"fake_official","hard"],
+      ["kod iz sms",2,"otp_theft","hard"],
+      ["jednokratni kod",2,"otp_theft","hard"],
+      ["udaljeni pristup",2,"tech_support_remote","hard"],
+      ["dijeljenje zaslona",2,"tech_support_remote","hard"],
+      ["kupite poklon kartice",2,"gift_card_payment","hard"],
+      ["zajamčeni prinos",2,"investment_group_scam","hard"],
+      ["naknada unaprijed",2,"loan_advance_fee","hard"],
+      ["osvojili ste",2,"prize_lottery"],
+      ["kriptovalut",2,"crypto_scam"],
+      ["pranje novca",2,"fake_official"],
+      ["vaš bankovni račun",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "sr", "match": "word", "words": [
+      ["bezbedan račun",2,"fake_official","hard"],
+      ["siguran račun",2,"fake_official","hard"],
+      ["jednokratni kod",2,"otp_theft","hard"],
+      ["verifikacioni kod",2,"otp_theft","hard"],
+      ["daljinski pristup",2,"tech_support_remote","hard"],
+      ["deljenje ekrana",2,"tech_support_remote","hard"],
+      ["garantovana zarada",2,"investment_group_scam","hard"],
+      ["provizija unapred",2,"loan_advance_fee","hard"],
+      ["osvojili ste",2,"prize_lottery"],
+      ["kriptovalut",2,"crypto_scam"],
+      ["pranje novca",2,"fake_official"],
+      ["безбедан рачун",2,"fake_official","hard"],
+      ["једнократни код",2,"otp_theft","hard"],
+      ["даљински приступ",2,"tech_support_remote","hard"],
+      ["освојили сте",2,"prize_lottery"],
+      ["прање новца",2,"fake_official"],
+      ["vaš bankovni račun",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "sl", "match": "word", "words": [
+      ["varen račun",2,"fake_official","hard"],
+      ["varnostni račun",2,"fake_official","hard"],
+      ["enkratna koda",2,"otp_theft","hard"],
+      ["enkratno kodo",2,"otp_theft","hard"],
+      ["potrditveno kodo",2,"otp_theft","hard"],
+      ["oddaljen dostop",2,"tech_support_remote","hard"],
+      ["oddaljeni dostop",2,"tech_support_remote","hard"],
+      ["deljenje zaslona",2,"tech_support_remote","hard"],
+      ["zajamčen donos",2,"investment_group_scam","hard"],
+      ["provizija vnaprej",2,"loan_advance_fee","hard"],
+      ["zadeli ste",2,"prize_lottery"],
+      ["kriptovalut",2,"crypto_scam"],
+      ["pranje denarja",2,"fake_official"],
+      ["vaš bančni račun",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "mk", "match": "word", "words": [
+      ["безбедна сметка",2,"fake_official","hard"],
+      ["сигурна сметка",2,"fake_official","hard"],
+      ["безбедносен код",2,"otp_theft","hard"],
+      ["код од смс",2,"otp_theft","hard"],
+      ["кодот од смс",2,"otp_theft","hard"],
+      ["далечински пристап",2,"tech_support_remote","hard"],
+      ["споделување на екранот",2,"tech_support_remote","hard"],
+      ["гарантирана заработка",2,"investment_group_scam","hard"],
+      ["провизија однапред",2,"loan_advance_fee","hard"],
+      ["освоивте",2,"prize_lottery"],
+      ["криптовалути",2,"crypto_scam"],
+      ["перење пари",2,"fake_official"],
+      ["вашата банкарска сметка",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "sq", "match": "word", "words": [
+      ["llogari të sigurt",2,"fake_official","hard"],
+      ["llogari sigurie",2,"fake_official","hard"],
+      ["kodi otp",2,"otp_theft","hard"],
+      ["kodin otp",2,"otp_theft","hard"],
+      ["kodin e verifikimit",2,"otp_theft","hard"],
+      ["qasje në distancë",2,"tech_support_remote","hard"],
+      ["akses në distancë",2,"tech_support_remote","hard"],
+      ["ndarje të ekranit",2,"tech_support_remote","hard"],
+      ["fitim i garantuar",2,"investment_group_scam","hard"],
+      ["tarifë paraprake",2,"loan_advance_fee","hard"],
+      ["keni fituar",2,"prize_lottery"],
+      ["kriptomonedh",2,"crypto_scam"],
+      ["pastrim parash",2,"fake_official"],
+      ["llogarinë tuaj bankare",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "he", "match": "run", "words": [
+      ["חשבון מאובטח",2,"fake_official","hard"],
+      ["חשבון בטוח",2,"fake_official","hard"],
+      ["צו מעצר",2,"fake_official","hard"],
+      ["הלבנת הון",2,"fake_official"],
+      ["אל תספר לאף אחד",2,"fake_official","hard"],
+      ["אל תספרי לאף אחד",2,"fake_official","hard"],
+      ["קוד אימות",2,"otp_theft","hard"],
+      ["קוד האימות",2,"otp_theft","hard"],
+      ["קוד חד פעמי",2,"otp_theft","hard"],
+      ["שליטה מרחוק",2,"tech_support_remote","hard"],
+      ["אנידסק",2,"tech_support_remote","hard"],
+      ["כרטיס מתנה",2,"gift_card_payment","hard"],
+      ["כרטיסי מתנה",2,"gift_card_payment","hard"],
+      ["רווח מובטח",2,"investment_group_scam","hard"],
+      ["תשואה מובטחת",2,"investment_group_scam","hard"],
+      ["ביטקוין",2,"crypto_scam"],
+      ["זכית בפרס",2,"prize_lottery"],
+      ["זכית בהגרלה",2,"prize_lottery"],
+      ["סיסמה",1,"otp_theft"],
+      ["משטרה",1,"fake_official"],
+      ["חשבון הבנק",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "ur", "match": "run", "words": [
+      ["محفوظ اکاؤنٹ",2,"fake_official","hard"],
+      ["سیف اکاؤنٹ",2,"fake_official","hard"],
+      ["وارنٹ گرفتاری",2,"fake_official","hard"],
+      ["منی لانڈرنگ",2,"fake_official"],
+      ["کسی کو مت بتائیں",2,"fake_official","hard"],
+      ["کسی کو نہ بتائیں",2,"fake_official","hard"],
+      ["او ٹی پی",2,"otp_theft","hard"],
+      ["تصدیقی کوڈ",2,"otp_theft","hard"],
+      ["ویریفکیشن کوڈ",2,"otp_theft","hard"],
+      ["اے ٹی ایم پن",2,"otp_theft","hard"],
+      ["اسکرین شیئر",2,"tech_support_remote","hard"],
+      ["گفٹ کارڈ",2,"gift_card_payment","hard"],
+      ["یقینی منافع",2,"investment_group_scam","hard"],
+      ["ایڈوانس فیس",2,"loan_advance_fee","hard"],
+      ["رجسٹریشن فیس",2,"fake_government_subsidy"],
+      ["انعام نکلا",2,"prize_lottery"],
+      ["کال فارورڈنگ",2,"fake_telecom"],
+      ["پن کوڈ",1,"otp_theft"],
+      ["پولیس",1,"fake_official"],
+      ["بینک اکاؤنٹ",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "ne", "match": "run", "words": [
+      ["सुरक्षित खाता",2,"fake_official","hard"],
+      ["पक्राउ पुर्जी",2,"fake_official","hard"],
+      ["सम्पत्ति शुद्धीकरण",2,"fake_official"],
+      ["कसैलाई नभन्नुहोस्",2,"fake_official","hard"],
+      ["ओटीपी",2,"otp_theft","hard"],
+      ["ओटिपी",2,"otp_theft","hard"],
+      ["भेरिफिकेसन कोड",2,"otp_theft","hard"],
+      ["पिन नम्बर",2,"otp_theft","hard"],
+      ["स्क्रिन सेयर",2,"tech_support_remote","hard"],
+      ["गिफ्ट कार्ड",2,"gift_card_payment","hard"],
+      ["निश्चित नाफा",2,"investment_group_scam","hard"],
+      ["खाता भाडामा",2,"job_account_mule","hard"],
+      ["भन्सार शुल्क",2,"fake_customs_parcel"],
+      ["चिट्ठा",2,"prize_lottery"],
+      ["लक्की ड्र",2,"prize_lottery"],
+      ["प्रहरी",1,"fake_official"],
+      ["बैंक खाता",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "si", "match": "run", "words": [
+      ["ආරක්ෂිත ගිණුම",2,"fake_official","hard"],
+      ["මුදල් විශුද්ධිකරණ",2,"fake_official"],
+      ["කාටවත් කියන්න එපා",2,"fake_official","hard"],
+      ["otp අංකය",2,"otp_theft","hard"],
+      ["otp කේතය",2,"otp_theft","hard"],
+      ["රහස් අංකය",2,"otp_theft","hard"],
+      ["pin අංකය",2,"otp_theft","hard"],
+      ["තිරය බෙදා",2,"tech_support_remote","hard"],
+      ["තෑගි කාඩ්",2,"gift_card_payment","hard"],
+      ["සහතික ලාභ",2,"investment_group_scam","hard"],
+      ["ලොතරැයි",2,"prize_lottery"],
+      ["රේගු ගාස්තු",2,"fake_customs_parcel"],
+      ["මුරපදය",1,"otp_theft"],
+      ["පොලිසිය",1,"fake_official"],
+      ["බැංකු ගිණුම",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "my", "match": "compact", "words": [
+      ["လုံခြုံသောအကောင့်",2,"fake_official","hard"],
+      ["ဘယ်သူ့ကိုမှမပြောပါနဲ့",2,"fake_official","hard"],
+      ["otpနံပါတ်",2,"otp_theft","hard"],
+      ["အတည်ပြုကုဒ်",2,"otp_theft","hard"],
+      ["လျှို့ဝှက်နံပါတ်",2,"otp_theft","hard"],
+      ["ကြိုတင်ငွေလွှဲ",2,"loan_advance_fee","hard"],
+      ["ကံစမ်းမဲပေါက်",2,"prize_lottery"],
+      ["ဆုကြေးငွေ",2,"prize_lottery"],
+      ["နေ့စဉ်အမြတ်",2,"investment_group_scam","hard"],
+      ["ဖုန်းထိန်းချုပ်",2,"tech_support_remote","hard"],
+      ["စကားဝှက်",1,"otp_theft"],
+      ["ရဲစခန်း",1,"fake_official"],
+      ["ဘဏ်အကောင့်",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "lo", "match": "compact", "words": [
+      ["ບັນຊີປອດໄພ",2,"fake_official","hard"],
+      ["ຢ່າບອກໃຜ",2,"fake_official","hard"],
+      ["ການຟອກເງິນ",2,"fake_official"],
+      ["ລະຫັດotp",2,"otp_theft","hard"],
+      ["ລະຫັດຢືນຢັນ",2,"otp_theft","hard"],
+      ["ລະຫັດລັບ",2,"otp_theft","hard"],
+      ["ຄວບຄຸມໂທລະສັບ",2,"tech_support_remote","hard"],
+      ["ຖືກລາງວັນ",2,"prize_lottery"],
+      ["ຄ່າທຳນຽມກ່ອນ",2,"loan_advance_fee","hard"],
+      ["ກຳໄລແນ່ນອນ",2,"investment_group_scam","hard"],
+      ["ໂອນເງິນດ່ວນ",2,"fake_relative_money"],
+      ["ຕຳຫຼວດ",1,"fake_official"],
+      ["ບັນຊີທະນາຄານ",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "mn", "match": "word", "words": [
+      ["аюулгүй данс",2,"fake_official","hard"],
+      ["баривчлах тушаал",2,"fake_official","hard"],
+      ["мөнгө угаах",2,"fake_official"],
+      ["хэнд ч битгий хэлээрэй",2,"fake_official","hard"],
+      ["баталгаажуулах код",2,"otp_theft","hard"],
+      ["нэг удаагийн код",2,"otp_theft","hard"],
+      ["пин код",1,"otp_theft"],
+      ["алсаас удирдах",2,"tech_support_remote","hard"],
+      ["бэлгийн карт",2,"gift_card_payment","hard"],
+      ["баталгаатай ашиг",2,"investment_group_scam","hard"],
+      ["данс түрээслэх",2,"job_account_mule","hard"],
+      ["сугалааны азтан",2,"prize_lottery"],
+      ["хонжвор",2,"prize_lottery"],
+      ["нууц үг",1,"otp_theft"],
+      ["цагдаа",1,"fake_official"],
+      ["банкны данс",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "fa", "match": "run", "words": [
+      ["حساب امن",2,"fake_official","hard"],
+      ["حکم جلب",2,"fake_official","hard"],
+      ["پولشویی",2,"fake_official"],
+      ["به کسی نگو",2,"fake_official","hard"],
+      ["به هیچ کس نگویید",2,"fake_official","hard"],
+      ["رمز دوم",2,"otp_theft","hard"],
+      ["رمز پویا",2,"otp_theft","hard"],
+      ["کد تایید",2,"otp_theft","hard"],
+      ["کد تأیید",2,"otp_theft","hard"],
+      ["دسترسی از راه دور",2,"tech_support_remote","hard"],
+      ["کارت هدیه",2,"gift_card_payment","hard"],
+      ["سود تضمینی",2,"investment_group_scam","hard"],
+      ["برنده قرعه کشی",2,"prize_lottery"],
+      ["برنده قرعه‌کشی",2,"prize_lottery"],
+      ["جایزه نقدی",2,"prize_lottery"],
+      ["پلیس",1,"fake_official"],
+      ["حساب بانکی",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "ps", "match": "run", "words": [
+      ["خوندي حساب",2,"fake_official","hard"],
+      ["د نیولو حکم",2,"fake_official","hard"],
+      ["چاته مه وایاست",2,"fake_official","hard"],
+      ["تایید کوډ",2,"otp_theft","hard"],
+      ["پټ نمبر",2,"otp_theft","hard"],
+      ["پټ کوډ",2,"otp_theft","hard"],
+      ["د پیغام کوډ",2,"otp_theft","hard"],
+      ["لویه جایزه",2,"prize_lottery"],
+      ["جایزه مو ګټلې",2,"prize_lottery"],
+      ["د نوملیکنې پیسې",2,"fake_charity"],
+      ["د ویزې فیس",2,"fake_official"],
+      ["پولیس",1,"fake_official"],
+      ["بانکي حساب",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "az", "match": "word", "words": [
+      ["təhlükəsiz hesab",2,"fake_official","hard"],
+      ["həbs qərarı",2,"fake_official","hard"],
+      ["çirkli pulların yuyulması",2,"fake_official"],
+      ["heç kimə deməyin",2,"fake_official","hard"],
+      ["otp kodu",2,"otp_theft","hard"],
+      ["təsdiq kodu",2,"otp_theft","hard"],
+      ["sms kodu",2,"otp_theft","hard"],
+      ["cvv kodu",2,"otp_theft","hard"],
+      ["uzaqdan giriş",2,"tech_support_remote","hard"],
+      ["hədiyyə kartı",2,"gift_card_payment","hard"],
+      ["zəmanətli qazanc",2,"investment_group_scam","hard"],
+      ["hesabınızı icarəyə",2,"job_account_mule","hard"],
+      ["lotereya",2,"prize_lottery"],
+      ["bank hesabı",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "hy", "match": "word", "words": [
+      ["անվտանգ հաշիվ",2,"fake_official","hard"],
+      ["անվտանգ հաշվ",2,"fake_official","hard"],
+      ["ձերբակալման որոշում",2,"fake_official","hard"],
+      ["փողերի լվացում",2,"fake_official"],
+      ["ոչ մեկին մի ասեք",2,"fake_official","hard"],
+      ["հաստատման կոդ",2,"otp_theft","hard"],
+      ["մեկանգամյա գաղտնաբառ",2,"otp_theft","hard"],
+      ["sms կոդ",2,"otp_theft","hard"],
+      ["pin կոդ",2,"otp_theft","hard"],
+      ["եռանիշ կոդ",2,"otp_theft","hard"],
+      ["էկրանի համօգտագործում",2,"tech_support_remote","hard"],
+      ["նվեր քարտ",2,"gift_card_payment","hard"],
+      ["երաշխավորված եկամուտ",2,"investment_group_scam","hard"],
+      ["շահել եք",2,"prize_lottery"],
+      ["վիճակախաղ",2,"prize_lottery"],
+      ["ոստիկանություն",1,"fake_official"],
+      ["բանկային հաշիվ",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "ka", "match": "word", "words": [
+      ["უსაფრთხო ანგარიშ",2,"fake_official","hard"],
+      ["დაპატიმრების ორდერი",2,"fake_official","hard"],
+      ["ფულის გათეთრება",2,"fake_official"],
+      ["არავის უთხრათ",2,"fake_official","hard"],
+      ["ერთჯერადი კოდი",2,"otp_theft","hard"],
+      ["sms კოდი",2,"otp_theft","hard"],
+      ["cvv კოდი",2,"otp_theft","hard"],
+      ["დადასტურების კოდი",2,"otp_theft","hard"],
+      ["დისტანციური წვდომა",2,"tech_support_remote","hard"],
+      ["სასაჩუქრე ბარათი",2,"gift_card_payment","hard"],
+      ["გარანტირებული მოგება",2,"investment_group_scam","hard"],
+      ["სწრაფი გამდიდრება",2,"investment_group_scam"],
+      ["მოიგეთ",2,"prize_lottery"],
+      ["პაროლი",1,"otp_theft"],
+      ["პოლიცია",1,"fake_official"],
+      ["საბანკო ანგარიში",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "sw", "match": "word", "words": [
+      ["akaunti salama",2,"fake_official","hard"],
+      ["hati ya kukamatwa",2,"fake_official","hard"],
+      ["utakatishaji fedha",2,"fake_official"],
+      ["usimwambie mtu yeyote",2,"fake_official","hard"],
+      ["namba ya siri",2,"otp_theft","hard"],
+      ["nambari ya siri",2,"otp_theft","hard"],
+      ["msimbo wa uthibitisho",2,"otp_theft","hard"],
+      ["udhibiti wa mbali",2,"tech_support_remote","hard"],
+      ["kadi ya zawadi",2,"gift_card_payment","hard"],
+      ["faida ya uhakika",2,"investment_group_scam","hard"],
+      ["nimekutumia pesa kimakosa",2,"fake_bank_account_alert"],
+      ["pesa kimakosa",2,"fake_bank_account_alert"],
+      ["umeshinda",2,"prize_lottery"],
+      ["bahati nasibu",2,"prize_lottery"],
+      ["rudisha pesa",1,"fake_bank_account_alert"],
+      ["polisi",1,"fake_official"],
+      ["akaunti ya benki",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "am", "match": "run", "words": [
+      ["ደህንነቱ የተጠበቀ አካውንት",2,"fake_official","hard"],
+      ["የእስር ማዘዣ",2,"fake_official","hard"],
+      ["ለማንም አይንገሩ",2,"fake_official","hard"],
+      ["የማረጋገጫ ኮድ",2,"otp_theft","hard"],
+      ["ሚስጥር ቁጥር",2,"otp_theft","hard"],
+      ["ኦቲፒ",2,"otp_theft","hard"],
+      ["የርቀት መቆጣጠሪያ",2,"tech_support_remote","hard"],
+      ["የስጦታ ካርድ",2,"gift_card_payment","hard"],
+      ["የተረጋገጠ ትርፍ",2,"investment_group_scam","hard"],
+      ["ሎተሪ",2,"prize_lottery"],
+      ["አሸንፈዋል",2,"prize_lottery"],
+      ["የይለፍ ቃል",1,"otp_theft"],
+      ["ፖሊስ",1,"fake_official"],
+      ["የባንክ አካውንት",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "af", "match": "word", "words": [
+      ["veilige rekening",2,"fake_official","hard"],
+      ["moenie vir enigiemand",2,"fake_official","hard"],
+      ["eenmalige pin",2,"otp_theft","hard"],
+      ["eenmalige wagwoord",2,"otp_theft","hard"],
+      ["verifikasiekode",2,"otp_theft","hard"],
+      ["afstandstoegang",2,"tech_support_remote","hard"],
+      ["geskenkkaart",2,"gift_card_payment","hard"],
+      ["gewaarborgde wins",2,"investment_group_scam","hard"],
+      ["jy het gewen",2,"prize_lottery"],
+      ["lotery",2,"prize_lottery"],
+      ["lasbrief",1,"fake_official"],
+      ["polisie",1,"fake_official"],
+      ["bankrekening",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "et", "match": "word", "words": [
+      ["turvakonto",2,"fake_official","hard"],
+      ["turvalisele kontole",2,"fake_official","hard"],
+      ["rahapesu",2,"fake_official"],
+      ["ärge kellelegi rääkige",2,"fake_official","hard"],
+      ["kinnituskood",2,"otp_theft","hard"],
+      ["pin1",2,"otp_theft","hard"],
+      ["pin2",2,"otp_theft","hard"],
+      ["kaughaldus",2,"tech_support_remote","hard"],
+      ["kinkekaart",2,"gift_card_payment","hard"],
+      ["garanteeritud tulu",2,"investment_group_scam","hard"],
+      ["väljamakse tasu",2,"investment_group_scam"],
+      ["olete võitnud",2,"prize_lottery"],
+      ["politsei",1,"fake_official"],
+      ["pangakonto",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "lv", "match": "word", "words": [
+      ["drošu kontu",2,"fake_official","hard"],
+      ["drošais konts",2,"fake_official","hard"],
+      ["naudas atmazgāšana",2,"fake_official"],
+      ["nevienam nestāstiet",2,"fake_official","hard"],
+      ["apstiprinājuma kods",2,"otp_theft","hard"],
+      ["apstiprinājuma kodu",2,"otp_theft","hard"],
+      ["vienreizējo kodu",2,"otp_theft","hard"],
+      ["pin1",2,"otp_theft","hard"],
+      ["pin2",2,"otp_theft","hard"],
+      ["attālināto piekļuvi",2,"tech_support_remote","hard"],
+      ["dāvanu karte",2,"gift_card_payment","hard"],
+      ["garantēta peļņa",2,"investment_group_scam","hard"],
+      ["garantētu peļņu",2,"investment_group_scam","hard"],
+      ["jūs esat laimējis",2,"prize_lottery"],
+      ["policija",1,"fake_official"],
+      ["bankas konts",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "lt", "match": "word", "words": [
+      ["saugią sąskaitą",2,"fake_official","hard"],
+      ["saugi sąskaita",2,"fake_official","hard"],
+      ["pinigų plovimas",2,"fake_official"],
+      ["pinigų plovimo",2,"fake_official"],
+      ["niekam nesakykite",2,"fake_official","hard"],
+      ["niekam nepasakokite",2,"fake_official","hard"],
+      ["patvirtinimo kodą",2,"otp_theft","hard"],
+      ["patvirtinimo kodas",2,"otp_theft","hard"],
+      ["vienkartinį kodą",2,"otp_theft","hard"],
+      ["pin1",2,"otp_theft","hard"],
+      ["pin2",2,"otp_theft","hard"],
+      ["nuotolinę prieigą",2,"tech_support_remote","hard"],
+      ["dovanų kortelę",2,"gift_card_payment","hard"],
+      ["garantuotas pelnas",2,"investment_group_scam","hard"],
+      ["garantuotą pelną",2,"investment_group_scam","hard"],
+      ["jūs laimėjote",2,"prize_lottery"],
+      ["policija",1,"fake_official"],
+      ["banko sąskaita",1,"fake_bank_account_alert"]
+    ]
+    },
+    {
+      "lang": "be", "match": "word", "words": [
+      ["бяспечны рахунак",2,"fake_official","hard"],
+      ["адмыванне грошай",2,"fake_official"],
+      ["нікому не кажыце",2,"fake_official","hard"],
+      ["задэклараваць грошы",2,"fake_official"],
+      ["код пацвярджэння",2,"otp_theft","hard"],
+      ["аднаразовы код",2,"otp_theft","hard"],
+      ["пін код",1,"otp_theft"],
+      ["аддалены доступ",2,"tech_support_remote","hard"],
+      ["падарункавая карта",2,"gift_card_payment","hard"],
+      ["гарантаваны прыбытак",2,"investment_group_scam","hard"],
+      ["вы выйгралі",2,"prize_lottery"],
+      ["міліцыя",1,"fake_official"],
+      ["банкаўскі рахунак",1,"fake_bank_account_alert"]
+    ]
     }
   ],
   "own_matter": [
@@ -2993,7 +3630,41 @@
     {"lang": "bn", "phrases": ["আপনার অভিযোগ", "আপনার মেরামতের", "আপনার রিপোর্ট"]},
     {"lang": "mr", "phrases": ["तुमची तक्रार", "तुमच्या दुरुस्तीबद्दल", "तुमच्या अहवालाबद्दल"]},
     {"lang": "ta", "phrases": ["உங்கள் புகார்", "உங்கள் பழுதுபார்ப்பு", "நீங்கள் அளித்த புகார்"]},
-    {"lang": "te", "phrases": ["మీ ఫిర్యాదు", "మీ రిపేర్ గురించి", "మీరు చేసిన ఫిర్యాదు"]}
+    {"lang": "te", "phrases": ["మీ ఫిర్యాదు", "మీ రిపేర్ గురించి", "మీరు చేసిన ఫిర్యాదు"]},
+    {"lang": "sv", "phrases": ["ditt klagomål", "din reklamation", "angående reparationen"]},
+    {"lang": "nb", "phrases": ["klagen din", "din reklamasjon", "angående reparasjonen"]},
+    {"lang": "da", "phrases": ["din klage", "din reklamation", "vedrørende reparationen"]},
+    {"lang": "fi", "phrases": ["valituksenne", "reklamaationne", "korjauksestanne"]},
+    {"lang": "is", "phrases": ["kvörtun þín", "kvörtunin þín", "varðandi viðgerðina"]},
+    {"lang": "cs", "phrases": ["vaše reklamace", "vaše stížnost", "ohledně opravy"]},
+    {"lang": "sk", "phrases": ["vaša reklamácia", "vaša sťažnosť", "ohľadom opravy"]},
+    {"lang": "hu", "phrases": ["az ön panasza", "a reklamációja", "a javítással kapcsolatban"]},
+    {"lang": "bg", "phrases": ["вашата жалба", "вашата рекламация", "относно ремонта"]},
+    {"lang": "el", "phrases": ["το παράπονό σας", "την καταγγελία σας", "σχετικά με την επισκευή"]},
+    {"lang": "hr", "phrases": ["vaša reklamacija", "vaša prijava kvara", "u vezi popravka"]},
+    {"lang": "sr", "phrases": ["vaša žalba", "vaša reklamacija", "у вези поправке"]},
+    {"lang": "sl", "phrases": ["vaša reklamacija", "vaša pritožba", "glede popravila"]},
+    {"lang": "mk", "phrases": ["вашата жалба", "вашата рекламација", "во врска со поправката"]},
+    {"lang": "sq", "phrases": ["ankesa juaj", "reklamacioni juaj", "lidhur me riparimin"]},
+    {"lang": "he", "phrases": ["הפנייה שלך", "התלונה שלך", "לגבי התיקון"]},
+    {"lang": "ur", "phrases": ["آپ کی شکایت", "آپ نے شکایت", "آپ کی مرمت کے بارے میں"]},
+    {"lang": "ne", "phrases": ["तपाईंको गुनासो", "तपाईंको उजुरी", "तपाईंको मर्मतको बारेमा"]},
+    {"lang": "si", "phrases": ["ඔබේ පැමිණිල්ල", "ඔබගේ පැමිණිල්ල", "ඔබේ අලුත්වැඩියාව ගැන"]},
+    {"lang": "my", "phrases": ["သင့်တိုင်ကြားချက်", "တိုင်ကြားထားတဲ့ကိစ္စ"]},
+    {"lang": "lo", "phrases": ["ເລື່ອງທີ່ທ່ານແຈ້ງ", "ຄຳຮ້ອງຂອງທ່ານ"]},
+    {"lang": "mn", "phrases": ["таны гомдол", "таны гомдлын", "засварын талаар"]},
+    {"lang": "fa", "phrases": ["شکایت شما", "درخواست تعمیر شما", "در مورد شکایتتان"]},
+    {"lang": "ps", "phrases": ["ستاسو شکایت", "ستاسې شکایت", "ستاسو د ترمیم په اړه"]},
+    {"lang": "az", "phrases": ["şikayətiniz", "şikayətinizlə bağlı", "təmirlə bağlı"]},
+    {"lang": "hy", "phrases": ["ձեր բողոքը", "ձեր բողոքի", "վերանորոգման վերաբերյալ"]},
+    {"lang": "ka", "phrases": ["თქვენი საჩივარი", "თქვენი საჩივრის", "შეკეთებასთან დაკავშირებით"]},
+    {"lang": "sw", "phrases": ["malalamiko yako", "kuhusu malalamiko yako", "kuhusu matengenezo yako"]},
+    {"lang": "am", "phrases": ["ቅሬታዎ", "ያቀረቡት ቅሬታ", "ስለ ጥገናው"]},
+    {"lang": "af", "phrases": ["jou klagte", "u klagte", "oor jou herstelwerk"]},
+    {"lang": "et", "phrases": ["teie kaebus", "teie kaebuse", "remondi osas"]},
+    {"lang": "lv", "phrases": ["jūsu sūdzība", "jūsu sūdzību", "par remontu"]},
+    {"lang": "lt", "phrases": ["jūsų skundas", "jūsų skundo", "dėl remonto"]},
+    {"lang": "be", "phrases": ["ваша скарга", "па вашай скарзе", "наконт рамонту"]}
   ],
   "number_rules": [
     {"id": "hidden_number", "kind": "hidden", "note": "The number is hidden."},

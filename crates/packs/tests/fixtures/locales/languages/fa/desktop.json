@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "lang": "fa",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "h_ok": "همه\u200cچیز خوب است",
+    "r_ready": "تلفن\u200cهای آماده: {n}",
+    "r_phone_offline": "{name} وصل نیست"
+  }
+}

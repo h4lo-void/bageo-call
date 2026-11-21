@@ -16,6 +16,7 @@ name = "agent"
 path = "src/main.rs"
 
 [dependencies]
+bageo-packs = { path = "../packs" }
 anyhow.workspace = true
 axum.workspace = true
 bytes.workspace = true

@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "app_name": "Bageo",
+    "header_version": "Version %1$s (%2$d)",
+    "st_ai_on": "The AI is answering your calls",
+    "ip_err_unreachable": "Can't reach this address. Make sure the phone and Bageo are on the same network.",
+    "step_pair_ip": "Tap \"Connect by IP address\" to pair."
+  }
+}

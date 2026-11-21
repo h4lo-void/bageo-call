@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "lang": "it",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "tab_calls": "Chiamate",
+    "tab_settings": "Impostazioni",
+    "retry": "Riprova",
+    "calls_today": "{n} chiamate oggi",
+    "save_done": "Modifiche salvate"
+  }
+}

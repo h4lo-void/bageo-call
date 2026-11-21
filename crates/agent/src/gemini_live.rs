@@ -346,6 +346,25 @@ pub async fn speak_lines_heard(
     phone_sr: u32,
     transcribe: bool,
 ) -> Result<Vec<(Vec<u8>, String)>> {
+    speak_lines_coded(lang, system, api_key, model, thinking_level, voice, lines, phone_sr, transcribe.then(|| crate::locale::phrases(lang).stt)).await
+}
+
+/// [`speak_lines_heard`] with the language code the transcription is asked for
+/// (`None` = no transcription): the recordings of voice packs pass an official
+/// Gemini Live code ([bageo_packs::data::OFFICIAL_LANGS]).
+#[allow(clippy::too_many_arguments)]
+pub async fn speak_lines_coded(
+    lang: crate::locale::Lang,
+    system: &str,
+    api_key: &str,
+    model: &str,
+    thinking_level: &str,
+    voice: &str,
+    lines: &[&str],
+    phone_sr: u32,
+    transcribe_in: Option<&str>,
+) -> Result<Vec<(Vec<u8>, String)>> {
+    let transcribe = transcribe_in.is_some();
     let key = api_key.trim();
     if key.is_empty() {
         bail!("Gemini API key is not set");
@@ -393,11 +412,11 @@ pub async fn speak_lines_heard(
             gc.insert("thinkingConfig".into(), json!({ "thinkingLevel": level }));
         }
     }
-    if transcribe {
+    if let Some(code) = transcribe_in {
         if let Some(s) = setup.pointer_mut("/setup").and_then(|x| x.as_object_mut()) {
             s.insert(
                 "outputAudioTranscription".into(),
-                json!({ "languageCodes": [crate::locale::phrases(lang).stt] }),
+                json!({ "languageCodes": [code] }),
             );
         }
     }
@@ -956,14 +975,16 @@ pub fn persona_system_prompt(
         status: if owner_status_enabled { owner_status } else { "" },
         stall,
         knowledge: "",
+        about: None,
         carrier_note: active.lang == crate::locale::Lang::ZhTw,
         auto_language: false,
     })
 }
 
-/// Everything the caller "said" so far is the carrier's international-call
-/// warning (「這是國際電話，請注意小心詐騙」) — the real caller has not spoken.
-pub(crate) fn looks_like_carrier_intl_prompt(caller_text: &str) -> bool {
+/// The carrier's international-call warning as it was first recognized: Taiwan's
+/// 「這是國際電話，請注意小心詐騙」. Kept as it is; the regional ones are added in
+/// [paired_carrier_prompt].
+fn tw_carrier_prompt(caller_text: &str) -> bool {
     let t: String = crate::zh_tw::norm(caller_text)
         .chars()
         .filter(|c| c.is_alphanumeric())
@@ -984,7 +1005,203 @@ pub(crate) fn looks_like_carrier_intl_prompt(caller_text: &str) -> bool {
     ] {
         rest = rest.replace(w, "");
     }
-    rest.chars().filter(|c| ('\u{4E00}'..='\u{9FFF}').contains(c)).count() <= 5
+    rest.chars().filter(is_han).count() <= 5
+}
+
+/// "This call comes from abroad" in the regional warnings, as the words read once
+/// normalized (Traditional characters, lower case, no spaces or punctuation):
+/// Taiwan (「這通是國際電話」), Hong Kong (「來電源自香港境外」 / "Call is from outside
+/// Hong Kong"), mainland China (「境外來電」「國際及港澳台來電」), Korea
+/// (「국제전화입니다」「해외에서 걸려온 전화입니다」) and Thailand (「โทรจากต่างประเทศ」).
+const PROMPT_ABROAD: &[&str] = &[
+    "國際電話", "國際來電", "香港境外", "境外來電", "國際及港澳", "callisfromoutsidehongkong", "국제전화입니다",
+    "해외에서걸려온전화", "โทรจากต่างประเทศ",
+];
+
+/// "Beware of fraud" in the same warnings: a caller who only mentions calling from
+/// abroad, or only warns of fraud, has said one of the two, the carrier says both.
+const PROMPT_BEWARE: &[&str] = &["詐騙", "騙去", "提高警惕", "提高警覺", "bewareofdeception", "보이스피싱에주의", "ระวังมิจฉาชีพ"];
+
+/// The warnings' own words, longest first, dropped before counting what is left.
+const PROMPT_WORDS: &[&str] = &[
+    "callisfromoutsidehongkong", "bewareofdeception", "hello",
+    "해외에서걸려온전화입니다", "국제전화입니다", "보이스피싱에주의하세요", "보이스피싱에주의", "여보세요",
+    "หมายเลขนี้", "โทรจากต่างประเทศ", "ระวังมิจฉาชีพ", "ฮัลโหล",
+    "這通是", "來電源自", "香港境外", "境外來電", "國際及港澳臺來電", "國際及港澳台來電", "電信網絡", "電信網路", "提高警惕",
+    "提高警覺", "毋通", "乎人", "騙去",
+    "這是", "此為", "這裡是", "國際電話", "國際來電", "國外來電", "請您", "請", "注意", "小心",
+    "詐騙", "接通", "掛斷", "防範", "謹防", "慎防", "提防", "以免", "受騙", "喂",
+];
+
+/// Letters outside Han script a few garbled sounds after the warning may leave;
+/// a sentence of the caller's own leaves more.
+const PROMPT_REST_LETTERS: usize = 4;
+
+/// Everything the caller "said" so far is the carrier's international-call
+/// warning (「這是國際電話，請注意小心詐騙」) — the real caller has not spoken.
+pub(crate) fn looks_like_carrier_intl_prompt(caller_text: &str) -> bool {
+    tw_carrier_prompt(caller_text) || paired_carrier_prompt(caller_text)
+}
+
+fn is_han(c: &char) -> bool {
+    ('\u{4E00}'..='\u{9FFF}').contains(c)
+}
+
+/// A regional warning: both halves are heard ([PROMPT_ABROAD] and
+/// [PROMPT_BEWARE]) and, once its words are dropped, next to nothing is left.
+fn paired_carrier_prompt(caller_text: &str) -> bool {
+    // Thai vowel and tone marks are no alphanumerics: the whole Thai block is kept.
+    let t: String = crate::zh_tw::norm(caller_text)
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || ('\u{0E00}'..='\u{0E7F}').contains(c))
+        .collect();
+    let both = PROMPT_ABROAD.iter().any(|m| t.contains(m)) && PROMPT_BEWARE.iter().any(|m| t.contains(m));
+    if !both || t.chars().filter(is_han).count() > 40 || t.chars().count() > 160 {
+        return false;
+    }
+    let mut rest = t;
+    for w in PROMPT_WORDS {
+        rest = rest.replace(w, "");
+    }
+    rest.chars().filter(is_han).count() <= 5
+        && rest.chars().filter(|c| c.is_alphabetic() && !is_han(c)).count() <= PROMPT_REST_LETTERS
+}
+
+#[cfg(test)]
+mod carrier_prompt_tests {
+    use super::looks_like_carrier_intl_prompt as prompt;
+
+    /// Each region's recorded warning (both halves of it) is the carrier, not the
+    /// caller; people saying "international", "abroad" or "beware of fraud" in a
+    /// sentence of their own are callers. India has no warning with both halves
+    /// on record: nothing of it is read as one.
+    #[test]
+    fn carrier_warnings_by_region_and_callers_who_mention_abroad() {
+        let regions: &[(&str, &[&str], &[&str])] = &[
+            (
+                "tw",
+                &["這通是國際電話，請注意，小心詐騙，毋通乎人騙去。", "這通是國際電話，請注意小心詐騙。喂？"],
+                &[
+                    "我人在國外，這通是國際電話，等一下再跟你說",
+                    "你毋通乎人騙去啦，阿嬤",
+                    "請注意，你的國際包裹明天會送到",
+                    "不好意思，這通是國際電話",
+                ],
+            ),
+            (
+                "hk-mo",
+                &[
+                    "來電源自香港境外，慎防詐騙。Call is from outside Hong Kong. Beware of deception.",
+                    "Call is from outside Hong Kong, beware of deception.",
+                    "來電源自香港境外，慎防詐騙",
+                ],
+                &[
+                    "I'm calling from outside Hong Kong about your parcel",
+                    "我喺香港境外打嚟，想問你份文件",
+                    "This call is from outside Hong Kong, it's the bank about your card",
+                    "This call is from outside Hong Kong.",
+                    "Beware of deception",
+                    "來電源自香港境外",
+                ],
+            ),
+            (
+                "cn",
+                &["境外来电，请提高警惕。", "国际及港澳台来电，谨防电信网络诈骗。"],
+                &[
+                    "我是反电信网络诈骗中心的，请提高警惕",
+                    "境外来电？对，我在美国给你打的，有件事跟你说",
+                    "你好，这里是国际快递，你的包裹到了",
+                    "这里是银行，谨防电信网络诈骗",
+                    "境外来电",
+                ],
+            ),
+            (
+                "kr",
+                &["국제전화입니다. 보이스피싱에 주의하세요.", "해외에서 걸려온 전화입니다. 보이스피싱에 주의하세요. 여보세요?"],
+                &[
+                    "해외에서 걸려온 전화라서 놀라셨죠? 택배 주소 확인차 연락드렸어요",
+                    "국제전화로 연락드렸습니다",
+                    "국제전화입니다, 고객님 카드 결제 건으로 연락드렸습니다",
+                    "네 안녕하세요 국제전화입니다",
+                    "보이스피싱에 주의하세요",
+                ],
+            ),
+            (
+                "th",
+                &["หมายเลขนี้โทรจากต่างประเทศ ระวังมิจฉาชีพ", "หมายเลขนี้โทรจากต่างประเทศ ระวังมิจฉาชีพ ฮัลโหล"],
+                &["ฉันโทรจากต่างประเทศนะ จะถามเรื่องพัสดุ", "ระวังมิจฉาชีพนะคะ", "พัสดุจากต่างประเทศมาถึงแล้วค่ะ", "ผมโทรจากต่างประเทศครับ"],
+            ),
+            (
+                "in",
+                &[],
+                &[
+                    "This is an international call.",
+                    "International call, sir",
+                    "Hi, I'm calling from overseas about your order",
+                    "This is an international call from your bank about your card",
+                ],
+            ),
+        ];
+        for (region, warnings, callers) in regions {
+            for t in *warnings {
+                assert!(prompt(t), "{region}: the carrier's warning: {t}");
+            }
+            for t in *callers {
+                assert!(!prompt(t), "{region}: the caller speaking: {t}");
+            }
+        }
+    }
+
+    /// The function as it was before the regional warnings, word for word.
+    fn before(caller_text: &str) -> bool {
+        let t: String = crate::zh_tw::norm(caller_text).chars().filter(|c| c.is_alphanumeric()).collect();
+        let marked = ["國際電話", "國際來電", "小心詐騙", "注意詐騙", "謹防詐騙", "慎防詐騙", "防範詐騙"].iter().any(|m| t.contains(m));
+        if !marked || t.chars().count() > 40 {
+            return false;
+        }
+        let mut rest = t;
+        for w in [
+            "這是", "此為", "這裡是", "國際電話", "國際來電", "國外來電", "請您", "請", "注意", "小心",
+            "詐騙", "接通", "掛斷", "防範", "謹防", "慎防", "提防", "以免", "受騙", "喂",
+        ] {
+            rest = rest.replace(w, "");
+        }
+        rest.chars().filter(|c| ('\u{4E00}'..='\u{9FFF}').contains(c)).count() <= 5
+    }
+
+    /// Whatever was read as the warning before still is, and Chinese sentences
+    /// that were not are not now, the regional warnings aside.
+    #[test]
+    fn chinese_sentences_read_as_before() {
+        for t in [
+            "小心詐騙, 接通國際電話愛注意。",
+            "這是國際電話，請注意小心詐騙。",
+            "这是国际电话，请注意小心诈骗",
+            "這是國際電話，請注意小心詐騙。喂？",
+            "是國際電話, 請注意小心詐騙, 接通請掛斷點為。경품기",
+            "此為國際來電，請小心詐騙",
+            "國際電話，請注意",
+            "我是小李，这是国际电话",
+            "請提防詐騙，謹防詐騙",
+        ] {
+            assert!(before(t), "{t}");
+            assert!(prompt(t), "{t}");
+        }
+        for t in [
+            "這是國際電話，請注意小心詐騙。喂？不好意思我打錯了",
+            "您好，我是大吉銀行信貸專員",
+            "",
+            "不好意思，這通是國際電話",
+            "我人在國外，這通是國際電話，等一下再跟你說",
+            "这里是银行，谨防电信网络诈骗",
+            "您好，我是银行的，谨防电信网络诈骗，请核对一下信息",
+            "最近國際電話詐騙很多，你要小心，我是你表哥啦",
+        ] {
+            assert!(!before(t), "{t}");
+            assert!(!prompt(t), "{t}");
+        }
+    }
 }
 
 /// Caller ID from abroad (`+…`, not the SIM's own country code): the carrier plays its
@@ -1115,7 +1332,7 @@ pub fn call_lang_plan(
     // The main language the owner set for this SIM's country.
     let sim_lang = sim
         .and_then(|s| sim_langs.get(s))
-        .map(|code| Lang::parse(code));
+        .map(|code| crate::locales_store::lang_at(code, crate::locales_store::Stage::Call));
     // For the opening only: with no language set for the SIM, its country's.
     // The prompt stays in the setting's language (`prompt_lang` below).
     let sim_main = sim_lang.or_else(|| sim.and_then(country_lang));
@@ -1197,26 +1414,7 @@ fn has_ukrainian_letters(text: &str) -> bool {
 /// The speech-to-text code of a country's main language when the AI has no
 /// setting for it (ISO 3166 alpha-2, any case); None for any other country.
 pub fn other_lang_stt_of_country(iso: &str) -> Option<&'static str> {
-    const ARABIC: &[&str] = &[
-        "sa", "ae", "eg", "jo", "kw", "qa", "bh", "om", "lb", "iq", "sy", "ye", "ly", "dz", "ma", "tn", "sd", "ps",
-    ];
-    let iso = iso.trim().to_ascii_lowercase();
-    match iso.as_str() {
-        "th" => Some(OTHER_LANG_STT[0]),
-        "ru" | "by" | "kz" | "kg" => Some(OTHER_LANG_STT[1]),
-        "ua" => Some("uk-UA"),
-        c if ARABIC.contains(&c) => Some(OTHER_LANG_STT[2]),
-        "in" => Some(OTHER_LANG_STT[3]),
-        "bd" => Some(OTHER_LANG_STT[4]),
-        "it" | "sm" | "va" => Some("it-IT"),
-        "id" => Some("id-ID"),
-        "vn" => Some("vi-VN"),
-        "tr" => Some("tr-TR"),
-        "nl" => Some("nl-NL"),
-        "pl" => Some("pl-PL"),
-        "ro" | "md" => Some("ro-RO"),
-        _ => None,
-    }
+    crate::country_profile::stt_of_country(iso)
 }
 
 /// Which non-Latin script language `text` is written in, by its letters:
@@ -2438,6 +2636,10 @@ fn with_errand_tools(setup: &mut Value) {
 /// later calls declare propose_appointment blocking (its answer stays silent).
 static NON_BLOCKING_REFUSED: AtomicBool = AtomicBool::new(false);
 
+/// Set once a setup declaring end_call was refused for its function
+/// declaration: later calls go without it (the closing words still end them).
+static END_CALL_REFUSED: AtomicBool = AtomicBool::new(false);
+
 /// The setup failure names the function declaration (not a network hiccup):
 /// stop asking for `NON_BLOCKING` until the agent restarts.
 fn non_blocking_refused(why: &str) -> bool {
@@ -2531,7 +2733,7 @@ impl PromptLog {
         Self {
             sim: plan.sim_country.as_deref().map_or_else(|| "-".to_string(), str::to_ascii_uppercase),
             lang: lang.code(),
-            region: region.map_or_else(|| "-".to_string(), |r| format!("{r:?}")),
+            region: region.map_or_else(|| "-".to_string(), |r| r.code().to_string()),
             user_chars,
         }
     }
@@ -2731,6 +2933,8 @@ fn turn_ends_with_closing(text: &str) -> bool {
             .iter()
             .any(|m| tail.contains(m))
         || crate::locale::ends_with_farewell(text, 1)
+        // The farewells of the translated languages' call speech.
+        || crate::closing::ai_says_translated_farewell(text)
 }
 
 fn persona_stall_wrap_up_client_content() -> String {
@@ -3357,6 +3561,10 @@ fn persona_idle_nudge_client_content() -> String {
     crate::prompts::client_turn(&crate::prompts::current().kick_idle)
 }
 
+fn persona_cold_nudge_client_content() -> String {
+    crate::prompts::client_turn(&crate::prompts::current().kick_cold)
+}
+
 fn in_spoken_language(payload: String, spoken: Option<crate::lang_lock::Spoken>) -> String {
     match spoken {
         None => payload,
@@ -3481,7 +3689,7 @@ pub(crate) fn merge_dialogue_fragments(transcript: &str) -> String {
 /// ("Caller: …", "AI: …") for the web record. Everything else reads the
 /// labels used inside the agent (對方／接聽).
 pub(crate) fn localize_dialogue(dialogue: &str, lang: crate::locale::Lang) -> String {
-    let p = crate::locale::phrases(lang);
+    let p = crate::locale::words(lang);
     dialogue
         .lines()
         .map(|l| {
@@ -4011,6 +4219,24 @@ fn ends_as_question(text: &str) -> bool {
         .trim_end_matches(|c: char| !c.is_alphanumeric())
         .trim_end_matches(|c: char| "喔哦囉啦呢耶齁欸啊".contains(c));
     core.ends_with('嗎') || core.ends_with('吗')
+}
+
+/// The last `n` characters of `text` (for a debug log line).
+fn debug_tail(text: &str, n: usize) -> String {
+    let skip = text.chars().count().saturating_sub(n);
+    text.chars().skip(skip).collect()
+}
+
+/// The caller starts a new turn after the AI spoke: a line break goes at the
+/// end of their words so far, so the closing check reads this turn on its own.
+/// Scripts without spaces or sentence marks (Thai) would otherwise run the two
+/// turns together: a question at the end of the last turn and this turn's
+/// thanks and goodbye become one run of letters (「…1 วันไหมคะขอบคุณมากค่ะ…สวัสดีค่ะ」),
+/// read as a question right before the goodbye.
+fn mark_caller_turn(window: &mut String) {
+    if window.chars().next_back().is_some_and(|c| !c.is_whitespace()) {
+        window.push('\n');
+    }
 }
 
 /// The caller's words with the piece that just came at their end. The window
@@ -5007,9 +5233,14 @@ pub async fn run_session(
     // came in — what they are scoped to: the SIM's region, decided before pickup
     // (a table lookup; the ring prewarm has it too).
     let prompt_lang = lang_plan.prompt_lang.unwrap_or_else(crate::locale::current);
+    // The talk style and the local ways: built-in prompt only (Active::talk_style).
+    let active = crate::locale::active();
     let scope = (persona && outbound == Outbound::Incoming).then(|| crate::prompts::Scope {
         region: lang_plan.region,
         carrier_note: carrier_note_due(&lang_plan),
+        style: active.talk_style.map(|level| crate::prompts::StyleSel { level, assistant: active.assistant }),
+        stall: false,
+        owner: active.owner.as_str(),
     });
     let scoped = |p: &str| -> String {
         match scope {
@@ -5020,7 +5251,13 @@ pub async fn run_session(
     let scope_region = scope.and_then(|s| s.region);
     let prompt_log = PromptLog::new(&lang_plan, prompt_lang, scope_region, user_prompt_chars);
     let stall = stall.filter(|_| persona).map(|mut c| {
-        c.system_prompt = scoped(&session_prompt(c.system_prompt.as_str(), outbound));
+        // Stalling keeps the local rules and swaps the talk style for the
+        // region's stalling snags.
+        let p = session_prompt(c.system_prompt.as_str(), outbound);
+        c.system_prompt = match scope {
+            Some(s) => crate::prompts::scope_to_region(&p, prompt_lang, crate::prompts::Scope { stall: true, style: None, ..s }),
+            None => p,
+        };
         c
     });
     // Appointments: persona calls only (setting `appointment_mode`).
@@ -5077,10 +5314,18 @@ pub async fn run_session(
     // The stored prompt stays as it is; appointments add their part after it
     // (with the current local time), and the tools.
     let base_prompt = scoped(&session_prompt(system_prompt, outbound));
+    // An answered persona call: the AI may end it itself (end_call) and is told
+    // how to pick up and close; never an errand or a call-back.
+    let end_call_on = persona && outbound == Outbound::Incoming && !END_CALL_REFUSED.load(Ordering::Relaxed);
+    let base_prompt = if end_call_on {
+        format!("{base_prompt}{}", crate::prompts::pack(prompt_lang).end_call_note)
+    } else {
+        base_prompt
+    };
     let system_prompt = call_system_prompt(&base_prompt, appt.as_ref(), chrono::Local::now(), false);
     let thinking = live_thinking_level(model, thinking_level);
     // Low-latency turn-taking: high EOU sensitivity + short silence.
-    let build_setup = |non_blocking: bool| -> Value {
+    let build_setup = |non_blocking: bool, end_call: bool| -> Value {
         let mut setup = json!({
             "setup": {
                 "model": model_path,
@@ -5121,6 +5366,9 @@ pub async fn run_session(
             }
         }
         with_appointment_tools(&mut setup, appt.is_some(), non_blocking);
+        if end_call {
+            crate::end_call::add_to_setup(&mut setup, non_blocking);
+        }
         if errand.is_some() {
             with_errand_tools(&mut setup);
         }
@@ -5128,7 +5376,10 @@ pub async fn run_session(
     };
     // Appointments: propose_appointment goes NON_BLOCKING unless the API refused
     // that before; a setup that fails with it is sent once more without it.
-    let mut non_blocking = appt.is_some() && !NON_BLOCKING_REFUSED.load(Ordering::Relaxed);
+    // end_call too goes NON_BLOCKING (its closing line is not held up), and
+    // without end_call when a setup with it is refused.
+    let mut non_blocking = (appt.is_some() || end_call_on) && !NON_BLOCKING_REFUSED.load(Ordering::Relaxed);
+    let mut end_call_tool = end_call_on;
     let mut debug_raw_left = debug_raw_budget();
     let (mut sink, mut stream, setup, mut conn_opened_at, setup_ok) = 'connect: loop {
         let connect_fut = tokio_tungstenite::connect_async(&url);
@@ -5145,7 +5396,7 @@ pub async fn run_session(
             resp.status()
         );
         let (mut sink, mut stream) = ws.split();
-        let setup = build_setup(non_blocking);
+        let setup = build_setup(non_blocking, end_call_tool);
         // Same setup for every call (stalling included): long calls rotate to a fresh
         // session every ~8 min instead (rotation setups add `historyConfig`).
         send_text_before_deadline(
@@ -5156,7 +5407,7 @@ pub async fn run_session(
         )
         .await?;
         info!(
-            "Gemini Live setup sent serial={serial} voice={voice} stall={} max_s={} server_vad={server_vad} thinking={} appointments={} non_blocking={non_blocking}",
+            "Gemini Live setup sent serial={serial} voice={voice} stall={} max_s={} server_vad={server_vad} thinking={} appointments={} non_blocking={non_blocking} end_call={end_call_tool}",
             stall.is_some(),
             if persona { persona_max_secs } else { LIVE_MAX_SECS },
             thinking.unwrap_or("-"),
@@ -5224,6 +5475,17 @@ pub async fn run_session(
                     "Gemini Live setup with a NON_BLOCKING function failed serial={serial} ({why}) — sending it again without"
                 );
                 non_blocking = false;
+                continue 'connect;
+            }
+            if end_call_tool {
+                // The API may not take end_call at all: once more without it.
+                if non_blocking_refused(&why) {
+                    END_CALL_REFUSED.store(true, Ordering::Relaxed);
+                }
+                warn!(
+                    "Gemini Live setup with end_call failed serial={serial} ({why}) — sending it again without"
+                );
+                end_call_tool = false;
                 continue 'connect;
             }
             bail!("{why}");
@@ -5556,7 +5818,14 @@ pub async fn run_session(
     let mut bytes_at_last_caller_eou: u64 = 0;
     let mut turn_base_bytes: u64 = prebuf_flushed_bytes;
     let mut out_tx_window = String::with_capacity(512);
+    // The AI's words since its last turn ended: the first audio after the caller
+    // finished keeps these, so a reply whose words came before its audio, or a turn
+    // the caller's "mm" cut in two, is judged whole ("Baik, sampai nanti.").
+    let mut out_tx_turn = String::with_capacity(512);
     let mut in_tx_window = String::with_capacity(512);
+    // The AI spoke since the caller's last turn began; the caller's next turn
+    // then starts with a break in `in_tx_window` (`mark_caller_turn`).
+    let (mut ai_spoke_since_caller, mut caller_turn_break) = (false, false);
     // Whether the last output / input snippet ended with a space ([`tx_carry`]).
     let (mut out_space_held, mut in_space_held) = (false, false);
     let mut end_reason = SessionEndReason::WsClosed;
@@ -5712,6 +5981,16 @@ pub async fn run_session(
     // (what the repeat guard and propose_appointment's caller compare against).
     let mut turns_done: u64 = 0;
     let mut chunks_at_turn_start: u64 = 0;
+    // Model turns completed when the caller's last turn ended (cold-gap nudge).
+    let mut turns_at_last_caller_eou: u64 = 0;
+    // end_call accepted, waiting for our last words and the quiet after them.
+    let mut end_call_pending: Option<crate::end_call::Pending> = None;
+    let mut cold_gap = crate::end_call::ColdGap::default();
+    // What the caller has said since the AI last started speaking (end_call's guard).
+    let mut caller_turn_text = String::new();
+    // What the AI has said since the caller's last turn ended (an end_call waits
+    // when these words ask the caller something).
+    let mut ai_reply_text = String::new();
     let mut repeat_guard = RepeatGuard::default();
     let mut repeat_drops: u32 = 0;
     // Sales / scam: the second look at a call the keywords flagged (stall_review)
@@ -6041,6 +6320,13 @@ pub async fn run_session(
                     appt_block_sent,
                     non_blocking,
                 );
+                // The normal session's end_call comes back with it.
+                let next_setup = next_setup.map(|mut s| {
+                    if end_call_tool {
+                        crate::end_call::add_to_setup(&mut s, non_blocking);
+                    }
+                    s
+                });
                 rotate_setup = next_setup;
                 rotate_due = need_rotate
                     .then(|| tokio::time::Instant::now() + Duration::from_secs(STALL_PROMPT_SWITCH_FORCE_SECS));
@@ -6207,6 +6493,7 @@ pub async fn run_session(
                         // turn is still streaming, muted, being cut or held back.
                         let keep_owed = std::mem::take(&mut stall_keep_after_turn) && stall_on && !wrap_up_sent;
                         model_generating = false;
+                        out_tx_turn.clear();
                         mute_model_audio = false;
                         play_head.set_generating(false);
                         stall_tx.clear();
@@ -6685,6 +6972,54 @@ pub async fn run_session(
             }
         }
 
+        // end_call accepted: the line closes once our last words have played and
+        // it has stayed quiet end_call::GRACE; the caller speaking again cancels it.
+        if let Some(p) = end_call_pending {
+            let view = crate::end_call::PendingView {
+                since_accept: p.accepted_at.elapsed(),
+                caller_spoke: activity_open || local_eou_sent > p.eou_at_accept,
+                ai_busy: model_generating || !play_head.speech_left(phone_sr).is_zero(),
+                ai_spoke: p.spoke_before || audio_chunks_out > p.audio_at_accept,
+                ai_asked: crate::end_call::ends_on_question(&ai_reply_text),
+                quiet_for_grace: play_head.drained_for(crate::end_call::GRACE, PLAYER_DRAIN_SLACK_BYTES),
+            };
+            match crate::end_call::step(&view) {
+                crate::end_call::Step::Wait => {}
+                crate::end_call::Step::Withdraw => {
+                    end_call_pending = None;
+                    info!(
+                        "end_call withdrawn serial={serial} reason={} after_ms={} — our last words ask the caller something, their answer comes first",
+                        p.reason,
+                        view.since_accept.as_millis()
+                    );
+                }
+                crate::end_call::Step::Cancel => {
+                    end_call_pending = None;
+                    info!(
+                        "end_call cancelled serial={serial} reason={} after_ms={} — the caller spoke again, the call goes on",
+                        p.reason,
+                        view.since_accept.as_millis()
+                    );
+                }
+                crate::end_call::Step::HangUp => {
+                    end_reason = SessionEndReason::Goodbye;
+                    closing_sm.hangup("end_call");
+                    let waited = let_the_phone_finish(&play_head, phone_sr, &cancel).await;
+                    signal_force_hangup(&mut hangup_signaled);
+                    info!(
+                        "end_call hangup serial={serial} reason={} talk_s={} after_ms={} ai_spoke={} — our last words played, line quiet {}ms (waited {}ms)",
+                        p.reason,
+                        session_start.elapsed().as_secs(),
+                        view.since_accept.as_millis(),
+                        view.ai_spoke,
+                        crate::end_call::GRACE.as_millis(),
+                        waited.as_millis()
+                    );
+                    break;
+                }
+            }
+        }
+
         // Wall-clock max talk time → agent will play goodbye WAV (persona: plain hangup).
         // Not while the phone dials the owner for a whitelist urgent call.
         if session_start.elapsed() >= Duration::from_secs(max_secs)
@@ -6851,6 +7186,51 @@ pub async fn run_session(
             && !model_generating
             && !ai_playing
             && play_head.drained_for(Duration::from_millis(300), PLAYER_DRAIN_SLACK_BYTES);
+        // The caller finished a turn and the AI has said nothing: one light nudge
+        // per turn to pick it up (stalling has its own above; the 15 s one below
+        // is for a line where nobody speaks).
+        let cold_view = crate::end_call::ColdView {
+            on: persona && !cb_once && errand.is_none(),
+            stalling: stall_on,
+            busy: first_downlink_at.is_none()
+                || activity_open
+                || model_generating
+                || ai_playing
+                || goodbye_pending
+                || end_call_pending.is_some()
+                || wrap_up_sent
+                || caller_hold
+                || !tool_open.is_empty()
+                || errand_asking
+                || ivr_since.is_some()
+                || urgent_ctl.as_ref().is_some_and(|c| c.ai_quiet())
+                || !play_head.drained_for(Duration::from_millis(300), PLAYER_DRAIN_SLACK_BYTES),
+            eou_n: local_eou_sent,
+            since_eou: last_caller_eou_at.map(|t| t.elapsed()),
+            ai_spoke_since_eou: audio_chunks_out > chunks_at_last_caller_eou,
+            model_done_since_eou: turns_done > turns_at_last_caller_eou,
+        };
+        if cold_gap.due(&cold_view) {
+            cold_gap.sent(local_eou_sent);
+            model_turn_pending = true;
+            repeat_guard.clear();
+            match send_text_before_deadline(
+                &mut sink,
+                in_spoken_language(persona_cold_nudge_client_content(), Some(call_language.spoken())),
+                tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
+                "gemini persona cold-gap nudge send",
+            )
+            .await
+            {
+                Ok(()) => info!(
+                    "Persona cold-gap nudge serial={serial} eou_n={local_eou_sent} gap_ms={} model_done={}",
+                    cold_view.since_eou.map_or(0, |d| d.as_millis()),
+                    cold_view.model_done_since_eou
+                ),
+                Err(e) => warn!("Persona cold-gap nudge failed serial={serial}: {e:#}"),
+            }
+            last_activity_at = tokio::time::Instant::now();
+        }
         // A function call open (appointments) is not a quiet line; a recording gets no
         // nudge; nor does an appointment's call-back (the AI talks only when the
         // callee has). An errand's call does get one.
@@ -7043,6 +7423,48 @@ pub async fn run_session(
                                         } else {
                                             call.id.clone()
                                         };
+                                        // end_call: answered here at once; whether it counts is
+                                        // ours to decide (end_call::judge), not the model's.
+                                        if call.name == crate::end_call::NAME && errand.is_none() {
+                                            let reason = crate::end_call::reason_label(&call.args);
+                                            let spoke = audio_chunks_out > chunks_at_last_caller_eou;
+                                            info!(
+                                                "end_call received serial={serial} id={key} reason={reason} talk_s={} ai_spoke={spoke} stall={stall_on}",
+                                                session_start.elapsed().as_secs()
+                                            );
+                                            let verdict = crate::end_call::judge(&crate::end_call::Check {
+                                                stalling: stall_on || live_is_stall,
+                                                since_answer: first_downlink_at.map(|t| t.elapsed()),
+                                                caller_turn: &caller_turn_text,
+                                                ai_spoke_since_caller: spoke,
+                                            });
+                                            match verdict {
+                                                Ok(()) => {
+                                                    end_call_pending = Some(crate::end_call::Pending {
+                                                        accepted_at: now,
+                                                        audio_at_accept: audio_chunks_out,
+                                                        eou_at_accept: local_eou_sent,
+                                                        spoke_before: spoke,
+                                                        reason,
+                                                    });
+                                                }
+                                                Err(why) => info!(
+                                                    "end_call refused serial={serial} id={key} why={} — the call goes on",
+                                                    why.as_str()
+                                                ),
+                                            }
+                                            if let Err(e) = send_text_before_deadline(
+                                                &mut sink,
+                                                crate::end_call::response(&call.id, verdict).to_string(),
+                                                now + API_SEND_TIMEOUT,
+                                                "gemini end_call toolResponse send",
+                                            )
+                                            .await
+                                            {
+                                                warn!("end_call toolResponse send failed serial={serial}: {e:#}");
+                                            }
+                                            continue;
+                                        }
                                         // An errand: ask_owner, answered on its own task (the
                                         // owner may take up to ASK_WAIT).
                                         if let Some(e) = errand.clone() {
@@ -7276,6 +7698,8 @@ pub async fn run_session(
                                     let s_raw = tx_carry(&mut out_space_held, s_raw);
                                     let s_raw = s_raw.as_str();
                                     push_tx_window(&mut out_tx_window, s_raw, 800);
+                                    push_tx_window(&mut out_tx_turn, s_raw, 800);
+                                    push_tx_window(&mut ai_reply_text, s_raw, 400);
                                     push_tx_window(&mut turn_out_text, s_raw, 400);
                                     // Whitelist urgent call: dialing is decided by the AI saying its hold-on
                                     // line; the keyword table only lets weak hold-on phrases ("hold on",
@@ -7342,6 +7766,13 @@ pub async fn run_session(
                                         // after the caller's wrap-up closes the call.
                                         if errand.is_none() && !model_generating {
                                             let ev = closing_sm.on_ai_late(s, turn_ends_with_closing, stall_on && !wrap_up_sent);
+                                            if crate::log_text::enabled() {
+                                                info!(
+                                                    "closing_debug ai_late serial={serial} piece={:?} state={} event={ev:?}",
+                                                    Said(s),
+                                                    closing_sm.state().name()
+                                                );
+                                            }
                                             if ev == crate::closing::ClosingEvent::Withdrawn && goodbye_pending {
                                                 goodbye_pending = false;
                                                 caller_end_signal = false;
@@ -7500,9 +7931,14 @@ pub async fn run_session(
                                     if cb_once {
                                         cb_floor.callee.words(s_raw);
                                     }
+                                    if caller_turn_break && !s_raw.trim().is_empty() {
+                                        caller_turn_break = false;
+                                        mark_caller_turn(&mut in_tx_window);
+                                    }
                                     push_tx_window(&mut in_tx_window, s_raw, 800);
                                     push_tx_window(&mut caller_text_all, s_raw, 400);
                                     push_tx_window(&mut caller_recent, s_raw, 400);
+                                    push_tx_window(&mut caller_turn_text, s_raw, 400);
                                     // The caller speaks a language the AI's own
                                     // speech-to-text has no hint for: its goodbye in
                                     // it would go unnoticed. Added at the next pause.
@@ -7659,10 +8095,21 @@ pub async fn run_session(
                                         // The closing state machine adds the other languages'
                                         // goodbyes and keeps opening greetings from closing.
                                         let heard = with_latest(&in_tx_window, s);
+                                        let state_before = closing_sm.state();
                                         // AI errands keep the old rule (only caller_wraps_up).
                                         let step = errand
                                             .is_none()
                                             .then(|| closing_sm.on_caller(&heard, s, caller_wraps_up(&heard), stall_on));
+                                        if crate::log_text::enabled() {
+                                            info!(
+                                                "closing_debug caller serial={serial} piece={:?} heard_tail={:?} state={}->{} model_generating={model_generating} step={:?}",
+                                                Said(s),
+                                                Said(&debug_tail(&heard, 80)),
+                                                state_before.name(),
+                                                closing_sm.state().name(),
+                                                step
+                                            );
+                                        }
                                         caller_end_signal = match &step {
                                             Some(step) => step.ends_call,
                                             None => caller_wraps_up(&heard),
@@ -7792,6 +8239,8 @@ pub async fn run_session(
                                     if !model_generating {
                                         // A new turn: words coming in now are its own.
                                         closing_sm.ai_started();
+                                        ai_spoke_since_caller = true;
+                                        caller_turn_text.clear();
                                     }
                                     model_generating = true;
                                     play_head.set_generating(
@@ -7840,6 +8289,8 @@ pub async fn run_session(
                                         chunks_at_last_caller_eou = audio_chunks_out;
                                         bytes_at_last_caller_eou = downlink_pcm_bytes;
                                         last_caller_eou_at = Some(tokio::time::Instant::now());
+                                        turns_at_last_caller_eou = turns_done;
+                                        ai_reply_text.clear();
                                         info!(
                                             "Gemini Live caller turn ended by server VAD serial={serial} silence_ms={silence_ms} voiced_ms={voiced_ms} activity_ms={activity_ms} n={local_eou_sent}"
                                         );
@@ -7858,6 +8309,7 @@ pub async fn run_session(
                                         && audio_chunks_out == chunks_at_last_caller_eou + 1
                                     {
                                         out_tx_window.clear();
+                                        out_tx_window.push_str(&out_tx_turn);
                                         stall_tx.clear();
                                         // The caller's next words start a new utterance.
                                         // Their finished words tell the call's language (lang_lock).
@@ -8109,11 +8561,21 @@ pub async fn run_session(
                                     // reply ended on a closing the transcript check missed
                                     // (「先這樣」): have the model take that back. Once per turn.
                                     if persona && errand.is_none() {
+                                        let state_before = closing_sm.state();
                                         let ev = closing_sm.on_ai_turn(
                                             &turn_out_text,
                                             turn_ends_with_closing(&turn_out_text),
                                             stall_on && !wrap_up_sent,
                                         );
+                                        if crate::log_text::enabled() {
+                                            info!(
+                                                "closing_debug ai_turn serial={serial} said={:?} ends_with_closing={} state={}->{} event={ev:?}",
+                                                Said(&turn_out_text),
+                                                turn_ends_with_closing(&turn_out_text),
+                                                state_before.name(),
+                                                closing_sm.state().name()
+                                            );
+                                        }
                                         // The caller announced the end, the AI answered with its
                                         // farewell: their latest words close the call now.
                                         if ev == crate::closing::ClosingEvent::FarewellsExchanged
@@ -8844,7 +9306,12 @@ pub async fn run_session(
                                                 chunks_at_last_caller_eou = audio_chunks_out;
                                                 bytes_at_last_caller_eou = downlink_pcm_bytes;
                                                 turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
+                                                if !model_generating {
+                                                    out_tx_turn.clear();
+                                                }
                                                 last_caller_eou_at = Some(now);
+                                                turns_at_last_caller_eou = turns_done;
+                                                ai_reply_text.clear();
                                             }
                                             info!(
                                                 "Gemini Live caller spoke over the end of our reply serial={serial} voiced_ms={said_ms} held_ms={} — passed on",
@@ -8971,6 +9438,10 @@ pub async fn run_session(
                                     activity_open = true;
                                     activity_ms = 0;
                                     turn_raw_max = 0.0;
+                                    // A new caller turn after the AI spoke: their words start apart.
+                                    if std::mem::take(&mut ai_spoke_since_caller) {
+                                        caller_turn_break = true;
+                                    }
                                     // The caller talks: whatever the model says next is for them,
                                     // never a repeat to drop.
                                     if repeat_guard.is_dropping() {
@@ -9114,7 +9585,12 @@ pub async fn run_session(
                                 chunks_at_last_caller_eou = audio_chunks_out;
                                 bytes_at_last_caller_eou = downlink_pcm_bytes;
                                 turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
+                                if !model_generating {
+                                    out_tx_turn.clear();
+                                }
                                 last_caller_eou_at = Some(tokio::time::Instant::now());
+                                turns_at_last_caller_eou = turns_done;
+                                ai_reply_text.clear();
                                 info!(
                                     "Gemini Live {} serial={serial} silence_ms={silence_ms} voiced_ms={voiced_ms} activity_ms={activity_ms} forced={force_end} short={} raw_max={turn_raw_max:.0} floor={:.0} n={local_eou_sent} chunks_out={audio_chunks_out}",
                                     if server_vad { "caller voice end (local)" } else { "activityEnd" },
@@ -9245,20 +9721,21 @@ mod tests {
     fn the_plan_knows_the_calls_region_before_pickup() {
         use crate::country_profile::Region;
         use crate::locale::Lang;
+        let r = |c: &str| Region::of_code(c).unwrap();
         let none = std::collections::BTreeMap::new();
         let local = call_lang_plan("0912345678", Some("tw"), Lang::ZhTw, "886", &none);
-        assert_eq!(local.region, Some(Region::Tw));
+        assert_eq!(local.region, Some(r("tw")));
         assert_eq!(local.sim_country.as_deref(), Some("tw"));
         // A local number never hears the carrier's warning: its note goes.
         assert!(!carrier_note_due(&local));
         let abroad = call_lang_plan("+12025550143", Some("tw"), Lang::ZhTw, "886", &none);
         assert!(carrier_note_due(&abroad));
         let hk = call_lang_plan("+85291234567", Some("hk"), Lang::ZhTw, "886", &none);
-        assert_eq!(hk.region, Some(Region::HkMo));
+        assert_eq!(hk.region, Some(r("hk-mo")));
         assert!(!carrier_note_due(&hk));
         // SIM not known (older app): the language's region, the note kept as before.
         let unknown = call_lang_plan("0912345678", None, Lang::ZhTw, "886", &none);
-        assert_eq!(unknown.region, Some(Region::Tw));
+        assert_eq!(unknown.region, Some(r("tw")));
         assert!(carrier_note_due(&unknown));
         // Hidden caller on a Taiwan SIM still keeps the carrier prompt note.
         let hidden_tw = call_lang_plan("", Some("tw"), Lang::ZhTw, "886", &none);
@@ -9267,7 +9744,7 @@ mod tests {
         assert_eq!(unknown, local);
         // Another region is another prompt.
         let mut other = local.clone();
-        other.region = Some(Region::HkMo);
+        other.region = Some(r("hk-mo"));
         assert_ne!(other, local);
     }
 
@@ -11029,7 +11506,7 @@ mod tests {
         assert_eq!(localize_dialogue(d, Lang::Fr), "IA : Hello?\nAppelant : Hi, it's Jonas.");
         assert_eq!(localize_dialogue("接聽：喂？", Lang::ZhCn), "接听：喂？");
         for l in crate::locale::ALL {
-            let p = crate::locale::phrases(l);
+            let p = crate::locale::words(l);
             assert!(!p.d_caller.is_empty() && !p.d_ai.is_empty() && p.d_caller != p.d_ai, "{l:?}");
         }
     }
@@ -13056,6 +13533,7 @@ mod tests {
                         status: "",
                         stall,
                         knowledge: "",
+                        about: None,
                         carrier_note: lang == Lang::ZhTw,
                         auto_language: true,
                     });
@@ -13198,6 +13676,439 @@ mod local_hello_opening {
         let en = crate::prompts::kick_open_local(Lang::En, false, it, true);
         assert!(en.contains("Italian") && en.contains("Pronto?") && !en.contains('{'), "{en}");
         let cn = crate::prompts::kick_open_local(Lang::ZhCn, true, it, false);
-        assert!(cn.contains("意大利语") && !cn.contains('{'), "{cn}");
+        // The pack names languages in Traditional Chinese; Simplified is converted.
+        assert!(cn.contains(&crate::zh_convert::to_cn(it.name_tw)) && !cn.contains("義") && !cn.contains('{'), "{cn}");
+    }
+}
+
+/// The AI's own goodbye in the languages the shipped translations carry: the
+/// farewells of their call speech, once their examples pass.
+#[cfg(test)]
+mod translated_ai_goodbyes {
+    use super::turn_ends_with_closing;
+    use crate::closing::ai_says_translated_farewell;
+
+    /// (language, the AI's goodbye, a line that is none).
+    const SAID: [(&str, &str, &str); 10] = [
+        ("it", "Perfetto, allora a dopo.", "Il corso si chiama «A presto» e costa cento euro al mese."),
+        ("th", "โอเคค่ะ ไว้คุยกันใหม่นะคะ", "อย่าเพิ่งลาก่อนนะคะ"),
+        ("ar", "حسنًا، في أمان الله.", "هل ترغب في اللقاء غدا في المكتب؟"),
+        ("tr", "Tamam, güle güle.", "Görüşürüz demeden önce bir şey daha soracağım, kaç taksit olacak"),
+        ("vi", "Dạ vâng, tạm biệt anh.", "Hôm qua tôi đã nói tạm biệt với anh ấy rồi mà."),
+        ("hi", "ठीक है, फिर बात करते हैं।", "अलविदा कहने से पहले एक बात और सुनिए।"),
+        ("nl", "Oké, fijne avond.", "Tot ziens zeggen we pas als alles geregeld is."),
+        ("pl", "Dobrze, do usłyszenia.", "Na razie nie podjąłem decyzji, ale chętnie posłucham dalej."),
+        ("id", "Baik, sampai ketemu.", "Kemarin saya bilang sampai jumpa ke dia, tapi dia telepon lagi."),
+        ("ru", "Хорошо, до встречи.", "До свидания я скажу, когда мы всё обсудим."),
+    ];
+
+    /// Lines of the AI in the core languages that are no goodbye, from the tests
+    /// of the older check and of the closing words.
+    const CORE_NO: &[&str] = &[
+        "欸等一下，你剛剛說的利率是固定的嗎？",
+        "那先這樣算的話，一個月要繳多少？",
+        "我拜拜那天剛好有去，然後你說那個等待期是多久？",
+        "喔你們今天要拜拜喔",
+        "你在瞎掰吧",
+        "我們在拜拜",
+        "Sure, ok",
+        "Yes, I am at home",
+        "Hello, I am calling from the bank",
+        "好，我知道了",
+        "はい、わかりました",
+        "네, 알겠습니다",
+        "Sí, claro",
+        "Oui, d'accord",
+        "Ja, genau",
+        "Sim, claro",
+        "Na verdade, o pacote chega amanhã de manhã",
+        "Ich rufe wegen Ihrer Bestellung an",
+    ];
+
+    #[test]
+    fn the_ais_goodbye_in_each_translated_language_is_heard_and_other_lines_are_not() {
+        crate::locales_store::testing::use_builtin();
+        let checked = |code: &str| {
+            crate::locales_store::builtin()
+                .phrases(crate::locale::Ext::from_code(code).unwrap())
+                .is_some_and(|p| !p.farewells.is_empty())
+        };
+        assert!(SAID.iter().all(|(c, _, _)| checked(c)));
+        for (code, yes, no) in SAID {
+            assert_eq!(ai_says_translated_farewell(yes), checked(code), "{code}: {yes}");
+            assert!(turn_ends_with_closing(yes), "{code}: {yes}");
+            assert!(!ai_says_translated_farewell(no), "{code}: {no}");
+            assert!(!turn_ends_with_closing(no), "{code}: {no}");
+        }
+        // Without the translations the new check hears none of them.
+        crate::locales_store::testing::use_empty();
+        for (code, yes, _) in SAID {
+            assert!(!ai_says_translated_farewell(yes), "{code}: {yes}");
+        }
+    }
+
+    #[test]
+    fn the_core_lines_that_were_no_goodbye_stay_so_with_the_translations() {
+        for table in [0, 1] {
+            if table == 0 {
+                crate::locales_store::testing::use_empty();
+            } else {
+                crate::locales_store::testing::use_builtin();
+            }
+            for t in CORE_NO {
+                assert!(!turn_ends_with_closing(t), "{table}: {t}");
+                assert!(!ai_says_translated_farewell(t), "{table}: {t}");
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod caller_turn_break {
+    use super::{caller_wraps_up, mark_caller_turn, push_tx_window, turn_ends_with_closing, tx_carry, with_latest};
+    use crate::closing::{ClosingMachine, ClosingStep};
+
+    /// Plays a call as the session feeds it: each caller turn's pieces go into
+    /// the caller window (with the break of a new turn after the AI spoke when
+    /// `breaks`), the closing machine hears every piece with the window, then
+    /// the AI's reply (none after the last turn). The step of the last piece.
+    fn play(lang: &'static str, turns: &[(&[&str], &str)], breaks: bool) -> ClosingStep {
+        let mut m = ClosingMachine::new(lang);
+        let (mut window, mut held, mut ai_spoke) = (String::new(), false, false);
+        let mut last = None;
+        for (pieces, ai) in turns {
+            let mut turn_break = std::mem::take(&mut ai_spoke) && breaks;
+            for p in *pieces {
+                let raw = tx_carry(&mut held, p);
+                if turn_break && !raw.trim().is_empty() {
+                    turn_break = false;
+                    mark_caller_turn(&mut window);
+                }
+                push_tx_window(&mut window, &raw, 800);
+                let s = p.trim();
+                let heard = with_latest(&window, s);
+                last = Some(m.on_caller(&heard, s, caller_wraps_up(&heard), false));
+            }
+            if !ai.is_empty() {
+                m.on_ai_turn(ai, turn_ends_with_closing(ai), false);
+                ai_spoke = true;
+            }
+        }
+        last.expect("a caller piece")
+    }
+
+    /// The Thai clinic call as its speech to text came in (one piece per turn,
+    /// no spaces between sentences): the caller's thanks, "see you next
+    /// Thursday" and สวัสดีค่ะ came right after their own question of the turn
+    /// before.
+    const TH_CLINIC: &[(&[&str], &str)] = &[
+        (&["สวัสดีค่ะ เรียนสายคุณหวังนะคะ"], "ใช่ครับ ผมพูดอยู่ครับ มีอะไรหรือเปล่าครับ"),
+        (
+            &["โทรมาจากคลินิกทันตกรรมนะคะ จะโทรมายืนยันนัดตรวจฟันของวันพฤหัสบดีหน้า เวลา 10:00 น. ค่ะ"],
+            "นัดตรวจฟันวันพฤหัสบดีหน้า เวลาสิบโมงเช้า ใช่ไหมครับ",
+        ),
+        (
+            &["ใช่ค่ะ และรบกวนมาก่อนเวลานัด 15 นาทีนะคะ คุณหวังสะดวกรับข้อความแจ้งเตือนล่วงหน้า 1 วันไหมคะ"],
+            "ได้ครับ ส่งข้อความมาเตือนล่วงหน้าได้เลยครับ",
+        ),
+        (&["ขอบคุณมากค่ะแล้วพบกันวันพฤหัสบดีหน้านะคะสวัสดีค่ะ"], ""),
+    ];
+
+    #[test]
+    fn a_thai_goodbye_right_after_the_last_turns_question_ends_the_call() {
+        // Run together with the question before it, the goodbye was missed.
+        assert!(!play("th", TH_CLINIC, false).ends_call);
+        assert!(play("th", TH_CLINIC, true).ends_call);
+        // Its speech to text in pieces, or with spaces, ends it as well.
+        let mut pieces = TH_CLINIC.to_vec();
+        pieces[3] = (&["ขอบคุณมากค่ะ", "แล้วพบกันวันพฤหัสบดีหน้านะคะ", "สวัสดีค่ะ"], "");
+        assert!(play("th", &pieces, true).ends_call);
+        pieces[3] = (&["ขอบคุณมากค่ะ แล้วพบกันวันพฤหัสบดีหน้านะคะ สวัสดีค่ะ"], "");
+        assert!(play("th", &pieces, true).ends_call);
+    }
+
+    /// (language, the caller's question, the AI's answer, their goodbye, a
+    /// question they come back with after thanking).
+    const LANGS: &[(&str, &str, &str, &str, &str)] = &[
+        ("th", "คุณหวังสะดวกรับข้อความแจ้งเตือนล่วงหน้า 1 วันไหมคะ", "ได้ครับ", "ขอบคุณค่ะสวัสดีค่ะ", "อ้อ ขอถามอีกเรื่อง พัสดุจะมาถึงกี่โมง"),
+        (
+            "ja",
+            "明日の午後でよろしいですか",
+            "はい、大丈夫です。",
+            "ありがとうございました、では失礼いたします",
+            "あ、もう一つだけ、配達は何時ごろになりますか",
+        ),
+        ("ko", "내일 오후 괜찮으세요", "네, 괜찮아요.", "네, 수고하세요", "아 그리고 하나만 더 여쭤볼게요, 택배는 언제 와요"),
+        ("vi", "Anh có ở nhà không ạ", "Có, anh ở nhà.", "Cảm ơn anh, chào anh ạ", "À cho em hỏi thêm, mấy giờ giao hàng"),
+        ("de", "Passt Ihnen Montag um zehn", "Ja, das passt.", "Auf Wiederhören! Schönen Tag noch!", "Ach, noch eine Frage, wann kommt das Paket"),
+        ("es", "Le va bien el lunes a las diez", "Sí, perfecto.", "Chao, cuídate", "Ah, una cosa más, el paquete llega mañana"),
+    ];
+
+    #[test]
+    fn a_goodbye_after_a_question_ends_the_call_and_a_new_question_does_not() {
+        for (lang, question, answer, bye, follow_up) in LANGS {
+            let opening: &[&str] = &["我要寄一個包裹給王先生 0912345678"];
+            let (question, bye, follow_up): (&[&str], &[&str], &[&str]) = (&[*question], &[*bye], &[*follow_up]);
+            let call = [(opening, "好。"), (question, *answer), (bye, "")];
+            assert!(play(lang, &call, true).ends_call, "{lang}: {bye:?}");
+            // Thanks first, the AI answers, then a new question: talk on.
+            let thanks: &[&str] = &[match *lang {
+                "th" => "ขอบคุณค่ะ",
+                "ja" => "ありがとうございます。",
+                "ko" => "감사합니다.",
+                "vi" => "Dạ cảm ơn anh.",
+                "de" => "Danke schön.",
+                _ => "Muchas gracias.",
+            }];
+            let call = [(opening, "好。"), (thanks, *answer), (follow_up, "")];
+            assert!(!play(lang, &call, true).ends_call, "{lang}: {follow_up:?}");
+            // A greeting that opens the call does not close it.
+            let hello: &[&str] = &[match *lang {
+                "th" => "สวัสดีค่ะ",
+                "ja" => "もしもし、お世話になっております",
+                "ko" => "여보세요, 수고하십니다",
+                "vi" => "Alo, chào anh ạ",
+                "de" => "Hallo? Grüß Gott",
+                _ => "¿Bueno? Hola",
+            }];
+            assert!(!play(lang, &[(hello, "")], true).ends_call, "{lang}: opening");
+        }
+    }
+
+    #[test]
+    fn the_break_goes_in_once_and_never_doubles() {
+        let mut w = String::new();
+        mark_caller_turn(&mut w);
+        assert_eq!(w, "");
+        w.push_str("คุณหวังสะดวกไหมคะ");
+        mark_caller_turn(&mut w);
+        mark_caller_turn(&mut w);
+        assert_eq!(w, "คุณหวังสะดวกไหมคะ\n");
+        push_tx_window(&mut w, " Thanks", 800);
+        assert_eq!(w, "คุณหวังสะดวกไหมคะ\nThanks");
+        assert_eq!(with_latest(&w, "Thanks"), w);
+    }
+}
+
+#[cfg(test)]
+mod caller_turn_break_review {
+    use super::{
+        caller_wraps_up, caller_withdraws_bye, is_urgent_whitelist_turn, mark_caller_turn, push_tx_window,
+        turn_ends_with_closing, tx_carry, with_latest,
+    };
+    use crate::closing::{ClosingMachine, ClosingStep};
+
+    /// What the session sees, in order: the local VAD opens a caller turn, a piece
+    /// of the caller's speech to text comes in, the AI's audio starts (even a
+    /// short "mm"), the AI's turn finishes with its words.
+    #[derive(Clone, Copy)]
+    enum Ev {
+        Open,
+        Piece(&'static str),
+        AiAudio,
+        AiDone(&'static str),
+    }
+    use Ev::*;
+
+    /// Same flags and calls as run_session: ai_spoke is set by the AI's audio, taken
+    /// at the next caller turn's open into turn_break, which the first non-blank
+    /// piece after it spends on mark_caller_turn. Returns every caller piece's
+    /// step with the words as the closing check read them, and the final window.
+    fn run(lang: &'static str, evs: &[Ev], breaks: bool) -> (Vec<(ClosingStep, String)>, String) {
+        let mut m = ClosingMachine::new(lang);
+        let (mut window, mut held) = (String::new(), false);
+        let (mut ai_spoke, mut turn_break) = (false, false);
+        let mut steps = Vec::new();
+        for ev in evs {
+            match *ev {
+                Open => {
+                    if std::mem::take(&mut ai_spoke) && breaks {
+                        turn_break = true;
+                    }
+                }
+                Piece(p) => {
+                    let raw = tx_carry(&mut held, p);
+                    if turn_break && !raw.trim().is_empty() {
+                        turn_break = false;
+                        mark_caller_turn(&mut window);
+                    }
+                    push_tx_window(&mut window, &raw, 800);
+                    let s = p.trim();
+                    let heard = with_latest(&window, s);
+                    let step = m.on_caller(&heard, s, caller_wraps_up(&heard), false);
+                    steps.push((step, heard.into_owned()));
+                }
+                AiAudio => ai_spoke = true,
+                AiDone(t) => {
+                    ai_spoke = true;
+                    m.on_ai_turn(t, turn_ends_with_closing(t), false);
+                }
+            }
+        }
+        (steps, window)
+    }
+
+    #[test]
+    fn a_turn_the_ai_cut_into_with_an_mm_still_closes_on_the_goodbye_in_thai() {
+        // The caller's thanks, the AI's "mm", the caller goes on with the goodbye
+        // that ran right after their own question: two breaks, one call.
+        let evs = [
+            Open,
+            Piece("สวัสดีค่ะ เรียนสายคุณหวังนะคะ"),
+            AiDone("ใช่ครับ ผมพูดอยู่ครับ"),
+            Open,
+            Piece("ยืนยันนัดตรวจฟันวันพฤหัสบดีหน้า คุณหวังสะดวกรับข้อความแจ้งเตือนล่วงหน้า 1 วันไหมคะ"),
+            AiDone("ได้ครับ"),
+            Open,
+            Piece("ขอบคุณมากค่ะ"),
+            AiAudio,
+            Open,
+            Piece("แล้วพบกันวันพฤหัสบดีหน้านะคะสวัสดีค่ะ"),
+        ];
+        for (breaks, ends) in [(false, false), (true, true)] {
+            let (steps, w) = run("th", &evs, breaks);
+            assert_eq!(steps.last().unwrap().0.ends_call, ends, "breaks={breaks}: {w:?}");
+        }
+        // The thanks alone, nothing after it: no hang-up on thanks alone.
+        let (steps, _) = run("th", &evs[..8], true);
+        assert!(!steps.last().unwrap().0.ends_call);
+    }
+
+    #[test]
+    fn an_mm_inside_a_question_keeps_the_question_a_question() {
+        // The goodbye, the AI hums, then the rest of the ask: the break between them
+        // still reads as the same ask.
+        for (lang, bye, rest) in [
+            ("zh-TW", "那就先這樣", "嗎？"),
+            ("en", "That's all", "for today, right?"),
+            ("ja", "ではこれで失礼いたします", "…でよろしいですか"),
+            ("ko", "그럼 이만 끊을게요", "근데 하나만 더 물어봐도 될까요"),
+            ("es", "Bueno, eso es todo", "¿verdad?"),
+            ("de", "Das wäre alles", "oder haben Sie noch etwas?"),
+        ] {
+            for breaks in [false, true] {
+                let evs = [Open, Piece(bye), AiAudio, Open, Piece(rest)];
+                let (steps, w) = run(lang, &evs, breaks);
+                let (step, heard) = steps.last().unwrap();
+                assert!(!step.ends_call, "{lang} breaks={breaks}: hung up on {heard:?}");
+                assert!(caller_withdraws_bye(&w, rest), "{lang} breaks={breaks}: goodbye not taken back {w:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_goodbye_and_the_question_that_follows_it_in_one_turn_are_taken_back() {
+        // No AI speech between them: no break at all, the check is as it was.
+        for (lang, bye, rest) in [
+            ("zh-TW", "好那就先這樣", "對了我想再問一下，明天幾點會到？"),
+            ("ja", "ありがとうございました、では失礼します", "あ、すみません、明日は何時に届きますか"),
+            ("ko", "네 감사합니다, 수고하세요", "아 참, 내일 몇 시에 오나요?"),
+            ("en", "Okay thanks, goodbye", "Wait, what time does it come tomorrow?"),
+            ("es", "Vale, gracias, adiós", "Espera, ¿a qué hora llega mañana?"),
+            ("de", "Okay, danke, auf Wiederhören", "Moment, wann kommt es denn morgen?"),
+        ] {
+            let evs = [Open, Piece(bye), Piece(rest)];
+            let (steps, w) = run(lang, &evs, true);
+            assert!(!steps.last().unwrap().0.ends_call, "{lang}: {w:?}");
+            assert!(caller_withdraws_bye(&w, rest), "{lang}: {w:?}");
+            assert!(!w.contains('\n'), "{lang}: no break without the AI speaking between");
+        }
+    }
+
+    #[test]
+    fn the_break_is_one_line_feed_between_turns_and_a_silent_open_adds_none() {
+        let evs = [Open, Piece("Is that okay"), AiDone("Yes."), Open, Piece(" Thanks"), Piece(" bye")];
+        let (steps, w) = run("en", &evs, true);
+        assert_eq!(w, "Is that okay\nThanks bye");
+        assert!(steps.last().unwrap().0.ends_call);
+        let (_, w) = run("en", &[Open, Piece("Hello"), AiAudio, Open, Piece("  "), Piece(" there")], true);
+        assert_eq!(w, "Hello\nthere");
+    }
+
+    #[test]
+    fn a_break_does_not_change_whether_an_urgent_matter_is_heard() {
+        // The urgent check reads sentences apart at a line feed.
+        for (a, b) in [
+            ("我爸剛剛", "昏倒了，救護車來了"),
+            ("Dad just", "collapsed and the ambulance is here"),
+            ("お父さんが", "倒れて救急車を呼びました"),
+            ("아버지가", "쓰러지셔서 구급차 불렀어요"),
+            ("Papa ist gerade", "zusammengebrochen, der Notarzt ist da"),
+            ("Mi padre se", "desmayó y viene la ambulancia"),
+        ] {
+            let (_, w0) = run("en", &[Open, Piece(a), AiAudio, Open, Piece(b)], false);
+            let (_, w1) = run("en", &[Open, Piece(a), AiAudio, Open, Piece(b)], true);
+            let (u0, u1) = (is_urgent_whitelist_turn(&w0), is_urgent_whitelist_turn(&w1));
+            assert_eq!(u0, u1, "{a:?}+{b:?}: urgent without break={u0}, with break={u1} ({w1:?})");
+        }
+    }
+}
+
+#[cfg(test)]
+mod review_probe_tests {
+    use super::looks_like_carrier_intl_prompt as prompt;
+
+    /// The caller's own sentences, whole call so far: none is the carrier's warning.
+    #[test]
+    fn review_probe_callers_are_not_prompts() {
+        let callers = [
+            "Hi, I'm making an international call from Dubai, is this Mr Sharma?",
+            "Sorry, this is an international call so the line is bad",
+            "Hello, is this Mr Sharma? This is an international call.",
+            "Namaste, international call",
+            "Hello sir, international call, can you hear me",
+            "I am calling you on an international call from Mumbai",
+            "我是银行客服，请提高警惕，谨防电信网络诈骗",
+            "请提高警惕",
+            "您好，这里是工商银行，谨防电信网络诈骗",
+            "您好，我是银行的，谨防电信网络诈骗，请核对一下信息",
+            "这里是银行，谨防电信网络诈骗，请不要把验证码告诉任何人",
+            "你好，我是警察，谨防電信網絡詐騙，請配合調查",
+            "Beware of deception, I am calling from the bank about your card",
+            "Beware of deception",
+            "I am calling from the bank. This call is from outside Hong Kong because I am travelling.",
+            "네 안녕하세요 국제전화입니다",
+            "저는 해외에서 걸려온 전화 받은 적 없어요",
+            "สวัสดีครับ ผมโทรจากต่างประเทศ ขอสายคุณสมชายครับ",
+            "ผมโทรจากต่างประเทศครับ",
+        ];
+        let bad: Vec<String> = callers.iter().filter(|t| prompt(t)).map(|t| format!("treated as carrier prompt: {t}")).collect();
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// Borderline, shortest real-caller utterances that still hold a mark.
+    #[test]
+    fn review_probe_short_callers_are_not_prompts() {
+        let callers = [
+            "International call, sir",
+            "Hello, international call",
+            "International call from the bank",
+            "这里是银行，谨防电信网络诈骗",
+            "谨防电信网络诈骗，我是银行的",
+            "This call is from outside Hong Kong.",
+            "不好意思，這通是國際電話",
+        ];
+        // Existing behavior, not asserted: 「我是小李，这是国际电话」 was read as the warning before this change.
+        let bad: Vec<String> = callers.iter().filter(|t| prompt(t)).map(|t| format!("treated as carrier prompt: {t}")).collect();
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// The real warnings (and what STT does to them) still count.
+    #[test]
+    fn review_probe_real_prompts_still_count() {
+        for t in [
+            "這是國際電話，請注意小心詐騙。",
+            "这是国际电话，请注意小心诈骗",
+            "小心詐騙, 接通國際電話愛注意。",
+            "國際及港澳台來電，謹防電信網絡詐騙",
+            "来电源自香港境外，慎防诈骗",
+            "Call is from outside Hong Kong. Beware of deception.",
+            "해외에서 걸려온 전화입니다. 보이스피싱에 주의하세요.",
+        ] {
+            // "This is an international call." alone names no fraud warning: a caller may say it.
+            assert!(prompt(t), "{t}");
+        }
+        // Unchanged behavior: the caller talking after the prompt flips it.
+        assert!(!prompt("這是國際電話，請注意小心詐騙。喂？不好意思我打錯了"));
     }
 }

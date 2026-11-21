@@ -1760,7 +1760,7 @@ fn lang_index(lang: Lang) -> usize {
     match lang {
         Lang::ZhTw => 0,
         Lang::ZhCn => 1,
-        Lang::En => 2,
+        Lang::En | Lang::Ext(_) => 2,
         Lang::Ja => 3,
         Lang::Ko => 4,
         Lang::Es => 5,
@@ -1914,7 +1914,7 @@ pub fn opening(lang: Lang) -> &'static str {
     match lang {
         Lang::ZhTw => "您好，不好意思打擾一下",
         Lang::ZhCn => "您好，打扰一下",
-        Lang::En => "Hi, sorry to bother you",
+        Lang::En | Lang::Ext(_) => "Hi, sorry to bother you",
         Lang::Ja => "お忙しいところ恐れ入りますが",
         Lang::Ko => "바쁘신데 죄송합니다만",
         Lang::Es => "Hola, ¿cómo está? Disculpe la molestia",

@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "lang": "ru",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "h_ok": "Всё в порядке",
+    "r_ready": "Готово телефонов: {n}",
+    "r_phone_offline": "{name} не подключён"
+  }
+}

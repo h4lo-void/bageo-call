@@ -95,7 +95,7 @@ struct Poller {
 impl Poller {
     fn new(system_locale: String) -> Option<Self> {
         let client = Client::builder().no_proxy().timeout(TIMEOUT).build().ok()?;
-        let lang = status::locale_to_lang(&system_locale).to_string();
+        let lang = status::locale_to_lang(&system_locale);
         Some(Poller {
             client,
             system_locale,
@@ -278,6 +278,37 @@ impl Poller {
                 let retry = self.ui_url.is_empty() && !reported.is_empty() && self.ui_url_tries < UI_URL_QUICK_TRIES;
                 self.ui_url_tries = if opens { 0 } else if retry { self.ui_url_tries + 1 } else { self.ui_url_tries };
                 self.refresh_ui_url = retry;
+            }
+        }
+
+        // Fetch extra desktop strings on demand when Bageo announces an unbundled notify_language
+        // (or when the computer's system locale is an extra language).
+        let sys_code = {
+            let norm = self.system_locale.trim().replace('_', "-").to_lowercase();
+            let first = norm.split(['-', '.', '@']).next().unwrap_or("");
+            match first {
+                "iw" => "he",
+                "in" => "id",
+                other => other,
+            }
+            .to_string()
+        };
+        let wanted_ext = health_json
+            .get("notify_language")
+            .and_then(Value::as_str)
+            .filter(|c| crate::i18n::is_valid_ext_code(c))
+            .map(str::to_string)
+            .or_else(|| crate::i18n::is_valid_ext_code(&sys_code).then_some(sys_code));
+        if let Some(wanted) = wanted_ext {
+            if !crate::i18n::has_extra(&wanted) {
+                let url = format!("{base}calls/i18n/desktop/{wanted}.json");
+                if let Some((200, Some(body))) = get(&self.client, &url, None).await {
+                    let strings = crate::i18n::parse_desktop_payload(&body);
+                    if !strings.is_empty() {
+                        crate::i18n::set_extra(&wanted, strings.clone());
+                        config::save_i18n_cache(app, &wanted, &strings);
+                    }
+                }
             }
         }
 

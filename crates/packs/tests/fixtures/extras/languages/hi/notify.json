@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "lang": "hi",
+  "source": "fedcba9876543210fedcba9876543210fedcba98",
+  "strings": {
+    "n_incoming": "आने वाली कॉल",
+    "n_hidden": "छिपा हुआ नंबर",
+    "n_repeat_body": "{number} ने {count} बार कॉल किया",
+    "sep": ": ",
+    "u_sec": "{} सेकंड",
+    "n_brand": "Bageo Status"
+  },
+  "lists": {
+    "quote": [
+      "“",
+      "”"
+    ],
+    "ap_weekdays": [
+      "सोम",
+      "मंगल",
+      "बुध",
+      "गुरु",
+      "शुक्र",
+      "शनि",
+      "रवि"
+    ]
+  },
+  "formats": {
+    "dt_fmt": "%-d %b, %H:%M",
+    "ap_dt_fmt": "{}, %-d %b, %H:%M"
+  }
+}

@@ -40,7 +40,7 @@ use tracing::{info, warn};
 
 use crate::callback::{ControlRegistry, SmsOutcome, SMS_RESULT_WAIT};
 use crate::calls::{CallRecord, CallStore};
-use crate::locale::{self, Lang, Phrases};
+use crate::locale::{self, Lang, Words};
 use crate::settings_store::RuntimeSettings;
 use crate::tasks::{ReplyMethod, TaskIntent, TaskPatch, TaskRecord, TaskStatus, TaskStore};
 
@@ -407,9 +407,9 @@ fn stamp(t: NaiveDateTime) -> String {
 /// "11/14（週六）15:00", "Sat, Nov 14, 3:00 PM": a time with its weekday, the way
 /// the agent's language writes it.
 pub fn when_text(lang: Lang, t: &NaiveDateTime) -> String {
-    let p = locale::phrases(lang);
-    let wd = p.ap_weekdays[t.weekday().num_days_from_monday() as usize];
-    t.format(p.ap_dt_fmt).to_string().replacen("{}", wd, 1)
+    let p = locale::words(lang);
+    let wd = &p.ap_weekdays[t.weekday().num_days_from_monday() as usize];
+    t.format(&p.ap_dt_fmt).to_string().replacen("{}", &wd, 1)
 }
 
 fn when_range(lang: Lang, start: &str, end: &str) -> String {
@@ -419,7 +419,7 @@ fn when_range(lang: Lang, start: &str, end: &str) -> String {
     let mut out = when_text(lang, &s);
     if let Some(e) = parse_local(end).filter(|e| *e > s) {
         if e.date() == s.date() {
-            out.push_str(&format!("–{}", e.format(locale::phrases(lang).ap_end_fmt)));
+            out.push_str(&format!("–{}", e.format(&locale::words(lang).ap_end_fmt)));
         } else {
             out.push_str(&format!(" – {}", when_text(lang, &e)));
         }
@@ -447,7 +447,7 @@ impl Appointment {
     /// owner's reply, the `.ics` file.
     pub fn calendar_event(&self) -> crate::calendar::Event {
         let title = if self.title.trim().is_empty() {
-            locale::fill(texts().e_appointment, "")
+            locale::fill(&texts().e_appointment, "")
                 .trim_end_matches([' ', '—', '-'])
                 .to_string()
         } else {
@@ -541,14 +541,14 @@ impl Earlier {
 
 /// What the owner reads (cards, results, calendar entries): the notification
 /// language. Texts to the caller use the AI's ([`sms_text`]).
-fn texts() -> &'static Phrases {
-    locale::notify_phrases()
+fn texts() -> &'static Words {
+    locale::notify_words()
 }
 
 fn display_caller(caller_id: &str) -> &str {
     let t = caller_id.trim();
     if t.is_empty() {
-        texts().n_hidden
+        &texts().n_hidden
     } else {
         t
     }
@@ -1081,7 +1081,7 @@ pub fn answer_is_silent(name: &str, response: &Value) -> bool {
 /// number and name, what it is about (the `.ics` and "Add to calendar" too).
 pub fn event_description(caller_id: &str, appt: &Appointment) -> String {
     let p = texts();
-    let sep = p.sep;
+    let sep = p.sep.as_str();
     let mut parts = vec![format!("{}{sep}{}", p.n_number, display_caller(caller_id))];
     if !appt.caller_name.trim().is_empty() {
         parts.push(format!("{}{sep}{}", p.ap_name, appt.caller_name.trim()));
@@ -1417,7 +1417,7 @@ fn read_back_example(lang: Lang, t: NaiveDateTime) -> String {
             let mon = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"][m_idx];
             format!("\"Então fica para {wd}, {} de {mon}, às {:02}:{:02}, certo?\"", t.day(), t.hour(), t.minute())
         }
-        Lang::En => format!(
+        Lang::En | Lang::Ext(_) => format!(
             "\"So that's {}, {} {}, at {hour12}:{:02} {}, right?\"",
             t.format("%A"),
             t.format("%B"),
@@ -1916,7 +1916,7 @@ pub fn sms_number_on(caller_id: &str, sim_country: Option<&str>) -> Option<Strin
 /// the caller's own words and is never sent back from the owner's number (it
 /// could carry a link or a chat ID). No owner name set: the greeting goes without it.
 pub fn sms_text(lang: Lang, owner: &str, appt: &Appointment, confirmed: bool) -> String {
-    let p = locale::phrases(lang);
+    let p = locale::words(lang);
     let owner: String = owner
         .chars()
         .filter(|c| !c.is_control() && *c != '{' && *c != '}')
@@ -1926,13 +1926,13 @@ pub fn sms_text(lang: Lang, owner: &str, appt: &Appointment, confirmed: bool) ->
     let hi = if owner.is_empty() {
         p.ap_sms_hi.to_string()
     } else {
-        locale::fill(p.ap_sms_hi_owner, owner)
+        locale::fill(&p.ap_sms_hi_owner, owner)
     };
     let when = appt.start_text(lang);
     let body = if confirmed {
-        locale::fill(p.ap_sms_ok, &when)
+        locale::fill(&p.ap_sms_ok, &when)
     } else {
-        locale::fill(p.ap_sms_no, &when)
+        locale::fill(&p.ap_sms_no, &when)
     };
     format!("{hi}{body}")
         .trim()
@@ -1944,17 +1944,17 @@ pub fn sms_text(lang: Lang, owner: &str, appt: &Appointment, confirmed: bool) ->
 /// [`Appointment::sms`] code and the line the owner reads.
 fn sms_report(out: &SmsOutcome, shown_number: &str) -> (String, String) {
     let p = texts();
-    let not_sent = |why: &str| locale::fill(p.ap_sms_not_sent, why);
+    let not_sent = |why: &str| locale::fill(&p.ap_sms_not_sent, why);
     match out {
-        SmsOutcome::Sent => ("sent".to_string(), locale::fill(p.ap_sms_sent, shown_number)),
-        SmsOutcome::Offline => ("offline".to_string(), not_sent(p.ap_sms_offline)),
-        SmsOutcome::Unsupported => ("old_app".to_string(), not_sent(p.ap_sms_old_app)),
-        SmsOutcome::Timeout => ("timeout".to_string(), not_sent(p.ap_sms_timeout)),
-        SmsOutcome::Busy => ("busy".to_string(), not_sent(p.ap_sms_busy)),
+        SmsOutcome::Sent => ("sent".to_string(), locale::fill(&p.ap_sms_sent, shown_number)),
+        SmsOutcome::Offline => ("offline".to_string(), not_sent(&p.ap_sms_offline)),
+        SmsOutcome::Unsupported => ("old_app".to_string(), not_sent(&p.ap_sms_old_app)),
+        SmsOutcome::Timeout => ("timeout".to_string(), not_sent(&p.ap_sms_timeout)),
+        SmsOutcome::Busy => ("busy".to_string(), not_sent(&p.ap_sms_busy)),
         // The phone's code in words; only one this agent does not know as it came.
         SmsOutcome::Failed(code) => (
             code.clone(),
-            not_sent(&sms_code_text(locale::notify_lang(), code).map_or_else(|| locale::fill(p.ap_sms_code, code), str::to_string)),
+            not_sent(&sms_code_text(locale::notify_lang(), code).map_or_else(|| locale::fill(&p.ap_sms_code, code), str::to_string)),
         ),
     }
 }
@@ -2003,14 +2003,14 @@ pub fn task_json(rt: &RuntimeSettings, task: &TaskRecord) -> Value {
 /// own codes and the phone's) in the owner's words, in `lang`. None for a code
 /// this agent does not know, which is then shown as it came.
 pub fn sms_code_text(lang: Lang, code: &str) -> Option<&'static str> {
-    let p = locale::phrases(lang);
+    let p = locale::words(lang);
     let code = code.trim();
     let own = match code {
-        "offline" => Some(p.ap_sms_offline),
-        "old_app" => Some(p.ap_sms_old_app),
-        "timeout" => Some(p.ap_sms_timeout),
-        "busy" => Some(p.ap_sms_busy),
-        "no_number" => Some(p.ap_sms_cannot),
+        "offline" => Some(p.ap_sms_offline.as_str()),
+        "old_app" => Some(p.ap_sms_old_app.as_str()),
+        "timeout" => Some(p.ap_sms_timeout.as_str()),
+        "busy" => Some(p.ap_sms_busy.as_str()),
+        "no_number" => Some(p.ap_sms_cannot.as_str()),
         _ => None,
     };
     own.or_else(|| phone_sms_code(lang, code))
@@ -2046,7 +2046,7 @@ fn phone_sms_code(lang: Lang, code: &str) -> Option<&'static str> {
             "手机 App 出错了",
             "找不到指定的 SIM 卡",
         ],
-        Lang::En => [
+        Lang::En | Lang::Ext(_) => [
             "the phone app may not send texts",
             "the number or the text was not accepted",
             "no mobile signal",
@@ -2223,7 +2223,7 @@ fn reply_words(lang: Lang) -> ReplyWords {
     match lang {
         Lang::ZhTw => w("回覆方式", "按同意或不同意後，AI 會打電話告訴對方", "未顯示號碼，沒辦法通知對方", "沒有通知對方", "AI 正在回電給 {}", "AI 沒有回電：{}", "沒有可以撥號的手機連線", "手機沒收到撥號指令"),
         Lang::ZhCn => w("回复方式", "按同意或不同意后，AI 会打电话告诉对方", "未显示号码，没办法通知对方", "没有通知对方", "AI 正在回拨给 {}", "AI 没有回拨：{}", "没有可以拨号的手机连接", "手机没收到拨号指令"),
-        Lang::En => w("Reply", "the AI calls them back once you tap Accept or Decline", "hidden number: the caller can't be told", "the caller was not told", "The AI is calling {} back", "No call-back: {}", "no phone is connected to place the call", "the phone did not get the request to call"),
+        Lang::En | Lang::Ext(_) => w("Reply", "the AI calls them back once you tap Accept or Decline", "hidden number: the caller can't be told", "the caller was not told", "The AI is calling {} back", "No call-back: {}", "no phone is connected to place the call", "the phone did not get the request to call"),
         Lang::Ja => w("返事の方法", "承諾またはお断りの後、AI が電話で伝えます", "非通知のため相手に伝えられません", "相手には伝えていません", "AI が {} に折り返し電話しています", "折り返し電話をかけていません：{}", "電話をかけられるスマホが接続されていません", "スマホに発信の指示が届きませんでした"),
         Lang::Ko => w("회신 방법", "수락하거나 거절하면 AI가 전화로 알려 줍니다", "발신번호 표시 제한이라 알릴 수 없습니다", "상대에게 알리지 않았습니다", "AI가 {}에게 다시 전화하는 중입니다", "다시 전화하지 않았습니다: {}", "전화를 걸 수 있는 휴대폰이 연결되어 있지 않음", "휴대폰이 발신 요청을 받지 못함"),
         Lang::Es => w("Respuesta", "la IA le llama para decírselo cuando aceptes o rechaces", "número oculto: no se le puede avisar", "no se avisó a quien llamó", "La IA está llamando a {}", "No se devolvió la llamada: {}", "no hay ningún teléfono conectado para llamar", "el teléfono no recibió la orden de llamar"),
@@ -3090,7 +3090,7 @@ async fn notify_callback(ctx: &CallbackCtx<'_>, task_id: &str, code: &str) {
 
 /// The title of everything about a call-back: "AI 回電：<number>".
 pub fn callback_headline(lang: Lang, number: &str) -> String {
-    format!("{}{}{}", callback_words(lang).title, locale::phrases(lang).sep, number.trim())
+    format!("{}{}{}", callback_words(lang).title, locale::words(lang).sep, number.trim())
 }
 
 /// A call-back's result ([`Appointment::call`]) in the owner's words.
@@ -3140,7 +3140,7 @@ fn callback_words(lang: Lang) -> CallbackWords {
     match lang {
         Lang::ZhTw => w("AI 回電", "等打給同一個號碼的前一通回電結束，AI 再撥", "AI 沒有回電：這個號碼不能回電（國外、免付費、加值或特殊號碼）", "AI 回電接通，已告訴對方結果", "AI 回電了，對方沒接", "AI 回電撥不出去", "AI 回電的通話已結束"),
         Lang::ZhCn => w("AI 回拨", "等拨给同一个号码的前一通回拨结束，AI 再拨", "AI 没有回拨：这个号码不能回拨（境外、免费、增值或特殊号码）", "AI 回拨接通，已告诉对方结果", "AI 回拨了，对方没接", "AI 回拨拨不出去", "AI 回拨的通话已结束"),
-        Lang::En => w("AI call-back", "The AI calls once its earlier call-back to the same number has ended", "No call-back: this number can't be called back (abroad, toll-free, premium or a short code)", "The AI's call-back got through and the caller was told", "The AI called back; nobody answered", "The AI's call-back couldn't be placed", "The AI's call-back has ended"),
+        Lang::En | Lang::Ext(_) => w("AI call-back", "The AI calls once its earlier call-back to the same number has ended", "No call-back: this number can't be called back (abroad, toll-free, premium or a short code)", "The AI's call-back got through and the caller was told", "The AI called back; nobody answered", "The AI's call-back couldn't be placed", "The AI's call-back has ended"),
         Lang::Ja => w("AI の折り返し電話", "同じ番号への前の折り返し電話が終わってから AI が電話します", "折り返し電話なし：この番号には折り返せません（海外・フリーダイヤル・有料・短縮番号）", "AI の折り返し電話がつながり、結果を伝えました", "AI が電話しましたが、相手は出ませんでした", "AI の折り返し電話をかけられませんでした", "AI の折り返し電話は終わりました"),
         Lang::Ko => w("AI 회신 전화", "같은 번호로 건 앞의 회신 전화가 끝나면 AI가 전화합니다", "회신 전화 없음: 이 번호로는 다시 걸 수 없습니다(해외, 수신자 부담, 유료, 특수 번호)", "AI의 회신 전화가 연결되어 결과를 알렸습니다", "AI가 전화했지만 받지 않았습니다", "AI가 전화를 걸지 못했습니다", "AI의 회신 전화가 끝났습니다"),
         Lang::Es => w("Llamada de la IA", "La IA llamará cuando termine su llamada anterior al mismo número", "Sin llamada: a este número no se puede llamar (extranjero, gratuito, de tarificación especial o corto)", "La llamada de la IA conectó y se le dio la respuesta", "La IA llamó y nadie contestó", "La IA no pudo hacer la llamada", "La llamada de la IA terminó"),
@@ -3221,25 +3221,25 @@ pub fn summary_line(appt: &Appointment, link: &str) -> String {
 
 fn summary_line_one(appt: &Appointment, link: &str) -> String {
     let lang = locale::notify_lang();
-    let p = locale::phrases(lang);
+    let p = locale::words(lang);
     let mut s = format!("{}{}{}", p.ap_pending, p.sep, appt.headline(lang));
     if appt.status == PENDING {
         let link = link.trim();
         let web = if link.is_empty() {
             p.ap_web_console.to_string()
         } else {
-            locale::fill(p.ap_web_confirm, link)
+            locale::fill(&p.ap_web_confirm, link)
         };
         s.push_str(" — ");
         s.push_str(&web);
     }
     if appt.time_unconfirmed {
         s.push_str("\n");
-        s.push_str(p.ap_time_unconfirmed);
+        s.push_str(&p.ap_time_unconfirmed);
     }
     for e in &appt.replaced {
         s.push('\n');
-        s.push_str(&locale::fill(p.ap_replaced, &e.when(lang)));
+        s.push_str(&locale::fill(&p.ap_replaced, &e.when(lang)));
     }
     s
 }
@@ -3312,8 +3312,8 @@ async fn create_one(store: &TaskStore, call: &CallRecord, appt: &Appointment) ->
 /// `link`: the call's page in the web console (a line of its own when known).
 pub fn card_text(rt: &RuntimeSettings, task: &TaskRecord, appt: &Appointment, link: &str) -> (String, String) {
     let lang = locale::notify_lang();
-    let p = locale::phrases(lang);
-    let sep = p.sep;
+    let p = locale::words(lang);
+    let sep = p.sep.as_str();
     let mut lines = vec![
         format!("{}{sep}{}", p.n_number, display_caller(&task.caller_id)),
         format!("{}{sep}{}", p.n_time, appt.when(lang)),
@@ -3340,7 +3340,7 @@ pub fn card_text(rt: &RuntimeSettings, task: &TaskRecord, appt: &Appointment, li
         Reply::None => format!("{}{sep}{}", p.ap_sms, p.ap_sms_cannot),
     });
     for e in &appt.replaced {
-        lines.push(locale::fill(p.ap_replaced, &e.when(lang)));
+        lines.push(locale::fill(&p.ap_replaced, &e.when(lang)));
     }
     if !link.trim().is_empty() {
         lines.push(format!("{}{sep}{}", p.ap_web_label, link.trim()));
@@ -3383,7 +3383,7 @@ pub async fn after_summary(
         return;
     }
     match crate::tg_inbound::send_task_card_labeled(
-        http, token, chat, &title, &task.id, &body, p.ap_confirm, p.ap_decline,
+        http, token, chat, &title, &task.id, &body, &p.ap_confirm, &p.ap_decline,
     )
     .await
     {
@@ -3600,7 +3600,7 @@ async fn decide_inner_with(
     reply: Option<Reply>,
 ) -> Result<(TaskRecord, String, Decision)> {
     let lang = locale::notify_lang();
-    let p = locale::phrases(lang);
+    let p = locale::words(lang);
     let already = |task: TaskRecord| {
         let headline = task.appointment.as_ref().map(|a| a.headline(lang)).unwrap_or_default();
         (task, format!("{}\n{headline}", p.ap_already).trim_end().to_string(), Decision::Already)
@@ -3675,7 +3675,7 @@ async fn decide_inner_with(
         // One tap puts it in the owner's own calendar (the one they chose).
         let link = calendar_link(rt, console, &task, &appt);
         if !link.is_empty() {
-            lines.push(locale::fill(p.ap_cal_link, &link));
+            lines.push(locale::fill(&p.ap_cal_link, &link));
         }
     }
     store
@@ -3697,7 +3697,7 @@ async fn decide_inner_with(
         !appt.event_id.is_empty(),
         appt.sms
     );
-    let head = if confirm { p.ap_confirmed } else { p.ap_declined };
+    let head = if confirm { &p.ap_confirmed } else { &p.ap_declined };
     let mut text = format!("{head}\n{headline}");
     for l in lines {
         text.push('\n');
@@ -3784,14 +3784,14 @@ pub fn delete_voided(voided: &[Earlier]) -> Vec<Earlier> {
 /// The summary's line for an event that is void but still in the calendar.
 pub fn void_failed_line(e: &Earlier) -> String {
     let lang = locale::notify_lang();
-    locale::fill(locale::phrases(lang).ap_void_failed, &e.when(lang))
+    locale::fill(&locale::words(lang).ap_void_failed, &e.when(lang))
 }
 
 /// The summary line for an event deleted because the summary judged the call
 /// a sales call afterwards.
 pub fn sales_void_line(e: &Earlier) -> String {
     let lang = locale::notify_lang();
-    locale::fill(locale::phrases(lang).ap_sales_voided, &e.when(lang))
+    locale::fill(&locale::words(lang).ap_sales_voided, &e.when(lang))
 }
 
 /// Everything an appointment put in the calendar (the event and earlier ones,
@@ -4011,7 +4011,7 @@ mod tests {
             for confirmed in [true, false] {
                 let t = sms_text(l, "Alex", &bait, confirmed);
                 assert!(!t.contains("LINE") && !t.contains("http") && !t.contains("scam01"), "{l:?}: {t}");
-                assert!(t.contains(locale::phrases(l).ap_weekdays[5]), "{l:?}: {t}");
+                assert!(t.contains(&locale::words(l).ap_weekdays[5]), "{l:?}: {t}");
             }
         }
         assert_eq!(
@@ -4028,23 +4028,23 @@ mod tests {
     fn appointment_phrases_exist_in_every_language() {
         let t = at(2026, 11, 16, 9, 5); // a Monday
         for l in locale::ALL {
-            let p = locale::phrases(l);
-            for s in [p.ap_sms_hi_owner, p.ap_sms_ok, p.ap_sms_no, p.ap_replaced, p.ap_cal_link, p.ap_sms_sent, p.ap_sms_not_sent, p.ap_sms_code, p.ap_void_failed, p.ap_sales_voided] {
+            let p = locale::words(l);
+            for s in [&p.ap_sms_hi_owner, &p.ap_sms_ok, &p.ap_sms_no, &p.ap_replaced, &p.ap_cal_link, &p.ap_sms_sent, &p.ap_sms_not_sent, &p.ap_sms_code, &p.ap_void_failed, &p.ap_sales_voided] {
                 assert_eq!(s.matches("{}").count(), 1, "{l:?}: {s}");
             }
-            for s in [p.ap_sms_hi, p.ap_confirm, p.ap_decline, p.ap_card_title, p.ap_what, p.ap_name, p.ap_sms, p.ap_sms_will, p.ap_sms_off, p.ap_sms_cannot, p.ap_pending, p.ap_confirmed, p.ap_declined, p.ap_sms_old_app, p.ap_sms_offline, p.ap_sms_timeout, p.ap_already, p.ap_sms_busy] {
+            for s in [&p.ap_sms_hi, &p.ap_confirm, &p.ap_decline, &p.ap_card_title, &p.ap_what, &p.ap_name, &p.ap_sms, &p.ap_sms_will, &p.ap_sms_off, &p.ap_sms_cannot, &p.ap_pending, &p.ap_confirmed, &p.ap_declined, &p.ap_sms_old_app, &p.ap_sms_offline, &p.ap_sms_timeout, &p.ap_already, &p.ap_sms_busy] {
                 assert!(!s.trim().is_empty() && !s.contains('{'), "{l:?}: {s}");
             }
             // The buttons are words ("同意" / "不同意"), no ✅ / ❌; nothing says Google.
             assert!(!p.ap_confirm.contains('✅') && !p.ap_decline.contains('❌') && p.ap_confirm != p.ap_decline, "{l:?}");
-            for s in [p.ap_cal_link, p.ap_sms_will] {
+            for s in [&p.ap_cal_link, &p.ap_sms_will] {
                 assert!(!s.contains("Google"), "{l:?}: {s}");
             }
             assert_eq!(p.ap_dt_fmt.matches("{}").count(), 1, "{l:?}");
             assert!(!p.ap_end_fmt.contains('{'), "{l:?}");
             let w = when_text(l, &t);
             let hour = if l == Lang::En { "9:05 AM" } else if l == Lang::Fr { "09h05" } else { "09:05" };
-            assert!(w.contains(hour) && w.contains(p.ap_weekdays[0]) && !w.contains('%'), "{l:?}: {w}");
+            assert!(w.contains(hour) && w.contains(&p.ap_weekdays[0]) && !w.contains('%'), "{l:?}: {w}");
         }
         assert_eq!(when_text(Lang::ZhTw, &t), "11/16（週一）09:05");
         assert_eq!(when_text(Lang::En, &t), "Mon, Nov 16, 9:05 AM");
@@ -4239,11 +4239,11 @@ mod tests {
         // No address other devices can open: where to go instead.
         assert_eq!(summary_line(&a, " "), "預約待你確認：11/14（週六）15:00–16:00 看房 — 到網頁控制台確認");
         for l in locale::ALL {
-            let p = locale::phrases(l);
+            let p = locale::words(l);
             assert_eq!(p.ap_web_confirm.matches("{}").count(), 1, "{l:?}");
             assert!(!p.ap_web_console.trim().is_empty() && !p.ap_web_console.contains('{'), "{l:?}");
             assert!(!p.ap_web_label.trim().is_empty() && !p.ap_web_label.contains('{'), "{l:?}");
-            assert!(locale::fill(p.ap_web_confirm, "http://x/").ends_with("http://x/"), "{l:?}");
+            assert!(locale::fill(&p.ap_web_confirm, "http://x/").ends_with("http://x/"), "{l:?}");
         }
     }
 
@@ -5187,14 +5187,14 @@ mod tests {
         let mut a = old.clone();
         a.time_unconfirmed = true;
         assert_eq!(serde_json::to_value(&a).unwrap()["time_unconfirmed"], true);
-        let warn = locale::phrases(locale::notify_lang()).ap_time_unconfirmed;
+        let warn = locale::words(locale::notify_lang()).ap_time_unconfirmed.as_str();
         assert!(!warn.is_empty());
-        assert!(summary_line(&a, "").contains(warn) && !summary_line(&old, "").contains(warn));
+        assert!(summary_line(&a, "").contains(&warn) && !summary_line(&old, "").contains(&warn));
         let mut rt = RuntimeSettings::from_base(&crate::config::Settings::from_env());
         rt.country_code = "886".into();
         let task = task_for("0912345678", &a);
-        assert!(card_text(&rt, &task, &a, "").1.contains(warn));
-        assert!(!card_text(&rt, &task, &old, "").1.contains(warn));
+        assert!(card_text(&rt, &task, &a, "").1.contains(&warn));
+        assert!(!card_text(&rt, &task, &old, "").1.contains(&warn));
     }
 
     #[test]

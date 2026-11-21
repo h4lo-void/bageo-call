@@ -61,9 +61,11 @@ body.top .toast{transform:translateY(-6px)}
   const SHOW_SUMMARY_MS = 10000; // a summary takes longer to read
   const AFTER_HOVER_MS = 2500;
 
+  let baseI18n = {};
   let I18N = {};
   let timer = 0;
   let closing = 0;
+  let lastNotice = null;
   // macOS shows it under the menu bar, Windows above the taskbar.
   if (/Mac/i.test(navigator.userAgent)) document.body.classList.add("top");
 
@@ -75,6 +77,7 @@ body.top .toast{transform:translateY(-6px)}
       return s;
     };
     document.documentElement.lang = lang;
+    document.documentElement.dir = ["ar", "he", "fa", "ur", "ps", "sd"].includes(lang) ? "rtl" : "ltr";
     const summary = n.kind === "summary";
     const label = t(summary ? "n_summary" : n.kind === "sms" ? "n_sms" : "n_call");
     const who = String(n.who || "").trim();
@@ -105,6 +108,10 @@ body.top .toast{transform:translateY(-6px)}
   }
   function show(n) {
     if (!n) { invoke("toast_close").catch(() => {}); return; }
+    lastNotice = n;
+    if (n.lang && !I18N[n.lang]) {
+      loadExtra().then((loaded) => { if (loaded && lastNotice === n) render(n); });
+    }
     // A new one came while the last was fading out: keep the window.
     clearTimeout(closing);
     render(n);
@@ -122,8 +129,24 @@ body.top .toast{transform:translateY(-6px)}
   $("toast").addEventListener("mouseleave", () => arm(AFTER_HOVER_MS));
   document.addEventListener("contextmenu", (ev) => ev.preventDefault());
 
+  async function loadExtra() {
+    try {
+      const extra = await invoke("get_extra_i18n");
+      if (Array.isArray(extra) && typeof extra[0] === "string" && extra[1] && typeof extra[1] === "object") {
+        const [code, strings] = extra;
+        if (!(code in baseI18n)) {
+          I18N = Object.assign({ [code]: strings }, baseI18n);
+          return true;
+        }
+      }
+    } catch (_) { /* the nine languages still work */ }
+    return false;
+  }
+
   async function start() {
-    try { I18N = await (await fetch("i18n.json")).json(); } catch (_) { I18N = {}; }
+    try { baseI18n = await (await fetch("i18n.json")).json(); } catch (_) { /* nothing to show */ }
+    I18N = Object.assign({}, baseI18n);
+    await loadExtra();
     T.event.listen("toast", (e) => show(e.payload));
     let n = null;
     try { n = await invoke("toast_get"); } catch (_) { /* nothing to show */ }
