@@ -20,6 +20,96 @@
         "Appreciate you calling—take care and have a good rest of your day."
       ],
       "reject": "The wireless customer you are calling is not available. Please try your call again later."
+    },
+    "jp": {
+      "lang": "ja",
+      "gemini_lang": "ja-JP",
+      "preview": [
+        "はい、もしもし。お電話ありがとうございます。",
+        "はい、承知しました。お伝えしておきますね。",
+        "ありがとうございました。失礼いたします。"
+      ],
+      "reject": "おかけになった電話は、ただいま電話に出ることができません。しばらくたってからおかけ直しください。"
+    },
+    "kr": {
+      "lang": "ko",
+      "gemini_lang": "ko-KR",
+      "preview": [
+        "네, 여보세요. 전화 주셔서 감사합니다.",
+        "네, 메모해 두었습니다. 전해 드릴게요.",
+        "네, 감사합니다. 좋은 하루 보내세요."
+      ],
+      "reject": "지금은 전화를 받을 수 없습니다. 잠시 후 다시 걸어 주시기 바랍니다."
+    },
+    "cn": {
+      "lang": "zh-CN",
+      "gemini_lang": "cmn",
+      "preview": [
+        "喂，您好，请问是哪位？",
+        "行，这事我先记下了，回头跟他说一声。",
+        "好嘞，麻烦您了，先这样，再见。"
+      ],
+      "reject": "对不起，您拨打的电话暂时无法接通，请稍后再拨。"
+    },
+    "de": {
+      "lang": "de",
+      "gemini_lang": "de-DE",
+      "preview": [
+        "Hallo, guten Tag, wie kann ich Ihnen helfen?",
+        "Alles klar, ich habe mir das notiert und gebe es weiter.",
+        "Vielen Dank für Ihren Anruf, einen schönen Tag noch."
+      ],
+      "reject": "Der gewünschte Gesprächspartner ist zurzeit nicht erreichbar. Bitte versuchen Sie es später noch einmal."
+    },
+    "fr": {
+      "lang": "fr",
+      "gemini_lang": "fr-FR",
+      "preview": [
+        "Oui allô, bonjour, je vous écoute.",
+        "D'accord, c'est bien noté, je lui transmets le message tout de suite.",
+        "Merci beaucoup pour votre appel, très bonne journée."
+      ],
+      "reject": "Désolé, votre correspondant n'est pas joignable actuellement, veuillez rappeler ultérieurement."
+    },
+    "br": {
+      "lang": "pt",
+      "gemini_lang": "pt-BR",
+      "preview": [
+        "Alô? Oi, tudo bem? Quem está falando?",
+        "Ah, entendi, já anotei o seu recado e vou avisar logo mais.",
+        "Combinado, agradeço a ligação, tenha um ótimo dia. Tchau!"
+      ],
+      "reject": "O número chamado não está disponível no momento ou está fora da área de cobertura; por favor tente novamente mais tarde."
+    },
+    "mx": {
+      "lang": "es",
+      "gemini_lang": "es-US",
+      "preview": [
+        "¿Bueno? Hola, buenas, ¿con quién tengo el gusto?",
+        "Ah, muy bien, ya tomé nota del recado para avisarle enseguida.",
+        "Perfecto, gracias por llamar, que tenga buen día. Hasta luego."
+      ],
+      "reject": "El número que usted marcó no está disponible por el momento; por favor intente llamar más tarde."
+    },
+    "es": {
+      "lang": "es",
+      "gemini_lang": "es-US",
+      "preview": [
+        "¿Sí, dígame? Hola, buenas, ¿en qué puedo ayudarle?",
+        "Vale, perfecto, tomo nota ahora mismo para pasarle el recado.",
+        "Muchas gracias por llamar, que tenga muy buen día. Hasta luego."
+      ],
+      "reject": "El teléfono móvil al que llama está apagado o fuera de cobertura en este momento. Por favor, inténtelo más tarde."
+    },
+    "gb-ie": {
+      "lang": "en",
+      "gemini_lang": "en-US",
+      "preview": [
+        "Hello, thanks for ringing—how can I help you today?",
+        "Right, got that—I'll make sure that message gets passed straight on.",
+        "Thanks very much for calling, take care now, bye."
+      ],
+      "reject": "Sorry, it has not been possible to connect your call, as the person you have called is not available. Please try again later."
     }
   }
 }

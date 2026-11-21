@@ -83,7 +83,9 @@ mod tests {
 
     #[test]
     fn every_region_has_three_short_lines_in_a_language_the_agent_speaks() {
-        assert!(codes().contains(&"tw") && codes().contains(&"us"));
+        for code in ["tw", "us", "jp", "kr", "cn", "de", "fr", "br", "mx", "es", "gb-ie"] {
+            assert!(codes().contains(&code), "{code}");
+        }
         for code in codes() {
             let r = for_region(code).unwrap();
             assert!(r.lang().is_some(), "{code}: {}", r.lang);
@@ -119,6 +121,28 @@ mod tests {
         }
         for good in ["cmn", "en-US", "es-US", "pt-BR", "ja-JP", "ko-KR", "de-DE", "fr-FR"] {
             assert!(bageo_packs::data::is_official_lang(good), "{good}");
+        }
+    }
+
+    #[test]
+    fn regions_of_one_language_have_packs_of_their_own() {
+        use std::collections::HashSet;
+        let mut ids = HashSet::new();
+        for code in codes() {
+            let lang = for_region(code).and_then(|r| r.lang()).unwrap();
+            let id = crate::voice_packs::folder_id(lang.code(), Some(code));
+            assert!(crate::voice_packs::valid_id(&id), "{id}");
+            assert!(ids.insert(id.clone()), "{id} is made twice");
+        }
+        for id in ["es-mx", "es-es", "en-us", "en-gb-ie", "pt-br", "zh-cn-cn", "zh-tw-tw"] {
+            assert!(ids.contains(id), "{id}");
+        }
+        // Same language and Gemini code, different lines.
+        for (a, b) in [("mx", "es"), ("us", "gb-ie")] {
+            let (x, y) = (for_region(a).unwrap(), for_region(b).unwrap());
+            assert_eq!((x.lang(), &x.gemini_lang), (y.lang(), &y.gemini_lang), "{a} {b}");
+            assert_ne!(x.preview, y.preview, "{a} {b}");
+            assert_ne!(x.reject, y.reject, "{a} {b}");
         }
     }
 
