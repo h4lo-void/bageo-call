@@ -45,6 +45,7 @@ mod debug_probe;
 mod dialect;
 mod summary;
 mod dtmf;
+mod end_call;
 mod errands;
 mod extract;
 mod fulfill;
