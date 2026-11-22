@@ -263,6 +263,7 @@ volumes go to zero.
   switch is unfinished.
 - If the app says the Bageo module is not running, check in Magisk or KernelSU
   that **Bageo Uplink** is enabled, then reboot the phone.
+- The app shows the mode the phone is really in, not the one you asked for: it changes only after the switch has finished. A switch to AI answering that fails puts the phone back as a normal phone, and at the next boot the module repairs a normal phone that was left half switched (Google Phone turned off, or Bageo still the phone app).
 - If the app says *Do Not Disturb is still on* when you switch to a normal phone,
   open **Settings → Modes** on the phone, turn off the mode the app names (for
   example *Do Not Disturb (Bageo)* or *Bedtime*), then switch again. The app does

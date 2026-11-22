@@ -47,11 +47,14 @@ flowchart LR
 |---|---|
 | `main.rs` | 启动、手机的 WebSocket 接口、来电状态机、响铃预热、通话结束后的处理流程。 |
 | `gemini_live.rs` | 每通电话一条 Live 连接：音频转发、回声检查、插话、挂断规则、推销检测与切换到陪聊模式、连接续接，以及拨出用的模式（等对方接起、回铃音过滤、工具调用）。 |
+| `reply_latency.rs` | 量测来电者每次等了多久才听到 AI 回话，写进日志，不影响通话。 |
 | `prompts.rs`、`locale.rs` | 按语言和接听身份组装每通电话的系统提示词；每种语言要说和要听的语句。 |
+| `prompt_book.rs` | 提示词簿：给 AI 的说法以数据存放（`data/prompts/<语言>.json`），“检查更新”可以带来新版。 |
 | `closing.rs` | 跨 26 种语言词表的本地挂断状态机：判断准备挂断、道别语、继续说话与兼作问候的道别词。 |
 | `scenario.rs`、`preflight.rs` | 来电场景小提示（快递、银行核对刷卡、打错电话…）与代打拨出前补问／可接受时间整理。 |
+| `place_habits.rs` | 各地各类店家在电话里常问什么（来自当地数据），给 AI 代打用。 |
 | `stall_review.rs` | 进入陪聊前的复审：`gemini-flash-lite-latest` 在 1.5 秒内把通话判为 `scam_or_sales`、`normal`、`ivr_recording` 或 `too_early`，并说出是数据库里哪一种话术、有多确定。 |
-| `scam_db.rs` | 推销与诈骗数据库（`data/scam_db.json`：46 种话术类型、27 种语言的关键词、号码提示）、你在 `config/scam_db.local.json` 加的内容，以及每个号码的标记。 |
+| `scam_db.rs` | 推销与诈骗数据库（内置 `data/packs/bageo-scams.json.gz`：话术类型、各语言关键词、号码提示）、你在 `config/scam_db.local.json` 加的内容，以及每个号码的标记。 |
 | `appointments.rs` | 普通通话的预约工具、由它们生成的待处理事项、同意／不同意、用短信或 AI 回拨告诉对方，以及共用的拨出队列。 |
 | `urgent_call.rs`、`urgency.rs` | 多语言急事检测，以及转接来电试验用的三方通话合并（`add_call`）。 |
 | `callback.rs` | 手机的控制连接：`place_call`、`send_sms` 及其结果，发到正确的手机。 |
@@ -63,16 +66,20 @@ flowchart LR
 | `tasks.rs` | “待处理事项”背后的存储。 |
 | `sms_store.rs` | 按号码分组保存的短信对话，以及通过手机发出的回复。 |
 | `notify.rs`、`gmail.rs`、`tg_inbound.rs` | 32 种通知渠道、通过 SMTP 发邮件、Telegram 按钮。 |
+| `used_links.rs` | 记住哪些通知一键链接已经用过，让每个链接只能用一次。 |
 | `control/` | Telegram、Discord、Slack 与 Matrix 的远程指令与自然语言解析。 |
 | `mcp.rs` | 内置 Model Context Protocol（`POST /mcp`）服务器，以及跨平台通用指令接口（`POST /calls/api/control/inbound`）。 |
 | `calls.rs`、`calls_http.rs` | 通话记录、录音与文字记录；网页控制台的 REST API。 |
 | `backup.rs`、`backup_crypt.rs` | 定时与手动备份、选择性导出／导入，以及 `.bageo` 加密（Argon2id + XChaCha20-Poly1305）。 |
 | `settings_store.rs` | `.env` 加上控制台保存的设置，修改后无需重启。 |
+| `pack_update.rs`、`packs_store.rs` | “检查更新”：只在你点击时才从 GitHub 下载新版当地数据、翻译与提示词，检查后存起来，通话从这份读取。 |
+| `extras.rs`、`locales_store.rs` | 另外 70 种语言：语言包与地区插图用到才下载，以及控制台和通知读的翻译。 |
 | `lan.rs`、`phone_wifi.rs` | 局域网访问把关、`Host` 头检查、猜密码限速，以及 USB 转 Wi-Fi 的手机配对密钥。 |
 | `usb_bridge.rs` | 为每部 USB 手机维持 `adb reverse`，并启动应用的通话服务。 |
 | `mdns.rs` | 在局域网响应 `bageo.local`（multicast DNS），不知道电脑 IP 也能打开控制台。 |
 | `log_text.rs` | 遮罩来电号码，且默认不把通话内容写进日志（除非设 `LOG_CALL_TEXT=1`）。 |
-| `adpcm.rs`、`voice_preview.rs`、`ambience.rs` | 1,080 个内置语音文件（IMA ADPCM）、声音试听与“无法接通”语音、12 种背景音。 |
+| `adpcm.rs`、`voice_preview.rs`、`ambience.rs` | 预录语音文件（IMA ADPCM；源码 1,080 个，安装包只带英文 120 个）、声音试听与“无法接通”语音、12 种背景音。 |
+| `voice_packs.rs` | 其他语言与地区的语音包：选了才下载（没网络时可导入文件），存在文件夹里。 |
 
 ## 一通来电的完整过程
 

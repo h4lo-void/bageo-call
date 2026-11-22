@@ -37,8 +37,8 @@
     </td>
     <td width="25%" align="center" valign="top">
       <img src="docs/images/icons/languages.svg" width="56" height="56" alt=""><br>
-      <strong>Spricht neun Sprachen</strong><br>
-      Englisch, Traditionelles Chinesisch, Vereinfachtes Chinesisch, Japanisch, Koreanisch, Spanisch, Französisch, Deutsch und Portugiesisch. Es wechselt mit, wenn der Anrufer die Sprache wechselt.
+      <strong>Spricht die Sprache der Anrufer</strong><br>
+      Die Telefon-App bringt 79 Sprachen mit, und Anrufe folgen den Sprachen, die Gemini unterstützt. Es wechselt mit, wenn der Anrufer die Sprache wechselt.
     </td>
   </tr>
 </table>
@@ -145,13 +145,15 @@ Sobald ein Anruf eindeutig Werbung oder Betrug ist, wird die KI zu einem interes
 
 Einen Tisch reservieren, einen Termin verschieben, in einem Geschäft nach Vorrat oder Öffnungszeiten fragen. Spricht die Gegenseite etwas an, das du nicht vorgesehen hast, fragt dich die KI auf dem Bildschirm, bevor sie antwortet. Sie sagt von sich aus nie etwas zu: Antwortest du nicht rechtzeitig, sagt sie, dass du dich meldest, und beendet den Anruf höflich. [Mehr zu KI-Anrufen](docs/en/FEATURES.md#ai-errands-it-makes-calls-for-you)
 
-## Ein Anrufer aus dem Ausland? Bageo spricht neun Sprachen.
+## Ein Anrufer aus dem Ausland? Bageo spricht 79 Sprachen.
 
 <p align="center">
   <img src="docs/images/languages.en.svg" width="900" alt="Bageo spricht neun Sprachen: Englisch, Traditionelles Chinesisch, Vereinfachtes Chinesisch, Japanisch, Koreanisch, Spanisch, Französisch, Deutsch und Portugiesisch. Jede antwortet mit ihrem eigenen Hallo.">
 </p>
 
-Die Stimme der KI, die eingebauten Prompts (eine kurze, allgemeine Grundlage, die du an deine Situation und deinen Stil anpassen kannst), die Webkonsole, die Telefon-App und die Benachrichtigungen gibt es alle in neun Sprachen. Auf einem Dual-SIM-Telefon eröffnet jede SIM-Karte Anrufe in ihrer eigenen Sprache, ein Anrufer aus dem Ausland hört die Sprache seines Landes, und wenn ein Anrufer mitten im Gespräch die Sprache wechselt, folgt ihm die KI. Transkripte behalten die Originalworte, jede Zeile mit einer Übersetzung in deine Benachrichtigungssprache. [Mehr zu Sprachen und Dual-SIM](docs/en/FEATURES.md#nine-languages-dual-sim-translated-transcripts)
+Die Telefon-App bringt 79 Sprachen mit. Die Webkonsole hat neun eingebaut (Englisch, Traditionelles Chinesisch, Vereinfachtes Chinesisch, Japanisch, Koreanisch, Spanisch, Französisch, Deutsch und Portugiesisch) und kann 70 weitere herunterladen, sechs davon von rechts nach links geschrieben. Im Gespräch spricht Bageo die Sprachen, die Gemini unterstützt. Die eingebauten Prompts (eine kurze, allgemeine Grundlage, die du an deine Situation und deinen Stil anpassen kannst) und die Benachrichtigungen gibt es in neun Sprachen. Auf einem Dual-SIM-Telefon eröffnet jede SIM-Karte Anrufe in ihrer eigenen Sprache, ein Anrufer aus dem Ausland hört die Sprache seines Landes, und wenn ein Anrufer mitten im Gespräch die Sprache wechselt, folgt ihm die KI. Transkripte behalten die Originalworte, jede Zeile mit einer Übersetzung in deine Benachrichtigungssprache. [Mehr zu Sprachen und Dual-SIM](docs/en/FEATURES.md#nine-languages-dual-sim-translated-transcripts)
+
+Es spricht auch so, wie die Menschen in deiner Region telefonieren: Bageo kennt Sprechweise und Alltagsgewohnheiten von 74 Regionen, und mit *Sprechweise* stellst du ein, ob es eher locker oder eher sachlich klingt. Sprachproben für andere Sprachen und Regionen werden nur heruntergeladen, wenn du sie auswählst. Die Formulierungen, die der KI mitgegeben werden, können sich über ein Daten-Update in der Konsole verbessern, ohne dass ein neues Bageo nötig ist.
 
 ## So funktioniert es
 

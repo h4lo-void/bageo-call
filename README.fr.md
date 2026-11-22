@@ -37,8 +37,8 @@
     </td>
     <td width="25%" align="center" valign="top">
       <img src="docs/images/icons/languages.svg" width="56" height="56" alt=""><br>
-      <strong>Parle neuf langues</strong><br>
-      Anglais, chinois traditionnel, chinois simplifié, japonais, coréen, espagnol, français, allemand et portugais. Il change de langue quand l’appelant change.
+      <strong>Parle la langue de l’appelant</strong><br>
+      L’application du téléphone intègre 79 langues, et les appels suivent les langues prises en charge par Gemini. Il change de langue quand l’appelant change.
     </td>
   </tr>
 </table>
@@ -145,13 +145,15 @@ Dès qu’un appel est clairement du démarchage ou une arnaque, l’IA devient 
 
 Réserver une table, déplacer un rendez-vous, demander à un magasin s’il a un article en stock ou quels sont ses horaires. Quand l’interlocuteur aborde un point que vous n’aviez pas prévu, l’IA vous pose la question à l’écran avant de répondre. Elle n’accepte jamais rien de son propre chef : si vous ne répondez pas à temps, elle dit que vous confirmerez et met fin à l’appel poliment. [En savoir plus sur les appels IA](docs/en/FEATURES.md#ai-errands-it-makes-calls-for-you)
 
-## Un appelant de l’étranger ? Bageo parle neuf langues.
+## Un appelant de l’étranger ? Bageo parle 79 langues.
 
 <p align="center">
   <img src="docs/images/languages.en.svg" width="900" alt="Bageo parle neuf langues : anglais, chinois traditionnel, chinois simplifié, japonais, coréen, espagnol, français, allemand et portugais. Chacune répond avec son propre bonjour.">
 </p>
 
-La voix de l’IA, les prompts intégrés (une base courte et générale que vous pouvez adapter à votre situation et à votre style), la console web, l’application du téléphone et les notifications existent en neuf langues. Sur un téléphone à double SIM, chaque SIM ouvre les appels dans sa propre langue, un appelant de l’étranger entend la langue de son pays, et si l’appelant change de langue en cours d’appel, l’IA suit. Les transcriptions gardent les mots d’origine, chaque ligne avec une traduction dans la langue de vos notifications. [En savoir plus sur les langues et la double SIM](docs/en/FEATURES.md#nine-languages-dual-sim-translated-transcripts)
+L’application du téléphone intègre 79 langues. La console web en intègre neuf (anglais, chinois traditionnel, chinois simplifié, japonais, coréen, espagnol, français, allemand et portugais) et peut en télécharger 70 autres, dont six s’écrivent de droite à gauche. Pendant un appel, Bageo parle les langues prises en charge par Gemini. Les prompts intégrés (une base courte et générale que vous pouvez adapter à votre situation et à votre style) et les notifications existent en neuf langues. Sur un téléphone à double SIM, chaque SIM ouvre les appels dans sa propre langue, un appelant de l’étranger entend la langue de son pays, et si l’appelant change de langue en cours d’appel, l’IA suit. Les transcriptions gardent les mots d’origine, chaque ligne avec une traduction dans la langue de vos notifications. [En savoir plus sur les langues et la double SIM](docs/en/FEATURES.md#nine-languages-dual-sim-translated-transcripts)
+
+Il parle aussi comme les gens de votre région au téléphone : Bageo connaît la manière de parler et les habitudes de 74 régions, et *Façon de parler* règle s’il sonne plutôt décontracté ou plutôt professionnel. Les échantillons de voix des autres langues et régions ne se téléchargent que si vous les choisissez. Les formulations données à l’IA peuvent s’améliorer par une mise à jour des données depuis la console, sans attendre un nouveau Bageo.
 
 ## Comment ça marche
 

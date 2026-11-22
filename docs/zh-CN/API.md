@@ -11,7 +11,7 @@ Bageo 网页控制台做的每件事，都是通过你自己电脑上的一个�
 
 | | |
 |---|---|
-| **基础地址** | Bageo 监听的位置：默认在局域网监听 `8787` 端口（可用时也会监听 `80` 端口供 `http://bageo.local/` 使用），设为 `AGENT_HOST=127.0.0.1` 时则只在 `http://127.0.0.1:8787`。API 路由都以 `/calls/api/` 开头，例外是 `/health` 和手机用的 WebSocket。控制台本身在 `/calls/`（`/` 会跳转过去）。 |
+| **基础地址** | Bageo 监听的位置：默认在局域网监听 `8787` 端口（可用时也会监听 `80` 端口供 `http://bageo.local/` 使用），设为 `AGENT_HOST=127.0.0.1` 时则只在 `http://127.0.0.1:8787`。API 路由都以 `/calls/api/` 开头，例外是 `/health`、手机用的 WebSocket（`/` 和 `/ws`）、`POST /api/phone-pairing/claim`（手机用配对码换配对密钥）、`POST /mcp`（见下一行）和 `/calls/` 下面控制台自己的文件（`/calls/i18n/…`、`/calls/extras/art/…`）。`POST /v1/turn` 和 `GET`／`POST /v1/transfer` 是旧的测试路由，只要求控制台密码。控制台本身在 `/calls/`（`/` 会跳转过去）。 |
 | **AI 代理** | `POST /mcp` 是 Model Context Protocol 服务器，有自己的 Token，默认关闭：见 [MCP](MCP.md)。 |
 | **格式** | UTF-8 的 JSON；路由另有说明的除外（WAV、CSV、vCard、iCalendar）。发送 JSON 请求体时请带 `Content-Type: application/json`。 |
 | **时间** | 通话记录：UTC 的 RFC 3339（`2026-11-14T07:02:11Z`）。日程预约：当地时间（`TZ`），格式 `YYYY-MM-DDTHH:MM`。AI 代打：带时差的当地时间（`2026-11-15T19:00:00+08:00`）。 |
@@ -48,7 +48,7 @@ Authorization: Bearer <token>
 X-Calls-Token: <token>
 ```
 
-密码错误或缺失会得到 HTTP 401，内容是 `{"error": "unauthorized", "code": "unauthorized", "hint": …}`。`/health` 不带密码也会响应，但只返回监控用的几个字段（见[手机与健康状态](#手机与健康状态)）。完整的 `/health` 数据也要带密码；控制台用 `GET /calls/api/health` 读取。
+密码错误或缺失会得到 HTTP 401，内容是 `{"error": "unauthorized", "code": "unauthorized", "hint": …}`。`/health` 不带密码也会响应，但只返回监控用的几个字段（见[手机与健康状态](#手机与健康状态)）。完整的 `/health` 数据也要带密码（没设密码时，只有 Bageo 那台电脑拿得到）；控制台用 `GET /calls/api/health` 读取。
 
 ```bash
 curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
@@ -314,7 +314,7 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 | `clip=reject` | 用这个声音念的拒接语音。 |
 | `lang` | `ja`、`zh-TW`… |
 
-内置的 30 个声音在 9 种语言下都已预先录好试听和拒接语音（`assets/voices/` 里共 1,080 段），所以试听不用连接 Gemini。只有 `regen=true` 或没有预录的声音才会开一次连接。
+内置的 30 个声音在 9 种语言下都预先录好了试听和拒接语音（源码的 `assets/voices/` 里共 1,080 段），安装包和 Docker 镜像只带英文那份。有录好的就不用连接 Gemini；只有 `regen=true` 或没有预录的声音才会开一次连接。
 Bageo 没有自带的语言和地区，可以另外下载语音包（见[语音下载](#语音下载)）。
 
 错误：400 `unknown_voice`／`unknown_background`、404 `background_missing`（背景音文件没加载）、502 `preview_failed`。
@@ -704,7 +704,7 @@ Content-Type: application/json
 
 ## 当地数据
 
-三个路由用来查看和更新 AI 参考的各国生活习惯数据，以及核心九种语言以外的翻译，对应控制台设置“更多选项”里的“当地数据”。只有调用 `POST …/packs/update` 时 Bageo 才会联网，不会自己检查；联网时直接从 GitHub 公开数据库 `h4lo-void/bageo-packs` 最新的 Release 下载清单、数据文件，有更新的翻译时再下载翻译文件（`bageo-locales.json.gz`），不会发送其他数据。每个文件各自检查，坏掉的那个被拒收，不影响另一个。它们遵循控制台的密码规则，两个 `POST` 也要遵循上面的 `Content-Type: application/json` 规则。
+五个路由用来查看和更新 AI 参考的各国生活习惯数据，以及核心九种语言以外的翻译，对应控制台设置“检查更新”页的“当地数据”。只有调用 `POST …/packs/update` 或 `POST …/packs/bageo-check` 时 Bageo 才会联网，不会自己检查；联网时直接从 GitHub 公开数据库 `h4lo-void/bageo-packs` 最新的 Release 下载清单、数据文件，有更新的翻译时再下载翻译文件（`bageo-locales.json.gz`），不会发送其他数据。每个文件各自检查，坏掉的那个被拒收，不影响另一个。它们遵循控制台的密码规则，两个 `POST` 也要遵循上面的 `Content-Type: application/json` 规则。
 
 同一次检查在 Release 有更新的提示词时，也会下载提示词文件（`bageo-prompts.json.gz`，最多 512 KiB）：里面只有跟 Bageo 内置不同的提示词，下一通电话起使用。每段提示词各自跟内置同一个 key 的文字比对（`{占位符}` 相同、首尾的空白与换行相同、长度最多是原来的两倍或多 400 字、不能有控制字符、方向控制字符或看不见的字符）；不合的那段沿用内置文字，其他段照常使用。锁定的提示词是 Bageo 一定要守的规则，只有新版 Bageo 才会改。
 
@@ -713,11 +713,14 @@ Content-Type: application/json
 | `GET /calls/api/packs/update` | 当前使用的数据：`{version, date, builtin, regions, locales: {version, date, builtin, languages}, prompts: {version, date, builtin, texts}, voice_list_kept, running, last_check}`。`prompts.texts` 是当前跟内置不同的提示词段数。`last_check` 另有 `pack_result`、`locales_result`、`prompts_result` 和 `prompts_version`。 |
 | `POST /calls/api/packs/update` | Body `{}`。马上检查有没有新版，有就安装：字段同 `GET`，另加 `result`（任一个文件更新了就是 `updated`）。 |
 | `POST /calls/api/packs/restore` | Body `{}`。删掉下载的数据、翻译和提示词，以及下载的语音列表（`voice_list_kept`）和扩展包列表（`extras_index_kept`），改回 Bageo 内置的版本：字段同上，`result` 是 `restored`（正在检查时是 `busy`；有文件删不掉时是 `io`，删不掉的那个继续使用）。 |
+| `GET /calls/api/packs/regions` | 当前使用的当地数据里的地区列表，给控制台的国家菜单用（不含机密，也不联网）：`{version, regions: [{code, countries, name: {en, native, zh}, lang, other_langs, status, delivery: {en, zh}}], bubbles}`。 |
+| `POST /calls/api/packs/bageo-check` | Body `{}`。问 GitHub 最新的 Bageo 是哪一版，什么都不安装：`{ok, result, current, latest, url}`；`result` 是 `update_available`、`up_to_date` 或 `offline`（这时没有 `latest`）。`url` 是下载页。就是控制台“Bageo”下面的“检查更新”。 |
 | `GET /calls/api/extras` | 全部 70 种扩展语言与已知地区插图列表：`{ok, version, running, langs, art}`。 |
 | `POST /calls/api/extras/download` | Body `{"lang": "<code>"}` 或 `{"art": "<region>"}`。直接从 GitHub 下载并安装一个语言扩展包或地区插图文件，返回 `{..., result}`。 |
 | `POST /calls/api/extras/delete` | Body `{"lang": "<code>"}` 或 `{"art": "<region>"}`。删除已下载的扩展文件（设置仍在使用时返回 `in_use`，其余为 `removed`、`not_listed`、`restart`）。 |
 | `GET /calls/extras/art/{file}` | 公开静态路由，仅返回这台电脑已下载并校验通过的 `art-<region>.json`（不会触发下载；附 `no-cache`、`nosniff`）。 |
 | `GET /calls/i18n/desktop/{file}` | 公开静态路由，返回已下载语言的桌面状态小程序文本（`<code>.json`），缺少的键自动回退英文。 |
+| `GET /calls/i18n/{code}.json` | 公开静态路由，返回一种控制台语言：内置九种之一，或已下载的扩展语言。两者都没有时返回 HTTP 404。 |
 
 细节：
 
@@ -729,7 +732,7 @@ Content-Type: application/json
 
 ## 语音下载
 
-四个路由用来列出、下载、删除和导入语音包：一种语言（或某个地区的这种语言）预先录好的试听句和拒接语音。对应控制台设置“更多选项”里的“语音下载”，以及控制台用到还没下载的语音时出现的提示卡。只有调用 `POST …/voices/download` 时 Bageo 才会联网，直接连到 GitHub 上 `h4lo-void/bageo-packs` 最新的 Release。没有语音包也不会出问题：这种语言第一次试听时照旧请 Gemini 现场生成。这些路由遵循控制台的密码规则，`download` 和 `delete` 也要遵循上面的 `Content-Type: application/json` 规则。
+四个路由用来列出、下载、删除和导入语音包：一种语言（或某个地区的这种语言）预先录好的试听句和拒接语音。对应控制台设置“检查更新”页的“语音下载”，以及控制台用到还没下载的语音时出现的提示卡。只有调用 `POST …/voices/download` 时 Bageo 才会联网，直接连到 GitHub 上 `h4lo-void/bageo-packs` 最新的 Release。没有语音包也不会出问题：这种语言第一次试听时照旧请 Gemini 现场生成。这些路由遵循控制台的密码规则，`download` 和 `delete` 也要遵循上面的 `Content-Type: application/json` 规则。
 
 | 方法与路径 | 内容 |
 |---|---|
@@ -757,7 +760,9 @@ Content-Type: application/json
 | `DELETE /calls/api/devices/{serial}` | 移除一台未连接的旧手机（同时清除手机列表、已存名称与 SIM 记录，保留过往通话记录）：`{ok, serial}`。手机仍在线或通话中返回 HTTP 409 `device_online`／`device_in_call`。 |
 | `PUT /calls/api/devices/{serial}/sim-number` | 请求体 `{"sub_id": <整数>, "number": "..."}`。设置（留空表示清除）这部手机某张 SIM 的号码，让来电与 AI 代打直接显示并按号码挑选：`{ok, serial, sims}`。 |
 | `POST /calls/api/phone-pairing/renew` | 更换 Wi-Fi 配对密钥（`phone-pairing.key`）并断开通过 Wi-Fi 连接的手机，每部手机重新插上 USB 一次即可获取新密钥：`{ok: true}`（失败返回 HTTP 500 `save_failed`）。密钥本身不会返回。 |
-| `GET /health` | 排查问题用的大型 JSON 对象：版本、语言、哪些东西已配置、已连接的手机、进行中的通话；不含密钥或密码。要带密码才拿得到（见下方说明最后一点）。 |
+| `POST /calls/api/phone-pairing/code` | Body `{}`（JSON）。生成 6 位数配对码，10 分钟内有效，让手机不用 USB，输入 IP 地址和配对码就能配对；新的码会取代前一个：`{ok, code, expires_in, port, lan_ips, in_container}`。没设控制台密码时，只有 Bageo 那台电脑能要（否则 HTTP 403 `need_password`）；“手机也能用 Wi-Fi 连接”关闭时返回 HTTP 409 `phone_wifi_off`。 |
+| `POST /api/phone-pairing/claim` | 不在 `/calls/api/` 下面，也不用密码：配对码就是凭证。Body `{"code": "123456"}`（JSON）。只回答一次 `{ok: true, token, path: "/ws"}`（走 Wi-Fi 入口端口时另有 `ws_port`）：`token` 就是配对密钥，手机接着用 `/ws?token=<密钥>` 连接。错误都带 `code`：`bad_request`、`phone_wifi_off`、`no_code`（没有可用的码、已过期或已用过）、`wrong_code`、`too_many_tries`（HTTP 429；输错的次数按来源计算，请等一分钟）。 |
+| `GET /health` | 排查问题用的大型 JSON 对象：版本、语言、哪些东西已配置、已连接的手机、进行中的通话；不含密钥或密码。完整内容要带控制台密码；没设密码时，只有 Bageo 那台电脑拿得到，其他来源拿简版（见下方说明最后一点）。 |
 | `GET /calls/api/health` | 控制台用，内容和 `/health` 的完整版相同。跟其他 `/calls/api/` 路由一样：设置了密码而没带返回 HTTP 401，没设密码就开放。 |
 
 `GET /calls/api/devices` 的内容：
@@ -770,10 +775,11 @@ Content-Type: application/json
 `GET /health` 的内容：
 
 - `control_idle_clients`／`control_idle_serials` 统计所有连上的手机；`normal_mode_serials` 列出切换成一般手机的那几部。
+- `GET /health` 的 `build` 是这个 Bageo 编译时的 git commit 短码（有未提交的改动时加 `-dirty`），否则是编译时给的构建代号，再不然是 `unknown`；只看 `version` 的话，不同次发布之间可能一样。简版也有这个字段。
 - `local_time` 是 Bageo 按 `TZ` 的时钟。
 - `summary_ready`（`summary_api_key_set` 是同一个值）表示有没有设置摘要服务。
 - `setup_missing` 列出控制台“都准备好了吗？”还没完成的项目：`ai_off`、`gemini_key`、`owner_name`、`notify`、`summary`（只有名称，没有设置值）；全部设置好是空数组。
-- `GET /health` 只有带了控制台密码的请求才拿到完整内容。没设密码时，只有这台电脑自己发的请求拿得到（经过反向代理的不算；用 Docker 默认网络时，从宿主机发的请求也算别的电脑）。其他来源只返回 `ok`、`version`、`local_time`、`language`、`notify_language`、`active_call_count`、`control_idle_clients` 和 `setup_missing`，监控用已经足够。
+- `GET /health` 只有带了控制台密码的请求才拿到完整内容。没设密码时，只有这台电脑自己发的请求拿得到（经过反向代理的不算；用 Docker 默认网络时，从宿主机发的请求也算别的电脑）。其他来源只返回 `ok`、`version`、`build`、`local_time`、`language`、`notify_language`、`active_call_count`、`control_idle_clients` 和 `setup_missing`，监控用已经足够。
 
 切换模式后，`mode` 是手机现在的模式（不知道时为 `null`）；成功时 `error_code` 为 `null`，否则是下面其中之一：
 

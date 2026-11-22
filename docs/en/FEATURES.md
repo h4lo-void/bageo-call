@@ -63,9 +63,13 @@ have asked you on the console first.
   passing, typhoon, thunderstorm, construction site, metro, night market,
   firecrackers, driving. Pick *Background sound* and *Background volume* in
   **How it answers**.
-- **30 voices in 9 languages, previewed for free.** 1,080 recorded clips ship
-  with Bageo (IMA ADPCM, a quarter of the size of plain WAV), so voice
-  previews and the "number not available" announcement use no API quota.
+- **30 voices, previewed for free.** The installers and the Docker image carry
+  only the English voices (120 recorded clips, IMA ADPCM, a quarter of the size
+  of plain WAV), so those previews and the "number not available" announcement
+  use no API quota. Voices of other languages and of the 74 regions download
+  when you pick them (**Settings → Check for updates → Voice downloads**); an
+  update keeps the voices you already have. Until a voice is downloaded, its
+  first preview is made with Gemini.
 - **Only what you wrote down.** *Notes the AI may answer from* (in **About you**)
   holds facts such as where parcels go or your office hours; the *Status note* (in
   **About you** too) holds one line about right now ("expecting a delivery this
@@ -210,9 +214,13 @@ Every contact can be assigned to one of four lists (from the Contacts page, via 
 
 ## Nine languages, dual SIM, translated transcripts
 
-- **Nine languages** for the AI's voice, the built-in prompts, the web
-  console, the phone app and the notifications: English, 繁體中文 (Taiwan),
-  简体中文, 日本語, 한국어, Español, Français, Deutsch, Português.
+- **79 languages in the phone app.** The web console has nine built in:
+  English, 繁體中文 (Taiwan), 简体中文, 日本語, 한국어, Español, Français,
+  Deutsch, Português. It can download 70 more under **Settings → Check for
+  updates → Other languages**, six of them written right to left. All 70 work
+  for calls right away; the download adds the console in that language. On a
+  call, Bageo speaks the languages Gemini supports. The built-in prompts and
+  the notifications come in the nine.
 - **A main language per SIM.** On a dual-SIM phone each SIM opens calls in its
   own language, and a caller from abroad hears their country's language when
   the AI speaks it. Set it under **Settings → Basics → More options**, *Main
@@ -292,6 +300,13 @@ The built-in prompts work out of the box. To make the AI sound more like you:
 
 Your own prompt is still there under **About you → Advanced**; it replaces the
 talk style and local habits.
+
+The words the AI is told are kept in prompt files, so they can improve without a
+new Bageo. Under **Settings → Check for updates**, *Check for updates* in
+*Local data* also downloads newer wording, used from the next call, and *Restore
+the built-in version* goes back to the built-in wording. The rules that protect
+you (never giving personal details, admitting it is an AI when asked seriously)
+change only with a new Bageo.
 
 More, including the techniques that make the biggest difference:
 [Writing the prompt](PROMPTS.md).

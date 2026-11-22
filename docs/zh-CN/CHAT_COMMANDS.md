@@ -179,7 +179,7 @@ AI 代打的结果照旧用普通通知发出。
       - **Bark / Pushover / Gotify / Chanify**：点击通知直接跳转链接（`url` / `click` / `link`）
       - **Discord / Slack / LINE / Matrix / 企业微信 / 钉钉 / 飞书 / Email**：消息内附带可点击的签名链接
       - **Webhook（JSON）**：结构化的 `actions: [{ "label": "...", "url": "..." }]` 数组
-   - 点链接会先打开确认页，点页面上的按钮才会执行；链接 7 天后失效。背后是 `GET/POST /calls/api/quick-action`。
+   - 点链接会先打开确认页，点页面上的按钮才会执行；每个链接只能用一次（再点一次只会看到“已经处理过了”，Bageo 重新启动后也一样），7 天后失效。背后是 `GET/POST /calls/api/quick-action`。
 
 2. **通用指令端点 `POST /calls/api/control/inbound`（让任何渠道都能下指令）**
    - Home Assistant、n8n、Make、Apple 快捷指令（Shortcuts）、Discord／Slack／LINE／企业微信／飞书自建机器人等，都可以直接 POST 文字指令或自然语言到：

@@ -18,6 +18,9 @@ questions about iPhones, root, cost and keeping your real phone number usable.
    and turn it off when done.
 3. On the phone, open the Bageo app. The card at the top says whether it is
    connected and which mode it is in.
+4. After an upgrade, open *System → About*: the version is followed by the
+   build (a short commit code) in brackets, and `/health` shows it too as
+   `build`. Use it to confirm which build is running.
 
 ## Bageo does not start
 
@@ -145,7 +148,8 @@ the [SMS forwarder](../../tools/sms_forward/README.md#troubleshooting).
 Check, in this order:
 
 - The phone or computer is on the same Wi-Fi as the computer running Bageo (a guest network usually is not).
-- From another device, a console password must be set first on the computer running Bageo; until then you only see "Set a password first".
+- From another device, a console password is needed however Bageo was started (installer, start script, Docker or `AGENT_HOST`); until one is set on the computer running Bageo you only see "Set a password first".
+- A link in a notification works only once; pressed again it says "Already done". Do it in the console instead.
 - On Windows, answer the "Allow access" prompt with *Private networks*. If you chose otherwise, open *Windows Security → Firewall & network protection → Allow an app through firewall* and tick *Private* for Bageo's `agent.exe`.
 - On a VPN that sends all traffic through the tunnel, turn the VPN off and try again, or see [Using the console from other devices](SETTINGS.md#using-the-console-from-other-devices).
 - Opening it by your own domain, a reverse proxy or a VPN name shows "This address can't open the console": enter that address under *Address in notifications*.

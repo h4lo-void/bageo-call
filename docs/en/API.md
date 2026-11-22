@@ -12,7 +12,7 @@ including the WebSocket protocol the rooted Android phone speaks.
 | | |
 |---|---|
 | **Base address** | Where Bageo listens: by default on your local network at port `8787` (and port `80` when available for `http://bageo.local/`), or `http://127.0.0.1:8787` when `AGENT_HOST=127.0.0.1`. The console itself is `/calls/` (`/` redirects there). |
-| **Routes** | API routes start with `/calls/api/`. The exceptions are `/health` and the phones' WebSocket. |
+| **Routes** | API routes start with `/calls/api/`. The exceptions are `/health`, the phones' WebSocket (`/` and `/ws`), `POST /api/phone-pairing/claim` (a phone trades a pairing code for its key), `POST /mcp` (next row) and the console's own files under `/calls/` (`/calls/i18n/…`, `/calls/extras/art/…`). `POST /v1/turn` and `GET`/`POST /v1/transfer` are old test routes that only ask for the console password. |
 | **AI tools** | `POST /mcp` is a Model Context Protocol server with its own token, off by default: see [MCP](MCP.md). |
 | **Format** | UTF-8 JSON unless a route says otherwise (WAV, CSV, vCard, iCalendar). Send JSON bodies with `Content-Type: application/json`. |
 | **Times in call records** | RFC 3339 in UTC (`2026-11-14T07:02:11Z`). |
@@ -63,7 +63,7 @@ A wrong or missing password gets HTTP 401 with
 `{"error": "unauthorized", "code": "unauthorized", "hint": …}`. `/health` still
 answers without it, with a short subset for monitoring (see
 [Phones and health](#phones-and-health)). The full `/health` data needs the
-password too; the console reads it from `GET /calls/api/health`.
+password too (with none set, only the computer Bageo runs on gets it); the console reads it from `GET /calls/api/health`.
 
 ```bash
 curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
@@ -345,9 +345,11 @@ setting:
 | `clip=reject` | The blocked-number announcement in that voice. |
 | `lang` | `ja`, `zh-TW`, … |
 
-All 30 built-in voices come recorded in all 9 languages, both the preview and
-the announcement (1,080 clips in `assets/voices/`), so a preview needs no
-Gemini session. Only `regen=true` or a voice without a recording opens one.
+All 30 built-in voices are recorded in all 9 languages, both the preview and
+the announcement (1,080 clips in `assets/voices/` in the source). The
+installers and the Docker image carry only the English clips. A recorded clip
+needs no Gemini session; only `regen=true` or a voice without a recording
+opens one.
 Languages and regions whose recordings do not come with Bageo can be added as
 voice packs ([Voice downloads](#voice-downloads)).
 
@@ -755,7 +757,7 @@ Details:
 
 ## Local data
 
-Three routes show and update the local data the AI uses for each country's habits, and the translations of the languages beyond the nine core ones: the same as *Local data* under *More options* in the console settings. Bageo connects only when `POST …/packs/update` is called; it never checks on its own. It then downloads the index, the data file and, when the release has newer ones, the translations (`bageo-locales.json.gz`) straight from the latest release of the public `h4lo-void/bageo-packs` repository on GitHub, and nothing else is sent. Each file is checked on its own: a broken one is refused without affecting the other. They follow the console's password rule, and both `POST` routes the `Content-Type: application/json` rule above.
+Five routes show and update the local data the AI uses for each country's habits, and the translations of the languages beyond the nine core ones: the same as *Local data* on the *Check for updates* page in the console settings. Bageo connects only when `POST …/packs/update` or `POST …/packs/bageo-check` is called; it never checks on its own. It then downloads the index, the data file and, when the release has newer ones, the translations (`bageo-locales.json.gz`) straight from the latest release of the public `h4lo-void/bageo-packs` repository on GitHub, and nothing else is sent. Each file is checked on its own: a broken one is refused without affecting the other. They follow the console's password rule, and both `POST` routes the `Content-Type: application/json` rule above.
 
 The same check also downloads newer prompt texts (`bageo-prompts.json.gz`, at most 512 KiB) when the release has them: the texts that differ from the ones built into Bageo, used from the next call. Each text is checked on its own against the built-in text of the same key (the same `{placeholders}`, the same spaces and line breaks at both ends, at most twice its length or 400 characters more, no control, direction or invisible characters); a text that fails keeps the built-in words, and the rest are still used. Locked texts, the rules Bageo always keeps, only change with a new Bageo.
 
@@ -764,11 +766,14 @@ The same check also downloads newer prompt texts (`bageo-prompts.json.gz`, at mo
 | `GET /calls/api/packs/update` | The data in use: `{version, date, builtin, regions, locales: {version, date, builtin, languages}, prompts: {version, date, builtin, texts}, voice_list_kept, running, last_check}`. `prompts.texts` is how many prompt texts in use differ from the built-in ones. `last_check` also has `pack_result`, `locales_result`, `prompts_result` and `prompts_version`. |
 | `POST /calls/api/packs/update` | Body `{}`. Checks for newer files now and installs them: the same fields as `GET`, plus `result` (`updated` when either file was). |
 | `POST /calls/api/packs/restore` | Body `{}`. Deletes the downloaded data, translations and prompt texts, and a downloaded voice list (`voice_list_kept`) and extras index (`extras_index_kept`), and goes back to the ones built into Bageo: the same fields, with `result` `restored` (`busy` while a check runs; `io` when a file cannot be deleted, and then that one stays in use). |
+| `GET /calls/api/packs/regions` | The regions of the local data in use, for the console's country picker (no secrets, no internet): `{version, regions: [{code, countries, name: {en, native, zh}, lang, other_langs, status, delivery: {en, zh}}], bubbles}`. |
+| `POST /calls/api/packs/bageo-check` | Body `{}`. Asks GitHub which Bageo release is the latest and installs nothing: `{ok, result, current, latest, url}`; `result` is `update_available`, `up_to_date` or `offline` (then without `latest`). `url` is the download page. This is *Check for updates* under *Bageo* in the console. |
 | `GET /calls/api/extras` | All 70 extra languages and known region art: `{ok, version, running, langs, art}`. |
 | `POST /calls/api/extras/download` | Body `{"lang": "<code>"}` or `{"art": "<region>"}`. Downloads and installs one extra language pack or region mascot art file straight from GitHub; returns `{..., result}`. |
 | `POST /calls/api/extras/delete` | Body `{"lang": "<code>"}` or `{"art": "<region>"}`. Deletes a downloaded extra file (`in_use` if the language is still set in settings, `removed`, `not_listed`, `restart`). |
 | `GET /calls/extras/art/{file}` | Public static route serving an already-downloaded and verified `art-<region>.json` file (never triggers a download; `no-cache`, `nosniff`). |
 | `GET /calls/i18n/desktop/{file}` | Public static route serving a downloaded extra language's desktop widget strings (`<code>.json`) with English fallback per missing key. |
+| `GET /calls/i18n/{code}.json` | Public static route serving one console language: one of the nine built-in ones, or a downloaded extra language. HTTP 404 when Bageo has neither. |
 
 Details:
 
@@ -780,7 +785,7 @@ Details:
 
 ## Voice downloads
 
-Four routes list, download, delete and import voice packs: the recorded preview lines and blocked-number announcement of a language, or of a language in one region. They are the same as *Voice downloads* under *More options* in the console settings, and as the card the console shows when it uses a language whose voices are not on this computer. Bageo connects only when `POST …/voices/download` is called, straight to the latest release of `h4lo-void/bageo-packs` on GitHub. Without a pack nothing breaks: the first preview in that language is made by Gemini, as before. The routes follow the console's password rule; `download` and `delete` also the `Content-Type: application/json` rule above.
+Four routes list, download, delete and import voice packs: the recorded preview lines and blocked-number announcement of a language, or of a language in one region. They are the same as *Voice downloads* on the *Check for updates* page in the console settings, and as the card the console shows when it uses a language whose voices are not on this computer. Bageo connects only when `POST …/voices/download` is called, straight to the latest release of `h4lo-void/bageo-packs` on GitHub. Without a pack nothing breaks: the first preview in that language is made by Gemini, as before. The routes follow the console's password rule; `download` and `delete` also the `Content-Type: application/json` rule above.
 
 | Method and path | What |
 |---|---|
@@ -808,7 +813,9 @@ Details:
 | `DELETE /calls/api/devices/{serial}` | Removes an offline phone from the phone list, saved device labels and recorded SIMs while keeping past call records: `{ok, serial}`. HTTP 409 `device_online` / `device_in_call` if the phone is connected or in a call. |
 | `PUT /calls/api/devices/{serial}/sim-number` | Body `{"sub_id": <int>, "number": "..."}`. Saves (or clears when empty) the phone number for a SIM on that phone so calls and AI errands show and pick by number: `{ok, serial, sims}`. |
 | `POST /calls/api/phone-pairing/renew` | Rotates the Wi-Fi pairing key (`phone-pairing.key`) and disconnects Wi-Fi-paired phones so each must plug in via USB once more to get the new key: `{ok: true}` (or HTTP 500 `save_failed`). The key is never returned. |
-| `GET /health` | A large flat JSON object for troubleshooting: version, language, what is configured, connected phones, calls in progress; no keys or tokens. Needs the password (see the last point below the table). Details are below the table. |
+| `POST /calls/api/phone-pairing/code` | Body `{}` (JSON). Makes a 6-digit pairing code, good for 10 minutes, so a phone can pair by IP address and code without USB; a new code replaces the one before: `{ok, code, expires_in, port, lan_ips, in_container}`. With no console password set, only the computer Bageo runs on may ask (HTTP 403 `need_password`); HTTP 409 `phone_wifi_off` when *Phones can also connect over Wi-Fi* is off. |
+| `POST /api/phone-pairing/claim` | Not under `/calls/api/` and without a password: the code is the proof. Body `{"code": "123456"}` (JSON). Answers once `{ok: true, token, path: "/ws"}` (and `ws_port` on the Wi-Fi entry port): `token` is the pairing key the phone then opens `/ws?token=<key>` with. Errors carry a `code`: `bad_request`, `phone_wifi_off`, `no_code` (none in use, expired or already used), `wrong_code`, `too_many_tries` (HTTP 429; wrong codes are counted per source, so wait a minute). |
+| `GET /health` | A large flat JSON object for troubleshooting: version, language, what is configured, connected phones, calls in progress; no keys or tokens. The full JSON needs the console password; with none set, only the computer Bageo runs on gets it, and everyone else gets a short version (see the last point below the table). Details are below the table. |
 | `GET /calls/api/health` | The same full JSON as `/health`, for the console. Like the other `/calls/api/` routes: HTTP 401 without the password when one is set, open when none is set. |
 
 Details for these routes:
@@ -817,8 +824,9 @@ Details for these routes:
 - `mode` is `ai` (the AI answers) or `normal` (an ordinary phone, see [Phone setup](PHONE.md#normal-phone-mode)).
 - `supports_mode` is false for apps older than the switch, which always run as `ai`.
 - `GET /health`: `control_idle_clients` / `control_idle_serials` count every connected phone; `normal_mode_serials` lists those switched to a normal phone; `local_time` is Bageo's clock in its `TZ`; `summary_ready` (and `summary_api_key_set`, the same value) says whether a summary service is set.
+- `GET /health`: `build` is the short git commit this Bageo was built from (with `-dirty` when it had uncommitted changes), else the build id given when it was built, else `unknown`; `version` alone stays the same between releases. The short version has it too.
 - `GET /health`: `setup_missing` lists what the console's "Ready?" list still needs: `ai_off`, `gemini_key`, `owner_name`, `notify`, `summary` (names only, never values). It is empty when everything is set.
-- `GET /health` returns the full JSON only to a request that carries the console password. With no password set, only a request from this computer itself gets it (not one through a reverse proxy; in Docker's default network, a request from the host counts as another computer). Everyone else gets only `ok`, `version`, `local_time`, `language`, `notify_language`, `active_call_count`, `control_idle_clients` and `setup_missing`, enough for monitoring.
+- `GET /health` returns the full JSON only to a request that carries the console password. With no password set, only a request from this computer itself gets it (not one through a reverse proxy; in Docker's default network, a request from the host counts as another computer). Everyone else gets only `ok`, `version`, `build`, `local_time`, `language`, `notify_language`, `active_call_count`, `control_idle_clients` and `setup_missing`, enough for monitoring.
 
 After a mode switch, `mode` is the phone's mode (`null` when unknown) and
 `error_code` is `null` on success, otherwise one of:

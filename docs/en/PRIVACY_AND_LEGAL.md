@@ -35,16 +35,20 @@ Details for some rows:
   (up to 3,000 characters).
 - **Voice previews and the "not available" announcement**: 30 voices × 9
   languages, each as a preview and as the announcement, 1,080 clips in
-  `assets/voices/`. Only a preview asked for with `regen=true` through the
+  `assets/voices/` in the source; the installers and the Docker image carry
+  only the English ones. Only a preview asked for with `regen=true` through the
   [API](API.md), or a voice without a recording, opens a Gemini session.
   Voice packs for other languages and regions are downloaded only when you
   press Download, and only from GitHub. GitHub sees your IP address and which
   language you download ([API](API.md#voice-downloads)).
-- **Extra languages and regional artwork**: calls and the Android app already
-  include all 79 built-in languages. Extra console/notification language packs,
-  regional artwork, local data updates and Bageo release checks never connect
-  to the internet automatically; they connect to GitHub (`h4lo-void/bageo-packs`
-  and `h4lo-void/bageo-call`, [API](API.md#local-data)) only when you manually
+- **Extra languages and regional artwork**: the Android app has all 79
+  languages built in. The console has nine built in and can download 70 more.
+  The installers carry only the English voices; other voices download when you
+  pick them. Extra console/notification language packs, regional artwork, local
+  data updates (the prompt texts file `bageo-prompts.json.gz` comes down with
+  them), voice packs and Bageo release checks never connect to the internet
+  automatically; they connect to GitHub (`h4lo-void/bageo-packs` and
+  `h4lo-void/bageo-call`, [API](API.md#local-data)) only when you manually
   click Download or Check for updates.
 - **Contact imports**: vCard, CSV/TSV, plain text, `.xlsx` and `.docx` imports
   are read on your computer. **PDF files and pictures** (and files in which
@@ -60,7 +64,8 @@ Details for some rows:
 - **Calendar links**: a link in a notification carries a key that opens only
   that one file.
 
-Nothing else is contacted: no telemetry, no update check, no account. The
+Nothing else is contacted: no telemetry, no automatic update check (Bageo looks
+for a new version only when you click Check for updates), no account. The
 start script downloads `adb` from Google only if you agree.
 
 **Your callers did not choose any of this, and neither did the people the AI

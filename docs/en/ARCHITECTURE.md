@@ -56,11 +56,14 @@ flowchart LR
 |---|---|
 | `main.rs` | Start-up, the phone WebSocket endpoints, the incoming-call state machine, ring pre-warm, the after-call pipeline. |
 | `gemini_live.rs` | One Live session per call: audio relay, echo check, interruptions, hang-up rules, sales detection and the switch to Stall Mode, session renewal, and the outbound modes (wait for the callee, ringback filter, tool calls). |
+| `reply_latency.rs` | Measures how long the caller waits for each reply and writes it to the log; it changes nothing in the call. |
 | `prompts.rs`, `locale.rs` | The system prompt of each call, built per language and answer style; the phrases each language says and listens for. |
+| `prompt_book.rs` | The prompt book: the wording the AI is told, kept as data in `data/prompts/<language>.json`; *Check for updates* can bring a newer version. |
 | `closing.rs` | Local closing state machine across 26 language word sets: detects pre-closings, farewells, resumptions and greetings that also mean goodbye. |
 | `scenario.rs`, `preflight.rs` | Call-situation hints (courier, bank charge check, wrong number, …) and errand preflight question/ladder extraction. |
+| `place_habits.rs` | What each kind of shop usually asks on the phone in each region (from the local data), for AI errands. |
 | `stall_review.rs` | The second look before Stall Mode: `gemini-flash-lite-latest` labels the call `scam_or_sales`, `normal`, `ivr_recording` or `too_early` within 1.5 s, naming the kind of call from the scam database and how sure it is. |
-| `scam_db.rs` | The sales and scam database (`data/scam_db.json`: 46 kinds of call, keywords in 27 languages, number hints), your additions in `config/scam_db.local.json`, and the marks per number. |
+| `scam_db.rs` | The sales and scam database (built in as `data/packs/bageo-scams.json.gz`: kinds of call, keywords, number hints), your additions in `config/scam_db.local.json`, and the marks per number. |
 | `appointments.rs` | The appointment tools on normal calls, the to-do items they create, Accept / Decline, the text or AI call-back that tells the caller, and the shared outbound queue. |
 | `urgent_call.rs`, `urgency.rs` | Urgent caller detection across languages and the trial 3-way conference merge (`add_call`) for forwarded calls. |
 | `callback.rs` | The phones' control connections: `place_call`, `send_sms` and their results, routed to the right phone. |
@@ -72,16 +75,20 @@ flowchart LR
 | `tasks.rs` | The store behind **To do**. |
 | `sms_store.rs` | Stored text messages, grouped into conversations, and replies sent back through the phone. |
 | `notify.rs`, `gmail.rs`, `tg_inbound.rs` | The 32 notification channels, e-mail over SMTP, Telegram button presses. |
+| `used_links.rs` | Remembers which one-tap notification links were used, so each works only once. |
 | `control/` | Remote chat commands and natural-language parsing across Telegram, Discord, Slack and Matrix. |
 | `mcp.rs` | Built-in Model Context Protocol (`POST /mcp`) server and universal inbound command endpoint (`POST /calls/api/control/inbound`). |
 | `calls.rs`, `calls_http.rs` | Call records, recordings and transcripts; the web console's REST API. |
 | `backup.rs`, `backup_crypt.rs` | Scheduled and manual backups, selective export/import, and `.bageo` encryption (Argon2id + XChaCha20-Poly1305). |
 | `settings_store.rs` | Settings from `.env` plus what the console saved, applied without a restart. |
+| `pack_update.rs`, `packs_store.rs` | *Check for updates*: downloads newer local data, translations and prompt texts from GitHub only when you press it, checks them and keeps the copy that calls read. |
+| `extras.rs`, `locales_store.rs` | The 70 extra languages: language packs and regional art downloaded on demand, and the translations the console and notifications read. |
 | `lan.rs`, `phone_wifi.rs` | LAN access guard, `Host` check, password rate limiting, and the USB-to-Wi-Fi phone pairing key. |
 | `usb_bridge.rs` | Keeps `adb reverse` up for every USB phone and starts the app's call service. |
 | `mdns.rs` | Answers `bageo.local` on the local network (multicast DNS), so the console opens without knowing the computer's IP. |
 | `log_text.rs` | Masks caller numbers and omits spoken words from logs unless `LOG_CALL_TEXT=1` is set. |
-| `adpcm.rs`, `voice_preview.rs`, `ambience.rs` | The 1,080 bundled voice clips (IMA ADPCM), voice previews and the "not available" announcement, the 12 background sounds. |
+| `adpcm.rs`, `voice_preview.rs`, `ambience.rs` | The recorded voice clips (IMA ADPCM; 1,080 in the source, the 120 English ones in the installers), voice previews and the "not available" announcement, the 12 background sounds. |
+| `voice_packs.rs` | Voice packs for other languages and regions: downloaded when you pick one (or imported from a file) and kept in the data folder. |
 
 ## An incoming call, step by step
 
