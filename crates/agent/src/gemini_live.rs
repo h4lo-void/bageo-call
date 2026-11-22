@@ -6989,7 +6989,8 @@ pub async fn run_session(
         }
 
         // end_call accepted: the line closes once our last words have played and
-        // it has stayed quiet end_call::GRACE; the caller speaking again cancels it.
+        // it has stayed quiet end_call::GRACE; the caller speaking again cancels it,
+        // and so does the call turning out to be a sales or scam call to stall.
         if let Some(p) = end_call_pending {
             let view = crate::end_call::PendingView {
                 since_accept: p.accepted_at.elapsed(),
@@ -6998,6 +6999,7 @@ pub async fn run_session(
                 ai_spoke: p.spoke_before || audio_chunks_out > p.audio_at_accept,
                 ai_asked: crate::end_call::ends_on_question(&ai_reply_text),
                 quiet_for_grace: play_head.drained_for(crate::end_call::GRACE, PLAYER_DRAIN_SLACK_BYTES),
+                stalling: stall_on || live_is_stall,
             };
             match crate::end_call::step(&view) {
                 crate::end_call::Step::Wait => {}
@@ -7013,6 +7015,14 @@ pub async fn run_session(
                     end_call_pending = None;
                     info!(
                         "end_call cancelled serial={serial} reason={} after_ms={} — the caller spoke again, the call goes on",
+                        p.reason,
+                        view.since_accept.as_millis()
+                    );
+                }
+                crate::end_call::Step::Stalled => {
+                    end_call_pending = None;
+                    info!(
+                        "end_call dropped serial={serial} reason={} after_ms={} — the call is being stalled now, the line stays open",
                         p.reason,
                         view.since_accept.as_millis()
                     );
