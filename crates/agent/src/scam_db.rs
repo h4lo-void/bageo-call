@@ -35,6 +35,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{info, warn};
 
+crate::prompt_book::prompt_texts! {}
+
 const BUILTIN_GZ: &[u8] = include_bytes!("../data/packs/bageo-scams.json.gz");
 
 pub const SCAMS_FILE_NAME: &str = bageo_packs::SCAMS_FILE;

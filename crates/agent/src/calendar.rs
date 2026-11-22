@@ -20,6 +20,8 @@ use serde_json::Value;
 
 use crate::locale::{self, Lang};
 
+crate::prompt_book::prompt_texts! {}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Event {
     pub title: String,

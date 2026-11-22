@@ -19,6 +19,8 @@ use crate::country_profile::Region;
 use crate::locale::Lang;
 use crate::stall_review::{Confidence, Verdict};
 
+crate::prompt_book::prompt_texts! {}
+
 /// What an ordinary call is about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Scenario {
