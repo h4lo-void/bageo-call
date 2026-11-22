@@ -29,6 +29,7 @@ The few things the AI needs before it can answer your phone.
 | Setting | Default | What it does |
 |---|---|---|
 | Language | English | The language the AI speaks with callers, including its first line, the blocked-number announcement and the texts it sends callers. |
+| Region | Decide from the phone number | The region whose speaking style and everyday habits the AI follows, such as where parcels go (`home_country`). Filtered to regions that use the language chosen above. |
 | Your name | empty | How callers refer to you. Fills `{owner}` wherever a prompt uses it. |
 | Answer style | AI assistant | **AI assistant**: says it is an AI answering for you and takes a message. **As me**: answers as you, without agreeing to anything on your behalf. |
 | Gemini API key | empty | Your key from Google AI Studio; the AI voice needs it. Stored on your computer only. |
@@ -37,13 +38,12 @@ The few things the AI needs before it can answer your phone.
 
 *Language* can be English, 繁體中文 (Taiwan), 简体中文, 日本語, 한국어, Español, Français, Deutsch or Português.
 
-**More options.** These five are folded under *More options* in Basics, and most people never change them:
+**More options.** These four are folded under *More options* in Basics, and most people never change them:
 
 | Setting | Default | What it does |
 |---|---|---|
 | Language of notifications and summaries | Same as the AI's language | The language you read your notifications and summaries in. The AI keeps speaking the *Language* above with callers. |
-| Country you live in | Decide from the phone number | The country whose everyday habits the AI follows, such as where parcels go (`home_country`). Type a name in any language, a code or a calling code (+66) to find it. |
-| Main language for each SIM | none | Only for a phone with SIMs from more than one country: pick a SIM's country and the language its calls start in. |
+| Main language for each SIM | none | Only for a phone with SIMs from more than one region: pick a SIM's region and the language its calls start in. |
 | AI calls: call as | Your assistant | Who the AI says it is on calls it makes for you: **Your assistant** or **You in person**. Each errand can pick its own. |
 | Live model | `gemini-3.8-live` | The Gemini Live model that talks on calls; you rarely need to change it. Models with "thinking" in the name (such as `gemini-3.8-live-extended-thinking`) answer more carefully and a little slower; see *Thinking level* under [Advanced](#advanced). |
 
@@ -64,7 +64,7 @@ Details for each:
 | Talk style | Natural, everyday | Five steps from *Casual and lively* to *Brisk and businesslike* (`talk_style_level`, 1 to 5). Not used while your own prompt is filled in. |
 | Status note (on the *About you* card) | off | One line about right now, up to 400 characters ("Deliveries: please leave the parcel at the front desk"). The AI mentions it only when it fits the call. |
 | Background sound, Background volume | off, Medium | A quiet room tone under the AI's voice, so it sounds like someone picking up in a real place. Volume Quiet, Medium or Loud. |
-| Forward to your phone: Turn on forwarding, how | off | Whether a call is put through to your phone, and how: *Don't answer: send to your phone* or *AI answers, puts you through if urgent* (`whitelist_mode`, which is `off` while the switch is off). A confirmation box comes first when you turn it on. The Whitelist tab on the **Contacts** page has the same setting. |
+| Forward to your phone: Turn on forwarding, how | off | Whether a call is put through to your phone, and how: *Don't answer: send to your phone* or *AI answers, puts you through if urgent* (`whitelist_mode`, which is `off` while the switch is off). A confirmation box comes first when you turn it on. |
 | Forward to your phone: Your own phone number | empty | The number the phone calls when something is urgent; it also appears in the notification (`whitelist_forward_number`). |
 | Forward to your phone: Who can be forwarded | Whitelist | Whose calls are put through: **Whitelist** (`transfer_whitelist`), **Other contacts** (`transfer_contacts`) and **Numbers not in your contacts** (`transfer_others`, hidden numbers too). People on the Blacklist or the Stall list never are. |
 
@@ -158,7 +158,7 @@ A few short answers so the AI sounds like you, all optional. Bageo turns them in
 | Your work or day, in one line | empty | Up to 120 characters (`about_work`). |
 | Things you often say / never say | empty | *As me* only: up to 3 each, 24 characters each (`about_say`, `about_avoid`). |
 | What to ask for in a message | all four | *AI assistant* only: the caller's name, a callback number, what it is about, how urgent (`about_message_asks`). |
-| Where should parcels and deliveries go? | empty | Up to 80 characters (`about_parcel`). The hint shows your country's usual way. |
+| Where should parcels and deliveries go? | empty | Up to 80 characters (`about_parcel`). The hint shows your region's usual way. |
 | Anything else the AI should know | empty | Up to 300 characters (`about_extra`). |
 
 Also on this card: *Other names callers use for you*, the *Status note* and *Notes the AI may answer from* (facts callers may ask about, one per line, up to 6,000 characters).

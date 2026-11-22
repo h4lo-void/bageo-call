@@ -40,6 +40,7 @@
     <string name="header_compat">Testattu laitteilla Pixel 7, 7a, 8 ja 9. Muut roottatut puhelimet voivat toimia; kokeile omalla vastuullasi.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versio %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo on %1$s (eri versio)</string>
     <string name="ip_addr_hint">Esimerkiksi 192.168.1.20</string>
     <string name="ip_addr_label">Bageon IP-osoite</string>
     <string name="ip_code_hint">Löydät sen hallintasivun Järjestelmä-sivulta</string>

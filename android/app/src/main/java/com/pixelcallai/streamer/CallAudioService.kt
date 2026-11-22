@@ -1273,8 +1273,9 @@ class CallAudioService : Service() {
                 reportedInCall = busy
                 hello.put("phone_mode", Prefs.phoneMode(this))
                 hello.put("in_call", busy)
-                // The agent sends the console address again after this hello (if it has one).
+                // The agent sends console_url and agent_version again after this hello.
                 Prefs.setConsoleUrl(this, null)
+                Prefs.setAgentVersion(this, null)
             },
             sims = { SimList.read(this) },
             onOpened = {
@@ -1321,12 +1322,13 @@ class CallAudioService : Service() {
             "send_sms" -> smsSender?.handle(obj)
             "agent_info" -> {
                 Prefs.setConsoleUrl(this, obj.optString("console_url"))
+                Prefs.setAgentVersion(this, obj.optString("agent_version"))
                 // `wifi` missing (older agent): keep the stored addresses. `urls` empty: forget them.
                 val urls = obj.optJSONObject("wifi")?.optJSONArray("urls")
                 Prefs.applyAgentWifi(this, urls?.let { a -> (0 until a.length()).map { a.optString(it) } })
                 Log.i(
                     TAG,
-                    "agent_info console_url_set=${Prefs.consoleUrl(this) != null} wifi_field=${urls != null} wifi_paired=${Prefs.wifiUrls(this).isNotEmpty()}",
+                    "agent_info console_url_set=${Prefs.consoleUrl(this) != null} agent_version=${Prefs.agentVersion(this) ?: ""} wifi_field=${urls != null} wifi_paired=${Prefs.wifiUrls(this).isNotEmpty()}",
                 )
             }
             else -> Log.i(TAG, "control cmd type=${obj.optString("type")}")

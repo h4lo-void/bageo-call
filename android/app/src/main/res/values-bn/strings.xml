@@ -40,6 +40,7 @@
     <string name="header_compat">Pixel 7, 7a, 8 ও 9-এ পরীক্ষিত। অন্যান্য রুট করা ফোনে কাজ করতে পারে; নিজ ঝুঁকিতে চেষ্টা করুন।</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">সংস্করণ %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo হলো %1$s (সংস্করণ ভিন্ন)</string>
     <string name="ip_addr_hint">উদাহরণস্বরূপ 192.168.1.20</string>
     <string name="ip_addr_label">Bageo-র IP ঠিকানা</string>
     <string name="ip_code_hint">ওয়েব কনসোলের সিস্টেম পাতা থেকে এটি নিন</string>

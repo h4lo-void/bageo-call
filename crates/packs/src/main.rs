@@ -23,15 +23,17 @@ use bageo_packs::extras::EXTRAS_INDEX_FILE;
 use bageo_packs::sync::{keep_same_ok, sync_source};
 use bageo_packs::util::{now_rfc3339, valid_rfc3339_utc};
 use bageo_packs::{
-    build, build_extras, build_locales_at, build_locales_call_at, check_index, check_locales, check_locales_ref, check_sources, load_art,
-    load_locales, load_sources, pack_locales, parse_bundle, parse_index, parse_locales, sanitize_locales, sha256_hex, sound_locales,
-    unpack_locales, Index, Issue, LocalesRef, FORMAT, LOCALES_FORMAT, MAX_LOCALES_BYTES,
+    build, build_extras, build_locales_at, build_locales_call_at, build_scams_at, check_index, check_locales, check_locales_ref,
+    check_scams_ref, check_sources, load_art, load_locales, load_sources, pack_bundle, pack_locales, pack_scams,
+    parse_bundle_bytes, parse_index, parse_locales, parse_scams, sanitize_locales, scam_counts, sha256_hex, sound_locales, sound_scams,
+    unpack_locales, Index, Issue, LocalesRef, FORMAT, LOCALES_FORMAT, MAX_LOCALES_BYTES, SCAMS_FORMAT,
 };
 
 const USAGE: &str = "usage:
   packs check <source folder>
-  packs build <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-pack.json> [--index <bageo-pack-index.json>] [--min-bageo <x.y.z>]
+  packs build <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-pack.json[.gz]> [--index <bageo-pack-index.json>] [--min-bageo <x.y.z>]
   packs build-locales <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-locales.json.gz> [--index <bageo-pack-index.json>] [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>] [--check] [--call-only]
+  packs build-scams <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-scams.json.gz> [--index <bageo-pack-index.json>] [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>]
   packs build-extras <source folder> --version <YYYYMMDDNN> --commit <text> --out <folder> [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>]
   packs sync-source --bageo-call <checkout> --out <packs folder> [--commit <text>]
   packs export-app --packs <packs folder> --android <res folder> --desktop <i18n.ext.json> [--commit <text>] [--check]";
@@ -54,6 +56,7 @@ fn main() -> ExitCode {
         Some("check") => cmd_check(&args[1..]),
         Some("build") => cmd_build(&args[1..]),
         Some("build-locales") => cmd_build_locales(&args[1..]),
+        Some("build-scams") => cmd_build_scams(&args[1..]),
         Some("build-extras") => cmd_build_extras(&args[1..]),
         Some("sync-source") => cmd_sync_source(&args[1..]),
         Some("export-app") => cmd_export_app(&args[1..]),
@@ -114,10 +117,28 @@ fn cmd_check(args: &[String]) -> ExitCode {
     if !locales.is_empty() {
         issues.extend(check_locales(&locales, None));
     }
+    let mut scams_info = None;
+    if Path::new(dir).join("scams/base.json").is_file() {
+        match build_scams_at(Path::new(dir), bageo_packs::util::today_version(), "0000000000000000000000000000000000000000", &now_rfc3339()) {
+            Ok(sb) => scams_info = Some(scam_counts(&sb)),
+            Err(more) => issues.extend(more),
+        }
+    }
     if issues.is_empty() {
         println!("ok: {} region(s), {} language layer(s)", sources.regions.len(), sources.layers.len());
+        if !sources.multilang.is_empty() || !sources.bubbles.is_empty() || !sources.place_habits.is_empty() {
+            println!(
+                "ok: {} multilang override(s), {} bubble region(s), {} place-habit region(s)",
+                sources.multilang.len(),
+                sources.bubbles.len(),
+                sources.place_habits.len()
+            );
+        }
         if !locales.is_empty() {
             println!("ok: {} translated language(s)", locales.langs.len());
+        }
+        if let Some((typ, kw, cc)) = scams_info {
+            println!("ok: {typ} scam typologies, {kw} keyword group(s), {cc} country scam file(s)");
         }
         ExitCode::SUCCESS
     } else {
@@ -177,30 +198,52 @@ fn cmd_build(args: &[String]) -> ExitCode {
             return ExitCode::from(1);
         }
     };
+    let out_bytes = if out.ends_with(".gz") {
+        match pack_bundle(&bundle) {
+            Ok(g) => g,
+            Err(e) => {
+                eprintln!("cannot pack the bundle: {e}");
+                return ExitCode::from(1);
+            }
+        }
+    } else {
+        json.as_bytes().to_vec()
+    };
     // What was built has to read back through the same door Bageo uses.
-    if let Err(issues) = parse_bundle(&json) {
+    if let Err(issues) = parse_bundle_bytes(&out_bytes) {
         report(&issues);
         return ExitCode::from(1);
     }
-    if let Err(e) = fs::write(&out, json.as_bytes()) {
+    if let Err(e) = fs::write(&out, &out_bytes) {
         eprintln!("cannot write {out}: {e}");
         return ExitCode::from(1);
     }
-    let sha256 = sha256_hex(json.as_bytes());
-    println!("built {out}: {} region(s), version {version}, sha256 {}", bundle.regions.len(), &sha256[..8]);
+    let sha256 = sha256_hex(&out_bytes);
+    println!(
+        "built {out}: {} region(s), version {version}, {} bytes, sha256 {}",
+        bundle.regions.len(),
+        out_bytes.len(),
+        &sha256[..8]
+    );
 
     if let Some(path) = index {
         let file = Path::new(&out).file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
-        // Keep the translations entry build-locales wrote into an existing
-        // index, when it is sound; a broken one is left out and said so.
-        let locales = fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Index>(&t).ok()).and_then(|ix| {
-            let (kept, note) = sound_locales(&ix);
+        let prev = fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Index>(&t).ok());
+        let locales = prev.as_ref().and_then(|ix| {
+            let (kept, note) = sound_locales(ix);
             if let Some(n) = note {
                 println!("note: {n}");
             }
             kept
         });
-        let ix = Index { format: FORMAT, version, file, bytes: json.len() as u64, sha256, min_bageo, locales };
+        let scams = prev.as_ref().and_then(|ix| {
+            let (kept, note) = sound_scams(ix);
+            if let Some(n) = note {
+                println!("note: {n}");
+            }
+            kept
+        });
+        let ix = Index { format: FORMAT, version, file, bytes: out_bytes.len() as u64, sha256, min_bageo, locales, scams };
         let issues = check_index(&ix);
         if !issues.is_empty() {
             report(&issues);
@@ -394,17 +437,87 @@ fn cmd_build_extras(args: &[String]) -> ExitCode {
 
 /// An existing index with its locales entry added or replaced, the rest kept.
 fn locales_index_body(path: &str, r: &LocalesRef) -> Result<String, String> {
+    sub_index_body(path, "locales", r)
+}
+
+fn sub_index_body(path: &str, key: &str, r: &LocalesRef) -> Result<String, String> {
     let text = fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))?;
     let mut v: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("{path}: {e}"))?;
     let obj = v.as_object_mut().ok_or_else(|| format!("{path}: not a JSON object"))?;
-    obj.insert("locales".to_string(), serde_json::to_value(r).map_err(|e| e.to_string())?);
+    obj.insert(key.to_string(), serde_json::to_value(r).map_err(|e| e.to_string())?);
     let body = serde_json::to_string(&v).map_err(|e| e.to_string())?;
     match parse_index(&body) {
-        Ok(ix) if ix.locales.as_ref() == Some(r) => {}
-        Ok(_) => return Err(format!("{path}: the locales entry does not read back")),
+        Ok(ix) if (key == "locales" && ix.locales.as_ref() == Some(r)) || (key == "scams" && ix.scams.as_ref() == Some(r)) => {}
+        Ok(_) => return Err(format!("{path}: the {key} entry does not read back")),
         Err(issues) => return Err(issues.iter().map(|i| i.to_string()).collect::<Vec<_>>().join("\n")),
     }
     Ok(body)
+}
+
+fn cmd_build_scams(args: &[String]) -> ExitCode {
+    let Some(a) = parse_args(args, &["--version", "--commit", "--out", "--index", "--built-at", "--min-bageo"], &[]) else {
+        return usage();
+    };
+    let ([dir], Some(version), Some(commit), Some(out)) =
+        (a.pos.as_slice(), a.opts.get("--version"), a.opts.get("--commit"), a.opts.get("--out"))
+    else {
+        return usage();
+    };
+    let Ok(version) = version.parse::<u64>() else { return usage() };
+    let built_at = a.opts.get("--built-at").cloned().unwrap_or_else(now_rfc3339);
+    if !valid_rfc3339_utc(&built_at) {
+        return usage();
+    }
+    let min_bageo = a.opts.get("--min-bageo").cloned().unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+
+    let built = match build_scams_at(Path::new(dir), version, commit, &built_at) {
+        Ok(b) => b,
+        Err(issues) => {
+            report(&issues);
+            return ExitCode::from(1);
+        }
+    };
+    let gz = match pack_scams(&built) {
+        Ok(g) => g,
+        Err(e) => return fail(format!("cannot pack scams: {e}")),
+    };
+    match parse_scams(&gz) {
+        Ok(back) if back == built => {}
+        Ok(_) => return fail("the built scams file does not read back the same"),
+        Err(issues) => {
+            report(&issues);
+            return ExitCode::from(1);
+        }
+    }
+    let sha256 = sha256_hex(&gz);
+    let index = match a.opts.get("--index") {
+        None => None,
+        Some(path) => {
+            let file = Path::new(out).file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+            let r = LocalesRef { file, bytes: gz.len() as u64, sha256: sha256.clone(), format: SCAMS_FORMAT, version, min_bageo };
+            let issues = check_scams_ref(&r);
+            if !issues.is_empty() {
+                report(&issues);
+                return ExitCode::from(1);
+            }
+            match sub_index_body(path, "scams", &r) {
+                Ok(body) => Some((path, body)),
+                Err(e) => return fail(e),
+            }
+        }
+    };
+    if let Err(e) = fs::write(out, &gz) {
+        return fail(format!("cannot write {out}: {e}"));
+    }
+    let (typ, kw, cc) = scam_counts(&built);
+    println!("built {out}: {typ} typologies, {kw} langs, {cc} countries, version {version}, {} bytes, sha256 {}", gz.len(), &sha256[..8]);
+    if let Some((path, body)) = index {
+        if let Err(e) = fs::write(path, body.as_bytes()) {
+            return fail(format!("cannot write {path}: {e}"));
+        }
+        println!("wrote {path}");
+    }
+    ExitCode::SUCCESS
 }
 
 fn cmd_sync_source(args: &[String]) -> ExitCode {

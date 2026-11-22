@@ -40,6 +40,7 @@
     <string name="header_compat">Testované na Pixel 7, 7a, 8 a 9. Iné telefóny s rootom môžu fungovať; skúšate na vlastné riziko.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Verzia %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo je %1$s (iná verzia)</string>
     <string name="ip_addr_hint">Napríklad 192.168.1.20</string>
     <string name="ip_addr_label">IP adresa Bageo</string>
     <string name="ip_code_hint">Získate ho na stránke Systém vo webovej konzole</string>

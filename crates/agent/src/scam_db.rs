@@ -27,15 +27,20 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, OnceLock, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{info, warn};
 
-const BUILTIN: &str = include_str!("../data/scam_db.json");
-const BUILTIN_COUNTRIES: &str = include_str!("../data/country_scams.json");
+const BUILTIN_GZ: &[u8] = include_bytes!("../data/packs/bageo-scams.json.gz");
+
+pub const SCAMS_FILE_NAME: &str = bageo_packs::SCAMS_FILE;
+pub const MAX_INSTALLS: usize = 8;
+const SCAMS_INCOMING_PREFIX: &str = ".incoming-scams-";
+const SCAMS_INCOMING_SUFFIX: &str = ".json.gz";
 
 /// Every typology is named in these (the notification languages, [`crate::locale::ALL`]).
 pub const NAME_LANGS: [&str; 9] = ["zh-TW", "zh-CN", "en", "ja", "ko", "es", "fr", "de", "pt"];
@@ -980,22 +985,191 @@ pub fn merge_countries(db: &mut ScamDb, json: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// The built-in database, read once. It cannot fail in a build whose tests
-/// passed; if it ever did, the agent goes on without keywords (the second look
-/// still runs on calls that say what they want) and says why.
-pub fn db() -> &'static ScamDb {
-    static DB: OnceLock<ScamDb> = OnceLock::new();
-    DB.get_or_init(|| match parse(BUILTIN) {
-        Ok(mut db) => {
-            if let Err(e) = merge_countries(&mut db, BUILTIN_COUNTRIES) {
-                warn!("built-in country scam database unreadable: {e}");
+pub struct InstalledScams {
+    pub version: u64,
+    pub db: ScamDb,
+}
+
+fn scam_issue(rule: &'static str, detail: impl Into<String>) -> Vec<bageo_packs::Issue> {
+    vec![bageo_packs::Issue::new(SCAMS_FILE_NAME, "", rule, detail)]
+}
+
+fn parse_scam_bundle(gz: &[u8]) -> Result<InstalledScams, Vec<bageo_packs::Issue>> {
+    let sb = bageo_packs::parse_scams(gz)?;
+    let db_str = serde_json::to_string(&sb.db).map_err(|e| scam_issue(bageo_packs::rule::FORMAT, e.to_string()))?;
+    let cc_str = serde_json::to_string(&sb.countries).map_err(|e| scam_issue(bageo_packs::rule::FORMAT, e.to_string()))?;
+    let mut parsed = parse(&db_str).map_err(|e| scam_issue(bageo_packs::rule::FORMAT, e))?;
+    merge_countries(&mut parsed, &cc_str).map_err(|e| scam_issue(bageo_packs::rule::FORMAT, e))?;
+    Ok(InstalledScams { version: sb.version, db: parsed })
+}
+
+pub fn builtin_scams() -> &'static InstalledScams {
+    static B: OnceLock<&'static InstalledScams> = OnceLock::new();
+    B.get_or_init(|| match parse_scam_bundle(BUILTIN_GZ) {
+        Ok(s) => Box::leak(Box::new(s)),
+        Err(issues) => {
+            warn!(
+                "built-in scam database unreadable: {}",
+                issues.first().map(|i| i.to_string()).unwrap_or_default()
+            );
+            Box::leak(Box::new(InstalledScams { version: 0, db: ScamDb::default() }))
+        }
+    })
+}
+
+static CURRENT_SCAMS: RwLock<Option<&'static InstalledScams>> = RwLock::new(None);
+static SCAM_INSTALLS: AtomicUsize = AtomicUsize::new(0);
+static SCAM_INSTALL_LOCK: Mutex<()> = Mutex::new(());
+
+#[cfg(test)]
+thread_local! {
+    static TEST_CURRENT_SCAMS: std::cell::Cell<Option<&'static InstalledScams>> = const { std::cell::Cell::new(None) };
+}
+
+fn set_current_scams(s: &'static InstalledScams) {
+    #[cfg(test)]
+    {
+        TEST_CURRENT_SCAMS.with(|c| c.set(Some(s)));
+    }
+    #[cfg(not(test))]
+    {
+        *CURRENT_SCAMS.write().unwrap_or_else(|e| e.into_inner()) = Some(s);
+    }
+}
+
+fn load_installed_scams(dir: &Path, builtin_ver: u64) -> Option<&'static InstalledScams> {
+    let packs = dir.join("packs");
+    if let Ok(entries) = std::fs::read_dir(&packs) {
+        for e in entries.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with(SCAMS_INCOMING_PREFIX) && name.ends_with(SCAMS_INCOMING_SUFFIX) {
+                let _ = std::fs::remove_file(e.path());
             }
-            db
         }
-        Err(e) => {
-            warn!("built-in scam database unreadable: {e}");
-            ScamDb::default()
+    }
+    let path = packs.join(SCAMS_FILE_NAME);
+    let bytes = std::fs::read(&path).ok()?;
+    match parse_scam_bundle(&bytes) {
+        Ok(s) if s.version > builtin_ver => {
+            info!("scam database {} in use ({} countries)", s.version, s.db.countries.len());
+            Some(Box::leak(Box::new(s)))
         }
+        Ok(_) => None,
+        Err(issues) => {
+            warn!(
+                "installed scam database rejected ({}); using built-in",
+                issues.first().map(|i| i.to_string()).unwrap_or_default()
+            );
+            None
+        }
+    }
+}
+
+pub fn current_scams() -> &'static InstalledScams {
+    #[cfg(test)]
+    {
+        if let Some(s) = TEST_CURRENT_SCAMS.with(|c| c.get()) {
+            return s;
+        }
+    }
+    if let Some(s) = *CURRENT_SCAMS.read().unwrap_or_else(|e| e.into_inner()) {
+        return s;
+    }
+    let mut slot = CURRENT_SCAMS.write().unwrap_or_else(|e| e.into_inner());
+    if let Some(s) = *slot {
+        return s;
+    }
+    let s = if cfg!(test) {
+        builtin_scams()
+    } else {
+        load_installed_scams(&crate::packs_store::data_dir(), builtin_scams().version).unwrap_or_else(builtin_scams)
+    };
+    *slot = Some(s);
+    s
+}
+
+/// The active scam database (installed hot-update when newer, else built-in).
+pub fn db() -> &'static ScamDb {
+    &current_scams().db
+}
+
+pub fn current_version() -> u64 {
+    current_scams().version
+}
+
+pub(crate) fn builtin_in_use() -> bool {
+    std::ptr::eq(current_scams(), builtin_scams())
+}
+
+pub(crate) fn installs_left() -> usize {
+    MAX_INSTALLS.saturating_sub(SCAM_INSTALLS.load(Ordering::SeqCst))
+}
+
+pub(crate) fn incoming_path(packs: &Path) -> PathBuf {
+    packs.join(format!(
+        "{SCAMS_INCOMING_PREFIX}{}-{}{SCAMS_INCOMING_SUFFIX}",
+        std::process::id(),
+        uuid::Uuid::new_v4().simple()
+    ))
+}
+
+pub(crate) fn install_file(staged: &Path, want: u64) -> Result<u64, Vec<bageo_packs::Issue>> {
+    let _guard = SCAM_INSTALL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let res = (|| {
+        if SCAM_INSTALLS.load(Ordering::SeqCst) >= MAX_INSTALLS {
+            return Err(scam_issue(
+                bageo_packs::rule::STATUS,
+                format!("{MAX_INSTALLS} updates installed since Bageo started; restart Bageo first"),
+            ));
+        }
+        let bytes = std::fs::read(staged).map_err(|e| scam_issue(bageo_packs::rule::FORMAT, format!("cannot read scams pack: {e}")))?;
+        let parsed = parse_scam_bundle(&bytes)?;
+        if parsed.version != want {
+            return Err(scam_issue(bageo_packs::rule::STATUS, format!("version {} is not {want}", parsed.version)));
+        }
+        let in_use = current_version();
+        if parsed.version <= in_use {
+            return Err(scam_issue(bageo_packs::rule::STATUS, format!("version {} is not newer than {in_use}", parsed.version)));
+        }
+        let dest = crate::packs_store::installed_dir().join(SCAMS_FILE_NAME);
+        std::fs::rename(staged, dest).map_err(|e| scam_issue(bageo_packs::rule::FORMAT, format!("cannot install scams pack: {e}")))?;
+        SCAM_INSTALLS.fetch_add(1, Ordering::SeqCst);
+        let leaked: &'static InstalledScams = Box::leak(Box::new(parsed));
+        set_current_scams(leaked);
+        Ok(leaked.version)
+    })();
+    if res.is_err() {
+        let _ = std::fs::remove_file(staged);
+    }
+    res
+}
+
+pub fn restore_builtin() -> std::io::Result<()> {
+    let _guard = SCAM_INSTALL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let path = crate::packs_store::installed_dir().join(SCAMS_FILE_NAME);
+    match std::fs::remove_file(path) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+        _ => {}
+    }
+    set_current_scams(builtin_scams());
+    Ok(())
+}
+
+#[cfg(test)]
+fn builtin_db_json() -> &'static str {
+    static S: OnceLock<String> = OnceLock::new();
+    S.get_or_init(|| {
+        let sb = bageo_packs::parse_scams(BUILTIN_GZ).expect("built-in scams gz");
+        serde_json::to_string(&sb.db).unwrap()
+    })
+}
+
+#[cfg(test)]
+fn builtin_countries_json() -> &'static str {
+    static S: OnceLock<String> = OnceLock::new();
+    S.get_or_init(|| {
+        let sb = bageo_packs::parse_scams(BUILTIN_GZ).expect("built-in scams gz");
+        serde_json::to_string(&sb.countries).unwrap()
     })
 }
 
@@ -1872,11 +2046,12 @@ mod tests {
     use super::*;
     use crate::locale::Lang;
 
-    /// The 27 languages the database covers.
-    const LANGS: [&str; 61] = [
-        "zh-TW", "zh-CN", "en", "es", "fr", "de", "pt", "it", "vi", "id", "ms", "tl", "tr", "ru", "ja", "ko", "hi", "ar", "th",
+    /// The 80 languages the database covers (9 core languages, then 71 extra languages).
+    const LANGS: [&str; 80] = [
+        "zh-TW", "zh-CN", "en", "es", "fr", "de", "pt", "ja", "ko", "it", "vi", "id", "ms", "tl", "tr", "ru", "hi", "ar", "th",
         "nl", "pl", "ro", "uk", "bn", "mr", "ta", "te", "sv", "nb", "da", "fi", "is", "cs", "sk", "hu", "bg", "el", "hr", "sr",
         "sl", "mk", "sq", "he", "ur", "ne", "si", "my", "lo", "mn", "fa", "ps", "az", "hy", "ka", "sw", "am", "af", "et", "lv", "lt", "be",
+        "ca", "ceb", "eu", "fil", "gl", "gu", "ht", "jv", "kn", "kok", "la", "lb", "mai", "mg", "ml", "nn", "or", "pa", "sd",
     ];
 
     fn temp_dir(tag: &str) -> PathBuf {
@@ -1887,7 +2062,7 @@ mod tests {
 
     #[test]
     fn the_built_in_database_parses_and_hangs_together() {
-        let db = parse(BUILTIN).expect("data/scam_db.json");
+        let db = parse(builtin_db_json()).expect("data/scam_db.json");
         assert!(db.version >= 1);
         assert!(db.typologies.len() >= 40, "{}", db.typologies.len());
         for t in &db.typologies {
@@ -1921,8 +2096,8 @@ mod tests {
 
     #[test]
     fn country_scam_database_merges_self_matches_and_protects_normal_calls() {
-        let mut parsed = parse(BUILTIN).expect("data/scam_db.json");
-        merge_countries(&mut parsed, BUILTIN_COUNTRIES).expect("data/country_scams.json");
+        let mut parsed = parse(builtin_db_json()).expect("data/scam_db.json");
+        merge_countries(&mut parsed, builtin_countries_json()).expect("data/country_scams.json");
         let expected_isos = ["tw", "cn", "us", "gb", "jp", "kr", "de", "es", "fr", "br", "pt", "id", "it", "in"];
         for iso in expected_isos {
             assert!(parsed.countries.contains_key(iso), "missing country profile: {iso}");
@@ -1946,8 +2121,8 @@ mod tests {
             }
         }
         // Anti-stalling giveaways in bait_tactics must be rejected by merge_countries.
-        let bad_json = BUILTIN_COUNTRIES.replace("裝得很緊張配合", "表示要掛斷後打165查證");
-        assert!(merge_countries(&mut parse(BUILTIN).unwrap(), &bad_json).is_err());
+        let bad_json = builtin_countries_json().replace("裝得很緊張配合", "表示要掛斷後打165查證");
+        assert!(merge_countries(&mut parse(builtin_db_json()).unwrap(), &bad_json).is_err());
 
         // Cross-border +62 call onto a TW SIM surfaces both ID cross-border warning and TW regional patterns.
         let notes = vec!["Phone SIM region: TW".to_string()];
@@ -2212,7 +2387,7 @@ mod tests {
     fn a_broken_database_is_an_error_not_a_panic() {
         assert!(parse("{").is_err());
         assert!(parse("[]").is_err());
-        let base: Value = serde_json::from_str(BUILTIN).unwrap();
+        let base: Value = serde_json::from_str(builtin_db_json()).unwrap();
         let broken = |f: &dyn Fn(&mut Value)| {
             let mut v = base.clone();
             f(&mut v);
@@ -2828,7 +3003,7 @@ mod tests {
         assert!(has_hard_hit("Please tell me your ＯＴＰ right now"));
 
         // NL15: hard red_flag in country_scams colliding with a different typology errors.
-        let mut base = parse(BUILTIN).unwrap();
+        let mut base = parse(builtin_db_json()).unwrap();
         let conflict_json = r#"{
             "countries": {
                 "XX": {

@@ -323,11 +323,11 @@
     "f_notify_lang_h": "Die Sprache der Benachrichtigungen und Zusammenfassungen, die du liest. Sie ändert nicht, in welcher Sprache die KI mit Anrufern spricht.",
     "nl_same": "Wie die Sprache der KI",
     "f_simlang": "Hauptsprache je SIM",
-    "f_simlang_h": "Nur für ein Telefon mit einer SIM aus einem anderen Land: Anrufe auf dieser SIM beginnen in der hier gewählten Sprache. Erfordert die Telefon-App 1.0 oder neuer.",
-    "sl_country": "Land der SIM",
+    "f_simlang_h": "Nur nötig, wenn ein Telefon eine SIM aus einer anderen Region hat: Anrufe auf dieser SIM beginnen in der hier gewählten Sprache. App 1.0 oder neuer.",
+    "sl_country": "Region der SIM",
     "sl_lang": "Hauptsprache",
-    "sl_pick": "Land auswählen",
-    "sl_add": "SIM-Land hinzufügen",
+    "sl_pick": "Region auswählen",
+    "sl_add": "SIM-Region hinzufügen",
     "sl_remove": "Diese SIM entfernen",
     "sl_empty": "Nichts eingestellt: Jeder Anruf beginnt in der Sprache oben.",
     "f_owner": "Dein Name",
@@ -1192,8 +1192,8 @@
     "ippair_docker": "Gib die IP des Docker-Hosts ein",
     "ippair_need_password": "Um von einem anderen Gerät einen Kopplungscode zu holen, lege zuerst ein Passwort für die Konsole fest oder öffne die Konsole auf dem Computer, auf dem Bageo läuft.",
     "err_phone_wifi_off": "Schalte zuerst „Telefone auch per WLAN verbinden“ ein.",
-    "f_home_country": "Land, in dem du wohnst",
-    "f_home_country_h": "Die KI folgt den Gewohnheiten dieses Landes, etwa wo Pakete hinkommen. Automatisch: nach der Rufnummer.",
+    "f_home_country": "Region",
+    "f_home_country_h": "Die KI folgt der Sprechweise und den Gewohnheiten dieser Region. Automatisch: nach der Rufnummer.",
     "hc_auto": "Nach der Rufnummer",
     "pk_title": "Lokale Daten",
     "pk_ver_builtin": "In Gebrauch: {date} (eingebaut)",
@@ -1293,6 +1293,8 @@
     "ex_lvl_basic": "Nur Anrufe",
     "ex_switched": "Konsole auf {lang} umgestellt.",
     "ex_r_in_use": "Kann nicht gelöscht werden, solange in Einstellungen aktiv.",
-    "ex_empty": "Keine passenden Sprachen"
+    "ex_empty": "Keine passenden Sprachen",
+    "ph_app_ver_diff": "Weicht von Bageo {v} ab",
+    "ts_get_art": "Lokale Szene herunterladen"
   }
 }

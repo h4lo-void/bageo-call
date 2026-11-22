@@ -110,6 +110,636 @@
         "Thanks very much for calling, take care now, bye."
       ],
       "reject": "Sorry, it has not been possible to connect your call, as the person you have called is not available. Please try again later."
+    },
+    "af": {
+      "lang": "ps",
+      "gemini_lang": "ps",
+      "preview": [
+        "بلې، سلام علیکم، مهرباني وکړئ وفرمایئ؟",
+        "سمه ده، ما ستاسو خبره یادداشت کړه او ژر به یې ورته ورسوم۔",
+        "له اړیکې مو ډېره مننه، په مخه مو ښه۔"
+      ],
+      "reject": "وبخښئ، هغه شمېره چې تاسو ورسره اړیکه نیسئ دا مهال د لاسرسي وړ نه ده، مهرباني وکړئ وروسته بیا هڅه وکړئ۔"
+    },
+    "al-xk": {
+      "lang": "sq",
+      "gemini_lang": "sq",
+      "preview": [
+        "Alo, përshëndetje, urdhëroni.",
+        "E kuptoj, e shënova këtë dhe do t'ia përcjell.",
+        "Mirë atëherë, faleminderit, ditën e mirë."
+      ],
+      "reject": "Numri që keni thirrur nuk mund të arrihet për momentin. Ju lutemi provoni më vonë."
+    },
+    "am": {
+      "lang": "hy",
+      "gemini_lang": "hy",
+      "preview": [
+        "Բարև ձեզ, լսում եմ ձեզ, ինչպե՞ս կարող եմ օգնել։",
+        "Շատ բարի, գրանցեցի ձեր ասածը և անպայման կփոխանցեմ։",
+        "Շնորհակալություն զանգի համար, լավ օր եմ մաղթում, ցտեսություն։"
+      ],
+      "reject": "Բաժանորդն այս պահին ժամանակավորապես անհասանելի է, խնդրում ենք զանգահարել ավելի ուշ։"
+    },
+    "ar-uy": {
+      "lang": "es",
+      "gemini_lang": "es-US",
+      "preview": [
+        "¿Hola? Buenas tardes, ¿quién habla?",
+        "Dale, quedate tranquilo que ya anoto tu mensaje y le aviso enseguida.",
+        "Bárbaro, muchas gracias por llamar, que andes muy bien. Chau, hasta luego."
+      ],
+      "reject": "El número solicitado se encuentra apagado o fuera del área de cobertura; por favor intentá comunicarte más tarde."
+    },
+    "at": {
+      "lang": "de",
+      "gemini_lang": "de-DE",
+      "preview": [
+        "Grüß Gott, hallo! Wie kann ich Ihnen helfen?",
+        "Verstehe, ich notiere mir das gleich und gebe es weiter.",
+        "Vielen Dank für den Anruf. Auf Wiederhören!"
+      ],
+      "reject": "Der gewünschte Gesprächspartner ist derzeit leider nicht erreichbar. Bitte versuchen Sie es später noch einmal."
+    },
+    "au-nz": {
+      "lang": "en",
+      "gemini_lang": "en-US",
+      "preview": [
+        "Hi there, thanks for calling—how can I help you today?",
+        "Got all of that, thanks—I'll pass your message straight along.",
+        "Appreciate you calling through. Have a good one, bye!"
+      ],
+      "reject": "The person you have called is currently unavailable. Please try your call again later."
+    },
+    "az": {
+      "lang": "az",
+      "gemini_lang": "az",
+      "preview": [
+        "Salam, buyurun, sizi eşidirəm, necə kömək edə bilərəm?",
+        "Çox gözəl, qeyd etdim, məlumatı mütləq çatdıracağam.",
+        "Zənginiz üçün təşəkkür edirəm, sağ olun, yaxşı günlər!"
+      ],
+      "reject": "Zəng etdiyiniz nömrəyə hazırda zəng çatmır, xahiş edirik bir qədər sonra yenidən cəhd edin."
+    },
+    "bd": {
+      "lang": "bn",
+      "gemini_lang": "bn-BD",
+      "preview": [
+        "হ্যালো, জি বলছি—বলুন, কীভাবে সাহায্য করতে পারি?",
+        "জি বুঝতে পেরেছি, আপনার কথাটা লিখে রাখলাম, আমি দ্রুত জানিয়ে দেব।",
+        "ফোন করার জন্য অনেক ধন্যবাদ, ভালো থাকবেন।"
+      ],
+      "reject": "দুঃখিত, এই মুহূর্তে নম্বরটিতে সংযোগ দেওয়া সম্ভব হচ্ছে না, অনুগ্রহ করে পরে আবার চেষ্টা করুন।"
+    },
+    "be": {
+      "lang": "nl",
+      "gemini_lang": "nl-NL",
+      "preview": [
+        "Hallo, waarmee kan ik u helpen?",
+        "Oké, ik begrijp het, ik noteer dat meteen.",
+        "Bedankt voor het bellen, nog een fijne dag verder."
+      ],
+      "reject": "Het nummer dat u hebt gebeld is momenteel niet bereikbaar. Gelieve later opnieuw te proberen."
+    },
+    "bg": {
+      "lang": "bg",
+      "gemini_lang": "bg",
+      "preview": [
+        "Ало, здравейте! Слушам ви, кажете.",
+        "Разбирам, записах си всичко и ще предам веднага.",
+        "Благодаря за обаждането, хубав и спокоен ден!"
+      ],
+      "reject": "Телефонът на абоната е изключен или се намира извън обхват. Моля, опитайте по-късно."
+    },
+    "by": {
+      "lang": "ru",
+      "gemini_lang": "ru-RU",
+      "preview": [
+        "Алло, добрый день! Слушаю вас, по какому вы вопросу?",
+        "Хорошо, спасибо, я всё записал и обязательно передам.",
+        "Благодарю за звонок, всего вам хорошего, до свидания."
+      ],
+      "reject": "Абонент временно недоступен или находится вне зоны действия сети. Пожалуйста, перезвоните позже."
+    },
+    "ca": {
+      "lang": "en",
+      "gemini_lang": "en-US",
+      "preview": [
+        "Hi there, thanks for calling—how can I help you today?",
+        "Got it, I'll make sure to pass that message right along for you.",
+        "Thanks so much for calling—take care and have a great rest of your day."
+      ],
+      "reject": "The customer you are calling is unavailable at the moment. Please try your call again later."
+    },
+    "ch": {
+      "lang": "de",
+      "gemini_lang": "de-DE",
+      "preview": [
+        "Grüezi, wie kann ich Ihnen helfen?",
+        "Alles klar, ich habe das notiert und gebe es gerne weiter.",
+        "Vielen Dank für Ihren Anruf, einen schönen Tag noch."
+      ],
+      "reject": "Der gewünschte Teilnehmer ist zurzeit nicht erreichbar. Bitte versuchen Sie es später noch einmal."
+    },
+    "cz": {
+      "lang": "cs",
+      "gemini_lang": "cs",
+      "preview": [
+        "Haló, dobrý den, jak vám mohu pomoci?",
+        "Rozumím, děkuji, píšu si to.",
+        "Děkuji za zavolání, mějte se hezky, na shledanou."
+      ],
+      "reject": "Volaný účastník není momentálně dostupný. Zkuste prosím zavolat později."
+    },
+    "default": {
+      "lang": "en",
+      "gemini_lang": "en-US",
+      "preview": [
+        "Hello, thanks for calling—how can I help you today?",
+        "Understood, I have noted that down and will pass it right along.",
+        "Thank you for calling—take care and have a good day."
+      ],
+      "reject": "The person you are trying to reach is currently unavailable. Please try your call again later."
+    },
+    "dk": {
+      "lang": "da",
+      "gemini_lang": "da",
+      "preview": [
+        "Hej, hvad kan jeg hjælpe dig med?",
+        "Okay, det har jeg noteret, jeg giver beskeden videre.",
+        "Tak for dit opkald, hav en rigtig god dag."
+      ],
+      "reject": "Personen, du ringer til, kan ikke tage telefonen lige nu. Prøv venligst igen senere."
+    },
+    "ee": {
+      "lang": "et",
+      "gemini_lang": "et",
+      "preview": [
+        "Tere! Kuulan teid, kuidas saan täna abiks olla?",
+        "Selge, panin info kirja ja annan teate kindlasti edasi.",
+        "Suur tänu helistamast, kena päeva jätku ja head aega!"
+      ],
+      "reject": "Telefoninumber, millele te helistate, ei ole hetkel kättesaadav. Palun proovige hiljem uuesti."
+    },
+    "eg": {
+      "lang": "ar",
+      "gemini_lang": "ar-EG",
+      "preview": [
+        "ألو، أهلاً بحضرتك، تفضل أنا في الاستماع.",
+        "مفهوم تماماً، دونت كل التفاصيل وسأوصل الرسالة في أقرب وقت.",
+        "شكراً جزيلاً لاتصال حضرتك، مع السلامة."
+      ],
+      "reject": "الهاتف المطلوب غير متاح حالياً، يرجى معاودة الاتصال في وقت لاحق."
+    },
+    "fi": {
+      "lang": "fi",
+      "gemini_lang": "fi",
+      "preview": [
+        "Haloo, kuinka voin auttaa?",
+        "Selvä juttu, kirjoitan tämän muistiin ja välitän viestin.",
+        "Kiitos soitosta ja mukavaa päivänjatkoa."
+      ],
+      "reject": "Valitsemaanne numeroon ei juuri nyt saada yhteyttä. Yrittäkää myöhemmin uudelleen."
+    },
+    "ge": {
+      "lang": "ka",
+      "gemini_lang": "ka",
+      "preview": [
+        "გამარჯობა, გისმენთ, რა საკითხზე შემიძლია დაგეხმაროთ?",
+        "გასაგებია, ჩავინიშნე თქვენი ნათქვამი და აუცილებლად გადავცემ.",
+        "დიდი მადლობა ზარისთვის, კარგ დღეს გისურვებთ, ნახვამდის!"
+      ],
+      "reject": "აბონენტი ამჟამად მიუწვდომელია ან გასულია მომსახურების ზონიდან, გთხოვთ დარეკოთ მოგვიანებით."
+    },
+    "gr-cy": {
+      "lang": "el",
+      "gemini_lang": "el",
+      "preview": [
+        "Παρακαλώ, γεια σας! Σας ακούω.",
+        "Μάλιστα, το σημείωσα και θα ενημερώσω αμέσως.",
+        "Σας ευχαριστώ που καλέσατε, καλή συνέχεια!"
+      ],
+      "reject": "Ο συνδρομητής που καλέσατε δεν είναι διαθέσιμος αυτή τη στιγμή. Παρακαλούμε καλέστε αργότερα."
+    },
+    "gulf": {
+      "lang": "ar",
+      "gemini_lang": "ar-EG",
+      "preview": [
+        "أهلاً وسهلاً، تفضل معك على الخط.",
+        "واضح، سجلت الملاحظة وسأبلغه بالتفاصيل في أقرب وقت.",
+        "شكراً لاتصالك، مع السلامة وفي أمان الله."
+      ],
+      "reject": "الرقم المطلوب لا يمكن الاتصال به الآن، يرجى معاودة الاتصال في وقت لاحق."
+    },
+    "hk-mo": {
+      "lang": "cmn",
+      "gemini_lang": "cmn",
+      "preview": [
+        "喂，你好，請問找哪位？",
+        "好的，我先幫你記下來，稍後再回覆你。",
+        "好，麻煩你了，先這樣，拜拜。"
+      ],
+      "reject": "對不起，你所撥打的電話暫時未能接通，請稍後再撥。"
+    },
+    "hr": {
+      "lang": "hr",
+      "gemini_lang": "hr",
+      "preview": [
+        "Halo, dobar dan! Izvolite, slušam vas.",
+        "Razumijem, sve sam zapisao i odmah ću prenijeti poruku.",
+        "Hvala vam na pozivu, ugodan ostatak dana!"
+      ],
+      "reject": "Birani korisnik trenutno nije dostupan ili je isključio mobilni telefon. Molimo pokušajte kasnije."
+    },
+    "hu": {
+      "lang": "hu",
+      "gemini_lang": "hu",
+      "preview": [
+        "Halló, jó napot kívánok, tessék!",
+        "Értem, köszönöm szépen a tájékoztatást, feljegyeztem.",
+        "Köszönöm a hívást, további szép napot kívánok, viszonthallásra!"
+      ],
+      "reject": "A hívott szám jelenleg nem kapcsolható. Kérjük, ismételje meg hívását később!"
+    },
+    "id": {
+      "lang": "id",
+      "gemini_lang": "id-ID",
+      "preview": [
+        "Halo, selamat siang, ada yang bisa dibantu lewat telepon ini?",
+        "Baik, pesannya sudah cukup jelas, nanti saya sampaikan ya.",
+        "Terima kasih banyak sudah menghubungi, selamat beraktivitas kembali."
+      ],
+      "reject": "Maaf, nomor yang Anda tuju sedang tidak dapat menerima panggilan saat ini, silakan hubungi kembali nanti."
+    },
+    "il": {
+      "lang": "he",
+      "gemini_lang": "he",
+      "preview": [
+        "הלו, שלום, תודה שהתקשרתם, איך אפשר לעזור?",
+        "הבנתי, רשמתי לעצמי את הפרטים ואני אעדכן בהקדם.",
+        "תודה רבה על השיחה, המשך יום נעים, ביי."
+      ],
+      "reject": "המנוי אינו זמין כעת, אנא נסו שוב מאוחר יותר."
+    },
+    "in": {
+      "lang": "en",
+      "gemini_lang": "en-IN",
+      "preview": [
+        "Hello? Yes, speaking—please go ahead, how may I help you?",
+        "Got it, I've noted the details down and will pass this message along shortly.",
+        "Thank you so much for calling, take care—bye."
+      ],
+      "reject": "The number you have dialed is currently unavailable; please try again later."
+    },
+    "ir": {
+      "lang": "fa",
+      "gemini_lang": "fa",
+      "preview": [
+        "بله، سلام، وقت بخیر؛ بفرمایید چطور می‌توانم کمکتان کنم؟",
+        "بسیار خب، متوجه شدم؛ حتماً پیغام شما را دقیق یادداشت و منتقل می‌کنم.",
+        "ممنون از تماس شما، روز خوبی داشته باشید، خدانگهدار."
+      ],
+      "reject": "در حال حاضر مشترک مورد نظر در دسترس نمی‌باشد؛ لطفاً بعداً شماره‌گیری فرمایید."
+    },
+    "is": {
+      "lang": "is",
+      "gemini_lang": "is",
+      "preview": [
+        "Halló, hvað get ég gert fyrir þig?",
+        "Já, ég skrifa þetta hjá mér og kem skilaboðunum áleiðis.",
+        "Takk fyrir að hringja og eigðu góðan dag."
+      ],
+      "reject": "Ekki næst samband við símanúmerið í augnablikinu. Vinsamlegast reyndu aftur síðar."
+    },
+    "it": {
+      "lang": "it",
+      "gemini_lang": "it-IT",
+      "preview": [
+        "Pronto, buongiorno! Mi dica pure.",
+        "Ho capito, prendo nota subito e riferisco tutto.",
+        "Grazie per aver chiamato, buona giornata!"
+      ],
+      "reject": "Il numero chiamato non è al momento raggiungibile. La preghiamo di riprovare più tardi."
+    },
+    "ke-tz-et-mg-ht": {
+      "lang": "en",
+      "gemini_lang": "en-US",
+      "preview": [
+        "Hello, good day—how can I help you today?",
+        "Got it, thank you—I've written your message down and will pass it along.",
+        "Thank you very much for calling, have a pleasant day, goodbye."
+      ],
+      "reject": "Sorry, the subscriber you have called is not available right now. Please try calling again later."
+    },
+    "la": {
+      "lang": "lo",
+      "gemini_lang": "lo",
+      "preview": [
+        "ຮາໂຫຼ ສະບາຍດີ, ເຈົ້າ ມີຫຍັງໃຫ້ຊ່ວຍ ເຊີນເວົ້າໄດ້ເລີຍເດີ້.",
+        "ເຈົ້າ ເຂົ້າໃຈແລ້ວ, ຈົດລາຍລະອຽດໄວ້ໃຫ້ແລ້ວ ແລະ ຈະຮີບແຈ້ງຕໍ່ໃຫ້ເດີ້.",
+        "ຂອບໃຈຫຼາຍໆທີ່ໂທມາເດີ້, ໂຊກດີເດີ້."
+      ],
+      "reject": "ຂໍອະໄພ, ໝາຍເລກທີ່ທ່ານເອີ້ນ ບໍ່ສາມາດຕິດຕໍ່ໄດ້ໃນຂະນະນີ້, ກະລຸນາໂທໃໝ່ອີກຄັ້ງ."
+    },
+    "latam": {
+      "lang": "es",
+      "gemini_lang": "es-US",
+      "preview": [
+        "¿Aló? Buenas tardes, ¿con quién hablo?",
+        "Claro, ya dejo anotado su mensaje para avisarle enseguida.",
+        "Listo, muchas gracias por llamar, que esté muy bien. Hasta luego."
+      ],
+      "reject": "Lo sentimos, el número que usted ha marcado no se encuentra disponible en este momento; por favor intente más tarde."
+    },
+    "levant": {
+      "lang": "ar",
+      "gemini_lang": "ar-EG",
+      "preview": [
+        "مرحباً، أهلاً بك، تفضل كيف يمكنني مساعدتك اليوم؟",
+        "حسناً، فهمت الفكرة تماماً، سأدوّن رسالتك وأوصلها في أقرب وقت.",
+        "شكراً جزيلاً لاتصالك، أتمنى لك يوماً طيباً، مع السلامة."
+      ],
+      "reject": "عفواً، إن الرقم المطلوب غير متاح حالياً، يرجى المحاولة في وقت لاحق."
+    },
+    "lk": {
+      "lang": "si",
+      "gemini_lang": "si",
+      "preview": [
+        "හෙලෝ, ආයුබෝවන්, මට කොහොමද උදව් කරන්න පුළුවන්?",
+        "හරි, මම ඒ විස්තරය සටහන් කරගත්තා, ඉක්මනින්ම දැනුම් දෙන්නම්.",
+        "කතා කළාට බොහොම ස්තූතියි, ඔබට සුබ දවසක් වේවා."
+      ],
+      "reject": "සමාවන්න, ඔබ ඇමතූ දුරකථන අංකය මේ මොහොතේ සම්බන්ධ කළ නොහැක. කරුණාකර පසුව නැවත උත්සාහ කරන්න."
+    },
+    "lt": {
+      "lang": "lt",
+      "gemini_lang": "lt",
+      "preview": [
+        "Laba diena! Klausau jūsų, kokiu klausimu galiu padėti?",
+        "Aišku, ačiū, viską pasižymėjau ir būtinai perduosiu žinutę.",
+        "Dėkoju už skambutį, gražios jums dienos ir viso gero!"
+      ],
+      "reject": "Abonentas, kuriam skambinate, šiuo metu nepasiekiamas. Prašome paskambinti vėliau."
+    },
+    "lu": {
+      "lang": "fr",
+      "gemini_lang": "fr-FR",
+      "preview": [
+        "Allô, bonjour, je vous écoute.",
+        "D'accord, je vois, je prends note.",
+        "Merci pour votre appel, bonne journée, au revoir."
+      ],
+      "reject": "La personne que vous essayez de joindre n'est pas disponible pour le moment. Veuillez rappeler ultérieurement."
+    },
+    "lv": {
+      "lang": "lv",
+      "gemini_lang": "lv",
+      "preview": [
+        "Labdien! Klausos jūs, kādā jautājumā varu palīdzēt?",
+        "Labi, paldies, visu pierakstīju un noteikti nodošu ziņu tālāk.",
+        "Paldies par zvanu, jauku jums dienu un visu labu!"
+      ],
+      "reject": "Sazvanāmais adresāts pašlaik nav sasniedzams. Lūdzu, mēģiniet zvanīt vēlāk."
+    },
+    "maghreb": {
+      "lang": "ar",
+      "gemini_lang": "ar-EG",
+      "preview": [
+        "مرحباً، أهلاً بكم، تفضلوا كيف يمكنني مساعدتكم اليوم؟",
+        "حسناً، تم تسجيل ملاحظتكم وسأحرص على إبلاغها في أقرب وقت.",
+        "شكراً جزيلاً على اتصالكم، طاب يومكم ومع السلامة."
+      ],
+      "reject": "عفواً، إن الرقم الذي تطلبونه غير متاح حالياً، يرجى إعادة المحاولة لاحقاً."
+    },
+    "mk": {
+      "lang": "mk",
+      "gemini_lang": "mk",
+      "preview": [
+        "Ало, добар ден, повелете, како можам да помогнам?",
+        "Аха, разбирам, во ред е, ќе го запишам ова.",
+        "Важи, ќе пренесам веднаш штом можам. Пријатно!"
+      ],
+      "reject": "Бараниот број моментално не е достапен. Ве молиме обидете се подоцна."
+    },
+    "mm": {
+      "lang": "my",
+      "gemini_lang": "my",
+      "preview": [
+        "ဟယ်လို၊ မင်္ဂလာပါ၊ ဟုတ်ကဲ့ ပြောပါ၊ ဘာများကူညီပေးရမလဲနော်။",
+        "ဟုတ်ကဲ့ သိပါပြီ၊ အကြောင်းအရာလေး သေချာမှတ်ထားပြီး ပြန်ပြောပေးပါ့မယ်နော်။",
+        "ဖုန်းဆက်ပေးတဲ့အတွက် ကျေးဇူးအများကြီးတင်ပါတယ်၊ ဒါပဲနော်။"
+      ],
+      "reject": "လူကြီးမင်းခေါ်ဆိုသော ဖုန်းမှာ လောလောဆယ် ဆက်သွယ်၍မရသေးပါသဖြင့် နောက်မှပြန်လည်ခေါ်ဆိုပေးပါ။"
+    },
+    "mn": {
+      "lang": "mn",
+      "gemini_lang": "mn",
+      "preview": [
+        "Байна уу, сайн байна уу? Залгасанд баярлалаа.",
+        "За, таны хэлснийг тэмдэглэж авлаа. Дамжуулж хэлье ээ.",
+        "За, холбогдсонд баярлалаа. Өдрийг сайхан өнгөрүүлээрэй, баяртай."
+      ],
+      "reject": "Таны залгасан хэрэглэгч одоогоор хариу өгөх боломжгүй байна. Та дараа дахин залгана уу."
+    },
+    "my": {
+      "lang": "ms",
+      "gemini_lang": "ms",
+      "preview": [
+        "Helo, boleh saya tahu siapa yang bercakap?",
+        "Baik, saya sudah catat perkara itu dan akan maklumkan semula nanti.",
+        "Baiklah, terima kasih kerana menelefon."
+      ],
+      "reject": "Harap maaf, nombor yang anda dail tidak dapat dihubungi buat masa ini. Sila cuba sebentar lagi."
+    },
+    "nl": {
+      "lang": "nl",
+      "gemini_lang": "nl-NL",
+      "preview": [
+        "Hallo, goedendag! Waarmee kan ik u helpen?",
+        "Prima, ik noteer het direct en geef het door.",
+        "Bedankt voor het bellen. Fijne dag verder!"
+      ],
+      "reject": "Het nummer dat u belt is momenteel niet bereikbaar. Probeert u het later nog eens."
+    },
+    "no": {
+      "lang": "nb",
+      "gemini_lang": "nb",
+      "preview": [
+        "Hei, hva kan jeg hjelpe deg med?",
+        "Den er grei, da har jeg notert det.",
+        "Takk for samtalen, ha en fin dag videre."
+      ],
+      "reject": "Abonnenten har slått av telefonen eller befinner seg utenfor dekning. Vennligst prøv igjen senere."
+    },
+    "np": {
+      "lang": "ne",
+      "gemini_lang": "ne",
+      "preview": [
+        "हेलो, नमस्ते, हजुर भन्नुहोस् न, म कसरी मद्दत गरौं?",
+        "हजुर हुन्छ, मैले कुरा टिपोट गरें, म तुरुन्तै खबर गरिदिन्छु।",
+        "फोन गर्नुभएकोमा धन्यवाद हजुर, नमस्ते।"
+      ],
+      "reject": "माफ गर्नुहोला, तपाईंले सम्पर्क गर्नुभएको नम्बर अहिले उपलब्ध हुन सकेन, कृपया केही समयपछि पुनः प्रयास गर्नुहोला।"
+    },
+    "ph": {
+      "lang": "en",
+      "gemini_lang": "en-US",
+      "preview": [
+        "Hello, good day! I'm taking this call right now, how may I help you?",
+        "Got it, thanks for sharing. I'll make sure to pass your message along.",
+        "Thank you so much for calling today, take care and goodbye!"
+      ],
+      "reject": "Sorry, the person you are trying to reach is unavailable right now. Please try calling again later."
+    },
+    "pk": {
+      "lang": "ur",
+      "gemini_lang": "ur",
+      "preview": [
+        "ہیلو، السلام علیکم، جی فرمائیے؟",
+        "جی ٹھیک ہے، میں نے بات نوٹ کر لی ہے، میں ان کو ابھی بتا دیتا ہوں۔",
+        "بہت شکریہ آپ کی کال کا، اللہ حافظ۔"
+      ],
+      "reject": "معاف کیجیے، آپ کا مطلوبہ نمبر اس وقت دستیاب نہیں ہے، براہِ کرم بعد میں کوشش کیجیے۔"
+    },
+    "pl": {
+      "lang": "pl",
+      "gemini_lang": "pl-PL",
+      "preview": [
+        "Halo, dzień dobry, słucham?",
+        "Rozumiem, już to sobie zapisuję.",
+        "Dziękuję za telefon, miłego dnia, do usłyszenia."
+      ],
+      "reject": "Wybrany numer jest obecnie niedostępny. Prosimy spróbować później."
+    },
+    "pt": {
+      "lang": "pt",
+      "gemini_lang": "pt-BR",
+      "preview": [
+        "Estou? Bom dia, em que posso ser útil?",
+        "Com certeza, já tomei nota do seu recado e vou transmitir logo que possível.",
+        "Muito obrigado pelo seu contacto, resto de um ótimo dia. Adeus."
+      ],
+      "reject": "O número para o qual ligou não se encontra disponível de momento. Por favor, tente ligar mais tarde."
+    },
+    "ro-md": {
+      "lang": "ro",
+      "gemini_lang": "ro-RO",
+      "preview": [
+        "Alo, bună ziua, cu ce vă pot ajuta?",
+        "Am înțeles, vă mulțumesc pentru detalii, am notat.",
+        "Vă mulțumesc pentru apel, o zi frumoasă în continuare, la revedere!"
+      ],
+      "reject": "Abonatul apelat nu este disponibil momentan. Vă rugăm să reveniți mai târziu."
+    },
+    "rs": {
+      "lang": "sr",
+      "gemini_lang": "sr",
+      "preview": [
+        "Halo, dobar dan, izvolite, kako mogu pomoći?",
+        "Aha, razumem, jasno mi je o čemu se radi.",
+        "Važi, preneću poruku čim bude moguće. Prijatno!"
+      ],
+      "reject": "Pozvani broj trenutno nije dostupan. Molimo pokušajte kasnije."
+    },
+    "ru": {
+      "lang": "ru",
+      "gemini_lang": "ru-RU",
+      "preview": [
+        "Алло, здравствуйте! Слушаю вас, чем могу помочь?",
+        "Хорошо, я вас понял, обязательно передам эту информацию.",
+        "Спасибо за звонок, всего вам доброго, до свидания."
+      ],
+      "reject": "Абонент временно недоступен или находится вне зоны действия сети. Пожалуйста, перезвоните позже."
+    },
+    "se": {
+      "lang": "sv",
+      "gemini_lang": "sv",
+      "preview": [
+        "Hallå, hur kan jag hjälpa till?",
+        "Jag förstår, då har jag koll på det.",
+        "Tack för samtalet, ha en fortsatt bra dag."
+      ],
+      "reject": "Numret du har ringt kan inte nås för tillfället. Försök igen senare."
+    },
+    "sg": {
+      "lang": "en",
+      "gemini_lang": "en-US",
+      "preview": [
+        "Hello, speaking. May I know who's calling?",
+        "Okay, got it. I've noted that down and will get back to you.",
+        "Alright, thanks for calling. Bye."
+      ],
+      "reject": "Sorry, the number you have called is currently unavailable. Please try again later."
+    },
+    "si": {
+      "lang": "sl",
+      "gemini_lang": "sl",
+      "preview": [
+        "Halo, dober dan, izvolite, kako lahko pomagam?",
+        "Aha, razumem, hvala za informacijo.",
+        "V redu, bom prenesel sporočilo. Nasvidenje!"
+      ],
+      "reject": "Klicana številka trenutno ni dosegljiva. Prosimo, pokličite kasneje."
+    },
+    "sk": {
+      "lang": "sk",
+      "gemini_lang": "sk",
+      "preview": [
+        "Dobrý deň, pri telefóne, počúvam vás.",
+        "Rozumiem, ďakujem za informáciu, poznačím si to.",
+        "Ďakujem za zavolanie, prajem pekný deň, dovidenia."
+      ],
+      "reject": "Volaný účastník je momentálne nedostupný. Prosím, zavolajte neskôr."
+    },
+    "th": {
+      "lang": "th",
+      "gemini_lang": "th-TH",
+      "preview": [
+        "สวัสดีครับ รับสายอยู่ครับ ไม่ทราบว่าติดต่อเรื่องอะไรครับ",
+        "อ๋อ รับทราบรายละเอียดเบื้องต้นแล้วครับ เดี๋ยวช่วยจดเรื่องไว้ให้นะครับ",
+        "ขอบคุณมากนะครับที่ติดต่อเข้ามา สวัสดีครับ"
+      ],
+      "reject": "ขออภัยครับ ไม่สามารถติดต่อเลขหมายปลายทางได้ในขณะนี้ กรุณาติดต่อใหม่อีกครั้งครับ"
+    },
+    "tr": {
+      "lang": "tr",
+      "gemini_lang": "tr-TR",
+      "preview": [
+        "Alo, merhaba, buyurun sizi dinliyorum.",
+        "Anladım, konuyu hemen not alıyorum, kendisine ileteceğim.",
+        "Aradığınız için teşekkürler, iyi günler dilerim."
+      ],
+      "reject": "Aradığınız kişiye şu anda ulaşılamıyor, lütfen daha sonra tekrar deneyiniz."
+    },
+    "ua": {
+      "lang": "uk",
+      "gemini_lang": "uk-UA",
+      "preview": [
+        "Алло, вітаю! Слухаю вас, чим можу допомогти?",
+        "Добре, дякую, я все занотував і обов'язково передам.",
+        "Щиро дякую за дзвінок, гарного вам дня, до побачення."
+      ],
+      "reject": "Зараз абонент тимчасово недоступний або знаходиться поза зоною досяжності. Будь ласка, зателефонуйте пізніше."
+    },
+    "vn": {
+      "lang": "vi",
+      "gemini_lang": "vi-VN",
+      "preview": [
+        "Alo, tôi nghe đây ạ, xin hỏi ai đang gọi vậy ạ?",
+        "Dạ vâng, tôi nắm được ý chính rồi, để tôi ghi nhận lại thông tin này nhé.",
+        "Cảm ơn bạn đã gọi điện trao đổi nhé, xin chào bạn ạ."
+      ],
+      "reject": "Thuê bao bạn vừa gọi hiện không thể nhận cuộc gọi, xin vui lòng liên hệ lại sau."
+    },
+    "za": {
+      "lang": "en",
+      "gemini_lang": "en-US",
+      "preview": [
+        "Hi there, good day—how can I help you today?",
+        "Sharp, I've got that noted down and I'll pass the message straight on.",
+        "Thanks so much for calling, have a good day further, cheers."
+      ],
+      "reject": "The subscriber you have dialled is not available at present. Please try your call again later."
     }
   }
 }

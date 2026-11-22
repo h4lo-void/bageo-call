@@ -1279,12 +1279,18 @@ async fn packs_regions(State(state): State<CallsState>, headers: HeaderMap, Quer
                     "zh": r.name.zh.as_deref().unwrap_or(&r.name.en),
                 },
                 "lang": r.lang,
+                "other_langs": r.other_langs,
                 "status": r.status,
                 "delivery": { "en": r.delivery.en, "zh": r.delivery.zh },
             })
         })
         .collect();
-    Json(json!({ "version": pack.version, "regions": regions })).into_response()
+    let bubbles = if !pack.bubbles.is_empty() {
+        &pack.bubbles
+    } else {
+        &crate::packs_store::builtin().bubbles
+    };
+    Json(json!({ "version": pack.version, "regions": regions, "bubbles": bubbles })).into_response()
 }
 
 /// The console's address as other devices open it (empty: this computer only).

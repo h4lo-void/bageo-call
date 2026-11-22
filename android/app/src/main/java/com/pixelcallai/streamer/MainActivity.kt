@@ -75,6 +75,7 @@ class MainActivity : Activity() {
     private lateinit var agentUrlField: EditText
     private lateinit var urlMessage: TextView
     private lateinit var connRoute: TextView
+    private lateinit var versionHint: TextView
     private lateinit var wifiState: TextView
     private lateinit var btnForgetWifi: Button
     private lateinit var btnTest: Button
@@ -185,6 +186,7 @@ class MainActivity : Activity() {
         agentUrlField = findViewById(R.id.agentUrl)
         urlMessage = findViewById(R.id.urlMessage)
         connRoute = findViewById(R.id.connRoute)
+        versionHint = findViewById(R.id.versionHint)
         wifiState = findViewById(R.id.wifiState)
         btnForgetWifi = findViewById(R.id.btnForgetWifi)
         btnTest = findViewById(R.id.btnTest)
@@ -826,6 +828,13 @@ class MainActivity : Activity() {
             modeError.visibility = View.GONE
         }
         btnConsole.visibility = if (Prefs.consoleUrl(this) != null) View.VISIBLE else View.GONE
+        val agentVer = if (AgentControlClient.isAgentConnected()) Prefs.agentVersion(this) else null
+        if (agentVer != null && agentVer != BuildConfig.VERSION_NAME) {
+            versionHint.text = getString(R.string.header_version_diff, agentVer)
+            versionHint.visibility = View.VISIBLE
+        } else {
+            versionHint.visibility = View.GONE
+        }
         bindRoute(ai && !switching)
     }
 

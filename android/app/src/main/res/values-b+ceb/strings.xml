@@ -40,6 +40,7 @@
     <string name="header_compat">Nasulayan sa Pixel 7, 7a, 8, ug 9. Ang ubang rooted nga telepono mahimong mogana; gamita sa kaugalingong risgo.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Bersyon %1$s (%2$d)</string>
+    <string name="header_version_diff">Ang Bageo kay %1$s (lahi ang bersyon)</string>
     <string name="ip_addr_hint">Pananglitan 192.168.1.20</string>
     <string name="ip_addr_label">IP adres sa Bageo</string>
     <string name="ip_code_hint">Kuhaa sa System page sa web console</string>

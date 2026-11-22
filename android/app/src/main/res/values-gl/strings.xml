@@ -40,6 +40,7 @@
     <string name="header_compat">Probado en Pixel 7, 7a, 8 e 9. Outros teléfonos con root poden funcionar; úseo baixo a súa responsabilidade.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versión %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo é %1$s (versión diferente)</string>
     <string name="ip_addr_hint">Por exemplo 192.168.1.20</string>
     <string name="ip_addr_label">Enderezo IP de Bageo</string>
     <string name="ip_code_hint">Obtéñao na páxina Sistema da consola web</string>

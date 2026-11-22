@@ -1085,7 +1085,7 @@ mod tests {
     #[test]
     fn builtin_translations_read_with_their_languages_and_desktop_english() {
         let t = builtin();
-        assert_eq!(t.version, 2026112106);
+        assert_eq!(t.version, 2026112201);
         assert_eq!(t.langs().count(), 70);
         assert!(t.get(ext("fa")).is_some());
         let en = &english().files[&Kind::Notify];
@@ -1100,7 +1100,7 @@ mod tests {
     #[test]
     fn the_shipped_translations_carry_seventy_call_only_languages() {
         let (loc, dropped) = parse_from(BUILTIN, Origin::Builtin, 0).unwrap_or_else(|i| panic!("{}", i[0]));
-        assert_eq!(loc.version, 2026112106);
+        assert_eq!(loc.version, 2026112201);
         assert!(dropped.is_empty(), "{:?}", dropped.iter().map(|i| i.to_string()).collect::<Vec<_>>());
         let t = builtin();
         assert_eq!(t.langs().count(), 70);

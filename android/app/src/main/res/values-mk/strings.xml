@@ -40,6 +40,7 @@
     <string name="header_compat">Тестирано на Pixel 7, 7a, 8 и 9. Други телефони со root може да работат; пробајте на свој ризик.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Верзија %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo е %1$s (различна верзија)</string>
     <string name="ip_addr_hint">На пример 192.168.1.20</string>
     <string name="ip_addr_label">IP адреса на Bageo</string>
     <string name="ip_code_hint">Земете го на страницата Систем во веб-конзолата</string>

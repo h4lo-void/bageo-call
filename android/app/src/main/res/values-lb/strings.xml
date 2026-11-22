@@ -40,6 +40,7 @@
     <string name="header_compat">Getest op Pixel 7, 7a, 8 an 9. Aner gerootet Telefone kënne funktionéieren; op eege Gefor benotzen.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versioun %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo ass %1$s (aner Versioun)</string>
     <string name="ip_addr_hint">Zum Beispill 192.168.1.20</string>
     <string name="ip_addr_label">IP-Adress vu Bageo</string>
     <string name="ip_code_hint">Op der System-Säit vun der Web-Konsol kréien</string>

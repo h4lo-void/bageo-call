@@ -40,6 +40,7 @@
     <string name="header_compat">Pārbaudīts ar Pixel 7, 7a, 8 un 9. Citi tālruņi ar root var darboties; mēģiniet uz savu atbildību.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versija %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo ir %1$s (atšķirīga versija)</string>
     <string name="ip_addr_hint">Piemēram, 192.168.1.20</string>
     <string name="ip_addr_label">Bageo IP adrese</string>
     <string name="ip_code_hint">Iegūstiet to tīmekļa konsoles lapā Sistēma</string>

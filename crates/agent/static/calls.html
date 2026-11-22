@@ -1045,24 +1045,6 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
       <button type="button" role="tab" data-kind="blacklist" aria-selected="false"><span data-i18n="ct_tab_blacklist"></span> <span class="muted small" id="ctCntBlacklist"></span></button>
       <button type="button" role="tab" data-kind="stall" aria-selected="false"><span data-i18n="ct_tab_stall"></span> <span class="muted small" id="ctCntStall"></span></button>
     </div>
-    <div class="card pad" id="ctWhiteCard" style="margin-bottom:14px" hidden>
-      <h2 style="margin-top:0" data-i18n="wl_title"></h2>
-      <p class="desc" data-i18n="wl_desc"></p>
-      <label class="sw"><input type="checkbox" id="wlMasterQuick" /><span><b data-i18n="wl_enable"></b></span></label>
-      <div class="two" id="wlQuickBody">
-        <div class="field"><label for="wlQuickMode" data-i18n="f_wl_mode"></label>
-          <select id="wlQuickMode">
-            <option value="off" hidden></option>
-            <option value="direct" data-i18n="wl_m_direct"></option>
-            <option value="emergency" data-i18n="wl_m_emergency"></option>
-          </select>
-          <div class="help" id="wlQuickModeHelpText" data-i18n="f_wl_mode_h_emergency"></div></div>
-        <div class="field"><label for="wlQuickNum" data-i18n="f_wl_num"></label>
-          <input type="tel" id="wlQuickNum" maxlength="40" autocomplete="off" data-i18n-ph="f_wl_num_ph" />
-          <div class="help" data-i18n="f_wl_num_h"></div></div>
-      </div>
-      <div style="margin-top:12px"><button type="button" class="btn primary" id="wlQuickSave" data-i18n="ct_save"></button></div>
-    </div>
     <div class="card pad" id="ctBlackCard" style="margin-bottom:14px" hidden>
       <div class="field" style="margin:0"><label for="blQuickMode" data-i18n="bl_mode"></label>
         <select id="blQuickMode" style="max-width:24rem">
@@ -1148,10 +1130,14 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
               <select id="f-language" data-k="language" data-t="text"></select>
               <div class="help" data-i18n="f_language_h"></div>
               <div class="help" id="langPartial" data-i18n="lang_partial" hidden></div></div>
-            <div class="field"><label for="f-owner_name" data-i18n="f_owner"></label>
-              <input type="text" id="f-owner_name" data-k="owner_name" data-t="text" maxlength="40" data-i18n-ph="f_owner_ph" />
-              <div class="help" data-i18n="f_owner_h"></div></div>
+            <div class="field" id="homeCountryField"><label for="hcBoxIn" data-i18n="f_home_country"></label>
+              <input type="hidden" id="f-home_country" data-k="home_country" data-t="text" />
+              <div class="cb" id="hcBox"></div>
+              <div class="help" data-i18n="f_home_country_h"></div></div>
           </div>
+          <div class="field" style="max-width:28rem"><label for="f-owner_name" data-i18n="f_owner"></label>
+            <input type="text" id="f-owner_name" data-k="owner_name" data-t="text" maxlength="40" data-i18n-ph="f_owner_ph" />
+            <div class="help" data-i18n="f_owner_h"></div></div>
           <div class="field" id="styleField"><div class="lbl" id="lbl-style" data-i18n="f_style"></div>
             <div class="choice" role="radiogroup" aria-labelledby="lbl-style" data-k="answer_style" data-t="radio">
               <label><input type="radio" name="answer_style" value="assistant" /><span><b data-i18n="style_assistant"></b><small data-i18n="style_assistant_d"></small></span></label>
@@ -1532,6 +1518,10 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
                 <button type="button" class="btn sm primary" id="btnTsVpVoice"></button>
                 <span class="pv-status" id="tsVpStatus" aria-live="polite"></span>
               </div>
+              <div class="pv" id="tsArtBox" hidden style="margin-top:8px">
+                <button type="button" class="btn sm ghost" id="btnTsArt" data-i18n="ts_get_art"></button>
+                <span class="pv-status" id="tsArtStatus" aria-live="polite"></span>
+              </div>
             </div>
           </div>
           <div class="hr"></div>
@@ -1814,10 +1804,6 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
                 </select>
                 <div class="help" data-i18n="f_er_identity_h"></div></div>
             </div>
-            <div class="field" id="homeCountryField"><label for="hcBoxIn" data-i18n="f_home_country"></label>
-              <input type="hidden" id="f-home_country" data-k="home_country" data-t="text" />
-              <div class="cb" id="hcBox"></div>
-              <div class="help" data-i18n="f_home_country_h"></div></div>
             <div class="field" hidden><label class="sw"><input type="checkbox" data-k="extras_auto" data-t="bool" /><span><b data-i18n="f_extras_auto"></b><small data-i18n="f_extras_auto_h"></small></span></label></div>
             <div class="field" id="simLangField"><div class="lbl" id="lbl-simlang" data-i18n="f_simlang"></div>
               <div class="rows" id="simLangRows" data-k="sim_languages" data-t="simlangs" role="group" aria-labelledby="lbl-simlang"></div>
@@ -4080,12 +4066,6 @@ function renderContacts() {
   setCnt("ctCntWhitelist", cnt.whitelist);
   setCnt("ctCntBlacklist", cnt.blacklist);
   setCnt("ctCntStall", cnt.stall);
-  $("ctWhiteCard").hidden = cts.kind !== "whitelist";
-  if (cts.kind === "whitelist" && S) {
-    $("wlQuickMode").value = S.whitelist_mode || "off";
-    $("wlQuickNum").value = S.whitelist_forward_number || "";
-  }
-  wlModeHelp();
   $("ctBlackCard").hidden = cts.kind !== "blacklist";
   if (cts.kind === "blacklist" && S) $("blQuickMode").value = S.reject_mode === "announce" ? "announce" : "decline";
   $("blVoiceHelp").hidden = $("blQuickMode").value !== "announce";
@@ -4115,25 +4095,19 @@ $("ctTabs").addEventListener("click", (e) => {
   cts.list = [];
   loadContacts();
 });
-// "Forward to your phone" (Settings page and Contacts page): one master switch over a menu with two options.
+// "Forward to your phone" (Settings page): one master switch over a menu with two options.
 // Switch off = the menu holds "off" (that option is hidden) and the fields are hidden; switch on = the menu holds the
 // option picked last (first time: emergency). The line under the menu follows the option. Call after the menu was set from settings.
 function wlModeHelp() {
-  for (const [selId, swId, bodyId, helpId] of [
-    ["f-whitelist_mode", "wlMasterSet", "wlSetBody", "wlModeHelpText"],
-    ["wlQuickMode", "wlMasterQuick", "wlQuickBody", "wlQuickModeHelpText"],
-  ]) {
-    const sel = $(selId), v = sel.value, on = v === "direct" || v === "emergency", help = $(helpId);
-    if (!on) sel.value = "off";
-    else sel.dataset.last = v;
-    $(swId).checked = on;
-    $(bodyId).hidden = !on;
-    help.dataset.i18n = "f_wl_mode_h_" + (v === "direct" ? "direct" : "emergency");
-    help.textContent = t(help.dataset.i18n);
-  }
+  const sel = $("f-whitelist_mode"), v = sel.value, on = v === "direct" || v === "emergency", help = $("wlModeHelpText");
+  if (!on) sel.value = "off";
+  else sel.dataset.last = v;
+  $("wlMasterSet").checked = on;
+  $("wlSetBody").hidden = !on;
+  help.dataset.i18n = "f_wl_mode_h_" + (v === "direct" ? "direct" : "emergency");
+  help.textContent = t(help.dataset.i18n);
 }
 $("f-whitelist_mode").addEventListener("change", wlModeHelp);
-$("wlQuickMode").addEventListener("change", wlModeHelp);
 // Turning the switch on shows the terms first, every time. Resolves true on "I understand, turn it on".
 function wlCallTermsAsk() {
   return new Promise((resolve) => {
@@ -4146,32 +4120,12 @@ function wlCallTermsAsk() {
 }
 $("wlTermsCancel").addEventListener("click", () => $("wlTermsDlg").close("cancel"));
 // Cancel or Esc leaves the switch off and changes nothing; "I understand, turn it on" turns it on and brings back the last option.
-for (const [selId, swId] of [["f-whitelist_mode", "wlMasterSet"], ["wlQuickMode", "wlMasterQuick"]]) {
-  const sel = $(selId), sw = $(swId);
-  sw.addEventListener("change", async () => {
-    if (sw.checked && !(await wlCallTermsAsk())) { sw.checked = false; return; }
-    sel.value = sw.checked ? (sel.dataset.last || "emergency") : "off";
-    wlModeHelp();
-    updateDirty();
-  });
-}
-$("wlQuickSave").addEventListener("click", async () => {
-  const patch = {
-    whitelist_mode: $("wlQuickMode").value || "off",
-    whitelist_forward_number: $("wlQuickNum").value.trim(),
-  };
-  $("wlQuickSave").disabled = true;
-  try {
-    const d = await api("/settings", jsonBody("PUT", patch));
-    const wasDirty = dirtyCount() > 0;
-    S = d.settings || S;
-    if (wasDirty) updateDirty(); else populate();
-    toast(t("saved"));
-  } catch (e) {
-    if (e.status !== 401) toast(t("save_failed", { msg: e.message }), true);
-  } finally {
-    $("wlQuickSave").disabled = false;
-  }
+$("wlMasterSet").addEventListener("change", async () => {
+  const sel = $("f-whitelist_mode"), sw = $("wlMasterSet");
+  if (sw.checked && !(await wlCallTermsAsk())) { sw.checked = false; return; }
+  sel.value = sw.checked ? (sel.dataset.last || "emergency") : "off";
+  wlModeHelp();
+  updateDirty();
 });
 // How Blacklist calls are turned away: saved as soon as it is picked.
 $("blQuickMode").addEventListener("change", async () => {
@@ -4570,8 +4524,7 @@ function offeredLangs(min) {
     .map((x) => { LANG_INFO[x.code] = x; return x; });
 }
 function langText(x) {
-  const name = LANG_NAMES[x.code] || x.native || x.code;
-  return x.reviewed === false ? name + " " + t("lang_unreviewed") : name;
+  return LANG_NAMES[x.code] || x.native || x.code;
 }
 // A saved language the agent does not offer now (its translation went back):
 // kept in the menu, so saving something else never changes it.
@@ -4651,9 +4604,26 @@ function buildMenus() {
 
 // ----- main language of each SIM: rows of {country, lang}, saved as {country: lang}
 const regionNames = {};
-// A country in the language of this page ("United States", "美國"); the code
+const NEUTRAL_REGION_NAMES = {
+  tw: { "zh-TW": "台灣", "zh-CN": "台湾", en: "Taiwan", native: "台灣" },
+  hk: { "zh-TW": "香港", "zh-CN": "香港", en: "Hong Kong", native: "香港" },
+  mo: { "zh-TW": "澳門", "zh-CN": "澳门", en: "Macau", native: "澳門" },
+  cn: { "zh-TW": "中國大陸", "zh-CN": "中国大陆", en: "Mainland China", native: "中国大陆" },
+};
+function neutralRegionName(locale, cc) {
+  const row = NEUTRAL_REGION_NAMES[String(cc || "").toLowerCase()];
+  if (!row) return "";
+  const l = String(locale || "").toLowerCase();
+  if (l.startsWith("zh-tw") || l.startsWith("zh-hant") || l.startsWith("zh-hk") || l.startsWith("zh-mo")) return row["zh-TW"];
+  if (l.startsWith("zh") || l === "cmn") return row["zh-CN"];
+  if (l.startsWith("en")) return row.en;
+  return "";
+}
+// A region in the language of this page ("United States", "台灣", "香港"); the code
 // itself where the browser has no names.
 function countryName(cc) {
+  const neutral = neutralRegionName(lang, cc);
+  if (neutral) return neutral;
   const code = String(cc || "").toUpperCase();
   try {
     if (!regionNames[lang]) regionNames[lang] = new Intl.DisplayNames([loc()], { type: "region" });
@@ -5649,8 +5619,7 @@ function langOption(o) {
   if (code === "__more__") return { value: code, label: t("ex_more"), search: [t("ex_more"), "more"], pin: true };
   if (!own) return { value: code, label: o.textContent, search: [] };
   const en = LANG_EN[code] || (info && info.en) || code;
-  const mark = info && info.reviewed === false ? " " + t("lang_unreviewed") : "";
-  return { value: code, label: own + mark, searchLabel: (own === en ? en : own + " · " + en) + mark, short: own, search: [own, en, langNameHere(code), code, info && info.zh].filter(Boolean) };
+  return { value: code, label: own, searchLabel: own === en ? en : own + " · " + en, short: own, search: [own, en, langNameHere(code), code, info && info.zh].filter(Boolean) };
 }
 const langCombos = [];
 let cbSeq = 0;
@@ -5723,6 +5692,7 @@ async function loadPackRegions() {
   try {
     const d = await api("/packs/regions");
     packRegions = Array.isArray(d && d.regions) ? d.regions : [];
+    if (d && d.bubbles && typeof d.bubbles === "object") Object.assign(TS_LINES, d.bubbles);
   } catch (_) { packRegions = []; }
   renderHomeCountry();
   renderAboutHints();
@@ -5736,7 +5706,7 @@ function pkRender() {
   const bVer = (pkInfo && pkInfo.bageo_version) || (health && health.version) || "";
   if ($("bgVerText")) $("bgVerText").textContent = bVer ? `${t("ab_version")} v${bVer}` : "";
   $("pkVersion").textContent = pkInfo ? t(pkInfo.builtin ? "pk_ver_builtin" : "pk_ver_updated", { date: pkInfo.date || String(pkInfo.version || "") }) : "";
-  $("btnPkRestore").hidden = !pkInfo || (!!pkInfo.builtin && !pkInfo.voice_list_kept);
+  $("btnPkRestore").hidden = !pkInfo || (!!pkInfo.builtin && (!pkInfo.locales || !!pkInfo.locales.builtin) && (!pkInfo.scams || !!pkInfo.scams.builtin) && !pkInfo.voice_list_kept && !pkInfo.extras_index_kept);
   $("pkStatus").textContent = pkMsg ? t(pkMsg) : "";
 }
 async function pkLoad() {
@@ -6029,7 +5999,16 @@ $("vpFile").addEventListener("change", () => {
   $("vpFile").value = "";
   if (file) vpRun("/voices/import", { method: "POST", headers: { "Content-Type": "application/zip" }, body: file }, "vp_importing", $("btnVpImport"));
 });
-$("f-language").addEventListener("change", vpRender);
+$("f-language").addEventListener("change", () => {
+  const allowed = countriesForLang($("f-language").value);
+  const cur = $("f-home_country").value;
+  if (cur && allowed.length && !allowed.includes(cur)) $("f-home_country").value = "";
+  renderHomeCountry();
+  renderAboutHints();
+  tsRender(true);
+  vpRender();
+  updateDirty();
+});
 
 // ----- extra languages modal & auto-download on login
 let exInfo = null, exBusy = "", exBusyAct = "", exTargetSel = null, exAutoOnce = false;
@@ -6113,7 +6092,7 @@ function exRender() {
   if (!rows.length) { list.append(h("p", { class: "muted", style: "padding:14px;text-align:center", text: t("ex_empty") })); return; }
   for (const r of rows) {
     const sub = exLangLocalizedName(r);
-    const title = (r.native === sub ? r.native : `${r.native} · ${sub}`) + (r.reviewed === false ? ` ${t("lang_unreviewed")}` : "");
+    const title = r.native === sub ? r.native : `${r.native} · ${sub}`;
     const inUse = !!(r.in_use || r.code === lang || ($("f-language") && $("f-language").value === r.code) || ($("f-notify_language") && $("f-notify_language").value === r.code));
     const parts = [exLevelText(r)];
     if (r.bytes > 0) parts.push(vpSize(r.bytes));
@@ -6237,6 +6216,8 @@ const regionOfCountry = (cc) => (cc && packRegions && packRegions.find((r) => Ar
 const regionNamers = {};
 // A country's name in one language ("" when the browser has none for it).
 function countryNameIn(locale, cc) {
+  const neutral = neutralRegionName(locale, cc);
+  if (neutral) return neutral;
   try {
     if (!(locale in regionNamers)) {
       regionNamers[locale] = Intl.DisplayNames.supportedLocalesOf([locale]).length ? new Intl.DisplayNames([locale], { type: "region", fallback: "none" }) : null;
@@ -6246,8 +6227,108 @@ function countryNameIn(locale, cc) {
 }
 // How the country writes its own name: the region's own name when the region is that one country.
 function nativeCountryName(cc, r) {
+  const row = NEUTRAL_REGION_NAMES[String(cc || "").toLowerCase()];
+  if (row) return row.native;
   if (r && r.countries.length === 1 && r.name && r.name.native) return r.name.native;
   return (r && countryNameIn(String(r.lang || ""), cc)) || "";
+}
+// Regions/places offered for each call language, ordered with the primary ones first.
+const LANG_COUNTRIES = {
+  "zh-TW": ["tw", "hk", "mo", "sg", "my"],
+  "zh-CN": ["cn", "sg", "my"],
+  en: ["us", "gb", "ca", "au", "nz", "sg", "ie", "in", "ph", "za", "my", "hk", "pk", "ke", "tz", "mo"],
+  ja: ["jp"],
+  ko: ["kr"],
+  es: ["mx", "es", "us", "ar", "co", "cl", "pe", "uy", "ve", "ec", "gt", "cu", "bo", "do", "hn", "py", "sv", "ni", "cr", "pa", "pr", "ad"],
+  fr: ["fr", "ca", "be", "ch", "lu", "mc", "ht", "ma", "dz", "tn", "mg"],
+  de: ["de", "at", "ch", "li", "be", "lu"],
+  pt: ["br", "pt"],
+  ar: ["eg", "sa", "ae", "qa", "kw", "bh", "om", "jo", "lb", "iq", "ma", "dz", "tn", "ly", "ps", "sy", "sd", "ye"],
+  ru: ["ru", "kz", "by", "kg"],
+  it: ["it", "ch", "sm", "va"],
+  nl: ["nl", "be"],
+  pl: ["pl"],
+  th: ["th"],
+  tr: ["tr"],
+  vi: ["vn"],
+  ro: ["ro", "md"],
+  uk: ["ua"],
+  bn: ["bd", "in"],
+  id: ["id"],
+  ms: ["my", "sg"],
+  hi: ["in"],
+  mr: ["in"],
+  ta: ["in", "lk", "sg", "my"],
+  te: ["in"],
+  gu: ["in"],
+  kn: ["in"],
+  kok: ["in"],
+  mai: ["in"],
+  ml: ["in"],
+  or: ["in"],
+  pa: ["in", "pk"],
+  ur: ["pk", "in"],
+  sd: ["pk", "in"],
+  fa: ["ir", "af"],
+  ps: ["af", "pk"],
+  af: ["za"],
+  sq: ["al", "xk"],
+  am: ["et"],
+  hy: ["am"],
+  az: ["az"],
+  eu: ["es"],
+  be: ["by"],
+  bg: ["bg"],
+  my: ["mm"],
+  ca: ["es", "ad"],
+  ceb: ["ph"],
+  fil: ["ph"],
+  hr: ["hr"],
+  cs: ["cz"],
+  da: ["dk"],
+  et: ["ee"],
+  fi: ["fi"],
+  gl: ["es"],
+  ka: ["ge"],
+  el: ["gr", "cy"],
+  ht: ["ht"],
+  he: ["il"],
+  hu: ["hu"],
+  is: ["is"],
+  jv: ["id"],
+  lo: ["la"],
+  la: ["va", "it"],
+  lv: ["lv"],
+  lt: ["lt"],
+  lb: ["lu"],
+  mk: ["mk"],
+  mg: ["mg"],
+  mn: ["mn"],
+  ne: ["np"],
+  nb: ["no"],
+  nn: ["no"],
+  sr: ["rs", "ba", "me"],
+  si: ["lk"],
+  sk: ["sk"],
+  sl: ["si"],
+  sw: ["ke", "tz"],
+  sv: ["se", "fi"],
+};
+function curCallLang() {
+  return ($("f-language") && $("f-language").value) || (S && S.language) || lang || "en";
+}
+function countriesForLang(l) {
+  const code = String(l || "").trim();
+  if (LANG_COUNTRIES[code]) return LANG_COUNTRIES[code].slice();
+  const base = code.toLowerCase().split(/[-_]/)[0];
+  const norm = base === "no" ? "nb" : base === "iw" ? "he" : base === "in" ? "id" : base === "tl" ? "fil" : base;
+  if (LANG_COUNTRIES[norm]) return LANG_COUNTRIES[norm].slice();
+  const out = [];
+  for (const r of packRegions || []) {
+    const rLangs = [r.lang, ...(r.other_langs || [])].filter(Boolean).map((x) => String(x).toLowerCase().split(/[-_]/)[0]);
+    if (rLangs.includes(norm)) for (const c of r.countries || []) if (!out.includes(c)) out.push(c);
+  }
+  return out;
 }
 // Countries of the SIMs in the phones (the ones connected now first).
 function connectedCountries() {
@@ -6272,25 +6353,21 @@ function browserCountries() {
   }
   return out;
 }
-// The country Bageo goes by: the one picked here, else the SIM/browser country matching the call language, else the first SIM/browser country.
+// The region Bageo goes by: the one picked here (when it belongs to the call language),
+// else the SIM/browser region matching the call language, else the call language's primary region.
 function homeCountryNow() {
   const picked = $("f-home_country").value;
-  if (picked) return picked;
-  const curLang = ($("f-language") && $("f-language").value) || (S && S.language) || lang || "";
+  const allowed = countriesForLang(curCallLang());
+  if (picked && (!allowed.length || allowed.includes(picked))) return picked;
   const cands = [...connectedCountries(), ...browserCountries()];
-  if (curLang && packRegions) {
-    const match = cands.find((cc) => {
-      const r = regionOfCountry(cc);
-      return r && String(r.lang || "").toLowerCase() === curLang.toLowerCase();
-    });
-    if (match) return match;
-    const byLang = packRegions.find((r) => String(r.lang || "").toLowerCase() === curLang.toLowerCase() && (r.countries || []).length);
-    if (byLang && byLang.countries[0]) return byLang.countries[0];
+  if (allowed.length) {
+    const match = cands.find((cc) => allowed.includes(cc));
+    return match || allowed[0];
   }
-  return cands[0] || "";
+  return picked || cands[0] || "";
 }
 
-// ----- "Country you live in"
+// ----- "Region" (filtered by the selected call language)
 let hcCombo = null;
 function renderHomeCountry() {
   if (!hcCombo) {
@@ -6303,20 +6380,24 @@ function renderHomeCountry() {
     } });
   }
   const cur = $("f-home_country").value;
-  const seen = new Map();
-  for (const r of packRegions || []) for (const c of r.countries || []) if (/^[a-z]{2}$/.test(c) && !seen.has(c)) seen.set(c, r);
-  if (cur && !seen.has(cur)) seen.set(cur, null);
-  const first = [...connectedCountries(), ...browserCountries()];
-  const rows = [...seen].map(([cc, r]) => {
-    // English as the region writes it ("Turkey"); the browser's name ("Türkiye") stays searchable.
+  const byCountry = new Map();
+  for (const r of packRegions || []) for (const c of r.countries || []) if (/^[a-z]{2}$/.test(c) && !byCountry.has(c)) byCountry.set(c, r);
+  const allowed = countriesForLang(curCallLang());
+  const list = allowed.length ? allowed.slice() : [...byCountry.keys()];
+  if (cur && !list.includes(cur)) list.push(cur);
+  const sims = connectedCountries();
+  const rows = list.map((cc, idx) => {
+    const r = byCountry.get(cc) || null;
     const intlEn = countryNameIn("en", cc);
-    const en = (r && r.countries.length === 1 && r.name && r.name.en) || intlEn || cc.toUpperCase();
+    const en = neutralRegionName("en", cc) || (r && r.countries.length === 1 && r.name && r.name.en) || intlEn || cc.toUpperCase();
     const own = nativeCountryName(cc, r) || en;
-    const rank = first.indexOf(cc);
-    return { value: cc, en, rank: rank < 0 ? 1e6 : rank, label: own, searchLabel: own === en ? en : own + " · " + en,
-      search: [own, en, intlEn, countryName(cc), cc, DIAL[cc] ? "+" + DIAL[cc] : "",
+    const here = countryName(cc) || own;
+    const label = here === own ? here : `${here} · ${own}`;
+    const simRank = sims.indexOf(cc);
+    return { value: cc, en, rank: simRank >= 0 ? simRank : 100 + idx, label, searchLabel: label,
+      search: [here, own, en, intlEn, cc, DIAL[cc] ? "+" + DIAL[cc] : "",
         ...(r && r.name ? [r.name.en, r.name.zh, r.name.native] : []), ...(COUNTRY_ALIASES[cc] || "").split("|")] };
-  }).sort((a, b) => a.rank - b.rank || a.en.localeCompare(b.en, "en"));
+  }).sort((a, b) => a.rank - b.rank);
   hcCombo.setOptions([{ value: "", label: t("hc_auto"), search: [] }, ...rows]);
   hcCombo.setValue(cur);
 }
@@ -6386,6 +6467,7 @@ const TS_EXT_GROUPS = [
   "bts-ext-outfit3", "bts-ext-outfit4", "bts-ext-outfit5", "bts-ext-neck", "bts-ext-head", "bts-ext-item",
 ];
 const TS_EXT_ART = {};
+const TS_LINES = {"default": {"p": ["Hey there! What's up? Sure thing, no problem!", "Hi there! Yeah go ahead—got it, thanks so much!", "Hello, speaking. Understood, thanks for letting me know.", "Good day, thank you for calling. Understood, thank you.", "Hello, thank you for calling. I have noted all the details."], "a": ["Hi there! Busy right now—tell me what's up and I'll pass it on!", "Hello! Taking calls right now—what message can I note down?", "Hello, thanks for calling. Let me take a message to pass along.", "Good day, thank you for calling. Please leave a message with me.", "Hello, thank you for calling. I will note and relay your message."]}};
 const TS_EXT_LOADING = {};
 const TS_EXT_MISS = {};
 let tsExtMounted = "";
@@ -6474,6 +6556,7 @@ function tsMountExtArt(code, art) {
     }
   }
 }
+let tsArtDownloading = false;
 function tsLoadArt(code) {
   if (!code || TS_REGIONS[code] || TS_EXT_ART[code] || TS_EXT_LOADING[code] || TS_EXT_MISS[code]) return;
   const artUrl = "/calls/extras/art/art-" + encodeURIComponent(code) + ".json";
@@ -6481,6 +6564,7 @@ function tsLoadArt(code) {
     .then(async (res) => {
       if (res.ok) return res.json();
       TS_EXT_MISS[code] = true;
+      tsRender(false);
       return null;
     })
     .then((d) => {
@@ -6490,6 +6574,7 @@ function tsLoadArt(code) {
         tsRender(false);
       } else if (d !== null) {
         TS_EXT_MISS[code] = true;
+        tsRender(false);
       }
     })
     .catch(() => {})
@@ -6508,6 +6593,24 @@ function tsSkyNow() {
   const hr = new Date().getHours();
   return hr >= 6 && hr < 17 ? "day" : hr >= 17 && hr < 19 ? "dusk" : "night";
 }
+function tsSampleLine(rCode, level, asMe, callLang) {
+  let entry = TS_LINES[rCode] || TS_LINES["default"];
+  if (!entry) return "";
+  if (!Array.isArray(entry) && typeof entry === "object" && !Array.isArray(entry.p) && !Array.isArray(entry.a)) {
+    const cl = String(callLang || "").trim();
+    const base = cl.toLowerCase().split(/[-_]/)[0];
+    entry = entry[cl]
+      || entry[base]
+      || (base === "tl" && entry["fil"])
+      || (base === "no" && entry["nb"])
+      || (base === "zh" && (entry["zh-TW"] || entry["zh-CN"]))
+      || Object.values(entry)[0];
+  }
+  if (!Array.isArray(entry) && typeof entry === "object") {
+    entry = (asMe ? entry.p : entry.a) || entry.p || entry.a || Object.values(entry)[0];
+  }
+  return Array.isArray(entry) ? String(entry[level - 1] || entry[2] || "") : "";
+}
 const tsLevel = () => { const n = Math.round(Number($("f-talk_style_level").value)); return n >= 1 && n <= 5 ? n : 3; };
 function tsRender(animate) {
   const box = $("tsBox");
@@ -6525,7 +6628,13 @@ function tsRender(animate) {
   $("f-talk_style_level").setAttribute("aria-valuetext", name + " (" + level + "/5)");
   $("tsName").textContent = name;
   $("tsBubbleName").textContent = name;
-  $("tsBubbleDesc").textContent = t("ts_" + level + "_d");
+  const rObj = regionOfCountry(homeCountryNow());
+  const sample = tsSampleLine((rObj && rObj.code) || code, level, pickedStyle() === "persona", curCallLang());
+  $("tsBubbleDesc").textContent = sample || t("ts_" + level + "_d");
+  if ($("tsArtBox")) {
+    const wantArt = rObj && rObj.code && rObj.code !== "default" && !TS_REGIONS[rObj.code] && !TS_EXT_ART[rObj.code] && !!TS_EXT_MISS[rObj.code];
+    $("tsArtBox").hidden = !wantArt && !tsArtDownloading;
+  }
   svg.setAttribute("data-level", String(level));
   for (const key of Object.keys(TS_BASE)) svg.style.setProperty("--bts-" + key, r.pal[key] || TS_BASE[key]);
   box.querySelectorAll(".bts-outfit").forEach((el) => el.classList.toggle("bts-on", el.getAttribute("data-l") === String(level)));
@@ -6573,6 +6682,32 @@ $("f-talk_style_level").addEventListener("input", () => {
   $("abSuggest").hidden = true;
   tsRender(true);
 });
+if ($("btnTsArt")) {
+  $("btnTsArt").addEventListener("click", async () => {
+    const rObj = regionOfCountry(homeCountryNow());
+    const wantCode = rObj && rObj.code;
+    if (!wantCode || TS_REGIONS[wantCode] || tsArtDownloading) return;
+    tsArtDownloading = true;
+    $("btnTsArt").disabled = true;
+    $("tsArtStatus").textContent = t("ex_downloading");
+    try {
+      const d = await api("/extras/download", jsonBody("POST", { art: wantCode }));
+      if (d && (d.result === "installed" || d.result === "up_to_date")) {
+        delete TS_EXT_MISS[wantCode];
+        $("tsArtStatus").textContent = "";
+        tsLoadArt(wantCode);
+      } else {
+        $("tsArtStatus").textContent = exErrText(d && d.result);
+      }
+    } catch (e) {
+      $("tsArtStatus").textContent = (e && e.message) || t("pk_r_offline");
+    } finally {
+      tsArtDownloading = false;
+      $("btnTsArt").disabled = false;
+      tsRender(false);
+    }
+  });
+}
 $("bts-scene-btn").addEventListener("click", () => {
   const r = tsLook(tsRegionShown);
   tsScene = (tsSceneShown + 1) % (r.scenes.length || 1);
@@ -6910,7 +7045,7 @@ async function loadSystem() {
 function sysItem(level, title, lines, action, extra) {
   return h("div", { class: "item" },
     h("span", { class: "sdot" + (level ? " " + level : ""), attr: { "aria-hidden": "true" } }),
-    h("div", { class: "grow" }, h("b", { text: title }), (lines || []).filter(Boolean).map((l) => h("div", { class: "d", text: l })), extra || null),
+    h("div", { class: "grow" }, h("b", { text: title }), (lines || []).filter(Boolean).map((l) => typeof l === "string" ? h("div", { class: "d", text: l }) : l), extra || null),
     action || null);
 }
 const simEdit = {};
@@ -7144,7 +7279,17 @@ function phoneItem(s, call, ph) {
     lines.push(incParts.join(" · "));
   } else if (inCall) lines.push(t("ph_incall"));
   else lines.push(normal ? t("ph_mode_normal") : t("ph_ready"));
-  if (ph && ph.app_version) lines.push(t("ph_app", { v: ph.app_version }));
+  if (ph && ph.app_version) {
+    const appVer = String(ph.app_version).trim();
+    const srvVer = health && health.version ? String(health.version).trim() : "";
+    if (srvVer && appVer !== srvVer) {
+      lines.push(h("div", { class: "d" },
+        h("span", { text: t("ph_app", { v: appVer }) + " · " }),
+        h("span", { style: "color:var(--warn)", text: t("ph_app_ver_diff", { v: srvVer }) })));
+    } else {
+      lines.push(t("ph_app", { v: appVer }));
+    }
+  }
   if (ph && ph.link) lines.push(t(ph.link === "wifi" ? "ph_link_wifi" : "ph_link_usb"));
   if (ph && !ph.supports_mode) lines.push(t("ph_need_update"));
   if (modeErr[s] === "timeout") lines.push(t("pm_err_timeout"));

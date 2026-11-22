@@ -40,6 +40,7 @@
     <string name="header_compat">Diuji pada Pixel 7, 7a, 8 dan 9. Telefon lain yang di-root mungkin berfungsi; cuba dengan risiko sendiri.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versi %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo ialah %1$s (versi berbeza)</string>
     <string name="ip_addr_hint">Contohnya 192.168.1.20</string>
     <string name="ip_addr_label">Alamat IP Bageo</string>
     <string name="ip_code_hint">Dapatkannya di halaman Sistem konsol web</string>

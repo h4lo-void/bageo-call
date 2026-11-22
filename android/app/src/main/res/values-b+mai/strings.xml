@@ -40,6 +40,7 @@
     <string name="header_compat">Pixel 7, 7a, 8 आ 9 पर जाँचल गेल। दोसर रूट कएल फोन काज कऽ सकैत अछि; अपन जिम्मेदारी पर चलाऊ।</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">संस्करण %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo %1$s अछि (संस्करण अलग अछि)</string>
     <string name="ip_addr_hint">उदाहरण लेल 192.168.1.20</string>
     <string name="ip_addr_label">Bageo केर IP पता</string>
     <string name="ip_code_hint">वेब कंसोलक सिस्टम पन्ना सँ लिअ</string>

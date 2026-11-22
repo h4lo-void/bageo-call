@@ -144,6 +144,16 @@ pub struct Entry {
     pub sha256: String,
 }
 
+/// Secondary `(region, lang)` speech/style override from `regions_multilang.json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MultilangEntry {
+    pub region: String,
+    pub lang: String,
+    pub hello: Hello,
+    pub habits: Text,
+    pub talk_style: TalkStyle,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Bundle {
     pub format: u32,
@@ -157,6 +167,12 @@ pub struct Bundle {
     pub countries: BTreeMap<String, String>,
     pub languages: BTreeMap<String, LangInfo>,
     pub regions: BTreeMap<String, RegionData>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub multilang: Vec<MultilangEntry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub bubbles: BTreeMap<String, serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub place_habits: Vec<serde_json::Value>,
 }
 
 /// bageo-pack-index.json, published next to the bundle: what to download and
@@ -176,6 +192,10 @@ pub struct Index {
     /// region pack; older Bageo ignores the field altogether.
     #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "tolerant_locales")]
     pub locales: Option<LocalesRef>,
+    /// The scam database download (bageo-scams.json.gz), when the release has
+    /// one. Tolerant just like `locales`; older Bageo ignores it.
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "tolerant_locales")]
+    pub scams: Option<LocalesRef>,
 }
 
 /// The translations file listed in the release index.
