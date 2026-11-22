@@ -766,6 +766,7 @@ fn good_index() -> Index {
         sha256: sha256_hex(b"x"),
         min_bageo: "1.6.9".into(),
         locales: None,
+        scams: None,
     }
 }
 

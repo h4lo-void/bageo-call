@@ -1294,6 +1294,7 @@
     "ex_switched": "Consola cambiada a {lang}.",
     "ex_r_in_use": "No se puede eliminar mientras siga en uso.",
     "ex_empty": "Sin idiomas que coincidan",
-    "ph_app_ver_diff": "Difiere de Bageo {v}"
+    "ph_app_ver_diff": "Difiere de Bageo {v}",
+    "ts_get_art": "Descargar escena local"
   }
 }

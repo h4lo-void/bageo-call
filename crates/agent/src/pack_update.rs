@@ -50,7 +50,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use bageo_packs::locales::{check_locales_ref, LOCALES_FORMAT};
-use bageo_packs::{parse_index, Issue, LocalesRef, FORMAT, MAX_BUNDLE_BYTES};
+use bageo_packs::{check_scams_ref, parse_index, Issue, LocalesRef, FORMAT, MAX_BUNDLE_BYTES, SCAMS_FORMAT};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use url::{Host, Url};
@@ -539,6 +539,34 @@ where
     apply(&staged.path, r.version).map_err(|i| bad(first_issue(&i)))
 }
 
+/// The scam database the index's scams entry names, when it is newer than
+/// in_use. No entry: nothing to do.
+async fn scams_step<F>(client: &reqwest::Client, src: &Source, f: &Fetched, packs: &Path, in_use: u64, apply: F) -> Result<u64, Fail>
+where
+    F: FnOnce(&Path, u64) -> Result<u64, Vec<Issue>>,
+{
+    let Some(entry) = f.value.get("scams").filter(|v| !v.is_null()) else { return Err(Fail::UpToDate) };
+    if let Some(n) = entry.get("format").and_then(Value::as_u64) {
+        if n > u64::from(SCAMS_FORMAT) {
+            return Err(Fail::UpdateBageo(format!("scams format {n} is newer than this Bageo reads ({SCAMS_FORMAT})")));
+        }
+    }
+    let r: LocalesRef = serde_json::from_value(entry.clone()).map_err(|e| bad(format!("the scams entry: {e}")))?;
+    if r.version <= in_use {
+        return Err(Fail::UpToDate);
+    }
+    if !bageo_at_least(&r.min_bageo) {
+        return Err(Fail::UpdateBageo(format!("the scam database needs Bageo {} or newer", r.min_bageo)));
+    }
+    let issues = check_scams_ref(&r);
+    if !issues.is_empty() {
+        return Err(bad(first_issue(&issues)));
+    }
+    let url = src.pack_url(&f.hops, &r.file).ok_or_else(|| bad("the index names a path, not a file"))?;
+    let staged = download(client, src, url, r.bytes, &r.sha256, packs, crate::scam_db::incoming_path(packs)).await?;
+    apply(&staged.path, r.version).map_err(|i| bad(first_issue(&i)))
+}
+
 /// Downloads url into a new temporary file: exactly bytes long with this
 /// SHA-256, counted and hashed as it comes in.
 async fn download(client: &reqwest::Client, src: &Source, url: Url, bytes: u64, sha256: &str, packs: &Path, path: PathBuf) -> Result<Staged, Fail> {
@@ -585,12 +613,12 @@ pub(crate) async fn check_now() -> Outcome {
     let Some(running) = Running::take() else { return Outcome::Busy };
     let task = tokio::spawn(async move {
         let _running = running;
-        let (region, loc) = check_official().await;
+        let (region, loc, scams) = check_official().await;
         let version = match region {
             Outcome::Updated(v) => v,
             _ => packs_store::current().version,
         };
-        let outcome = combine(region, loc);
+        let outcome = combine(combine(region, loc), scams);
         *LAST.lock().unwrap_or_else(|e| e.into_inner()) = Some(json!({
             "at": chrono::Utc::now().to_rfc3339(),
             "result": outcome.code(),
@@ -598,32 +626,61 @@ pub(crate) async fn check_now() -> Outcome {
             "pack_result": region.code(),
             "locales_result": loc.code(),
             "locales_version": locales_store::current().version,
+            "scams_result": scams.code(),
+            "scams_version": crate::scam_db::current_version(),
         }));
         outcome
     });
     task.await.unwrap_or(Outcome::Offline)
 }
 
-async fn check_official() -> (Outcome, Outcome) {
+async fn check_official() -> (Outcome, Outcome, Outcome) {
     let client = match client() {
         Ok(c) => c,
         Err(e) => {
             tracing::warn!("local data pack update: no HTTP client ({e})");
-            return (Outcome::Offline, Outcome::Offline);
+            return (Outcome::Offline, Outcome::Offline, Outcome::Offline);
         }
     };
-    let apply: Apply = &packs_store::install_file;
-    let loc_apply: Apply = &locales_store::install_file;
-    check_both(
-        &client,
-        &Source::official(),
-        &packs_store::installed_dir(),
-        packs_store::current().version,
-        (packs_store::installs_left() > 0).then_some(apply),
-        locales_store::current().version,
-        (locales_store::installs_left() > 0).then_some(loc_apply),
+    let apply: Option<Apply> = (packs_store::installs_left() > 0).then_some(&packs_store::install_file as Apply);
+    let loc_apply: Option<Apply> = (locales_store::installs_left() > 0).then_some(&locales_store::install_file as Apply);
+    let scam_apply: Option<Apply> = (crate::scam_db::installs_left() > 0).then_some(&crate::scam_db::install_file as Apply);
+    let packs = packs_store::installed_dir();
+    let in_use = packs_store::current().version;
+    let loc_in_use = locales_store::current().version;
+    let scam_in_use = crate::scam_db::current_version();
+    let src = Source::official();
+    let work = async {
+        let f = match fetch_pack_index(&client, &src).await {
+            Ok(f) => f,
+            Err(e) => return (Err(e.clone()), Err(e.clone()), Err(e)),
+        };
+        let region = match apply {
+            Some(a) => region_step(&client, &src, &f, &packs, in_use, |p, v| a(p, v)).await,
+            None => Err(Fail::Restart),
+        };
+        let loc = match loc_apply {
+            Some(a) => locales_step(&client, &src, &f, &packs, loc_in_use, |p, v| a(p, v)).await,
+            None => Err(Fail::Restart),
+        };
+        let sc = match scam_apply {
+            Some(a) => scams_step(&client, &src, &f, &packs, scam_in_use, |p, v| a(p, v)).await,
+            None => Err(Fail::Restart),
+        };
+        (region, loc, sc)
+    };
+    let (region, loc, sc) = match tokio::time::timeout(TOTAL_TIMEOUT, work).await {
+        Ok(r) => r,
+        Err(_) => {
+            let f = Fail::Offline(format!("no answer within {} s", TOTAL_TIMEOUT.as_secs()));
+            (Err(f.clone()), Err(f.clone()), Err(f))
+        }
+    };
+    (
+        report("local data pack", in_use, region),
+        report("translations", loc_in_use, loc),
+        report("scam database", scam_in_use, sc),
     )
-    .await
 }
 
 /// Goes back to the built-in pack, translations and voice list: "restored",
@@ -653,11 +710,12 @@ pub(crate) fn restore_all(voices: &Path) -> &'static str {
     "restored"
 }
 
-/// Restores both files; both are tried, and either failing is a failure.
+/// Restores pack, translations and scam database; all are tried.
 fn restore_both() -> std::io::Result<()> {
     let pack = packs_store::restore_builtin();
     let loc = locales_store::restore_builtin();
-    pack.and(loc)
+    let sc = crate::scam_db::restore_builtin();
+    pack.and(loc).and(sc)
 }
 
 /// YYYYMMDDNN as YYYY-MM-DD ("" for the empty table).
@@ -684,6 +742,12 @@ fn status_json() -> Value {
             "date": version_date(l.version),
             "builtin": locales_store::builtin_in_use(),
             "languages": l.langs().filter(|(_, x)| x.stage >= locales_store::Stage::Call).count(),
+        },
+        "scams": {
+            "version": crate::scam_db::current_version(),
+            "date": version_date(crate::scam_db::current_version()),
+            "builtin": crate::scam_db::builtin_in_use(),
+            "countries": crate::scam_db::db().countries.len(),
         },
         // A downloaded voice list is kept: "Restore" puts the built-in one back too.
         "voice_list_kept": crate::voice_packs::kept_index(&crate::voice_packs::voices_root()),

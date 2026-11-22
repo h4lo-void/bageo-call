@@ -19,10 +19,8 @@
 
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
-use std::sync::OnceLock;
 
-use bageo_packs::{Hello, RegionData, TalkStyle, Text};
-use serde::Deserialize;
+use bageo_packs::{Hello, MultilangEntry, RegionData, Text};
 
 use crate::locale::Lang;
 use crate::packs_store;
@@ -260,63 +258,26 @@ pub fn identity_line(region: Region, lang: Lang) -> String {
     }
 }
 
-/// Regional speech-habits, style-slider, and greeting override for a secondary
-/// `(region, lang)` pair loaded from `data/multilang_style.json`.
-#[derive(Debug, Clone, Deserialize)]
-pub struct MultilangStyle {
-    pub hello: Hello,
-    pub habits: Text,
-    pub talk_style: TalkStyle,
+fn multilang_styles() -> &'static BTreeMap<(String, String), MultilangEntry> {
+    let cur = packs_store::current();
+    if !cur.multilang.is_empty() {
+        &cur.multilang
+    } else {
+        &packs_store::builtin().multilang
+    }
 }
 
-#[derive(Deserialize)]
-struct RawMultilangDoc {
-    #[allow(dead_code)]
-    schema: u32,
-    entries: Vec<RawMultilangEntry>,
-}
-
-#[derive(Deserialize)]
-struct RawMultilangEntry {
-    region: String,
-    lang: String,
-    hello: Hello,
-    habits: Text,
-    talk_style: TalkStyle,
-}
-
-fn multilang_styles() -> &'static BTreeMap<(String, String), MultilangStyle> {
-    static MAP: OnceLock<BTreeMap<(String, String), MultilangStyle>> = OnceLock::new();
-    MAP.get_or_init(|| {
-        let doc: RawMultilangDoc =
-            serde_json::from_str(include_str!("../data/multilang_style.json")).expect("valid multilang_style.json");
-        doc.entries
-            .into_iter()
-            .map(|e| {
-                (
-                    (e.region, e.lang),
-                    MultilangStyle {
-                        hello: e.hello,
-                        habits: e.habits,
-                        talk_style: e.talk_style,
-                    },
-                )
-            })
-            .collect()
-    })
-}
-
-fn lang_override(region: Region, lang: Lang) -> Option<&'static MultilangStyle> {
+fn lang_override(region: Region, lang: Lang) -> Option<&'static MultilangEntry> {
     multilang_styles().get(&(region.code().to_string(), lang.code().to_string()))
 }
 
-/// Whether `data/multilang_style.json` defines a language-specific speech/style
+/// Whether `bageo-pack` defines a language-specific speech/style
 /// override for `(region, lang)`.
 pub fn has_lang_override(region: Region, lang: Lang) -> bool {
     lang_override(region, lang).is_some()
 }
 
-/// Region+language local phone greeting override from `data/multilang_style.json`,
+/// Region+language local phone greeting override from `bageo-pack`,
 /// when `(region, lang)` has one.
 pub fn lang_hello(region: Region, lang: Lang) -> Option<&'static Hello> {
     lang_override(region, lang).map(|m| &m.hello)

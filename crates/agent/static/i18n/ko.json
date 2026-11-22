@@ -1294,6 +1294,7 @@
     "ex_switched": "콘솔을 {lang}(으)로 바꿨습니다.",
     "ex_r_in_use": "설정에서 사용 중이라 삭제할 수 없습니다.",
     "ex_empty": "일치하는 언어가 없습니다",
-    "ph_app_ver_diff": "Bageo {v}과 버전이 다릅니다"
+    "ph_app_ver_diff": "Bageo {v}과 버전이 다릅니다",
+    "ts_get_art": "이 지역 일러스트 다운로드"
   }
 }

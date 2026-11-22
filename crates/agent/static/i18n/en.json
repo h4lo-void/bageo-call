@@ -1294,6 +1294,7 @@
     "ex_switched": "Switched console to {lang}.",
     "ex_r_in_use": "Can't delete while selected in settings.",
     "ex_empty": "No matching languages",
-    "ph_app_ver_diff": "Differs from Bageo {v}"
+    "ph_app_ver_diff": "Differs from Bageo {v}",
+    "ts_get_art": "Download local scene"
   }
 }

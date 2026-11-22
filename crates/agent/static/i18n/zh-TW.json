@@ -1294,6 +1294,7 @@
     "ex_switched": "控制台已切換為{lang}。",
     "ex_r_in_use": "設定仍在使用這個語言，請先換掉再刪除。",
     "ex_empty": "找不到符合的語言",
-    "ph_app_ver_diff": "與 Bageo {v} 版本不同"
+    "ph_app_ver_diff": "與 Bageo {v} 版本不同",
+    "ts_get_art": "下載地區插圖"
   }
 }

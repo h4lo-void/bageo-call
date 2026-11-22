@@ -1294,6 +1294,7 @@
     "ex_switched": "Konsole auf {lang} umgestellt.",
     "ex_r_in_use": "Kann nicht gelöscht werden, solange in Einstellungen aktiv.",
     "ex_empty": "Keine passenden Sprachen",
-    "ph_app_ver_diff": "Weicht von Bageo {v} ab"
+    "ph_app_ver_diff": "Weicht von Bageo {v} ab",
+    "ts_get_art": "Lokale Szene herunterladen"
   }
 }

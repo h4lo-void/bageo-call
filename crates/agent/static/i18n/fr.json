@@ -1294,6 +1294,7 @@
     "ex_switched": "Console passée en {lang}.",
     "ex_r_in_use": "Impossible de supprimer tant qu'elle est utilisée.",
     "ex_empty": "Aucune langue correspondante",
-    "ph_app_ver_diff": "Différent de Bageo {v}"
+    "ph_app_ver_diff": "Différent de Bageo {v}",
+    "ts_get_art": "Télécharger la scène locale"
   }
 }

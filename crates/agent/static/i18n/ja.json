@@ -1294,6 +1294,7 @@
     "ex_switched": "コンソールを{lang}に切り替えました。",
     "ex_r_in_use": "設定で使われているため削除できません。",
     "ex_empty": "一致する言語がありません",
-    "ph_app_ver_diff": "Bageo {v} とバージョンが異なります"
+    "ph_app_ver_diff": "Bageo {v} とバージョンが異なります",
+    "ts_get_art": "この地域のイラストをダウンロード"
   }
 }
