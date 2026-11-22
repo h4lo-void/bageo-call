@@ -7780,7 +7780,9 @@ async fn run_urgent_call(
                 UrgentFailureDisposition::ResumeAi => {}
             }
             info!("Whitelist urgent call failed id={id} serial={serial} reason={reason} — the AI is back");
-            ctl.resume_with(if reason == "no_dial_ack" { on_callback } else { on_fail });
+            // Not dialed through (no answer from the phone, or called off for words
+            // only scammers say): the owner will call back, not "did not answer".
+            ctl.resume_with(if reason == "no_dial_ack" || reason == urgent_call::SCAM_WORDS { on_callback } else { on_fail });
             urgent_coord.set(UrgentCallOutcome::Failed);
             // A merge the agent did not hear in time still hands the call over.
             if unsettled {

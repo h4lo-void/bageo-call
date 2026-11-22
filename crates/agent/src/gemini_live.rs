@@ -2976,6 +2976,9 @@ fn persona_resume_reply_client_content() -> String {
 /// - Stalling ([`StallReview::should_ask_confirm`]): one more look after the
 ///   caller's next [`CONFIRM_AFTER_TURNS`] turns (one, if long); a sure "normal" lets
 ///   the caller go back to an ordinary call ([`StallVerdictStep::Release`]).
+/// - Words only scammers say anywhere in the caller's side of the call: a sure
+///   "normal" does not hold (an unsure one is looked at once more); stalling is
+///   kept, or starts again after the caller was let go.
 const STALL_REVIEW_MAX: u32 = 3;
 const STALL_REVIEW_STEP: u32 = 2;
 /// The keywords trip mid-sentence: the first look may see half the
@@ -3314,6 +3317,13 @@ impl StallReview {
             Verdict::IvrRecording => StallVerdictStep::Ivr,
             Verdict::Normal => {
                 self.lows = 0;
+                if facts.hard_hit && review.confidence == Confidence::High {
+                    // A sure "normal" after words only scammers say: the look was
+                    // taken in (a spoofed saved number asking for a code sounds
+                    // ordinary), and asking it again will not help.
+                    self.why = EngageWhy::HardWords;
+                    return StallVerdictStep::Engage;
+                }
                 if facts.hard_hit && review.confidence != Confidence::High {
                     // Words only scammers say ("the code", the ATM, a safe account,
                     // remote control) and only an unsure "normal": a spoofed number
@@ -9117,13 +9127,9 @@ pub async fn run_session(
                     continue;
                 }
                 let ctx = review_ctx();
-                // Letting a stalled caller go reads the whole call: words only
-                // scammers say after stalling started are not in the hits.
-                let hard_hit = if stall_review.origin == LookOrigin::Confirm {
-                    hard_words_said(&stall_hits, caller_hard_heard, &transcript_out)
-                } else {
-                    stall_hits.iter().any(|h| crate::scam_db::is_hard(h))
-                };
+                // Every verdict reads the whole call: words only scammers say
+                // while stalling (not scored then) are not in the hits.
+                let hard_hit = hard_words_said(&stall_hits, caller_hard_heard, &transcript_out);
                 let facts = StallFacts {
                     flagged: stall_engages(stall_score, &stall_hits),
                     hard_hit,
@@ -10456,9 +10462,9 @@ mod tests {
 
     /// Words only scammers say and an unsure "normal" (a spoofed contact asking
     /// for "the code"): looked at once more, a scam when unsure twice; a sure
-    /// "normal" holds.
+    /// "normal" does not hold either.
     #[test]
-    fn hard_words_need_a_sure_normal_to_be_let_be() {
+    fn hard_words_are_not_let_be_even_on_a_sure_normal() {
         use crate::stall_review::{Confidence::*, Verdict::*};
         let hard = StallFacts { flagged: true, hard_hit: true, protected: true };
         let mut r = StallReview::default();
@@ -10469,7 +10475,8 @@ mod tests {
         assert_eq!(r.why, EngageWhy::HardWords);
         let mut r = StallReview::default();
         assert!(r.should_ask(true, 3));
-        assert_eq!(r.decide(&review_of(Normal, High), 3, 3, hard), StallVerdictStep::Carry);
+        assert_eq!(r.decide(&review_of(Normal, High), 3, 3, hard), StallVerdictStep::Engage);
+        assert_eq!(r.why, EngageWhy::HardWords);
         // Without hard words an unsure "normal" is still normal.
         let mut r = StallReview::default();
         assert!(r.should_ask(true, 3));
@@ -10607,6 +10614,18 @@ mod tests {
             // does not count): let go, as before.
             let fine = transcript(format!("{before}\n接聽：{scam}\n對方：{ordinary}"));
             assert_eq!(check(&fine), (StallVerdictStep::Release, EngageWhy::Review), "{ordinary}");
+            // Let go, and only then the request, from a saved number: the next
+            // look's sure "normal" does not hold; stalling starts again.
+            let mut r = StallReview::default();
+            r.note_engaged(20);
+            assert!(r.should_ask_confirm(20 + CONFIRM_EARLY_UNITS));
+            let facts = StallFacts { flagged: true, hard_hit: hard_words_said(&[], false, &fine), protected: true };
+            assert_eq!(r.decide(&review_of(Normal, High), 0, 0, facts), StallVerdictStep::Release);
+            let after = transcript(format!("{before}\n對方：{ordinary}\n接聽：Okay.\n對方：{scam}"));
+            assert!(r.should_ask(true, 4));
+            let facts = StallFacts { flagged: true, hard_hit: hard_words_said(&[], false, &after), protected: true };
+            assert_eq!(r.decide(&review_of(Normal, High), 4, 4, facts), StallVerdictStep::Engage, "{scam}");
+            assert_eq!(r.why, EngageWhy::HardWords);
         }
     }
 
