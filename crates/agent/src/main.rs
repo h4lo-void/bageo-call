@@ -1538,7 +1538,7 @@ async fn main() -> Result<()> {
     }
     if !addr.ip().is_loopback() {
         if settings_store::active_ui_token(&settings.calls_ui_token).is_empty() {
-            warn!("listening on {addr} without CALLS_UI_TOKEN: anyone on this network can open the web console");
+            warn!("listening on {addr} without a console password: other devices see \"set a password first\" until CALLS_UI_TOKEN or the console's password is set");
         }
     }
     // Links to an `.ics` that leave the console (notifications, Telegram) carry
@@ -1557,7 +1557,7 @@ async fn main() -> Result<()> {
         });
     } else if !addr.ip().is_loopback() {
         if settings.device_token.trim().is_empty() {
-            warn!("listening on {addr} without DEVICE_TOKEN: anyone on this network can connect as a phone");
+            warn!("listening on {addr} without DEVICE_TOKEN: phones that are not on USB need a pairing code");
         }
         // `http://bageo.local:8787/`: answer the console's network name (setting
         // `mdns_name`, re-read while running; empty = off). Not in a container:
@@ -1584,17 +1584,13 @@ async fn main() -> Result<()> {
     spawn_phone_wifi(state.clone(), addr);
 
     let auto = settings.host_auto;
-    let guard_settings = settings.clone();
-    let guard_store = state.settings_store.clone();
-    let app = build_app(state, calls_state, remote);
-    // Automatic: every address, behind the password check for other devices.
-    let (app, listen) = if auto {
-        (
-            lan::guard(app, guard_settings, guard_store),
-            SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), addr.port()),
-        )
+    // Every mode is behind the password check for other devices (lan::guard).
+    let app = build_app(state, calls_state, remote, auto);
+    // Automatic: every address.
+    let listen = if auto {
+        SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), addr.port())
     } else {
-        (app, addr)
+        addr
     };
     let listener = tokio::net::TcpListener::bind(listen)
         .await
@@ -1640,9 +1636,12 @@ async fn open_port_80(app: &Router, port: u16) {
 }
 
 /// The agent's HTTP routes: the phone and test routes with the agent's state,
-/// and the web console (`/calls`) with its own.
-fn build_app(state: AppState, calls_state: CallsState, remote: Arc<control::Controller>) -> Router {
+/// and the web console (`/calls`) with its own, behind [`lan::guard`] (`auto`:
+/// `AGENT_HOST` not set) whatever address is listened on.
+fn build_app(state: AppState, calls_state: CallsState, remote: Arc<control::Controller>, auto: bool) -> Router {
     let settings = state.settings.clone();
+    let guard_settings = state.settings.clone();
+    let guard_store = state.settings_store.clone();
     let app = Router::new()
         .route("/", get(root))
         .route("/index", get(redirect_to_calls))
@@ -1665,7 +1664,9 @@ fn build_app(state: AppState, calls_state: CallsState, remote: Arc<control::Cont
         .layer(axum::middleware::from_fn(lan::copy_peer))
         .with_state(state);
     // Wrong passwords from other devices: slower, then a minute's wait.
-    lan::throttle(app, settings)
+    let app = lan::throttle(app, settings);
+    // Other devices: nothing without a console password, phones only with their key.
+    lan::guard(app, guard_settings, guard_store, auto)
 }
 
 /// Authorship marker that stays in the compiled program (LICENSING.md, Section 7(b)).
@@ -1698,18 +1699,18 @@ async fn root(
 
 /// A phone may connect when it comes through this machine (the USB tunnel ends
 /// on loopback), or carries `?token=` matching `DEVICE_TOKEN`. Without a token
-/// set, anyone who can reach the port directly may connect (the phone bridges
-/// on the LAN connect so). A connection through a reverse proxy on this
-/// machine (`proxied`: it carries a forwarding header) is not this machine's
-/// own even from loopback: it needs `DEVICE_TOKEN`, and without one set it is
-/// refused. The pairing key ([`phone_wifi`]) is checked apart, in [`phone_ws`].
+/// set, nobody else may connect: a phone that is not on USB pairs with a code
+/// instead. A connection through a reverse proxy on this machine (`proxied`:
+/// it carries a forwarding header) is not this machine's own even from
+/// loopback: it needs `DEVICE_TOKEN`. The pairing key ([`phone_wifi`]) is
+/// checked apart, in [`phone_ws`].
 fn phone_allowed(peer: &SocketAddr, proxied: bool, token: Option<&str>, required: &str) -> bool {
     let required = required.trim();
     let token_ok = !required.is_empty() && token.is_some_and(|t| crate::mcp::same(t, required));
     if proxied {
         return token_ok;
     }
-    peer.ip().is_loopback() || required.is_empty() || token_ok
+    peer.ip().to_canonical().is_loopback() || token_ok
 }
 
 fn phone_ws(
@@ -1902,12 +1903,15 @@ const PAIRING_CLAIM_PATH: &str = "/api/phone-pairing/claim";
 /// on the Wi-Fi entry.
 async fn phone_pairing_claim(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    ext: axum::http::Extensions,
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
 ) -> axum::response::Response {
     let on = state.settings_store.snapshot().phone_wifi;
-    let res = claim_answer(on, &headers, &body, phone_wifi::codes(), phone_wifi::pairing(), phone_wifi::entry_port());
+    // Wrong codes count per source (a proxy on this computer names its client).
+    let from = lan::try_key(&ext, &headers).unwrap_or_else(|| peer.ip());
+    let res = claim_answer(on, &headers, &body, from, phone_wifi::codes(), phone_wifi::pairing(), phone_wifi::entry_port());
     if res.status().is_success() {
         info!("phone pairing: a phone at {} paired with a pairing code", peer.ip());
     } else {
@@ -1923,6 +1927,7 @@ fn claim_answer(
     phone_wifi_on: bool,
     headers: &axum::http::HeaderMap,
     body: &[u8],
+    from: std::net::IpAddr,
     codes: &phone_wifi::PairCodes,
     pairing: &phone_wifi::Pairing,
     entry_port: Option<u16>,
@@ -1941,7 +1946,7 @@ fn claim_answer(
     if !phone_wifi_on {
         return calls_http::api_error(StatusCode::CONFLICT, "phone_wifi_off", "phones over Wi-Fi are turned off");
     }
-    match codes.claim(&code, std::time::Instant::now()) {
+    match codes.claim_from(&code, from, std::time::Instant::now()) {
         Ok(()) => {
             let mut body = json!({"ok": true, "token": pairing.key(), "path": "/ws"});
             if let Some(port) = entry_port {
@@ -12607,15 +12612,18 @@ mod review_t4_tests {
 mod access_and_whitelist_tests {
     use super::*;
 
-    /// The phone bridges on the LAN and the USB tunnel connect as before; a
-    /// connection through a reverse proxy on this machine is not let in for
-    /// coming from loopback.
+    /// The USB tunnel connects as before; without `DEVICE_TOKEN` set nothing
+    /// else does, and a connection through a reverse proxy on this machine is
+    /// not let in for coming from loopback.
     #[test]
     fn a_phone_through_a_reverse_proxy_needs_the_device_token() {
         let lo: SocketAddr = "127.0.0.1:50000".parse().unwrap();
         let lan: SocketAddr = "192.168.1.20:50000".parse().unwrap();
-        assert!(phone_allowed(&lan, false, None, ""), "a LAN bridge without DEVICE_TOKEN set");
+        assert!(!phone_allowed(&lan, false, None, ""), "no DEVICE_TOKEN set: a LAN connection is refused");
+        assert!(!phone_allowed(&lan, false, Some("anything"), ""), "any token is wrong when none is set");
         assert!(phone_allowed(&lo, false, None, ""));
+        assert!(phone_allowed(&"[::ffff:127.0.0.1]:50000".parse().unwrap(), false, None, ""), "loopback as IPv4-mapped");
+        assert!(phone_allowed(&"[::1]:50000".parse().unwrap(), false, None, ""));
         assert!(phone_allowed(&lo, false, None, "dev-test"), "the USB tunnel");
         assert!(!phone_allowed(&lan, false, None, "dev-test"));
         assert!(phone_allowed(&lan, false, Some("dev-test"), "dev-test"));
@@ -12673,18 +12681,19 @@ mod access_and_whitelist_tests {
             (status, body)
         };
 
-        let (s, b) = answer(claim_answer(true, &json_headers, br#"{"code":"123456"}"#, &codes, &pairing, None)).await;
+        let from: std::net::IpAddr = "192.168.1.30".parse().unwrap();
+        let (s, b) = answer(claim_answer(true, &json_headers, br#"{"code":"123456"}"#, from, &codes, &pairing, None)).await;
         assert_eq!((s, b["code"].as_str()), (403, Some("no_code")), "no code made yet");
         let code = codes.issue(std::time::Instant::now());
         let body = format!(r#"{{"code":"{code}","name":"Pixel"}}"#);
-        let (s, b) = answer(claim_answer(true, &axum::http::HeaderMap::new(), body.as_bytes(), &codes, &pairing, None)).await;
+        let (s, b) = answer(claim_answer(true, &axum::http::HeaderMap::new(), body.as_bytes(), from, &codes, &pairing, None)).await;
         assert_eq!((s, b["code"].as_str()), (400, Some("bad_request")), "no JSON header");
-        let (s, b) = answer(claim_answer(true, &json_headers, b"{}", &codes, &pairing, None)).await;
+        let (s, b) = answer(claim_answer(true, &json_headers, b"{}", from, &codes, &pairing, None)).await;
         assert_eq!((s, b["code"].as_str()), (400, Some("bad_request")), "no code sent");
-        let (s, b) = answer(claim_answer(false, &json_headers, body.as_bytes(), &codes, &pairing, None)).await;
+        let (s, b) = answer(claim_answer(false, &json_headers, body.as_bytes(), from, &codes, &pairing, None)).await;
         assert_eq!((s, b["code"].as_str()), (409, Some("phone_wifi_off")));
 
-        let (s, b) = answer(claim_answer(true, &json_headers, body.as_bytes(), &codes, &pairing, Some(8788))).await;
+        let (s, b) = answer(claim_answer(true, &json_headers, body.as_bytes(), from, &codes, &pairing, Some(8788))).await;
         assert_eq!(s, 200);
         let token = b["token"].as_str().unwrap().to_string();
         assert_eq!(token, pairing.key(), "the pairing key");
@@ -12692,19 +12701,22 @@ mod access_and_whitelist_tests {
         assert_eq!(b["ws_port"], 8788);
         assert!(pairing.accepts(Some(&token)));
         assert!(phone_wifi::entry_allows(Some(&token), "", &pairing), "it opens the phone entry");
-        let (s, b) = answer(claim_answer(true, &json_headers, body.as_bytes(), &codes, &pairing, None)).await;
+        let (s, b) = answer(claim_answer(true, &json_headers, body.as_bytes(), from, &codes, &pairing, None)).await;
         assert_eq!((s, b["code"].as_str()), (403, Some("no_code")), "used once, then gone");
 
         let code = codes.issue(std::time::Instant::now());
         let wrong = if code == "000000" { "000001" } else { "000000" };
         let wrong_body = format!(r#"{{"code":"{wrong}"}}"#);
+        let guesser: std::net::IpAddr = "203.0.113.5".parse().unwrap();
         for _ in 0..phone_wifi::CODE_MAX_WRONG {
-            let (s, b) = answer(claim_answer(true, &json_headers, wrong_body.as_bytes(), &codes, &pairing, None)).await;
+            let (s, b) = answer(claim_answer(true, &json_headers, wrong_body.as_bytes(), guesser, &codes, &pairing, None)).await;
             assert_eq!((s, b["code"].as_str()), (403, Some("wrong_code")));
         }
         let right_body = format!(r#"{{"code":"{code}"}}"#);
-        let (s, b) = answer(claim_answer(true, &json_headers, right_body.as_bytes(), &codes, &pairing, None)).await;
-        assert_eq!((s, b["code"].as_str()), (403, Some("no_code")), "five wrong tries void it");
+        let (s, b) = answer(claim_answer(true, &json_headers, right_body.as_bytes(), guesser, &codes, &pairing, None)).await;
+        assert_eq!((s, b["code"].as_str()), (429, Some("too_many_tries")), "five wrong tries hold back the guesser");
+        let (s, _) = answer(claim_answer(true, &json_headers, right_body.as_bytes(), from, &codes, &pairing, None)).await;
+        assert_eq!(s, 200, "the phone being paired still gets the key");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -13123,24 +13135,31 @@ mod health_access_tests {
     use super::*;
     use axum::extract::connect_info::MockConnectInfo;
 
-    /// The agent's real routes (`build_app`) over a temp data folder, answering
-    /// as if every request came from `peer`. Returns the base URL and the folder.
+    /// The agent's real routes (`build_app`) with a set `AGENT_HOST` over a temp
+    /// data folder, answering as if every request came from `peer`. Returns the
+    /// base URL and the folder.
     async fn serve(password: &str, peer: &str) -> (String, PathBuf) {
         serve_as(password, peer, None).await
     }
 
-    /// [`serve`] in the automatic mode (`lan::guard`), the connection reaching
+    /// [`serve`] in the automatic mode (`AGENT_HOST` not set), the connection reaching
     /// this computer at `local`.
     async fn serve_auto(password: &str, peer: &str, local: &str) -> (String, PathBuf) {
         serve_as(password, peer, Some(local)).await
     }
 
     async fn serve_as(password: &str, peer: &str, auto_local: Option<&str>) -> (String, PathBuf) {
+        serve_full(password, "", peer, auto_local).await
+    }
+
+    /// [`serve_as`] with `DEVICE_TOKEN` set to `device`.
+    async fn serve_full(password: &str, device: &str, peer: &str, auto_local: Option<&str>) -> (String, PathBuf) {
         let root = std::env::temp_dir().join(format!("bageo-health-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&root).unwrap();
         let mut base = Settings::from_env();
         base.calls_data_dir = root.to_string_lossy().into_owned();
         base.calls_ui_token = password.to_string();
+        base.device_token = device.to_string();
         base.telegram_bot_token = String::new();
         base.telegram_chat_id = String::new();
         let settings_store = SettingsStore::load(base.clone());
@@ -13199,12 +13218,9 @@ mod health_access_tests {
         };
         let remote = control::Controller::new(calls_state.clone());
         let peer: SocketAddr = peer.parse().unwrap();
-        let guard_settings = state.settings.clone();
-        let guard_store = state.settings_store.clone();
-        let app = build_app(state, calls_state, remote);
+        let app = build_app(state, calls_state, remote, auto_local.is_some());
         let app = match auto_local {
-            Some(local) => lan::guard(app, guard_settings, guard_store)
-                .layer(MockConnectInfo(lan::ConnAddrs { peer, local: Some(local.parse().unwrap()) })),
+            Some(local) => app.layer(MockConnectInfo(lan::ConnAddrs { peer, local: Some(local.parse().unwrap()) })),
             None => app.layer(MockConnectInfo(peer)),
         };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -13273,7 +13289,7 @@ mod health_access_tests {
     }
 
     #[tokio::test]
-    async fn no_password_other_computer_gets_short_health_and_console_gets_full() {
+    async fn no_password_other_computer_gets_short_health_and_nothing_else() {
         let (base, root) = serve("", "203.0.113.9:5000").await;
         let (status, body) = get_json(&base, "/health", &[]).await;
         assert_eq!(status, 200);
@@ -13282,15 +13298,14 @@ mod health_access_tests {
         let (_, body) = get_json(&base, "/health?token=whatever", &[("x-forwarded-for", "198.51.100.7")]).await;
         assert_brief(&body);
 
-        let (status, body) = get_json(&base, "/calls/api/health", &[]).await;
-        assert_eq!(status, 200);
-        assert_full(&body);
-        // The console's own routes still answer (the new route did not shadow the nest).
-        assert_eq!(get_json(&base, "/calls/api/devices", &[]).await.0, 200);
-        assert_eq!(get_json(&base, "/calls/api/auth-status", &[]).await.0, 200);
-        let page = reqwest::get(format!("{base}/calls/")).await.unwrap();
-        assert_eq!(page.status().as_u16(), 200);
-        assert!(page.text().await.unwrap().contains("<html"));
+        // A set AGENT_HOST without a password is no longer an open console.
+        for path in ["/calls/api/health", "/calls/api/devices", "/calls/api/auth-status"] {
+            let (status, body) = get_json(&base, path, &[]).await;
+            assert_eq!((status, body["code"].clone()), (403, json!("need_password")), "{path}");
+        }
+        let (status, page) = get_text(&base, "/calls/", "fr-FR,fr;q=0.9").await;
+        assert_eq!(status, 403);
+        assert!(page.contains("mot de passe"), "{page}");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -13306,12 +13321,126 @@ mod health_access_tests {
                 assert_eq!(status, 200, "{peer} {header}");
                 assert_brief(&body);
             }
-            // The console has no password to check, so it stays open behind a proxy too.
+            // Through a proxy it is another device: without a password, nothing.
             let (status, body) = get_json(&base, "/calls/api/health", &[("x-forwarded-for", "198.51.100.7")]).await;
+            assert_eq!((status, body["code"].clone()), (403, json!("need_password")), "{peer}");
+            // Without the proxy it is this computer: the console opens.
+            let (status, body) = get_json(&base, "/calls/api/health", &[]).await;
             assert_eq!(status, 200, "{peer}");
             assert_full(&body);
             let _ = std::fs::remove_dir_all(&root);
         }
+    }
+
+    /// POST `body` as JSON to `path`, with optional extra headers: the status and the JSON body.
+    async fn post_json(base: &str, method: reqwest::Method, path: &str, body: Value, headers: &[(&str, &str)]) -> (u16, Value) {
+        let mut req = reqwest::Client::new().request(method, format!("{base}{path}")).json(&body);
+        for (k, v) in headers {
+            req = req.header(*k, *v);
+        }
+        let res = req.send().await.unwrap();
+        let status = res.status().as_u16();
+        (status, res.json::<Value>().await.unwrap_or(Value::Null))
+    }
+
+    /// A set `AGENT_HOST` (`0.0.0.0`, a LAN address, Docker) and no console
+    /// password: another device reads and changes nothing, cannot set the first
+    /// password, and its chat commands are not the owner's.
+    #[tokio::test]
+    async fn set_address_without_password_keeps_other_devices_out() {
+        for peer in ["192.168.1.40:5000", "172.17.0.1:40000", "[2001:db8::40]:5000"] {
+            let (base, root) = serve("", peer).await;
+            for path in ["/calls/api/settings", "/calls/api/list", "/calls/api/sms", "/calls/api/errands", "/v1/transfer"] {
+                let (status, body) = get_json(&base, path, &[]).await;
+                assert_eq!((status, body["code"].clone()), (403, json!("need_password")), "{peer} {path}");
+            }
+            let (status, body) = post_json(&base, reqwest::Method::PUT, "/calls/api/settings", json!({"owner_name": "Taken"}), &[]).await;
+            assert_eq!((status, body["code"].clone()), (403, json!("need_password")), "{peer} settings write");
+            let (status, body) = post_json(&base, reqwest::Method::POST, "/calls/api/initial-password", json!({"password": "taken-over-pw"}), &[]).await;
+            assert_eq!((status, body["code"].clone()), (403, json!("need_password")), "{peer} first password");
+            let (status, body) = post_json(
+                &base,
+                reqwest::Method::POST,
+                "/calls/api/control/inbound",
+                json!({"chat": "api", "sender": "x", "text": "¿Quién llamó ayer?"}),
+                &[],
+            )
+            .await;
+            assert_eq!((status, body["code"].clone()), (403, json!("need_password")), "{peer} chat command");
+            // A password sent along changes nothing while none is set.
+            let (status, _) = get_json(&base, "/calls/api/settings?token=guess-pw", &[]).await;
+            assert_eq!(status, 403, "{peer}");
+            // Short health stays for monitors.
+            let (status, body) = get_json(&base, "/health", &[]).await;
+            assert_eq!(status, 200);
+            assert_brief(&body);
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    /// A set `AGENT_HOST`: this computer still uses the console without a
+    /// password and reaches the first-password route; other devices with the
+    /// right password get in (Docker with both passwords set).
+    #[tokio::test]
+    async fn set_address_this_computer_and_the_right_password_still_work() {
+        for peer in ["127.0.0.1:5000", "[::1]:5000"] {
+            let (base, root) = serve("", peer).await;
+            assert_eq!(get_json(&base, "/calls/api/settings", &[]).await.0, 200, "{peer}");
+            assert_eq!(get_json(&base, "/calls/api/list", &[]).await.0, 200, "{peer}");
+            // Its own check answers (a password is not saved here: it is one for the whole program).
+            let (status, body) = post_json(&base, reqwest::Method::POST, "/calls/api/initial-password", json!({"password": "short"}), &[]).await;
+            assert_eq!((status, body["code"].clone()), (400, json!("password_too_short")), "{peer}");
+            let _ = std::fs::remove_dir_all(&root);
+        }
+        let (base, root) = serve("docker-test-pw", "172.17.0.1:40000").await;
+        assert_eq!(get_json(&base, "/calls/api/settings", &[]).await.0, 401);
+        assert_eq!(get_json(&base, "/calls/api/settings?token=docker-test-pw", &[]).await.0, 200);
+        assert_eq!(get_json(&base, "/calls/api/list", &[("authorization", "Bearer docker-test-pw")]).await.0, 200);
+        assert_eq!(reqwest::get(format!("{base}/calls/")).await.unwrap().status().as_u16(), 200);
+        // A reverse proxy's or Docker's own name is not refused with a set AGENT_HOST.
+        let (status, _) = get_json(&base, "/calls/api/settings?token=docker-test-pw", &[("host", "calls.example.org")]).await;
+        assert_eq!(status, 200);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A set `AGENT_HOST`, no password: a page naming an address that is not
+    /// this computer's (DNS rebinding) gets nothing from this computer either.
+    #[tokio::test]
+    async fn set_address_without_password_refuses_rebinding_from_this_computer() {
+        let (base, root) = serve("", "127.0.0.1:5000").await;
+        let (status, body) = get_json(&base, "/calls/api/settings", &[("host", "evil.example:8787")]).await;
+        assert_eq!((status, body["code"].clone()), (403, json!("bad_host")));
+        for host in ["localhost:8787", "127.0.0.1:8787", "[::1]:8787"] {
+            assert_eq!(get_json(&base, "/calls/api/settings", &[("host", host)]).await.0, 200, "{host}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Phones with a set `AGENT_HOST`: without `DEVICE_TOKEN` only the USB
+    /// tunnel (loopback) gets past the gate; with it, a phone that sends it does.
+    #[tokio::test]
+    async fn set_address_phones_need_their_key() {
+        let (base, root) = serve("", "192.168.1.50:5000").await;
+        assert_eq!(get_json(&base, "/ws", &[]).await.0, 401);
+        assert_eq!(get_json(&base, "/ws?token=anything", &[]).await.0, 401);
+        let res = reqwest::Client::new()
+            .get(format!("{base}/"))
+            .header("connection", "upgrade")
+            .header("upgrade", "websocket")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status().as_u16(), 401, "a phone on /");
+        let _ = std::fs::remove_dir_all(&root);
+
+        let (base, root) = serve("", "127.0.0.1:5000").await;
+        assert_ne!(get_json(&base, "/ws", &[]).await.0, 401, "the USB tunnel");
+        let _ = std::fs::remove_dir_all(&root);
+
+        let (base, root) = serve_full("docker-test-pw", "docker-dev-token", "172.17.0.1:40000", None).await;
+        assert_eq!(get_json(&base, "/ws?token=docker-test-pw", &[]).await.0, 401, "the console password is not the phones' key");
+        assert_ne!(get_json(&base, "/ws?token=docker-dev-token", &[]).await.0, 401, "DEVICE_TOKEN");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[tokio::test]
