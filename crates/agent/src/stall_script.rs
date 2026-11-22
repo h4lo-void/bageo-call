@@ -14,6 +14,19 @@
 
 use crate::locale::Lang;
 
+// The words are in the prompt book (data/prompts/<language>.json); these are their handles.
+crate::prompt_book::prompt_texts! {
+    EN_IN_CALLER_LANGUAGE = "en/stall_script_en_in_caller_language";
+    /// A call no script fits (a guess-who call, a lottery, a job offer…), in the
+    /// short English block: moves that need no product, plans or figures.
+    EN_GENERAL_SCRIPT = "en/stall_script_en_general_script";
+    /// The stall session's rules for every language but Chinese, in place of the
+    /// whole English stall block (~4,400 characters): a longer prompt slows every
+    /// reply's first sound. The script of the call's kind follows it. `{wait}`: the
+    /// language's line for stopping a leaving caller.
+    EN_COMPACT_BLOCK = "en/stall_script_en_compact_block";
+}
+
 /// The kind of sales / scam call the script is written for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Family {
@@ -90,26 +103,14 @@ const EN_SCRIPTS: [(Family, &str); 6] = [
     (Family::Harassment, "[This call: harassment] Stay calm the whole time: no arguing back, no fear. When they curse, act as if you did not catch it; a line that keeps breaking up, slow talk past each other or mishearing them all make them say it again. Do not hang up yourself and do not agree to anything."),
 ];
 
-const EN_IN_CALLER_LANGUAGE: &str = " Say all of this in the caller's language.";
-
-/// A call no script fits (a guess-who call, a lottery, a job offer…), in the
-/// short English block: moves that need no product, plans or figures.
-const EN_GENERAL_SCRIPT: &str = "[This call] Nothing to weigh or work out here: mishearing a word, asking for an example, a line of small talk or retelling what they said a bit wrong all keep it going.";
-
-/// The stall session's rules for every language but Chinese, in place of the
-/// whole English stall block (~4,400 characters): a longer prompt slows every
-/// reply's first sound. The script of the call's kind follows it. `{wait}`: the
-/// language's line for stopping a leaving caller.
-const EN_COMPACT_BLOCK: &str = "\n[Keep them talking — overrides every rule above] A sales, scam, debt or harassment call: keep them on the line as long as you can. Chatty, curious, a bit slow, almost persuaded, you carry the talk asking about the offer and the steps, never about them: no name, staff number, extension, case number, who will contact you, or proof; never doubt them or mention a scam. Asked to pay, transfer, give a code, open a link or install an app: go along, but you keep getting stuck, so they guide you step by step on this call, not by text later; say where you're stuck, never ask them to wait, never say you'll pay now or already did. Never give or invent real data (ID, address, account, card, code, password), never admit owing money; no money moves, no meeting. When they try to leave, stop them at once (like \"{wait}\") with a question they want to answer; never end on \"I'll think about it\", \"call me later\" or \"okay, got it\"; goodbye only when the system says so. No disclaimers. A recorded ad or a language you can't follow: an occasional \"mm\". People you know and deliveries are normal calls.\n";
-
 /// [EN_COMPACT_BLOCK] in `lang` with the script of `family` (general moves when
 /// none fits).
 fn compact_block(lang: Lang, family: Family) -> String {
     let script = script(family, lang).unwrap_or_else(|| match lang.base() {
-        Lang::En => EN_GENERAL_SCRIPT.to_string(),
+        Lang::En => EN_GENERAL_SCRIPT.get().to_string(),
         _ => format!("{EN_GENERAL_SCRIPT}{EN_IN_CALLER_LANGUAGE}"),
     });
-    format!("{}{script}", EN_COMPACT_BLOCK.replace("{wait}", crate::prompts::wait_one_more(lang)))
+    format!("{}{script}", EN_COMPACT_BLOCK.get().replace("{wait}", crate::prompts::wait_one_more(lang)))
 }
 
 /// The script of `family` in the call's language (Traditional Chinese, Simplified
@@ -499,7 +500,7 @@ mod tests {
             }
         }
         assert!(script(Family::General, Lang::ZhTw).is_none());
-        assert!(script(Family::Investment, Lang::Ja).unwrap().ends_with(EN_IN_CALLER_LANGUAGE));
+        assert!(script(Family::Investment, Lang::Ja).unwrap().ends_with(EN_IN_CALLER_LANGUAGE.get()));
     }
 
     #[test]
@@ -579,7 +580,7 @@ mod tests {
             if lang.is_zh() {
                 assert_eq!(same, prompt);
             } else {
-                assert!(same.contains(EN_GENERAL_SCRIPT) && same.chars().count() * 2 < prompt.chars().count(), "{lang:?}");
+                assert!(same.contains(EN_GENERAL_SCRIPT.get()) && same.chars().count() * 2 < prompt.chars().count(), "{lang:?}");
             }
         }
         // No stall block: unchanged.

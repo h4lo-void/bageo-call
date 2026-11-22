@@ -40,6 +40,14 @@ use crate::locale::Lang;
 use crate::settings_store::RuntimeSettings;
 use crate::urgent_call::TransferWho;
 
+// The words are in the prompt book (data/prompts/<language>.json); these are their handles.
+crate::prompt_book::prompt_texts! {
+    AI_PROMPT = "en/contacts_ai_prompt";
+    ZH_CONTACTS_URGENT_INTRO_1 = "zh-TW/contacts_urgent_intro_1";
+    ZH_CONTACTS_URGENT_INTRO_2 = "zh-TW/contacts_urgent_intro_2";
+    EN_CONTACTS_URGENT_INTRO = "en/contacts_urgent_intro";
+}
+
 /// Most contacts kept.
 pub const MAX_CONTACTS: usize = 10_000;
 /// Most numbers one contact keeps.
@@ -1652,17 +1660,17 @@ fn urgent_intro(lang: Lang, assistant: bool, owner: &str, who: TransferWho) -> S
         (Lang::ZhTw, true, TransferWho::Whitelist) => format!("這位是{owner}很重要的人。"),
         (Lang::ZhTw, false, TransferWho::Contact) => "這位在你的聯絡人裡。".to_string(),
         (Lang::ZhTw, true, TransferWho::Contact) => format!("這位在{owner}的聯絡人裡。"),
-        (Lang::ZhTw, _, TransferWho::Stranger) => "這個號碼不在聯絡人裡，可能是陌生人；陌生人說有急事也可能是詐騙，對方要錢、要驗證碼或個資就不算急事，照平常的底線應對。".to_string(),
+        (Lang::ZhTw, _, TransferWho::Stranger) => ZH_CONTACTS_URGENT_INTRO_1.get().to_string(),
         (Lang::ZhCn, false, TransferWho::Whitelist) => "这位是你很重要的人。".to_string(),
         (Lang::ZhCn, true, TransferWho::Whitelist) => format!("这位是{owner}很重要的人。"),
         (Lang::ZhCn, false, TransferWho::Contact) => "这位在你的通讯录里。".to_string(),
         (Lang::ZhCn, true, TransferWho::Contact) => format!("这位在{owner}的通讯录里。"),
-        (Lang::ZhCn, _, TransferWho::Stranger) => "这个号码不在通讯录里，可能是陌生人；陌生人说有急事也可能是诈骗，对方要钱、要验证码或个人信息就不算急事，照平常的底线应对。".to_string(),
+        (Lang::ZhCn, _, TransferWho::Stranger) => ZH_CONTACTS_URGENT_INTRO_2.get().to_string(),
         (_, false, TransferWho::Whitelist) => "This person matters to you. ".to_string(),
         (_, true, TransferWho::Whitelist) => format!("This person matters to {owner}. "),
         (_, false, TransferWho::Contact) => "This person is in your contacts. ".to_string(),
         (_, true, TransferWho::Contact) => format!("This person is in {owner}'s contacts. "),
-        (_, _, TransferWho::Stranger) => "This number is not in the contacts and may be a stranger; a stranger claiming an emergency may be running a scam. Asking for money, codes or personal details is not an urgent matter: keep to the usual rules. ".to_string(),
+        (_, _, TransferWho::Stranger) => EN_CONTACTS_URGENT_INTRO.get().to_string(),
     }
 }
 
@@ -3210,14 +3218,6 @@ pub enum AiInput {
     Inline { mime: &'static str, data: Vec<u8> },
 }
 
-const AI_PROMPT: &str = "\
-You read a file someone wants to import as phone contacts: an address book, a contact list, a spreadsheet, a business card, a screenshot or a document.\n\
-List every person or organisation in it that has a phone number. Answer with JSON only: an array of objects {\"name\": \"...\", \"phones\": [\"...\"], \"note\": \"...\"}.\n\
-- name: as written, in its own script (do not translate or romanise it).\n\
-- phones: every phone number of that entry exactly as written, with the + and country code when written; no fax numbers.\n\
-- note: the company, job title or relationship written with them, short; \"\" when none.\n\
-Leave out entries without a phone number. Do not invent anything. With no contacts in the file, answer [].";
-
 /// The generateContent request. `strict` asks for the answer's shape and the
 /// least thinking; the retry after a 400 leaves both out.
 fn ai_request(input: &AiInput, strict: bool) -> Value {
@@ -3249,7 +3249,7 @@ fn ai_request(input: &AiInput, strict: bool) -> Value {
         });
     }
     json!({
-        "systemInstruction": {"parts": [{"text": AI_PROMPT}]},
+        "systemInstruction": {"parts": [{"text": AI_PROMPT.get()}]},
         "contents": [{"role": "user", "parts": parts}],
         "generationConfig": generation,
     })

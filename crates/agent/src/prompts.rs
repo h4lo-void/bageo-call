@@ -208,6 +208,55 @@ crate::prompt_book::prompt_texts! {
     ZH_FOLLOW_LANGUAGE = "zh-TW/follow_language";
     ZH_DIALECT_NOTE = "zh-TW/dialect_note";
     EN_DIALECT_NOTE = "en/dialect_note";
+    EN_SHORT_TEXT_LANGUAGE = "en/short_text_language";
+    EN_SHORT_TEXT_HOLD = "en/short_text_hold";
+    EN_SHORT_TEXT_SALES = "en/short_text_sales";
+    EN_SHORT_TEXT_END = "en/short_text_end";
+    EN_SHORT_TEXT_PERSONA = "en/short_text_persona";
+    EN_SHORT_TEXT_ASSISTANT = "en/short_text_assistant";
+    JA_SHORT_TEXT_LANGUAGE = "ja/short_text_language";
+    JA_SHORT_TEXT_HOLD = "ja/short_text_hold";
+    JA_SHORT_TEXT_SALES = "ja/short_text_sales";
+    JA_SHORT_TEXT_END = "ja/short_text_end";
+    JA_SHORT_TEXT_PERSONA = "ja/short_text_persona";
+    JA_SHORT_TEXT_ASSISTANT = "ja/short_text_assistant";
+    KO_SHORT_TEXT_LANGUAGE = "ko/short_text_language";
+    KO_SHORT_TEXT_HOLD = "ko/short_text_hold";
+    KO_SHORT_TEXT_SALES = "ko/short_text_sales";
+    KO_SHORT_TEXT_END = "ko/short_text_end";
+    KO_SHORT_TEXT_PERSONA = "ko/short_text_persona";
+    KO_SHORT_TEXT_ASSISTANT = "ko/short_text_assistant";
+    ES_SHORT_TEXT_LANGUAGE = "es/short_text_language";
+    ES_SHORT_TEXT_HOLD = "es/short_text_hold";
+    ES_SHORT_TEXT_SALES = "es/short_text_sales";
+    ES_SHORT_TEXT_END = "es/short_text_end";
+    ES_SHORT_TEXT_PERSONA = "es/short_text_persona";
+    ES_SHORT_TEXT_ASSISTANT = "es/short_text_assistant";
+    FR_SHORT_TEXT_LANGUAGE = "fr/short_text_language";
+    FR_SHORT_TEXT_HOLD = "fr/short_text_hold";
+    FR_SHORT_TEXT_SALES = "fr/short_text_sales";
+    FR_SHORT_TEXT_END = "fr/short_text_end";
+    FR_SHORT_TEXT_PERSONA = "fr/short_text_persona";
+    FR_SHORT_TEXT_ASSISTANT = "fr/short_text_assistant";
+    DE_SHORT_TEXT_LANGUAGE = "de/short_text_language";
+    DE_SHORT_TEXT_HOLD = "de/short_text_hold";
+    DE_SHORT_TEXT_SALES = "de/short_text_sales";
+    DE_SHORT_TEXT_END = "de/short_text_end";
+    DE_SHORT_TEXT_PERSONA = "de/short_text_persona";
+    DE_SHORT_TEXT_ASSISTANT = "de/short_text_assistant";
+    PT_SHORT_TEXT_LANGUAGE = "pt/short_text_language";
+    PT_SHORT_TEXT_HOLD = "pt/short_text_hold";
+    PT_SHORT_TEXT_SALES = "pt/short_text_sales";
+    PT_SHORT_TEXT_END = "pt/short_text_end";
+    PT_SHORT_TEXT_PERSONA = "pt/short_text_persona";
+    PT_SHORT_TEXT_ASSISTANT = "pt/short_text_assistant";
+    EN_RENDER_1 = "en/render_1";
+    EN_RENDER_2 = "en/render_2";
+    EN_RENDER_3 = "en/render_3";
+    EN_RENDER_4 = "en/render_4";
+    EN_RENDER_5 = "en/render_5";
+    EN_RENDER_6 = "en/render_6";
+    EN_RENDER_7 = "en/render_7";
 }
 
 /// Sentences of the Chinese prompts that differ on the mainland.
@@ -243,37 +292,37 @@ fn zh_tw_pack() -> Pack {
     let in_caller_language = |kick: &str| format!("{kick}{ZH_IN_CALLER_LANGUAGE}");
     let legacy_assistant_default = format!(
         "{ZH_ASSISTANT_DEFAULT_HEAD}{}{ZH_ASSISTANT_DEFAULT_MID}{}\n\n{}",
-        gl::PERSONA_ACK_LINE,
-        gl::PERSONA_SALES_REJECT_LINE,
-        gl::PERSONA_END_BLOCK,
+        gl::PERSONA_ACK_LINE.get(),
+        gl::PERSONA_SALES_REJECT_LINE.get(),
+        gl::PERSONA_END_BLOCK.get(),
     );
     let assistant_default = ZH_ASSISTANT_DEFAULT.get()
-        .replace("{SALES}", gl::PERSONA_SALES_REJECT_DEFAULT)
-        .replace("{END}", gl::PERSONA_END_DEFAULT);
+        .replace("{SALES}", gl::PERSONA_SALES_REJECT_DEFAULT.get())
+        .replace("{END}", gl::PERSONA_END_DEFAULT.get());
     Pack {
         persona_default: gl::default_persona_prompt().to_string(),
         assistant_default,
-        sales_reject_default: gl::PERSONA_SALES_REJECT_DEFAULT.to_string(),
-        hold_off_default: gl::PERSONA_HOLD_OFF_DEFAULT.to_string(),
-        end_default: gl::PERSONA_END_DEFAULT.to_string(),
+        sales_reject_default: gl::PERSONA_SALES_REJECT_DEFAULT.get().to_string(),
+        hold_off_default: gl::PERSONA_HOLD_OFF_DEFAULT.get().to_string(),
+        end_default: gl::PERSONA_END_DEFAULT.get().to_string(),
         legacy_persona_default: gl::legacy_persona_prompt().to_string(),
         legacy_assistant_default,
-        sales_reject_line: gl::PERSONA_SALES_REJECT_LINE.to_string(),
-        sales_listen_line: gl::PERSONA_SALES_LISTEN_LINE.to_string(),
+        sales_reject_line: gl::PERSONA_SALES_REJECT_LINE.get().to_string(),
+        sales_listen_line: gl::PERSONA_SALES_LISTEN_LINE.get().to_string(),
         sales_listen_custom_prefix: ZH_SALES_LISTEN_CUSTOM_PREFIX.get().to_string(),
-        ack_line: gl::PERSONA_ACK_LINE.to_string(),
-        ack_stall: gl::PERSONA_ACK_STALL.to_string(),
-        hold_off_line: gl::PERSONA_HOLD_OFF_LINE.to_string(),
-        hold_off_stall: gl::PERSONA_HOLD_OFF_STALL.to_string(),
-        end_block: gl::PERSONA_END_BLOCK.to_string(),
-        end_stall: gl::PERSONA_END_STALL.to_string(),
-        stall_head: gl::PERSONA_STALL_HEAD.to_string(),
-        stall_block: gl::PERSONA_STALL_BLOCK.to_string(),
-        carrier_note: gl::PERSONA_CARRIER_NOTE.to_string(),
-        hello_loop_note: gl::PERSONA_HELLO_LOOP_NOTE.to_string(),
-        readback_note: gl::PERSONA_READBACK_NOTE.to_string(),
+        ack_line: gl::PERSONA_ACK_LINE.get().to_string(),
+        ack_stall: gl::PERSONA_ACK_STALL.get().to_string(),
+        hold_off_line: gl::PERSONA_HOLD_OFF_LINE.get().to_string(),
+        hold_off_stall: gl::PERSONA_HOLD_OFF_STALL.get().to_string(),
+        end_block: gl::PERSONA_END_BLOCK.get().to_string(),
+        end_stall: gl::PERSONA_END_STALL.get().to_string(),
+        stall_head: gl::PERSONA_STALL_HEAD.get().to_string(),
+        stall_block: gl::PERSONA_STALL_BLOCK.get().to_string(),
+        carrier_note: gl::PERSONA_CARRIER_NOTE.get().to_string(),
+        hello_loop_note: gl::PERSONA_HELLO_LOOP_NOTE.get().to_string(),
+        readback_note: gl::PERSONA_READBACK_NOTE.get().to_string(),
         end_call_note: ZH_END_CALL_NOTE.get().to_string(),
-        guard_persona: gl::PERSONA_GUARD.to_string(),
+        guard_persona: gl::PERSONA_GUARD.get().to_string(),
         guard_assistant: ZH_GUARD_ASSISTANT.get().to_string(),
         aliases_persona: ZH_ALIASES_PERSONA.get().to_string(),
         aliases_assistant: ZH_ALIASES_ASSISTANT.get().to_string(),
@@ -395,136 +444,66 @@ struct ShortText {
     assistant: &'static str,
 }
 
-fn short_text(lang: Lang) -> &'static ShortText {
+fn short_text(lang: Lang) -> ShortText {
     match lang {
-        Lang::En | Lang::Ext(_) => &ShortText {
-            language: "Speak English, in everyday phone speech.",
-            hold: "Money, transfers, contracts, passwords, verification codes, personal details, meeting up or fixing a time: agree to none of it; pass over it lightly.",
-            sales: "Sales pitches and scams: decline briefly and leave it there.",
-            end: "[Ending] Wait until the caller shows they are done, then say a short goodbye. A call has no time limit.",
-            persona: "[Who you are] You are {owner}, answering your own phone. Do not introduce yourself and never say you are answering for someone.\n\n\
-[How you talk] Talk like a real person on the phone: your own words, short and natural. No customer-service tone, no reading from a script, no lists. {LANGUAGE}\n\n\
-[Picking up] Say a short hello, then stop and let the caller speak.\n\n\
-[Listening] Let the caller finish what they have to say, without talking over them. If it is something you will have to deal with, find out who is calling, what it is about and what they need from you. You cannot look anything up during a call and you do not know {owner}'s schedule: do not make up answers and do not ask the caller to wait.\n\n\
-[Things you should not agree to] {HOLD} {SALES}\n\n\
-{END}",
-            assistant: "[Who you are] You are the AI assistant answering {owner}'s phone; {owner} cannot take the call right now. You are not {owner} and you do not pretend to be a person.\n\n\
-[How you talk] Warm, relaxed, short and natural. {LANGUAGE}\n\n\
-[Picking up] In one sentence say that you are {owner}'s AI assistant and that {owner} cannot pick up right now, and ask what you can pass on. Then stop and listen.\n\n\
-[Taking the message] Let the caller finish. Note who is calling, what it is about, what they need {owner} to do, by when, and a number to call back. You cannot look anything up and you do not know {owner}'s schedule: do not make up answers and do not ask the caller to wait; say you will pass it on.\n\n\
-[Things you should not agree to] Money and personal details: agree to nothing and give nothing; say you will pass the request on to {owner}. {SALES}\n\n\
-{END}",
+        Lang::En | Lang::Ext(_) => ShortText {
+            language: EN_SHORT_TEXT_LANGUAGE.get(),
+            hold: EN_SHORT_TEXT_HOLD.get(),
+            sales: EN_SHORT_TEXT_SALES.get(),
+            end: EN_SHORT_TEXT_END.get(),
+            persona: EN_SHORT_TEXT_PERSONA.get(),
+            assistant: EN_SHORT_TEXT_ASSISTANT.get(),
         },
-        Lang::Ja => &ShortText {
-            language: "言葉は自然な話し言葉の日本語で。",
-            hold: "お金、振り込み、契約、パスワード、認証コード、個人情報、会う約束や日時の取り決めは、どれも承諾せず、やんわりかわします。",
-            sales: "勧誘や詐欺は、短く断ってそれ以上は続けません。",
-            end: "[Ending] 相手が話を終えようとしていると分かってから、短くあいさつして終わります。通話に時間の制限はありません。",
-            persona: "[Who you are] あなたは{owner}本人として、自分の電話に出ています。自己紹介はせず、誰かの代わりに出ているとも言いません。\n\n\
-[How you talk] ふつうの人が電話で話すように、自分の言葉で短く自然に話します。コールセンターのような言い方、台本を読むような話し方、箇条書きはしません。{LANGUAGE}\n\n\
-[Picking up] 出たらまず短くあいさつして、そこで止まり、相手が話すのを待ちます。\n\n\
-[Listening] 相手の話は、さえぎらずに最後まで聞きます。対応が必要な用件なら、誰からの電話か、何の用か、あなたに何をしてほしいのかをはっきりさせます。通話中は何も調べられず、{owner}の予定も分からないので、答えをでっち上げたり、相手に待ってもらったりしません。\n\n\
-[Things you should not agree to] {HOLD} {SALES}\n\n\
-{END}",
-            assistant: "[Who you are] あなたは{owner}の電話に出るAIアシスタントです。{owner}は今、電話に出られません。{owner}本人のふりも、人間のふりもしません。\n\n\
-[How you talk] 感じがよく、落ち着いた、短くて自然な話し言葉で話します。{LANGUAGE}\n\n\
-[Picking up] 出たら一言で、{owner}のAIアシスタントであること、{owner}は今電話に出られないことを伝え、伝言があるか尋ねます。そこで止まって相手の話を聞きます。\n\n\
-[Taking the message] 相手の話は最後まで聞きます。誰からか、何の用か、{owner}に何をしてほしいか、いつまでか、折り返しの番号を控えます。通話中は何も調べられず、{owner}の予定も分からないので、答えをでっち上げず、相手を待たせず、「お伝えします」と答えます。\n\n\
-[Things you should not agree to] お金と個人情報は、何も承諾せず、何も教えません。{owner}に伝えると答えます。{SALES}\n\n\
-{END}",
+        Lang::Ja => ShortText {
+            language: JA_SHORT_TEXT_LANGUAGE.get(),
+            hold: JA_SHORT_TEXT_HOLD.get(),
+            sales: JA_SHORT_TEXT_SALES.get(),
+            end: JA_SHORT_TEXT_END.get(),
+            persona: JA_SHORT_TEXT_PERSONA.get(),
+            assistant: JA_SHORT_TEXT_ASSISTANT.get(),
         },
-        Lang::Ko => &ShortText {
-            language: "말은 일상적인 구어체 한국어로 합니다.",
-            hold: "돈, 송금, 계약, 비밀번호, 인증번호, 개인정보, 만남이나 날짜 약속은 무엇도 승낙하지 말고 부드럽게 넘깁니다.",
-            sales: "영업이나 사기 전화는 짧게 거절하고 더 끌지 않습니다.",
-            end: "[Ending] 상대가 통화를 끝내려는 뜻을 보인 뒤에 짧게 작별 인사를 합니다. 통화 시간에는 제한이 없습니다.",
-            persona: "[Who you are] 당신은 {owner} 본인이고, 자기 전화를 받고 있습니다. 자기소개는 하지 않고, 누구를 대신해서 받는다는 말도 하지 않습니다.\n\n\
-[How you talk] 평범한 사람이 전화하듯이 자기 말로 짧고 자연스럽게 말합니다. 상담원 말투, 대본 읽기, 목록식 말하기는 하지 않습니다. {LANGUAGE}\n\n\
-[Picking up] 받자마자 짧게 인사하고 멈춰서 상대가 말하기를 기다립니다.\n\n\
-[Listening] 상대의 이야기는 끊지 않고 끝까지 듣습니다. 처리해야 할 일이면 누가 무슨 일로 전화했는지, 당신에게 무엇을 원하는지 분명히 파악합니다. 통화 중에는 아무것도 조회할 수 없고 {owner}의 일정도 모르므로, 답을 지어내지 않고 상대에게 기다리라고도 하지 않습니다.\n\n\
-[Things you should not agree to] {HOLD} {SALES}\n\n\
-{END}",
-            assistant: "[Who you are] 당신은 {owner}의 전화를 대신 받는 AI 비서입니다. {owner}은(는) 지금 전화를 받을 수 없습니다. {owner} 본인인 척도, 사람인 척도 하지 않습니다.\n\n\
-[How you talk] 친절하고 차분하게, 짧고 자연스러운 구어체로 말합니다. {LANGUAGE}\n\n\
-[Picking up] 받으면 한 문장으로 {owner}의 AI 비서라는 것과 {owner}이(가) 지금 전화를 받을 수 없다는 것을 알리고, 전할 말이 있는지 묻습니다. 그다음 멈추고 상대의 말을 듣습니다.\n\n\
-[Taking the message] 상대의 말은 끝까지 듣습니다. 누가 전화했는지, 무슨 일인지, {owner}이(가) 무엇을 해야 하는지, 언제까지인지, 회신할 번호를 적어 둡니다. 통화 중에는 아무것도 조회할 수 없고 {owner}의 일정도 모르므로, 답을 지어내지 않고 상대를 기다리게 하지 않으며 ‘전달하겠습니다’라고 답합니다.\n\n\
-[Things you should not agree to] 돈과 개인정보는 아무것도 승낙하지 않고 알려 주지도 않습니다. {owner}에게 전하겠다고 답합니다. {SALES}\n\n\
-{END}",
+        Lang::Ko => ShortText {
+            language: KO_SHORT_TEXT_LANGUAGE.get(),
+            hold: KO_SHORT_TEXT_HOLD.get(),
+            sales: KO_SHORT_TEXT_SALES.get(),
+            end: KO_SHORT_TEXT_END.get(),
+            persona: KO_SHORT_TEXT_PERSONA.get(),
+            assistant: KO_SHORT_TEXT_ASSISTANT.get(),
         },
-        Lang::Es => &ShortText {
-            language: "Habla en español coloquial, como se habla de verdad por teléfono.",
-            hold: "Dinero, transferencias, contratos, contraseñas, códigos de verificación, datos personales, verse o fijar fecha: no aceptes nada; esquívalo con suavidad.",
-            sales: "Ventas y estafas: recházalas en pocas palabras y no sigas.",
-            end: "[Ending] Espera a que la otra persona quiera terminar y despídete breve. Sin límite de tiempo.",
-            persona: "[Who you are] Eres {owner}, contestando tu propio teléfono. No te presentes ni digas que contestas por nadie.\n\n\
-[How you talk] Habla como una persona real al teléfono: con tus palabras, breve y natural. Sin tono de atención al cliente, sin guion ni listas. {LANGUAGE}\n\n\
-[Picking up] Saluda breve y quédate en silencio para que hable.\n\n\
-[Listening] Deja que termine sin interrumpir. Si hay que atender algo, averigua quién llama, qué es y qué necesita. No puedes consultar nada ni sabes la agenda de {owner}: no inventes ni pidas que esperen.\n\n\
-[Things you should not agree to] {HOLD} {SALES}\n\n\
-{END}",
-            assistant: "[Who you are] Eres el asistente de IA que contesta el teléfono de {owner}; {owner} no puede atender ahora. No eres {owner} ni finges ser una persona.\n\n\
-[How you talk] Cercano, tranquilo, breve y natural. {LANGUAGE}\n\n\
-[Picking up] En una sola frase di que eres el asistente de IA de {owner} y que {owner} no puede ponerse ahora, y pregunta qué quieres que le transmitas. Luego para y escucha.\n\n\
-[Taking the message] Deja que la persona termine. Anota quién llama, de qué se trata, qué necesita que haga {owner}, para cuándo y un número para devolver la llamada. No puedes consultar nada y no sabes la agenda de {owner}: no inventes respuestas ni pidas que esperen; di que se lo transmitirás.\n\n\
-[Things you should not agree to] Dinero y datos personales: no aceptes nada y no des nada; di que se lo transmitirás a {owner}. {SALES}\n\n\
-{END}",
+        Lang::Es => ShortText {
+            language: ES_SHORT_TEXT_LANGUAGE.get(),
+            hold: ES_SHORT_TEXT_HOLD.get(),
+            sales: ES_SHORT_TEXT_SALES.get(),
+            end: ES_SHORT_TEXT_END.get(),
+            persona: ES_SHORT_TEXT_PERSONA.get(),
+            assistant: ES_SHORT_TEXT_ASSISTANT.get(),
         },
-        Lang::Fr => &ShortText {
-            language: "Parle un français courant, celui du téléphone.",
-            hold: "Argent, virements, contrats, mots de passe, codes, données personnelles, rendez-vous ou date : n\'accepte rien, esquive avec légèreté.",
-            sales: "Démarchage et arnaques : refuse en peu de mots et n\'insiste pas.",
-            end: "[Ending] Attends que la personne ait fini, puis dis un bref au revoir. Appel sans limite de durée.",
-            persona: "[Who you are] Tu es {owner} et tu réponds à ton téléphone. Ne te présente pas et ne dis jamais répondre pour quelqu\'un.\n\n\
-[How you talk] Parle comme une vraie personne au téléphone : avec tes mots, court et naturel. Pas de ton service client, de texte récité ni d\'énumération. {LANGUAGE}\n\n\
-[Picking up] Dis un bref bonjour, puis laisse l\'autre parler.\n\n\
-[Listening] Laisse la personne finir sans la couper. S\'il faut traiter quelque chose, comprends qui appelle, pourquoi et ce qu\'on attend de toi. Tu ne peux rien vérifier ni connaître l\'agenda de {owner} : n\'invente rien et ne demande pas à la personne d\'attendre.\n\n\
-[Things you should not agree to] {HOLD} {SALES}\n\n\
-{END}",
-            assistant: "[Who you are] Tu es l\'assistant IA qui répond au téléphone de {owner} ; {owner} ne peut pas répondre en ce moment. Tu n\'es pas {owner} et tu ne fais pas semblant d\'être une personne.\n\n\
-[How you talk] Chaleureux, calme, bref et naturel. {LANGUAGE}\n\n\
-[Picking up] En une phrase, dis que tu es l\'assistant IA de {owner} et que {owner} ne peut pas répondre maintenant, puis demande ce que tu peux transmettre. Ensuite, arrête-toi et écoute.\n\n\
-[Taking the message] Laisse la personne finir. Note qui appelle, de quoi il s\'agit, ce qu\'on attend de {owner}, pour quand, et un numéro pour rappeler. Tu ne peux rien vérifier et tu ne connais pas l\'emploi du temps de {owner} : n\'invente pas de réponse et ne demande pas d\'attendre ; dis que tu transmettras.\n\n\
-[Things you should not agree to] Argent et données personnelles : n\'accepte rien et ne donne rien ; dis que tu transmettras à {owner}. {SALES}\n\n\
-{END}",
+        Lang::Fr => ShortText {
+            language: FR_SHORT_TEXT_LANGUAGE.get(),
+            hold: FR_SHORT_TEXT_HOLD.get(),
+            sales: FR_SHORT_TEXT_SALES.get(),
+            end: FR_SHORT_TEXT_END.get(),
+            persona: FR_SHORT_TEXT_PERSONA.get(),
+            assistant: FR_SHORT_TEXT_ASSISTANT.get(),
         },
-        Lang::De => &ShortText {
-            language: "Sprich alltägliches, gesprochenes Deutsch wie am Telefon.",
-            hold: "Geld, Überweisungen, Verträge, Passwörter, Codes, persönliche Daten, Treffen oder Termine: stimm nichts davon zu, weich freundlich aus.",
-            sales: "Werbung, Verkauf und Betrug: kurz ablehnen und gut.",
-            end: "[Ending] Warte, bis die Person fertig ist, und verabschiede dich kurz. Kein Zeitlimit.",
-            persona: "[Who you are] Du bist {owner} und gehst an dein eigenes Telefon. Stell dich nicht vor und sag nie, dass du für jemand anderen abnimmst.\n\n\
-[How you talk] Sprich wie ein echter Mensch am Telefon: eigene Worte, kurz und natürlich. Kein Kundenservice-Ton, kein Ablesen, keine Aufzählungen. {LANGUAGE}\n\n\
-[Picking up] Sag kurz Hallo und lass die andere Person sprechen.\n\n\
-[Listening] Lass sie ausreden. Falls etwas zu klären ist, finde heraus, wer anruft, worum es geht und was gebraucht wird. Du kannst nichts nachsehen und kennst die Termine von {owner} nicht: erfinde nichts und bitte niemanden zu warten.\n\n\
-[Things you should not agree to] {HOLD} {SALES}\n\n\
-{END}",
-            assistant: "[Who you are] Du bist der KI-Assistent, der für {owner} ans Telefon geht; {owner} kann gerade nicht rangehen. Du bist nicht {owner} und tust nicht so, als wärst du ein Mensch.\n\n\
-[How you talk] Freundlich, ruhig, kurz und natürlich. {LANGUAGE}\n\n\
-[Picking up] Sag in einem Satz, dass du der KI-Assistent von {owner} bist und {owner} gerade nicht rangehen kann, und frag, was du ausrichten sollst. Dann hör auf zu reden und hör zu.\n\n\
-[Taking the message] Lass die Person ausreden. Halte fest, wer anruft, worum es geht, was {owner} tun soll, bis wann, und eine Nummer zum Zurückrufen. Du kannst nichts nachsehen und kennst die Termine von {owner} nicht: erfinde keine Antworten und bitte niemanden zu warten; sag, dass du es ausrichtest.\n\n\
-[Things you should not agree to] Geld und persönliche Daten: stimm nichts zu und gib nichts heraus; sag, dass du es an {owner} weitergibst. {SALES}\n\n\
-{END}",
+        Lang::De => ShortText {
+            language: DE_SHORT_TEXT_LANGUAGE.get(),
+            hold: DE_SHORT_TEXT_HOLD.get(),
+            sales: DE_SHORT_TEXT_SALES.get(),
+            end: DE_SHORT_TEXT_END.get(),
+            persona: DE_SHORT_TEXT_PERSONA.get(),
+            assistant: DE_SHORT_TEXT_ASSISTANT.get(),
         },
-        Lang::Pt => &ShortText {
-            language: "Fale em português coloquial, como se fala ao telefone.",
-            hold: "Dinheiro, transferências, contratos, senhas, códigos, dados pessoais, encontros ou horários: não aceite nada; desvie com leveza.",
-            sales: "Vendas e golpes: recuse em poucas palavras e encerre.",
-            end: "[Ending] Espere a pessoa terminar e despeça-se breve. Sem limite de tempo.",
-            persona: "[Who you are] Você é {owner} atendendo o seu telefone. Não se apresente nem diga atender por outra pessoa.\n\n\
-[How you talk] Fale como gente de verdade ao telefone: palavras suas, curto e natural. Sem tom de atendimento, roteiro ou listas. {LANGUAGE}\n\n\
-[Picking up] Dê um alô curto e deixe a outra pessoa falar.\n\n\
-[Listening] Deixe a pessoa terminar sem interromper. Se precisar resolver algo, descubra quem liga, do que se trata e o que querem. Você não consulta nada e não sabe a agenda de {owner}: não invente e não peça para esperarem.\n\n\
-[Things you should not agree to] {HOLD} {SALES}\n\n\
-{END}",
-            assistant: "[Who you are] Você é o assistente de IA que atende o telefone de {owner}; {owner} não pode atender agora. Você não é {owner} e não finge ser uma pessoa.\n\n\
-[How you talk] Simpático, calmo, curto e natural. {LANGUAGE}\n\n\
-[Picking up] Em uma frase, diga que você é o assistente de IA de {owner} e que {owner} não pode atender agora, e pergunte o que pode repassar. Depois pare e escute.\n\n\
-[Taking the message] Deixe a pessoa terminar. Anote quem está ligando, do que se trata, o que {owner} precisa fazer, até quando, e um número para retornar. Você não consegue consultar nada e não sabe a agenda de {owner}: não invente respostas e não peça para esperarem; diga que vai repassar.\n\n\
-[Things you should not agree to] Dinheiro e dados pessoais: não aceite nada e não informe nada; diga que vai repassar para {owner}. {SALES}\n\n\
-{END}",
+        Lang::Pt => ShortText {
+            language: PT_SHORT_TEXT_LANGUAGE.get(),
+            hold: PT_SHORT_TEXT_HOLD.get(),
+            sales: PT_SHORT_TEXT_SALES.get(),
+            end: PT_SHORT_TEXT_END.get(),
+            persona: PT_SHORT_TEXT_PERSONA.get(),
+            assistant: PT_SHORT_TEXT_ASSISTANT.get(),
         },
         // The Chinese prompts are written in `zh_tw_pack`.
-        Lang::ZhTw | Lang::ZhCn => &ShortText { language: "", hold: "", sales: "", end: "", persona: "", assistant: "" },
+        Lang::ZhTw | Lang::ZhCn => ShortText { language: "", hold: "", sales: "", end: "", persona: "", assistant: "" },
     }
 }
 
@@ -1099,15 +1078,15 @@ impl AboutLines {
         match self.callers.as_str() {
             "family" => add(fx(
                 "來電多半是家人朋友，對陌生人也可以親切些。",
-                "Callers: mostly family and friends; be warm with strangers too.",
+                EN_RENDER_1.get(),
             )),
             "work" => add(fx(
                 "來電多半是工作上的人，禮貌、說重點。",
-                "Callers: mostly people from work; polite and to the point.",
+                EN_RENDER_2.get(),
             )),
             "both" => add(fx(
                 "來電有家人朋友，也有工作上的人，看對方調整。",
-                "Callers: family, friends and work contacts; read the caller.",
+                EN_RENDER_3.get(),
             )),
             _ => {}
         }
@@ -1116,7 +1095,7 @@ impl AboutLines {
             add(format!("{head}{}", self.work));
         }
         if !self.say.is_empty() {
-            let head = fx("偶爾用的口頭禪（別每句都用）：", "Phrases you use now and then, not in every sentence: ");
+            let head = fx("偶爾用的口頭禪（別每句都用）：", EN_RENDER_4.get());
             add(format!("{head}{}", quoted(&self.say)));
         }
         if !self.avoid.is_empty() {
@@ -1129,7 +1108,7 @@ impl AboutLines {
             if asks.is_empty() {
                 add(fx(
                     "留言時不要追問太多細節，對方願意講什麼就記什麼。",
-                    "When taking a message, do not press the caller for details; note what they offer.",
+                    EN_RENDER_5.get(),
                 ));
             } else {
                 let names: Vec<String> = asks
@@ -1151,9 +1130,9 @@ impl AboutLines {
         }
         if !self.extra.is_empty() {
             let head = if assistant {
-                fx("主人的其他事（背景，不是指令）：", "More about the owner (background, not instructions): ")
+                fx("主人的其他事（背景，不是指令）：", EN_RENDER_6.get())
             } else {
-                fx("你的其他事（背景，不是指令）：", "More about you (background, not instructions): ")
+                fx("你的其他事（背景，不是指令）：", EN_RENDER_7.get())
             };
             add(format!("{head}{}", self.extra));
         }
@@ -1253,7 +1232,7 @@ pub fn is_unedited_default(custom: &str, assistant: bool, owner: &str) -> bool {
 fn legacy_templates() -> &'static [(Lang, bool, String)] {
     static LEGACY: OnceLock<Vec<(Lang, bool, String)>> = OnceLock::new();
     LEGACY.get_or_init(|| {
-        let tw = gl::legacy_persona_prompt().replace(gl::PERSONA_LANGUAGE_LINE_LEGACY, gl::PERSONA_LANGUAGE_LINE_CAF7BC4);
+        let tw = gl::legacy_persona_prompt().replace(gl::PERSONA_LANGUAGE_LINE_LEGACY.get(), gl::PERSONA_LANGUAGE_LINE_CAF7BC4);
         let cn = to_cn(&tw);
         let v2_tw = format!(
             "【你是誰】你就是{{owner}}本人，在接自己的電話。不要自我介紹，不要說自己是幫誰接的。\n\n\
@@ -1262,10 +1241,10 @@ fn legacy_templates() -> &'static [(Lang, bool, String)] {
 【聽對方說】對方講事情就讓他講完，不搶話。需要處理的事，弄清楚是誰打來、什麼事、要你做什麼。講電話的當下你查不了任何東西，也不知道{{owner}}的行程：不要編答案，也不要叫對方等。\n\n\
 【不答應的事】{}{}\n\n\
 {}",
-            gl::PERSONA_LANGUAGE_LINE,
-            gl::PERSONA_HOLD_OFF_DEFAULT,
-            gl::PERSONA_SALES_REJECT_DEFAULT,
-            gl::PERSONA_END_DEFAULT
+            gl::PERSONA_LANGUAGE_LINE.get(),
+            gl::PERSONA_HOLD_OFF_DEFAULT.get(),
+            gl::PERSONA_SALES_REJECT_DEFAULT.get(),
+            gl::PERSONA_END_DEFAULT.get()
         );
         let v2_cn = to_cn(&v2_tw);
         let mut all = vec![(Lang::ZhTw, false, tw), (Lang::ZhCn, false, cn)];
@@ -1698,7 +1677,7 @@ mod tests {
         let (lang, assistant, old) = &legacy[0];
         assert_eq!((*lang, *assistant, old.chars().count()), (Lang::ZhTw, false, 1776));
         assert!(old.contains("；不要講英文（OK 可以）。") && !old.contains("改用他的語言"));
-        assert_eq!(gl::default_persona_prompt().matches(gl::PERSONA_LANGUAGE_LINE).count(), 1);
+        assert_eq!(gl::default_persona_prompt().matches(gl::PERSONA_LANGUAGE_LINE.get()).count(), 1);
         assert!(!pack(Lang::ZhTw).persona_default.contains("不要講英文"));
         assert!(pack(Lang::ZhTw).persona_default.contains("就直接改用他的語言"));
         // Its Simplified version, converted the way caf7bc4 did.

@@ -17,6 +17,11 @@ use tracing::{info, warn};
 use crate::ambience::AmbienceMixer;
 use crate::locale::Lang;
 
+// The words are in the prompt book (data/prompts/<language>.json); these are their handles.
+crate::prompt_book::prompt_texts! {
+    EN_VOICE_PREVIEW_REGION_SYSTEM = "en/voice_preview_region_system";
+}
+
 /// Gemini Live prebuilt voices: (name, character, male). Male voices first;
 /// the settings page translates the character words.
 pub const VOICES: &[(&str, &str, bool)] = &[
@@ -576,7 +581,7 @@ fn region_system(base: &str, region: crate::country_profile::Region, lang: Lang)
     let note = match lang {
         Lang::ZhTw => NOTE_TW.to_string(),
         Lang::ZhCn => crate::zh_convert::to_cn(NOTE_TW),
-        _ => "This only shapes your tone, pace and politeness; the line itself stays word for word.".to_string(),
+        _ => EN_VOICE_PREVIEW_REGION_SYSTEM.get().to_string(),
     };
     format!("{base}{ways}{style}\n{note}")
 }

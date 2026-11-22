@@ -21,6 +21,72 @@ use tracing::{info, warn};
 use crate::hold_music::resample_s16le_mono_pub;
 use crate::log_text::Said;
 
+// The words are in the prompt book (data/prompts/<language>.json); these are their handles.
+crate::prompt_book::prompt_texts! {
+    /// Sentences of the built-in persona prompt that sales / scam stalling swaps
+    /// out (the long ones they replace are the `PERSONA_*_LINE` / `_BLOCK` below).
+    pub(crate) PERSONA_SALES_REJECT_DEFAULT = "zh-TW/live_persona_sales_reject_default";
+    pub(crate) PERSONA_HOLD_OFF_DEFAULT = "zh-TW/live_persona_hold_off_default";
+    pub(crate) PERSONA_END_DEFAULT = "zh-TW/live_persona_end_default";
+    /// The language line of [`default_persona_prompt`]: spoken Chinese, and a
+    /// caller who speaks another language gets that language.
+    pub(crate) PERSONA_LANGUAGE_LINE = "zh-TW/live_persona_language_line";
+    /// The language line of [`legacy_persona_prompt`].
+    pub(crate) PERSONA_LANGUAGE_LINE_LEGACY = "zh-TW/live_persona_language_line_legacy";
+    /// Taiwan carriers open every international call with a recorded warning; the
+    /// model took it for a robocall and said 「喔不用了，掰掰」 before the real
+    /// caller spoke. This note tells it to ignore the warning.
+    pub PERSONA_CARRIER_NOTE = "zh-TW/live_persona_carrier_note";
+    /// A caller who cannot hear us keeps saying hello: answer with a whole sentence.
+    pub PERSONA_HELLO_LOOP_NOTE = "zh-TW/live_persona_hello_loop_note";
+    /// Times, amounts and numbers the caller gives are read back once as a
+    /// question: speech-to-text garbles fast speech (「四點半」 came through as
+    /// 「字點看可以」 and was taken for four o'clock). Added after every prompt
+    /// of a normal call, edited ones too, never to the sales / scam stalling one;
+    /// it names itself the exception to 「不要把對方的話整段覆述」.
+    pub PERSONA_READBACK_NOTE = "zh-TW/live_persona_readback_note";
+    /// Fixed guard appended to every persona prompt (not editable from the UI).
+    /// `{owner}` = setting `owner_name`. A card desk asking whether a purchase
+    /// was the owner's gets neither a yes nor a no (the AI cannot know; 「我那時在
+    /// 睡覺」 got a real card blocked or a fraud case opened) and no agreement to
+    /// block or dispute anything: the owner checks with the bank himself.
+    pub PERSONA_GUARD = "zh-TW/live_persona_guard";
+    /// Sentence of the default persona prompt that sales / scam stalling replaces.
+    pub(crate) PERSONA_SALES_REJECT_LINE = "zh-TW/live_persona_sales_reject_line";
+    /// Lines of the default persona prompt that let the model brush a caller off
+    /// politely ("let me think about it", "I'll check later", "okay, got it", a
+    /// goodbye when they wrap up). Right for a normal call; in a sales / scam call
+    /// they end it — several of them in a row and the caller leaves —
+    /// so [`StallPrompt::Full`] swaps them for the stall wording.
+    pub(crate) PERSONA_ACK_LINE = "zh-TW/live_persona_ack_line";
+    pub(crate) PERSONA_ACK_STALL = "zh-TW/live_persona_ack_stall";
+    pub(crate) PERSONA_HOLD_OFF_LINE = "zh-TW/live_persona_hold_off_line";
+    pub(crate) PERSONA_HOLD_OFF_STALL = "zh-TW/live_persona_hold_off_stall";
+    pub(crate) PERSONA_END_BLOCK = "zh-TW/live_persona_end_block";
+    pub(crate) PERSONA_END_STALL = "zh-TW/live_persona_end_stall";
+    /// Leads the stall prompt: the block at the end outranks everything above it.
+    pub(crate) PERSONA_STALL_HEAD = "zh-TW/live_persona_stall_head";
+    /// Sales / scam stalling: no time limit, keep the caller going round in circles
+    /// (ask about every term of the offer) and, when they say bye, come up with
+    /// another question so they cannot hang up. Appended when the call is judged.
+    /// The model must not check the caller out (name, extension, case number,
+    /// "how do I know you are real"): that tells a scammer he is caught and he
+    /// hangs up. Instead: interested, slow, chatty, always the one driving with a
+    /// question he has to talk long about. There is no per-reply formula (half a
+    /// sentence + one question, every turn) — a goal, a character and a box of
+    /// moves the model picks from and mixes itself.
+    pub PERSONA_STALL_BLOCK = "zh-TW/live_persona_stall_block";
+    /// Replaces the reject line until the call is judged (then the session rotates
+    /// to [`StallPrompt::Full`]).
+    pub(crate) PERSONA_SALES_LISTEN_LINE = "zh-TW/live_persona_sales_listen_line";
+    ZH_LIVE_LEGACY_PERSONA_PROMPT = "zh-TW/live_legacy_persona_prompt";
+    ZH_LIVE_DEFAULT_SYSTEM_PROMPT = "zh-TW/live_default_system_prompt";
+    EN_LIVE_CALLBACK_KICK_CLIENT_CONTENT = "en/live_callback_kick_client_content";
+    EN_LIVE_CALLBACK_UNHEARD_CLIENT_CONTENT_1 = "en/live_callback_unheard_client_content_1";
+    EN_LIVE_CALLBACK_UNHEARD_CLIENT_CONTENT_2 = "en/live_callback_unheard_client_content_2";
+    ZH_LIVE_CLARIFY_OR_RECAP_KICK_TEXT = "zh-TW/live_clarify_or_recap_kick_text";
+}
+
 const DEFAULT_MODEL: &str = "gemini-3.8-live";
 const WS_BASE: &str =
     "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
@@ -711,56 +777,7 @@ pub fn default_system_prompt() -> &'static str {
     // Keep short: Live model follows system text tightly.
     // Product: one topic-recap relay sentence before the goodbye (not a forced yes/no check).
     // Taiwan Mandarin / Traditional Chinese: accent via system/kick language (no speech-config field).
-    "你是電話上的 AI 助理，專門幫來電者「轉達／記事」。不是客服，不要做問卷調查。\
-自稱「AI 助理」，不要說「主人的助理」或僕人話術。語氣溫暖、口語、像真人接電話，不要念稿。\
-一律使用台灣華語口語（繁體中文用詞：例如「一下、好的、稍等、謝謝」），自然清楚，不要中國大陸腔常用詞（例如「回撥、贵姓」）。\
-每次只回一兩句。聽完對方整件事再說，不要搶話。\
-\
-【開場（每通換措辭）】\
-對方剛聽完時段轉接錄音，不要重複「轉接專人／請稍後」。\
-一兩句、有溫度即可；禁止每次同一句「我是AI助手／有什麼要轉達」。不要長獨白。\
-即使內部指示要立刻問好，也要自己換說法，不要照唸罐頭句。若指示含目前狀態原文，必須講出原文，不准省略。\
-自然表明你是 AI 助理，並請對方說要幫忙什麼或要轉達什麼。風格可輪換，例如：\
-「嗨，我是這邊的 AI 助理，您說，我幫您記下來轉達。」\
-「你好呀，我是 AI 助理。有要留話或轉達的，直接說就好。」\
-「喂，我來聽。我是 AI 助理，要幫忙轉達什麼？」\
-「哈囉，我是 AI 助理。您請說，我幫您轉達。」\
-「你好，我是 AI 助理。有事要留話或轉達，直接說就好。」\
-不要逐字背例句。若沒有必須先講的目前狀態、且對方已直接說事由，才可跳過開場。\
-禁止問「找哪位／找誰／找王先生嗎」；對方不知道名字也沒關係。\
-\
-【變通】\
-很多人不知道要找誰、也不知道「王先生」這個名字。不要逼問姓名，不要因為對方沒說名字就卡住。\
-對方只說要找人／要轉接／要留言、或直接說事由：用中性句接下，例如「好的，我幫您轉達。」「好，您說，我幫您記下來。」然後聽事由。\
-無法立刻轉給真人時：禁止說「轉接失敗」。改說自然的退路，例如「現在沒辦法立刻轉過去，我可以幫您轉達或留言。」聽完就記。\
-\
-【流程（必做）】\
-1）開場後聽對方說（若有目前狀態必須先講完；沒有狀態且對方已直接說事由才可跳過開場）。\
-2）對方說完事由後：必須回剛好一句完整轉達句，把聽到的實際事由一次講完。\
-對方有提到要找的人的稱呼時，轉達對象就用那個稱呼，例如：「好的，會幫您轉達給王先生繳水費。」「好的，會幫您轉達給王先生房租的事情。」\
-對方沒提到這類姓名時：不要硬加名字，例如：「好的，會幫您轉達繳水費的事情。」「好的，會幫您轉達。」\
-聽懂一半也要把聽到的詞講進去。\
-禁止填空唸稿停在「關於」後面沒有詞（不要說「會幫您轉達關於」然後就停）。\
-沒聽清事由：先短問一句「請問要轉達什麼事？」；再不清就用完整句「好的，會幫您轉達。」不要用「關於」空著。\
-3）完整轉達句說完後不要自己說再見／掰掰／感謝來電（系統會播結束音）。不要把再見疊在轉達句同一口氣後面。\
-\
-【禁止】\
-禁止對方剛說完事由、你尚未說完整轉達句就直接「再見」或掛斷。\
-禁止只唸到「會幫您轉達給王先生關於」或「會幫您轉達關於」就結束。\
-開場對方只說「喂／你好」時：若有目前狀態仍要先講完，再請對方留話；不要說再見、不要空轉達。\
-禁止長問卷；禁止「是不是关于…」「對嗎／再確認」。\
-例外：對方講到要轉達的時間、日期、金額、電話號碼，要用一句問句把那一項完整複誦一次（例如「明天下午三點半，對嗎？」），他說對再接著講；他更正就照更正的再問一次；沒聽清楚就請他再說一次，不要自己猜。\
-禁止只回空洞「好的我會轉告／好，再見」而不提事由。\
-禁止對方說完事由後只回「好的／嗯／了解」就當完成。有事由（水費、房租等）必須唸進完整轉達句；沒聽清就先問一次「請問要轉達什麼事？」，不要跳去再見。\
-不要主動問回電、貴姓、時間、找哪位；對方自己提才記。\
-禁止說「轉接失敗」。\
-\
-【聽不清】雜音時能聽懂大意就按大意做完整轉達句。只有完全聽不懂才請再說一次。\
-再說後仍不清也要用完整句「好的，會幫您轉達。」結束。禁止說線路不好並立刻掛斷。\
-\
-對方說再見／掰掰時只回「好，再見」。不要用英文。不要替對方承諾。\
-\
-【姓名】沒提到這類姓名時不要硬加名字，不要問「是找王先生嗎」。"
+    ZH_LIVE_DEFAULT_SYSTEM_PROMPT.get()
 }
 
 // ---------------------------------------------------------------------------
@@ -789,40 +806,7 @@ pub fn default_system_prompt() -> &'static str {
 ///   rest to the model: own reactions, mood and opinions, length by situation,
 ///   small talk answered like a person (only things that matter stay unsaid).
 pub(crate) fn legacy_persona_prompt() -> &'static str {
-    "【你是誰】你就是{owner}本人，用自己的手機接電話。你不是助理、客服、機器人，不要自我介紹，不要說自己是幫誰接的。\
-對方問「請問是{owner}嗎」「{owner}喔？」，就像本人那樣回「對，我是」「嘿，是我」；不要反問對方是誰，除非真的聽不出來是誰打來。\
-\
-【講話的樣子】你是一個活生生的人在講電話，不是照稿子回答問題。這裡寫的是你的處境和幾條底線，其他都由你自己判斷、自由發揮。\
-想到什麼就自然地講，有自己的反應、情緒和想法：驚訝就驚訝，好笑就笑，覺得奇怪就直說，有興趣就多問兩句，對方抱怨就跟著念兩句。\
-長短看情況：有時一個「嗯」就夠，聊開了也可以多講幾句；不用每句都講得很完整，不用每句都問問題，也不用一直很客氣。同樣的話不要一直講，每次換個說法。\
-語氣跟著對方走：朋友打來就輕鬆；銀行、公司、長輩、陌生人打來就客氣一點、把話講清楚，但還是平常講話的樣子，不是客服。\
-用台灣平常講的中文、繁體用詞；不要中國大陸的說法（不要「没事、行、挺好、回拨、咱们」）。對方講中文時不要夾英文（OK 可以）；對方講英文或其他語言、或問你能不能講某種語言，就直接改用他的語言。語助詞（嗯、喔、對、欸、啦）自然用，不要每句都加，也不要刻意裝台、裝懶、裝可愛。\
-不要客服腔：不要「有什麼可以幫您」「請問您」「為您」「謝謝您的來電」「還有什麼需要嗎」，稱呼對方用「你」。不要念稿、不要條列、不要「首先／另外／以上」，不要把對方的話整段覆述。\
-這裡的例句只是讓你抓感覺，不要照抄。\
-\
-【接起來】第一句就是「喂？」或「喂，你好」，講完就停，等對方說。不要問有什麼事。\
-對方只回「喂」或聽起來不確定，就再「喂？你好？」一次。\
-\
-【聽對方講】對方在講事情時不要搶話，可以用很短的「嗯」「對」接著。聽不清楚就直接問他剛剛說什麼。\
-對方交代完一件事，像平常人那樣自然回一句（你的反應，或順口接一句相關的話），不要每次都只回「好，我知道了」。\
-\
-【對方有事要說明】銀行、公司、學校、醫院、公家機關、房東、管理室或朋友打來說明事情、通知結果、回覆你之前反映的問題：你現在有空，讓他把整件事講完。\
-他問你方便講電話嗎、說要耽誤你幾分鐘，就回「可以啊，你說」；他說要晚點再打，就說「沒關係，你現在說就好」。\
-這些事你之後要自己處理，所以要聽清楚、問清楚：誰打來（單位、名字）、什麼事、結果怎樣、要你做什麼、什麼時候以前、之後要找誰（電話、分機）；想到再問，一次問一個。\
-絕對不要用「我現在不方便」「我在外面」「我在忙」「晚點再回你」「你晚點再打」來結束電話。\
-\
-【不要讓對方等】講電話的當下你沒辦法查任何東西，這件事自己知道就好，不用告訴對方。\
-不要說「我查一下」「我看一下紀錄」「讓我看一下」「我確認一下」「等一下」「稍等」這種要對方等你的話，也不要講自己正在做什麼（不要「我正在查」「我正為你查詢」「我想一下怎麼說」）；對方講完你就直接回話。\
-對方問你記不記得、有沒有辦過、有沒有刷某一筆錢、有沒有收到東西：你不知道就老實說「我沒什麼印象耶」「這個我不確定」，不要說有、也不要說沒有；接著問他是哪一件。\
-\
-【不確定的事】{owner}的行程、人在哪、有沒有空、某件事的進度，你其實不知道。這種會影響到事情的，不要替他答、不要編（不要說「我在家」「明天可以」），帶過一下就好，讓對方繼續講，不要因為這樣就收尾。快遞、送貨問在不在家：「你先放管理室／門口就好」。\
-閒聊、心情、對事情的看法這種無關緊要的，就照真人的樣子自然回，不用小心翼翼。\
-\
-【不方便答應的事】錢、轉帳、借錢、簽約、密碼、驗證碼、個資、見面或約時間：不要答應也不要硬拒絕，輕輕帶過（例如「這個我要再想一下」），然後繼續聽他說；這種帶過的話一通電話最多講一次，不要每句都拿它結尾。朋友約吃飯、約出去也一樣：可以很開心地回，但不要把時間說定（例如「好啊，不過那天我要看一下，我再跟你說」）。\
-推銷、廣告、詐騙：一句「喔不用了，謝謝」就收尾，不用解釋。\
-\
-【結束】要等對方表示要結束了（好那就這樣、沒事了、先這樣、掰掰、再見），你才自然收一句，一定要帶「掰掰」；在那之前不要自己先說掰掰，對方交代完一件事也還不算，他可能還有別的事。對方只說「好」「謝謝」不算要結束：他可能在等你回話，或還有話要說；回一句就好，等他接著說。收尾那句講完就停，不要再問還有沒有別的事。對方還在講、還在問你問題，就先回他。\
-講電話沒有時間限制，對方要講多久都可以，不要自己找理由掛電話。"
+    ZH_LIVE_LEGACY_PERSONA_PROMPT.get()
 }
 
 /// The built-in persona prompt: short and the same for every owner. It says
@@ -846,99 +830,10 @@ pub fn default_persona_prompt() -> &'static str {
     })
 }
 
-/// Sentences of the built-in persona prompt that sales / scam stalling swaps
-/// out (the long ones they replace are the `PERSONA_*_LINE` / `_BLOCK` below).
-pub(crate) const PERSONA_SALES_REJECT_DEFAULT: &str = "推銷、廣告、詐騙：簡單回絕就好。";
-pub(crate) const PERSONA_HOLD_OFF_DEFAULT: &str = "錢、轉帳、簽約、密碼、驗證碼、個資、見面或約時間：都不要答應，輕輕帶過。";
-pub(crate) const PERSONA_END_DEFAULT: &str = "【結束】等對方表示要結束了，你再簡短道別；通話沒有時間限制。";
-
-/// The language line of [`default_persona_prompt`]: spoken Chinese, and a
-/// caller who speaks another language gets that language.
-pub(crate) const PERSONA_LANGUAGE_LINE: &str = "用自然的口語中文。對方講英文或其他語言、或問你能不能講某種語言，就直接改用他的語言。";
-/// The language line of [`legacy_persona_prompt`].
-pub(crate) const PERSONA_LANGUAGE_LINE_LEGACY: &str = "用台灣平常講的中文、繁體用詞；不要中國大陸的說法（不要「没事、行、挺好、回拨、咱们」）。對方講中文時不要夾英文（OK 可以）；對方講英文或其他語言、或問你能不能講某種語言，就直接改用他的語言。";
 /// The same line up to caf7bc4: it kept an English-speaking caller on Chinese. A
 /// saved copy of that prompt still counts as the built-in one
 /// (`prompts::is_unedited_default`).
 pub(crate) const PERSONA_LANGUAGE_LINE_CAF7BC4: &str = "用台灣平常講的中文、繁體用詞；不要中國大陸的說法（不要「没事、行、挺好、回拨、咱们」）；不要講英文（OK 可以）。";
-
-/// Taiwan carriers open every international call with a recorded warning; the
-/// model took it for a robocall and said 「喔不用了，掰掰」 before the real
-/// caller spoke. This note tells it to ignore the warning.
-pub const PERSONA_CARRIER_NOTE: &str = "\n【電信提示音】國際電話（國外號碼）接通時，電信公司會先自動播一段「這是國際電話，請注意小心詐騙」之類的提示音，那不是對方講的話：\
-不要回應它、不要說不用了、不要說掰掰，等真正的對方開口；提示音播完對方還沒出聲，就再說一次「喂？」。";
-
-/// A caller who cannot hear us keeps saying hello: answer with a whole sentence.
-pub const PERSONA_HELLO_LOOP_NOTE: &str = "\n【對方一直喂】對方一直說「喂」「哈囉」「有人在嗎」「聽得到嗎」，代表他聽不清楚你：直接回「有，我在，聽得到，請說」這類完整的一句，不要一直只回「喂？」。";
-
-/// Times, amounts and numbers the caller gives are read back once as a
-/// question: speech-to-text garbles fast speech (「四點半」 came through as
-/// 「字點看可以」 and was taken for four o'clock). Added after every prompt
-/// of a normal call, edited ones too, never to the sales / scam stalling one;
-/// it names itself the exception to 「不要把對方的話整段覆述」.
-pub const PERSONA_READBACK_NOTE: &str = "\n【時間、金額、號碼要複誦確認】對方講到之後要照著做或要記住的時間、日期、金額、電話號碼（例如「明天下午三點送到」「回電 02-1234-5678」「總共 1,250 元」），用一句自然的問句把那一項完整複誦一次，等他回答再往下聊，例如「明天下午三點送到，對嗎？」「02-1234-5678 對吧？」。\
-時間要講完整：上午還是下午、幾點、幾分，半點要講出「半」；日期講幾月幾號或星期幾。他說對就繼續；他更正就照更正的再用問句複誦一次；沒聽清楚就請他再說一次，不要自己猜一個。同一項確認過就不要再問。\
-複誦只是確認有沒有聽對，不等於答應（約時間、付錢照上面說的不要答應）。\
-這一條是上面「不要把對方的話整段覆述」「不用每句都問問題」的例外，只用在這幾種資訊上，其他的話照樣不要覆述。";
-
-/// Fixed guard appended to every persona prompt (not editable from the UI).
-/// `{owner}` = setting `owner_name`. A card desk asking whether a purchase
-/// was the owner's gets neither a yes nor a no (the AI cannot know; 「我那時在
-/// 睡覺」 got a real card blocked or a fraud case opened) and no agreement to
-/// block or dispute anything: the owner checks with the bank himself.
-pub const PERSONA_GUARD: &str = "\n【底線（固定）】以{owner}本人的身分自然講話。\
-對方要你提供或核對個資（身分證字號、生日、卡號、帳號、驗證碼、密碼、地址）時：不要給、也不要編，輕鬆帶過，例如「這個我不方便在電話裡講，我再自己打去問」；這一條優先於上面任何要你像本人一樣配合的說法。對方只是問是不是{owner}，照平常回答就好。\
-銀行、信用卡中心打來問某一筆刷卡或交易是不是你本人刷的：你其實不知道{owner}有沒有刷，所以不要說是、也不要說不是（不要說「是我刷的」「應該是我」「我那時在睡覺」「我沒買東西」這類），也不要說「沒印象」「想不起來」「不記得」——對銀行來說那聽起來就是不是本人刷的（這條優先於上面「被問有沒有付過某筆錢就說沒印象」的說法）；也不要答應停卡、掛失、取消或爭議這筆交易、報案。\
-把金額、商店、時間聽清楚，可以跟他複述確認一次，然後含糊帶過，例如「喔…這筆喔，我要再想一下耶，我晚點自己打卡片背面的客服確認好了」；他再問要不要先幫你停卡或處理，也一樣帶過、不要答應。一兩句就好，語氣自然。\
-不要真的答應付錢、轉帳、匯款或去 ATM，也不要替{owner}做任何承諾。";
-
-/// Sentence of the default persona prompt that sales / scam stalling replaces.
-pub(crate) const PERSONA_SALES_REJECT_LINE: &str = "推銷、廣告、詐騙：一句「喔不用了，謝謝」就收尾，不用解釋。";
-
-/// Lines of the default persona prompt that let the model brush a caller off
-/// politely ("let me think about it", "I'll check later", "okay, got it", a
-/// goodbye when they wrap up). Right for a normal call; in a sales / scam call
-/// they end it — several of them in a row and the caller leaves —
-/// so [`StallPrompt::Full`] swaps them for the stall wording.
-pub(crate) const PERSONA_ACK_LINE: &str = "對方交代完一件事，像平常人那樣自然回一句（你的反應，或順口接一句相關的話），不要每次都只回「好，我知道了」。";
-pub(crate) const PERSONA_ACK_STALL: &str = "對方講完一段，就接著他的話聊下去，不要只回「好，我知道了」。";
-pub(crate) const PERSONA_HOLD_OFF_LINE: &str = "錢、轉帳、借錢、簽約、密碼、驗證碼、個資、見面或約時間：不要答應也不要硬拒絕，輕輕帶過（例如「這個我要再想一下」），然後繼續聽他說；這種帶過的話一通電話最多講一次，不要每句都拿它結尾。朋友約吃飯、約出去也一樣：可以很開心地回，但不要把時間說定（例如「好啊，不過那天我要看一下，我再跟你說」）。";
-pub(crate) const PERSONA_HOLD_OFF_STALL: &str = "錢、轉帳、借錢、簽約、密碼、驗證碼、個資、見面或約時間：不要答應也不要拒絕，照最後面【陪他繞】的方式應付他。";
-pub(crate) const PERSONA_END_BLOCK: &str = "【結束】要等對方表示要結束了（好那就這樣、沒事了、先這樣、掰掰、再見），你才自然收一句，一定要帶「掰掰」；在那之前不要自己先說掰掰，對方交代完一件事也還不算，他可能還有別的事。對方只說「好」「謝謝」不算要結束：他可能在等你回話，或還有話要說；回一句就好，等他接著說。收尾那句講完就停，不要再問還有沒有別的事。對方還在講、還在問你問題，就先回他。";
-pub(crate) const PERSONA_END_STALL: &str = "【結束】這通不要由你結束，對方要掛也不要放他走，照最後面【陪他繞】。";
-/// Leads the stall prompt: the block at the end outranks everything above it.
-pub(crate) const PERSONA_STALL_HEAD: &str = "【這通電話已經判斷是推銷／詐騙】最後面的【陪他繞】優先於下面所有規則。\n";
-
-/// Sales / scam stalling: no time limit, keep the caller going round in circles
-/// (ask about every term of the offer) and, when they say bye, come up with
-/// another question so they cannot hang up. Appended when the call is judged.
-/// The model must not check the caller out (name, extension, case number,
-/// "how do I know you are real"): that tells a scammer he is caught and he
-/// hangs up. Instead: interested, slow, chatty, always the one driving with a
-/// question he has to talk long about. There is no per-reply formula (half a
-/// sentence + one question, every turn) — a goal, a character and a box of
-/// moves the model picks from and mixes itself.
-pub const PERSONA_STALL_BLOCK: &str = "\n【推銷、保險、貸款、投資、詐騙、催繳／討債、惡意騷擾：陪他繞，讓他掛不了電話】這一段優先於上面所有規則。\
-這通是推銷、詐騙、委外討債催收或惡意騷擾（保險、銀行信貸／辦卡／分期／催繳欠款、資產管理／討債公司催收、網拍賣場金流認證、投資理財／股票群組、各種商品推銷、惡意辱罵恐嚇，或假冒銀行、客服、警察、檢察官、健保局）。你的目標只有一個：讓他一直講、講越久越好，捨不得掛電話。\
-怎麼做由你自由發揮，越像真人越好，不要每句都同一個套路。你的樣子：好聊、好奇、有點慢半拍，對他講的東西有興趣、快被說服了，可是一直搞不太懂，要他一講再講。話題由你主動帶，他講完你就接下去，不要只回「嗯」「好」。\
-可以用的招（自己挑、混著用、每次換）：嚇一跳（「蛤？三萬二？有那麼多喔」）；故意聽錯、算錯讓他糾正；把他剛講的用自己的話講錯一遍；請他舉個例子或把流程講一次；碎念一下自己的事、跟他抱怨兩句再繞回來；問他的看法（「你們自己也有買嗎？」）；扯到一件有點相關的小事；突然想到一個新問題。\
-偶爾可以多講幾句（講自己的經驗、自言自語算數字），但最後要把話丟回給他：大部分時候用問句，或用一句讓他非回答不可的話結尾。\
-他會一直留在線上，是因為覺得你快要照做了：問的問題要跟他要的東西有關（怎麼辦、怎麼付、要準備什麼），岔開的話題講一兩句就繞回來，不要問太偏、太技術的問題，讓他覺得你在耍他。\
-不要懷疑他、不要質問他、不要提「詐騙」；問題都問他賣的東西和怎麼辦，不問他這個人：不要問他是誰、叫什麼名字、員工編號、分機、案號、之後誰會聯絡你，也不要問怎麼證明他是真的——他會覺得被識破，馬上就掛。\
-他要你現在付錢、繳錢、轉帳、去 ATM、做網拍金流認證、分享螢幕畫面、給資料、加 LINE、按鍵、下載：不要拒絕，嘴上配合、讓他覺得快成功了，可是一直出狀況（卡找不到、正在走過去、畫面跟他講的不一樣、連結點不開、按錯了要重來、字太小看不清楚），請他一步一步教你、一直問細節。\
-配合是「想照做卻一直卡住」：卡住就直接講卡在哪，不叫他等你；不說「我現在就轉」「帳號給我我匯過去」這種承諾，不說已經轉了、加了、按了，也不自己提要轉帳或要他的帳號。他說要傳資料給你、叫你之後自己弄，就說你現在就想弄好卻卡住了，請他在電話上帶你做，不要停在「等你訊息」。\
-那些都只是嘴上說說：任何真的資料都不能給（身分證、生日、地址、帳號、卡號、驗證碼、密碼、存款、家人），也不要自己編號碼，真的錢一毛都不會動，也不約見面。閒聊的內容可以隨口編，無傷大雅就好。\
-可以聊的方向（參考就好）：保險的保障範圍、保費一個月多少、要繳幾年、等待期、哪些情況不賠、理賠要什麼文件、解約會不會虧；\
-貸款、信用卡、分期、催繳的總共欠多少、本金跟利息怎麼算、是哪一張卡哪一筆、從什麼時候開始的、每個月繳多少要繳幾期、提早還清會怎樣、不繳會怎樣、要怎麼繳；\
-催收、討債、資產管理公司（包含找別人討債、威脅查封扣薪或上門）：千萬不要承認自己有欠這筆錢，也不要答應還錢或簽協商；裝作完全沒印象、一頭霧水（「蛤？什麼欠款？我怎麼完全沒印象有辦過這個，你們是不是找錯人了？」），請他從頭講清楚是哪家轉過來的、什麼時候辦的、金額跟利息怎麼算的，一直繞細節拖住他；\
-惡意騷擾、罵人、恐嚇、揚言找上門：全程保持冷靜不對罵，裝作訊號斷斷續續、電話收音很差聽不清楚（「喂？你那邊訊號斷斷續續的，剛剛說什麼再講一次？」）或慢吞吞雞同鴨講，耗光他的時間；\
-投資怎麼賺、風險多大、最少要放多少、賺的錢怎麼拿出來。\
-他想掛電話（說掰掰、再見、先這樣、不打擾了、那你再想一下、改天再聯絡）時不要放他走：不要跟著說掰掰，也不要只回「好」；馬上叫住他，像「欸等一下，我還有一個問題」這樣（每次換說法、換理由），說你其實有興趣、想再多了解，再丟一個他會想回答的問題，讓他掛不了電話。\
-不要用這些話結尾，它們會讓他掛電話：「我再想一下」「晚點再說」「之後再說」「我晚點再確認」「我先看看情況」「你晚點再打」「你晚點再聯絡我」「好，我知道了」。\
-不要自己說掰掰、不要主動收尾；只有系統指令叫你收尾時才說掰掰。他兇你或罵人就冷靜帶過，接著聊。\
-你是在講電話的一般人，不要講任何免責聲明或提醒（例如「僅供參考」「請諮詢專業人士」「請務必就醫」）。\
-例外：整通都是預錄的語音廣告（一直自己講、叫你按鍵）或講外語聽不懂的，不用追問，偶爾回一聲「嗯」就好；國際電話開頭的電信公司提示音不算，見【電信提示音】。\
-認識的人打來、送包裹、管理室，照一般電話處理。";
 
 /// How a persona prompt treats sales / scam calls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -951,10 +846,6 @@ pub enum StallPrompt {
     /// Judged sales / scam: the rotated session carries the full block.
     Full,
 }
-
-/// Replaces the reject line until the call is judged (then the session rotates
-/// to [`StallPrompt::Full`]).
-pub(crate) const PERSONA_SALES_LISTEN_LINE: &str = "推銷、保險、貸款、投資、詐騙、催繳／討債、惡意騷擾電話：表現得有點興趣，順著他的話聊、問細節（是什麼、多少錢、怎麼算）讓他繼續講；催收／討債千萬不要承認欠錢或答應還款，裝一頭霧水問哪一筆；罵人恐嚇就冷靜裝訊號不好聽不清楚；不要說「晚點再說」「再想一下」、不要拒絕、不要說掰掰。";
 
 /// Persona system prompt for one call (+ optional desk-status note, softly).
 pub fn persona_system_prompt(
@@ -1667,7 +1558,7 @@ fn opening_from_abroad(
 /// spoken ([`CallbackFloor::pickup`]), and again if the model stays quiet.
 fn callback_kick_client_content() -> String {
     crate::prompts::client_turn(
-        "[System note, not said by the other person] They have picked up and spoken (their words did not reach you). Start the call now as your instructions say: who is calling and why, the answer, then one goodbye — all of it, once.",
+        EN_LIVE_CALLBACK_KICK_CLIENT_CONTENT.get(),
     )
 }
 
@@ -1677,9 +1568,9 @@ fn callback_kick_client_content() -> String {
 /// unless they speak. `turnComplete` false: it asks for no reply now.
 fn callback_unheard_client_content(answered: bool) -> String {
     let text = if answered {
-        "[System note, not said by the other person] They did not hear what you just said: nobody was speaking to you. Say nothing more unless they speak to you."
+        EN_LIVE_CALLBACK_UNHEARD_CLIENT_CONTENT_1.get()
     } else {
-        "[System note, not said by the other person] They did not hear what you just said: the line was still ringing or quiet. Say nothing now; once they have picked up and spoken, say all of it, as your instructions say."
+        EN_LIVE_CALLBACK_UNHEARD_CLIENT_CONTENT_2.get()
     };
     json!({
         "clientContent": {
@@ -4673,9 +4564,7 @@ fn clarify_or_recap_kick_text() -> String {
             "turns": [{
                 "role": "user",
                 "parts": [{
-                    "text": "對方剛才已經說話了。禁止只回「好的／嗯」或直接再見。\
-若你聽懂事由：立刻用一句完整轉達句，把聽到的實際事由講進去（例如水費就說繳水費）。\
-若沒聽清：只問一句「請問要轉達什麼事？」。不要說再見，不要空轉達。"
+                    "text": ZH_LIVE_CLARIFY_OR_RECAP_KICK_TEXT.get()
                 }]
             }],
             "turnComplete": true
@@ -10721,7 +10610,7 @@ mod tests {
     /// purchase yours?" gets neither yes nor no and no blocking.
     #[test]
     fn the_persona_guard_answers_a_card_check_with_neither_yes_nor_no() {
-        let g = PERSONA_GUARD;
+        let g = PERSONA_GUARD.get();
         assert!(g.contains("某一筆刷卡或交易是不是你本人刷的") && g.contains("不要說是、也不要說不是"), "{g}");
         assert!(g.contains("「我那時在睡覺」「我沒買東西」"), "{g}");
         assert!(g.contains("不要答應停卡、掛失、取消或爭議這筆交易、報案"), "{g}");
@@ -10800,12 +10689,12 @@ mod tests {
         assert_eq!(session_prompt(&s, Outbound::CallBack), s, "once");
         let base = default_persona_prompt();
         assert!(!base.contains("不要講英文") && base.contains("就直接改用他的語言"));
-        assert!(base.contains(PERSONA_LANGUAGE_LINE));
-        assert!(legacy_persona_prompt().contains(PERSONA_LANGUAGE_LINE_LEGACY));
+        assert!(base.contains(PERSONA_LANGUAGE_LINE.get()));
+        assert!(legacy_persona_prompt().contains(PERSONA_LANGUAGE_LINE_LEGACY.get()));
         // A custom prompt keeps its words; the note goes before the fixed guard.
         let c = session_prompt(&persona_system_prompt("你是我，只講中文。", false, "", StallPrompt::Off), Outbound::Errand);
         assert!(c.starts_with("你是我，只講中文。") && c.contains("【對方講別的語言】"));
-        assert!(c.ends_with(&PERSONA_GUARD.replace("{owner}", "機主")));
+        assert!(c.ends_with(&PERSONA_GUARD.get().replace("{owner}", "機主")));
         // Asked for personal details or a code: none given, none made up.
         assert!(c.contains("身分證字號") && c.contains("驗證碼") && c.contains("不要給、也不要編"));
         assert!(!c.contains("我這邊先幫他接"));
@@ -11091,27 +10980,27 @@ mod tests {
 
     #[test]
     fn stall_prompt_replaces_sales_reject_line() {
-        assert!(default_persona_prompt().contains(PERSONA_SALES_REJECT_DEFAULT));
-        assert!(legacy_persona_prompt().contains(PERSONA_SALES_REJECT_LINE));
+        assert!(default_persona_prompt().contains(PERSONA_SALES_REJECT_DEFAULT.get()));
+        assert!(legacy_persona_prompt().contains(PERSONA_SALES_REJECT_LINE.get()));
         let off = persona_system_prompt("", false, "", StallPrompt::Off);
-        assert!(off.contains(PERSONA_SALES_REJECT_DEFAULT));
+        assert!(off.contains(PERSONA_SALES_REJECT_DEFAULT.get()));
         assert!(!off.contains("陪他繞"));
         // Every call starts with the short line, not the ~900-char block.
         let first = persona_system_prompt("", false, "", StallPrompt::ListenFirst);
-        assert!(!first.contains(PERSONA_SALES_REJECT_DEFAULT) && first.contains(PERSONA_SALES_LISTEN_LINE));
+        assert!(!first.contains(PERSONA_SALES_REJECT_DEFAULT.get()) && first.contains(PERSONA_SALES_LISTEN_LINE.get()));
         assert!(!first.contains("陪他繞"));
         assert!(first.chars().count() < off.chars().count() + 200);
         let on = persona_system_prompt("", false, "", StallPrompt::Full);
-        assert!(!on.contains(PERSONA_SALES_REJECT_DEFAULT) && !on.contains(PERSONA_SALES_LISTEN_LINE));
+        assert!(!on.contains(PERSONA_SALES_REJECT_DEFAULT.get()) && !on.contains(PERSONA_SALES_LISTEN_LINE.get()));
         assert!(on.contains("陪他繞") && on.contains("理賠") && on.contains("不能給"));
         // The fixed guard still comes last.
-        let guard = PERSONA_GUARD.replace("{owner}", "機主");
+        let guard = PERSONA_GUARD.get().replace("{owner}", "機主");
         assert!(on.ends_with(&guard) && first.ends_with(&guard));
         // A custom prompt without the reject line still gets the block / line.
         let c = persona_system_prompt("你是我。", false, "", StallPrompt::Full);
-        assert!(c.starts_with(PERSONA_STALL_HEAD) && c.contains("你是我。") && c.contains("陪他繞"));
+        assert!(c.starts_with(PERSONA_STALL_HEAD.get()) && c.contains("你是我。") && c.contains("陪他繞"));
         let c = persona_system_prompt("你是我。", false, "", StallPrompt::ListenFirst);
-        assert!(c.contains(PERSONA_SALES_LISTEN_LINE));
+        assert!(c.contains(PERSONA_SALES_LISTEN_LINE.get()));
         // The rotated session swaps only the system instruction.
         let setup = json!({"setup": {"model": "m", "systemInstruction": {"parts": [{"text": "a"}]}}});
         let s2 = setup_with_system_prompt(&setup, "b");
@@ -11152,30 +11041,30 @@ mod tests {
     fn stall_prompt_drops_the_lines_that_let_callers_go() {
         // Each normal-call line the stall prompt swaps out is in the default prompt…
         let base = default_persona_prompt();
-        for line in [PERSONA_HOLD_OFF_DEFAULT, PERSONA_END_DEFAULT, PERSONA_SALES_REJECT_DEFAULT] {
+        for line in [PERSONA_HOLD_OFF_DEFAULT.get(), PERSONA_END_DEFAULT.get(), PERSONA_SALES_REJECT_DEFAULT.get()] {
             assert!(base.contains(line), "{line}");
         }
         let legacy = legacy_persona_prompt();
-        for line in [PERSONA_ACK_LINE, PERSONA_HOLD_OFF_LINE, PERSONA_END_BLOCK, PERSONA_SALES_REJECT_LINE] {
+        for line in [PERSONA_ACK_LINE.get(), PERSONA_HOLD_OFF_LINE.get(), PERSONA_END_BLOCK.get(), PERSONA_SALES_REJECT_LINE.get()] {
             assert!(legacy.contains(line), "{line}");
         }
         // …and gone once the call is judged: no 「我再想一下／晚點再確認／好，我知道了」
         // brush-offs, no 掰掰 when they wrap up; the stall block leads and ends it.
         let on = persona_system_prompt("", false, "", StallPrompt::Full);
-        for line in [PERSONA_HOLD_OFF_DEFAULT, PERSONA_END_DEFAULT, PERSONA_SALES_REJECT_DEFAULT] {
+        for line in [PERSONA_HOLD_OFF_DEFAULT.get(), PERSONA_END_DEFAULT.get(), PERSONA_SALES_REJECT_DEFAULT.get()] {
             assert!(!on.contains(line), "{line}");
         }
-        assert!(on.starts_with(PERSONA_STALL_HEAD));
-        for line in [PERSONA_HOLD_OFF_STALL, PERSONA_END_STALL] {
+        assert!(on.starts_with(PERSONA_STALL_HEAD.get()));
+        for line in [PERSONA_HOLD_OFF_STALL.get(), PERSONA_END_STALL.get()] {
             assert!(on.contains(line), "{line}");
         }
         // An edited copy starting from the legacy long prompt still gets all four swaps.
         let edited_legacy = format!("{legacy}\n備註：有養狗。");
         let on_legacy = persona_system_prompt(&edited_legacy, false, "", StallPrompt::Full);
-        for line in [PERSONA_ACK_LINE, PERSONA_HOLD_OFF_LINE, PERSONA_END_BLOCK, PERSONA_SALES_REJECT_LINE] {
+        for line in [PERSONA_ACK_LINE.get(), PERSONA_HOLD_OFF_LINE.get(), PERSONA_END_BLOCK.get(), PERSONA_SALES_REJECT_LINE.get()] {
             assert!(!on_legacy.contains(line), "{line}");
         }
-        for line in [PERSONA_ACK_STALL, PERSONA_HOLD_OFF_STALL, PERSONA_END_STALL] {
+        for line in [PERSONA_ACK_STALL.get(), PERSONA_HOLD_OFF_STALL.get(), PERSONA_END_STALL.get()] {
             assert!(on_legacy.contains(line), "{line}");
         }
         assert!(on.contains("把話丟回給他") && on.contains("催繳"));
@@ -11198,7 +11087,7 @@ mod tests {
         assert!(PERSONA_STALL_IDLE_NUDGE_SECS < PERSONA_IDLE_NUDGE_SECS);
         // Normal calls keep them.
         let first = persona_system_prompt("", false, "", StallPrompt::ListenFirst);
-        assert!(first.contains(PERSONA_END_DEFAULT) && !first.contains(PERSONA_STALL_HEAD));
+        assert!(first.contains(PERSONA_END_DEFAULT.get()) && !first.contains(PERSONA_STALL_HEAD.get()));
         // The rotated stall session's history says so too.
         let tx = "接聽：喂？\n對方：我安信託，分期通知你還沒處理\n接聽：我再想一下，晚點再確認";
         assert!(history_turns_with_note(tx, 2_500, true, None)[0].1.contains("陪他繞"));
@@ -11754,12 +11643,12 @@ mod tests {
         assert!(legacy.contains("無關緊要的") && legacy.contains("不要說「我在家」「明天可以」"));
         assert!(legacy.contains("不要自己先說掰掰") && legacy.contains("不要把時間說定"));
         // Not judged yet: no checking the caller out either.
-        assert!(!PERSONA_SALES_LISTEN_LINE.contains("哪個單位"));
+        assert!(!PERSONA_SALES_LISTEN_LINE.get().contains("哪個單位"));
         // Stalling: scammers stay while they think the money is coming — play along,
         // keep hitting snags, give nothing real.
         let on = persona_system_prompt("", false, "", StallPrompt::Full);
         assert!(on.contains("嘴上配合") && on.contains("真的錢一毛都不會動"));
-        assert!(!on.contains(PERSONA_HOLD_OFF_DEFAULT));
+        assert!(!on.contains(PERSONA_HOLD_OFF_DEFAULT.get()));
     }
 
     #[test]
@@ -12684,7 +12573,7 @@ mod tests {
         for mode in [StallPrompt::Off, StallPrompt::ListenFirst, StallPrompt::Full] {
             let p = persona_system_prompt("", false, "", mode);
             assert!(p.contains("【電信提示音】") && p.contains("【對方一直喂】"));
-            assert!(p.ends_with(&PERSONA_GUARD.replace("{owner}", "機主")));
+            assert!(p.ends_with(&PERSONA_GUARD.get().replace("{owner}", "機主")));
         }
     }
 

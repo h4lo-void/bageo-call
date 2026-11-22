@@ -4737,7 +4737,7 @@ mod review_t4_tests {
             fresh.answer_style = "persona".into();
             let prompt = rt.persona_stall_system_prompt();
             assert_eq!(prompt, fresh.persona_stall_system_prompt(), "{old}");
-            assert!(prompt.contains(crate::gemini_live::PERSONA_CARRIER_NOTE), "{old}");
+            assert!(prompt.contains(crate::gemini_live::PERSONA_CARRIER_NOTE.get()), "{old}");
             assert!(!store.masked_json().to_string().contains("intl_carrier_prompt"));
             store.apply_patch(&json!({ "owner_name": "Alex" })).unwrap();
             let text = std::fs::read_to_string(&path).unwrap();
