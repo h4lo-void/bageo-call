@@ -7206,7 +7206,9 @@ function renderSystem() {
           verBtn.disabled = false;
         }
       } });
-      kv.append(h("dt", { text: t("ab_version") }), h("dd", {}, h("span", { text: String(health.version) }), verBtn, verStatus));
+      // The build (the short commit) tells two builds of the same version apart.
+      const buildId = health.build && health.build !== "unknown" ? `（${health.build}）` : "";
+      kv.append(h("dt", { text: t("ab_version") }), h("dd", {}, h("span", { text: String(health.version) + buildId }), verBtn, verStatus));
     }
     row(t("ab_model"), health.gemini_live_model, true);
     row(t("ab_data"), health.calls_data_dir, true);

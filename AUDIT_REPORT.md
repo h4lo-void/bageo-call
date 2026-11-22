@@ -2,6 +2,8 @@
 
 > **說明 / Note：** 本文件為 AI 輔助產生的內部審查筆記（對應 `v1.0`），不是獨立第三方審計，也不構成任何安全性、合規性或無瑕疵保證。最新授權與免責條款請以 [`LICENSE`](LICENSE)、[`LICENSING.md`](LICENSING.md)、[`NOTICE.md`](NOTICE.md) 與 [`LEGAL.md`](LEGAL.md) 為準。（AI-assisted internal review note for `v1.0`; not a third-party audit and provides no warranty or guarantee of any kind.）
 
+> **後續更新（2026-11-22）：** 本報告是 `v1.0.0` 當時的快照。對照目前 `main` 的程式碼後，已更正下列幾項：`[M-01]` 與 `[L-01]` 已修復、`/health` 的內容、Rust 層 `unsafe` 的現況、`wyoming.rs` 已刪除、CI 新增依賴漏洞掃描。其餘內容（含測試數字與行號）維持審計當時的樣子，沒有逐項重新核對。
+
 | 審計欄位 | 內容 |
 |---|---|
 | **受審專案** | **Bageo（八哥）** — `<https://github.com/h4lo-void/bageo-call>` |
@@ -35,7 +37,7 @@
    - 選用 Xposed 模組（`SmsRilHook.kt`）：透過 `xposed_scope` 嚴格限定僅作用於 `com.android.phone`，不掛鉤其他使用者應用程式。
 3. **簡訊轉發器與建置發佈鏈（`tools/sms_forward/`、`.github/workflows/`、`Dockerfile`、`start.*`）**：
    - `sms_forward.py` 僅使用 Python 3.10+ 標準庫，具跨平台排他檔案鎖（`msvcrt`／`fcntl`）、首次掛載不補發歷史舊簡訊機制（Seeding）及 URL 帳密去敏日誌。
-   - GitHub Actions `ci.yml` 涵蓋 Linux／Windows／macOS 三平台 Rust 測試與建置、Android APK 建置及 Python 測試；`release.yml` 從零建置（不使用快取）並產出 `SHA256SUMS.txt` 雜湊清單。
+   - GitHub Actions `ci.yml` 涵蓋 Linux／Windows／macOS 三平台 Rust 測試與建置、Android APK 建置及 Python 測試，並有 `audit` 工作用 `cargo audit` 掃描 `Cargo.lock` 與 `desktop/Cargo.lock` 的已知漏洞；`release.yml` 從零建置（不使用快取）並產出 `SHA256SUMS.txt` 雜湊清單。
 
 ---
 
@@ -45,12 +47,12 @@
 |---|---|---|
 | **跨站請求偽造（CSRF）阻絕** | `crates/agent/src/calls_http.rs`、`errands.rs`、`contacts.rs` | 所有狀態變更與敏感操作路由（建立／取消／重試 AI 代打、決策預約、重發簡訊、切換手機模式、變更聯絡人與設定）均強制要求 `Content-Type: application/json`（匯入要求 `X-Filename`），且伺服器不回應任何 CORS Preflight，惡意外部網頁無法從區網瀏覽器偷發撥號或改設定請求。 |
 | **最小權限 `.ics` 存取金鑰** | `crates/agent/src/calendar.rs`、`calls_http.rs:146-154` | 外發至 Telegram 或通知管道的行事曆下載連結不攜帶主控台 `CALLS_UI_TOKEN`，而是以 `HMAC-SHA256` 針對單一資源路徑（`call/{id}` 或 `tasks/{id}`）簽發專屬短金鑰 `k`，即使通知被轉傳亦無法存取其他通話或控制台。 |
-| **機密遮罩與未授權健康檢查降級** | `crates/agent/src/config.rs:116`、`calls_http.rs:942`、`main.rs:1508` | `SecretString` 覆寫 `Debug` 輸出為 `"***"`；`GET /calls/api/settings` 僅回傳遮罩值與 `*_set` 布林旗標；未帶權杖呼叫 `/health` 時僅回傳最小存活狀態（版本、語系、活躍通話數），不暴露內部設定。 |
+| **機密遮罩與未授權健康檢查降級** | `crates/agent/src/config.rs:116`、`calls_http.rs:942`、`main.rs`（`health_full_allowed`） | `SecretString` 覆寫 `Debug` 輸出為 `"***"`；`GET /calls/api/settings` 僅回傳遮罩值與 `*_set` 布林旗標；`/health` 的完整內容只給帶控制台密碼的請求（沒設密碼時，只給這台電腦本身、且沒經過反向代理的請求），其他人只得到短版：版本、建置、語系、時間、活躍通話數、已連線手機數與設定還缺哪些項目的名稱，不含手機序號、來電號碼、資料夾路徑與提示詞。 |
 | **通訊錄解析防炸彈與防提示詞注入** | `crates/agent/src/contacts.rs:47-74, 121-148` | 本地匯入限制單檔 `10 MiB`、ZIP 解壓上限 `32 MiB`、表格上限 `256` 欄 × `100,000` 列 × `1,000,000` 儲存格，防止惡意 `.xlsx`／`.docx` 耗盡記憶體；聯絡人名稱與備註帶入提示詞前經 `invisible()` 剝除零寬與雙向控制字元（Bidi Controls）並截斷長度（40／120 字）。 |
 | **Root 模式切換防符號連結與防失聯** | `android/magisk/pixelcallai_uplink/mode_daemon.sh`、`apply_mode.sh` | `app_dir_ok` 檢查目標非 Symlink、以 `mv -fT` 原子取代避免跟隨惡意連結、狀態檔設 `chmod 600` 並校驗 UID/GID 與 SELinux Context；切換請求嚴格限制單行 `≤ 128` 字元與純英數格式，杜絕 Shell 命令注入；撥號器切換失敗時由 `dialer_fail` 自動回退，確保手機不會落入無預設電話 App 狀態。 |
 | **外撥電話安全閘門與 SIM 國別鎖定** | `crates/agent/src/errands.rs:98-115`、`appointments.rs` | 硬性攔截緊急號碼（110/119/112/911/999 等）、7 碼以下短碼、各國高額付費號碼（台灣 `020x`、北美 `900/976`、日 `990`、英 `09`、星 `1900` 等）與國際冠碼（`00`、`011`、台灣 `00x/01x`）；未知 SIM 資訊之手機拒接代打（`sim_unknown`）；外撥接起前核對媒體連線回報之實際 `sim_country`，不符立即掛斷（`wrong_sim`），防止雙卡機誤撥國際長途。 |
 | **不可覆寫之 AI 安全底線與人機確認** | `crates/agent/src/prompts.rs`、`gemini_live.rs`、`errands.rs` | 所有通話強制附加防提示詞注入規則（`ZH_INJECTION_GUARD`）、不答應付款／轉帳／合約／驗證碼底線、銀行核對刷卡「不承認亦不否認」規則，以及被認真詢問時承認 AI 身分（`PERSONA_GUARD`）；AI 代打遇到未授權選項時阻塞等待機主 40 秒（`ask_owner`），未獲機主回覆時程式強制將結果改判為 `need_owner`，防止模型擅自拍板。 |
-| **記憶體安全** | `crates/agent/src/` 全模組 | Rust 業務邏輯層零自寫 `unsafe` 區塊，搭配 `rustls` 純 Rust TLS 堆疊，消除傳統 C/C++ 音訊與網路服務常見之緩衝區溢位風險。 |
+| **記憶體安全** | `crates/agent/src/` 全模組 | Rust 業務邏輯層只有 `backup.rs` 查磁碟剩餘空間的系統呼叫（Unix `statvfs`、Windows `GetDiskFreeSpaceExW`）用到 `unsafe`，其餘零自寫 `unsafe` 區塊，搭配 `rustls` 純 Rust TLS 堆疊，消除傳統 C/C++ 音訊與網路服務常見之緩衝區溢位風險。 |
 
 ---
 
@@ -58,14 +60,16 @@
 
 本次審計未發現任何 Critical 或 High 等級安全漏洞。以下列出經原始碼核實之 1 項中度（Medium）、3 項低度（Low）與 4 項架構／營運層級注意事項：
 
-### `[M-01]` 歷史遺留測試路由 `/v1/turn` 與 `/v1/transfer` 未驗證控制台權杖（Medium — 僅影響開放區網部署）
+### `[M-01]` 歷史遺留測試路由 `/v1/turn` 與 `/v1/transfer` 未驗證控制台權杖（Medium — 已修復）
 
-- **位置**：`crates/agent/src/main.rs:1461-1462`、`1767-1848`
+- **現況（已修復，`7be2c6d`）**：`crates/agent/src/main.rs` 的 `turn()` 與 `transfer_smoke()` 一開始就呼叫 `calls_http::token_ok_parts` 驗證控制台密碼，沒帶或帶錯一律回 `401 unauthorized`；沒設密碼時與控制台自己的 API 一樣不驗證。沒設密碼且來自其他裝置的 `/v1/turn` 請求，另外會在 `lan.rs` 的閘門被要求輸入密碼。以下是審計當時（`v1.0.0`）的發現。
+- **位置（審計當時）**：`crates/agent/src/main.rs:1461-1462`、`1767-1848`
 - **發現內容**：主路由器掛載之早期選單／對話測試端點 `POST /v1/turn` 與 `GET|POST /v1/transfer` 未呼叫 `calls_http::token_ok_parts` 驗證 `CALLS_UI_TOKEN`。在預設 `AGENT_HOST=127.0.0.1` 下僅本機可觸及，無外部風險；但若部署者開啟區網存取（`AGENT_HOST=0.0.0.0` 或容器部署），同網段未持權杖之裝置可由 `/v1/transfer` 讀取部分內部音訊組態欄位，且若部署者另行啟用舊版 `AGENT_MODE=llm` 模式，`/v1/turn` 可在未帶權杖下觸發外部對話請求。
 - **緩解與建議**：現行預設模式（`ivr_transfer` 搭配 Gemini Live）下 `/v1/turn` 僅回傳靜態字串，不會呼叫 Gemini Live 或撥打電話；嚴禁將 `8787` 埠直接暴露於公網（已明載於 `SECURITY.md` 與 `LEGAL.md`）。建議於後續小版本為該兩條遺留路由補上 `token_ok_parts` 權杖檢查或直接下線移除。
 
-### `[L-01]` 權杖比對使用一般字串相等運算而非固定時間比對（Low）
+### `[L-01]` 權杖比對使用一般字串相等運算而非固定時間比對（Low — 已修復）
 
+- **現況（已修復，`01f4565`）**：`token_ok_parts` 與 `phone_allowed` 現在都用 `mcp::same` 比對：先各自取 SHA-256，再逐位元組合併比較，比對時間不會透露對到了幾個字元。以下是審計當時（`v1.0.0`）的發現。
 - **位置**：`crates/agent/src/calls_http.rs:226-250`（`token_ok_parts`）、`crates/agent/src/main.rs:1491-1494`（`phone_allowed`）
 - **發現內容**：`CALLS_UI_TOKEN` 與 `DEVICE_TOKEN` 以標準字串 `==` 比對，理論上在低延遲區網環境存在微秒級時序差異（Timing Side-Channel）；相較之下 `.ics` 連結驗證（`calendar.rs`）已使用 HMAC 驗證。
 - **建議**：後續版本可改以 `hmac`／常數時間位元組比對函式統一處理權杖驗證。
@@ -85,7 +89,7 @@
 ### `[I-01 ～ I-04]` 架構、模型與營運層級注意事項（Informational）
 
 - **`[I-01]` 本機迴路 WebSocket 信任邊界（`main.rs:1491`）：** 來自 `127.0.0.1`／`::1` 之 WebSocket 連線視為 USB `adb reverse` 手機而免驗 `DEVICE_TOKEN`。若使用者在同一台主機架設反向代理，必須禁止代理將未驗證外部訪客之 `/` 與 `/ws` WebSocket Upgrade 轉發至主程式（已於 `PRIVACY_AND_LEGAL.md` 明文警告）。
-- **`[I-02]` 早期演進模組留存（`trtc*.rs`、`wyoming.rs`、`openclaw.rs`、`hold_music.rs`）：** 舊版選單與外部橋接模組仍保留於編譯樹內以維持舊環境變數相容，不影響現行 Gemini Live 預設路徑，未來可列為程式碼瘦身項目。
+- **`[I-02]` 早期演進模組留存（`trtc*.rs`、`openclaw.rs`、`hold_music.rs`；`wyoming.rs` 已刪除）：** 舊版選單與外部橋接模組仍保留於編譯樹內以維持舊環境變數相容，不影響現行 Gemini Live 預設路徑，未來可列為程式碼瘦身項目。
 - **`[I-03]` 大型語言模型機率性邊界：** 234 通 28 語言模擬壓測顯示開場首音中位數 `0.43s`，15 通多語銀行刷卡照會 100% 守住「不承認、不否認、不給個資」底線；惟極少數非詞庫語言來電可能出現道別辨識較慢（走 60–85 秒靜音收尾保護，不會無限占線）或偶發語系切換偏差，屬機率性語音模型固有特性，已於文件與 `LEGAL.md` 明確揭露。
 - **`[I-04]` 實機外撥涵蓋度：** AI 代打（`errands.rs`）與回鈴音過濾已通過完整單元測試與 15 種端到端隔離模擬驗證，實體 SIM 外撥各國電信網路之回鈴音差異仍持續收集各機型回報。
 

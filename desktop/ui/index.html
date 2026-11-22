@@ -286,7 +286,7 @@
     list.hidden = !phones.length;
     $("secPhones").hidden = !reached || (!phones.length && !note);
 
-    $("ver").textContent = s.version ? "Bageo " + s.version : "Bageo";
+    $("ver").textContent = s.version ? "Bageo " + s.version + (s.build ? " (" + s.build + ")" : "") : "Bageo";
     // Quitting also stops Bageo when this program started it.
     $("btnQuit").textContent = t(s.local ? "quit_all" : "quit");
   }

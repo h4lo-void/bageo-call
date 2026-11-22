@@ -17,10 +17,16 @@ FROM rust:bookworm AS builder
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+# The agent builds the desktop program's English texts into itself.
+COPY desktop/ui/i18n.json ./desktop/ui/i18n.json
 # A low default keeps small hosts out of memory trouble; raise it with
 #   docker compose build --build-arg CARGO_BUILD_JOBS=4
 ARG CARGO_BUILD_JOBS=2
 ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
+# The commit this image is built from (the image build has no .git), shown by /health:
+#   docker build --build-arg BAGEO_BUILD_ID=$(git rev-parse --short=7 HEAD) .
+ARG BAGEO_BUILD_ID=
+ENV BAGEO_BUILD_ID=${BAGEO_BUILD_ID}
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/src/target \

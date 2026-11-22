@@ -84,6 +84,8 @@ pub struct Snapshot {
     /// An address found by itself that is not trusted yet: no password goes there until the user connects.
     pub candidate: String,
     pub version: String,
+    /// Which build of that version runs (the short commit); empty when not known.
+    pub build: String,
     pub lang: String,
     pub phones: Vec<Phone>,
     /// Whether this Bageo can report text messages: null = not known, false = too old.
@@ -110,6 +112,7 @@ impl Snapshot {
             address: address.to_string(),
             candidate: String::new(),
             version: String::new(),
+            build: String::new(),
             lang: lang.to_string(),
             phones: Vec::new(),
             sms_supported: None,
@@ -329,6 +332,11 @@ pub fn build_snapshot(
     let lang = resolve_lang(health.get("notify_language").and_then(Value::as_str), system_locale);
     let mut snap = Snapshot::blank(Level::Ok, Reason::Ready, &lang, has_password, address);
     snap.version = text(health.get("version")).to_string();
+    // Older Bageo versions do not report it; "unknown" says nothing to show.
+    snap.build = match text(health.get("build")) {
+        "unknown" => String::new(),
+        b => b.to_string(),
+    };
     snap.locked = matches!(devices, DevicesResult::Locked);
 
     match devices {
@@ -481,6 +489,7 @@ pub fn after_failure(last_good: Option<&Snapshot>, failures: u32, lang: &str, ha
         Some(prev) => {
             let mut s = Snapshot::blank(Level::Bad, Reason::Offline, &prev.lang, has_password, address);
             s.version = prev.version.clone();
+            s.build = prev.build.clone();
             s
         }
         None if failures <= 2 => Snapshot::blank(Level::Unknown, Reason::Starting, lang, has_password, address),
@@ -564,7 +573,18 @@ mod tests {
     }
 
     fn health() -> Value {
-        json!({"ok": true, "version": "1.4.0", "notify_language": "en", "active_call_count": 0, "control_idle_clients": 0})
+        json!({"ok": true, "version": "1.4.0", "build": "a1b2c3d", "notify_language": "en", "active_call_count": 0, "control_idle_clients": 0})
+    }
+
+    #[test]
+    fn build_id_shows_only_when_known() {
+        let mut h = health();
+        assert_eq!(build_snapshot(&h, &DevicesResult::Unavailable, false, "", "en-US").build, "a1b2c3d");
+        h["build"] = json!("unknown");
+        assert_eq!(build_snapshot(&h, &DevicesResult::Unavailable, false, "", "en-US").build, "");
+        // An older Bageo has no such field.
+        h.as_object_mut().unwrap().remove("build");
+        assert_eq!(build_snapshot(&h, &DevicesResult::Unavailable, false, "", "en-US").build, "");
     }
 
     fn snap(devices: Value) -> Snapshot {
@@ -881,6 +901,7 @@ mod tests {
         let off = after_failure(Some(&good), 2, "en", false, "x");
         assert_eq!((off.level, off.reason), (Level::Bad, Reason::Offline));
         assert_eq!(off.version, "1.4.0");
+        assert_eq!(off.build, "a1b2c3d");
 
         for n in 1..=2 {
             let s = after_failure(None, n, "en", false, "");
