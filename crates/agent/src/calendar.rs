@@ -546,6 +546,9 @@ pub enum QuickLink {
     Expired,
     /// Not signed by this agent (or changed since).
     Invalid,
+    /// Signed and in time, but already used: it works once, so nothing is
+    /// done and the page says it was handled ([`crate::used_links`]).
+    Used,
 }
 
 fn check_quick_action_with(key: &[u8], op: &str, target: &str, name: &str, exp: &str, sig: &str, now: i64) -> QuickLink {
@@ -579,9 +582,13 @@ fn check_quick_action_with(key: &[u8], op: &str, target: &str, name: &str, exp: 
 }
 
 /// Check a one-tap link's parts as they came in the address (`exp`: empty for
-/// an older link).
+/// an older link). A link that was already used answers [`QuickLink::Used`].
 pub fn check_quick_action(op: &str, target: &str, name: &str, exp: &str, sig: &str) -> QuickLink {
-    check_quick_action_with(quick_action_key(), op, target, name, exp, sig, chrono::Utc::now().timestamp())
+    let now = chrono::Utc::now().timestamp();
+    match check_quick_action_with(quick_action_key(), op, target, name, exp, sig, now) {
+        QuickLink::Valid if crate::used_links::global().is_used(&crate::used_links::link_id(sig), now) => QuickLink::Used,
+        other => other,
+    }
 }
 
 fn quick_action_url_with(key: &[u8], public_url: &str, op: &str, target: &str, name: &str, now: i64) -> String {

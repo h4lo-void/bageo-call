@@ -332,7 +332,11 @@ where
 
 async fn tcp_connect(server: &SmtpServer) -> Result<TcpStream> {
     let addr = format!("{}:{}", server.host, server.port);
-    TcpStream::connect(&addr)
+    // The same check as every other send (an address that leads to a cloud
+    // metadata service is refused), then a connection to the addresses that
+    // were checked, not to a new answer of the name server.
+    let checked = crate::notify::checked_addrs(&server.host, server.port).await?;
+    TcpStream::connect(&checked[..])
         .await
         .map_err(|e| ChannelError::new("network_error", "", format!("smtp tcp connect {addr}: {e}")).into())
 }
@@ -748,5 +752,16 @@ mod tests {
         let active = locale::Active { lang: locale::Lang::En, notify_lang: locale::Lang::Ja, ..Default::default() };
         assert_eq!(owner_texts(&active).f_gmail_missing, locale::words(locale::Lang::Ja).f_gmail_missing);
         assert_ne!(owner_texts(&active).f_gmail_missing, locale::words(locale::Lang::En).f_gmail_missing);
+    }
+
+    #[tokio::test]
+    async fn smtp_connects_only_to_addresses_that_pass_the_check() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = SmtpServer { host: "127.0.0.1".into(), port: addr.port(), implicit_tls: false };
+        assert!(tcp_connect(&server).await.is_ok());
+        let metadata = SmtpServer { host: "169.254.169.254".into(), port: 25, implicit_tls: false };
+        let e = tcp_connect(&metadata).await.unwrap_err();
+        assert_eq!(crate::notify::channel_error(&e).map(|c| c.code), Some("blocked_address"));
     }
 }

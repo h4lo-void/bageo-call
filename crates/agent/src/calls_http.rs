@@ -3312,6 +3312,8 @@ struct QuickWords {
     expired_detail: &'static str,
     invalid_title: &'static str,
     invalid_detail: &'static str,
+    used_title: &'static str,
+    used_detail: &'static str,
     block: &'static str,
     stall: &'static str,
     white: &'static str,
@@ -3320,28 +3322,30 @@ struct QuickWords {
 
 fn quick_words(lang: crate::locale::Lang) -> QuickWords {
     use crate::locale::Lang;
-    let w = |ask_title, ask_button, expired_title, expired_detail, invalid_title, invalid_detail, block, stall, white, unblock| QuickWords {
+    let w = |ask_title, ask_button, expired_title, expired_detail, invalid_title, invalid_detail, used_title, used_detail, block, stall, white, unblock| QuickWords {
         ask_title,
         ask_button,
         expired_title,
         expired_detail,
         invalid_title,
         invalid_detail,
+        used_title,
+        used_detail,
         block,
         stall,
         white,
         unblock,
     };
     match lang {
-        Lang::ZhTw => w("確定要這樣做嗎？", "確定", "連結已過期", "請打開控制台處理。", "連結無效", "這個連結不能用，請打開控制台處理。", "加入黑名單", "設為陪聊", "加入白名單", "移出名單"),
-        Lang::ZhCn => w("确定要这样做吗？", "确定", "链接已过期", "请打开控制台处理。", "链接无效", "这个链接不能用，请打开控制台处理。", "加入黑名单", "设为陪聊", "加入白名单", "移出名单"),
-        Lang::Ja => w("この操作を実行しますか？", "実行する", "リンクの有効期限が切れています", "コンソールを開いて操作してください。", "このリンクは使えません", "コンソールを開いて操作してください。", "着信拒否", "引き延ばし", "ホワイトリスト", "リストから外す"),
-        Lang::Ko => w("이 작업을 실행할까요?", "실행", "링크가 만료되었습니다", "콘솔을 열어 처리하세요.", "사용할 수 없는 링크입니다", "콘솔을 열어 처리하세요.", "차단 목록", "시간 끌기", "화이트리스트", "목록에서 제외"),
-        Lang::Es => w("¿Hacer esto?", "Confirmar", "El enlace caducó", "Abre la consola para hacerlo allí.", "Este enlace no funciona", "Abre la consola para hacerlo allí.", "Lista negra", "Entretener", "Lista blanca", "Quitar de la lista"),
-        Lang::Fr => w("Faire ceci ?", "Confirmer", "Ce lien a expiré", "Ouvrez la console pour le faire.", "Ce lien ne fonctionne pas", "Ouvrez la console pour le faire.", "Liste noire", "Les faire parler", "Liste blanche", "Retirer de la liste"),
-        Lang::De => w("Wirklich ausführen?", "Bestätigen", "Dieser Link ist abgelaufen", "Öffne die Konsole und erledige es dort.", "Dieser Link funktioniert nicht", "Öffne die Konsole und erledige es dort.", "Sperrliste", "Hinhalten", "Whitelist", "Von der Liste nehmen"),
-        Lang::Pt => w("Fazer isto?", "Confirmar", "Este link expirou", "Abra o console para fazer por lá.", "Este link não funciona", "Abra o console para fazer por lá.", "Bloquear", "Manter falando", "Lista branca", "Tirar da lista"),
-        Lang::En | Lang::Ext(_) => w("Do this?", "Confirm", "This link has expired", "Open the console to do it there.", "This link doesn't work", "Open the console to do it there.", "Block", "Stall", "Whitelist", "Remove from list"),
+        Lang::ZhTw => w("確定要這樣做嗎？", "確定", "連結已過期", "請打開控制台處理。", "連結無效", "這個連結不能用，請打開控制台處理。", "已經處理過了", "這個連結不會再執行一次。", "加入黑名單", "設為陪聊", "加入白名單", "移出名單"),
+        Lang::ZhCn => w("确定要这样做吗？", "确定", "链接已过期", "请打开控制台处理。", "链接无效", "这个链接不能用，请打开控制台处理。", "已经处理过了", "这个链接不会再执行一次。", "加入黑名单", "设为陪聊", "加入白名单", "移出名单"),
+        Lang::Ja => w("この操作を実行しますか？", "実行する", "リンクの有効期限が切れています", "コンソールを開いて操作してください。", "このリンクは使えません", "コンソールを開いて操作してください。", "すでに処理済みです", "このリンクは一度しか使えません。", "着信拒否", "引き延ばし", "ホワイトリスト", "リストから外す"),
+        Lang::Ko => w("이 작업을 실행할까요?", "실행", "링크가 만료되었습니다", "콘솔을 열어 처리하세요.", "사용할 수 없는 링크입니다", "콘솔을 열어 처리하세요.", "이미 처리되었습니다", "이 링크는 한 번만 사용할 수 있습니다.", "차단 목록", "시간 끌기", "화이트리스트", "목록에서 제외"),
+        Lang::Es => w("¿Hacer esto?", "Confirmar", "El enlace caducó", "Abre la consola para hacerlo allí.", "Este enlace no funciona", "Abre la consola para hacerlo allí.", "Ya está hecho", "Este enlace solo funciona una vez.", "Lista negra", "Entretener", "Lista blanca", "Quitar de la lista"),
+        Lang::Fr => w("Faire ceci ?", "Confirmer", "Ce lien a expiré", "Ouvrez la console pour le faire.", "Ce lien ne fonctionne pas", "Ouvrez la console pour le faire.", "Déjà fait", "Ce lien ne fonctionne qu'une seule fois.", "Liste noire", "Les faire parler", "Liste blanche", "Retirer de la liste"),
+        Lang::De => w("Wirklich ausführen?", "Bestätigen", "Dieser Link ist abgelaufen", "Öffne die Konsole und erledige es dort.", "Dieser Link funktioniert nicht", "Öffne die Konsole und erledige es dort.", "Bereits erledigt", "Dieser Link funktioniert nur einmal.", "Sperrliste", "Hinhalten", "Whitelist", "Von der Liste nehmen"),
+        Lang::Pt => w("Fazer isto?", "Confirmar", "Este link expirou", "Abra o console para fazer por lá.", "Este link não funciona", "Abra o console para fazer por lá.", "Já foi feito", "Este link só funciona uma vez.", "Bloquear", "Manter falando", "Lista branca", "Tirar da lista"),
+        Lang::En | Lang::Ext(_) => w("Do this?", "Confirm", "This link has expired", "Open the console to do it there.", "This link doesn't work", "Open the console to do it there.", "Already done", "This link only works once.", "Block", "Stall", "Whitelist", "Remove from list"),
     }
 }
 
@@ -3408,17 +3412,16 @@ fn quick_action_page(title: &str, detail: &str, status: StatusCode, form: &str) 
 
 /// Who may use a one-tap link: the console password (only when one is set),
 /// else the link's own signature and time ([`crate::calendar::check_quick_action`]).
-fn quick_action_access(settings: &Settings, headers: &HeaderMap, q: &QuickActionQuery) -> crate::calendar::QuickLink {
+/// The second value is true for a link: it works once ([`crate::used_links`]);
+/// the console password opens it as often as needed.
+fn quick_action_access(settings: &Settings, headers: &HeaderMap, q: &QuickActionQuery) -> (crate::calendar::QuickLink, bool) {
     let has_password = !crate::settings_store::active_ui_token(&settings.calls_ui_token).trim().is_empty();
     if has_password && token_ok_parts(settings, headers, q.token.as_deref()) {
-        return crate::calendar::QuickLink::Valid;
+        return (crate::calendar::QuickLink::Valid, false);
     }
-    crate::calendar::check_quick_action(
-        &q.op,
-        &q.target,
-        q.name.as_deref().unwrap_or(""),
-        &q.exp,
-        &q.sig,
+    (
+        crate::calendar::check_quick_action(&q.op, &q.target, q.name.as_deref().unwrap_or(""), &q.exp, &q.sig),
+        true,
     )
 }
 
@@ -3433,11 +3436,12 @@ async fn quick_action(
     axum::extract::RawQuery(raw_query): axum::extract::RawQuery,
     Query(q): Query<QuickActionQuery>,
 ) -> Response {
-    let access = quick_action_access(&state.settings, &headers, &q);
-    quick_action_run(state, method, headers, raw_query, q, access).await
+    let (access, one_shot) = quick_action_access(&state.settings, &headers, &q);
+    quick_action_run(state, method, headers, raw_query, q, access, one_shot).await
 }
 
-/// [`quick_action`] once its access is known.
+/// [`quick_action`] once its access is known. `one_shot`: the access is a link,
+/// which the first press that does something uses up.
 async fn quick_action_run(
     state: CallsState,
     method: axum::http::Method,
@@ -3445,6 +3449,7 @@ async fn quick_action_run(
     raw_query: Option<String>,
     q: QuickActionQuery,
     access: crate::calendar::QuickLink,
+    one_shot: bool,
 ) -> Response {
     use crate::locale::Lang;
     let op = q.op.trim();
@@ -3466,6 +3471,13 @@ async fn quick_action_run(
                     .into_response();
             }
             return quick_action_page(qw.expired_title, qw.expired_detail, StatusCode::GONE, "");
+        }
+        crate::calendar::QuickLink::Used => {
+            // Not an error: the first press did it.
+            if wants_json {
+                return Json(json!({"ok": true, "already_done": true, "title": qw.used_title, "message": qw.used_detail})).into_response();
+            }
+            return quick_action_page(qw.used_title, qw.used_detail, StatusCode::OK, "");
         }
         crate::calendar::QuickLink::Invalid => {
             if wants_json {
@@ -3528,6 +3540,19 @@ async fn quick_action_run(
             quick_action_html(title, detail, ok)
         }
     };
+    // A link works once, and the second press (a double tap, a repeat) never
+    // gets here again: it is recorded before anything is done, and stays used
+    // when the action failed (a call or text may already have gone out).
+    if one_shot {
+        let now = chrono::Utc::now().timestamp();
+        let exp = q.exp.trim().parse::<i64>().unwrap_or(now + crate::calendar::QUICK_ACTION_TTL_SECS);
+        if !crate::used_links::global().claim(&crate::used_links::link_id(&q.sig), exp, now) {
+            if wants_json {
+                return Json(json!({"ok": true, "already_done": true, "title": qw.used_title, "message": qw.used_detail})).into_response();
+            }
+            return quick_action_page(qw.used_title, qw.used_detail, StatusCode::OK, "");
+        }
+    }
     let w = crate::control::words::words(lang);
     let rt = state.settings_store.snapshot();
     match op {
@@ -3693,6 +3718,7 @@ pub(crate) mod tests {
             raw.clone(),
             quick_query("white", number),
             crate::calendar::QuickLink::Valid,
+            true,
         )
         .await;
         assert_eq!(r.status(), StatusCode::OK);
@@ -3708,6 +3734,7 @@ pub(crate) mod tests {
                 raw.clone(),
                 quick_query("white", number),
                 access,
+                true,
             )
             .await;
             assert!(r.status() == StatusCode::GONE || r.status() == StatusCode::UNAUTHORIZED, "{:?}", r.status());
@@ -3720,10 +3747,68 @@ pub(crate) mod tests {
             raw,
             quick_query("white", number),
             crate::calendar::QuickLink::Valid,
+            true,
         )
         .await;
         assert_eq!(r.status(), StatusCode::OK);
         assert_eq!(state.contacts.lookup(number, None).map(|c| c.kind), Some("whitelist".to_string()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A link that does something works once: pressing it again (a double
+    /// tap, a repeat, a restart in between) only says it was handled and does
+    /// nothing; opening it again does nothing either.
+    #[tokio::test]
+    async fn a_signed_link_does_its_action_once_and_the_second_press_is_refused() {
+        let root = std::env::temp_dir().join(format!("bageo-qa-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let state = quick_state(&root);
+        let number = "0912000888";
+        let url = crate::calendar::quick_action_url("https://bageo.example", "white", number, "Lee");
+        let pairs: HashMap<String, String> =
+            reqwest::Url::parse(&url).unwrap().query_pairs().map(|(k, v)| (k.into_owned(), v.into_owned())).collect();
+        let raw = reqwest::Url::parse(&url).unwrap().query().map(str::to_string);
+        let q = || QuickActionQuery {
+            op: pairs["op"].clone(),
+            target: pairs["target"].clone(),
+            name: pairs.get("name").cloned(),
+            sig: pairs["sig"].clone(),
+            exp: pairs["exp"].clone(),
+            token: None,
+        };
+        let press = |method: axum::http::Method| {
+            let (state, raw) = (state.clone(), raw.clone());
+            async move {
+                let (access, one_shot) = quick_action_access(&state.settings, &HeaderMap::new(), &q());
+                let r = quick_action_run(state, method, HeaderMap::new(), raw, q(), access, one_shot).await;
+                (access, r.status(), body_text(r).await)
+            }
+        };
+        let used_title = quick_words(crate::locale::notify_lang()).used_title;
+        // Opening it first only asks.
+        let (access, status, page) = press(axum::http::Method::GET).await;
+        assert_eq!((access, status), (crate::calendar::QuickLink::Valid, StatusCode::OK));
+        assert!(page.contains("<form"), "{page}");
+        assert!(state.contacts.lookup(number, None).is_none());
+        // The first press does it.
+        let (_, status, page) = press(axum::http::Method::POST).await;
+        assert_eq!(status, StatusCode::OK, "{page}");
+        assert_eq!(state.contacts.lookup(number, None).map(|c| c.kind), Some("whitelist".to_string()));
+        // Undo it by hand, then press the same link again: refused, nothing done.
+        let _ = state.contacts.unblock(number, &["blacklist", "stall", "whitelist"]).await;
+        let (access, status, page) = press(axum::http::Method::POST).await;
+        assert_eq!((access, status), (crate::calendar::QuickLink::Used, StatusCode::OK), "{page}");
+        assert!(page.contains(used_title), "{page}");
+        let listed = |s: &CallsState| s.contacts.lookup(number, None).map(|c| c.kind);
+        assert_ne!(listed(&state), Some("whitelist".to_string()), "the second press did it again");
+        // Opening it again shows the same page, no button.
+        let (_, _, page) = press(axum::http::Method::GET).await;
+        assert!(page.contains(used_title) && !page.contains("<form"), "{page}");
+        // Even when a second press got past the check at the same moment (a race), the
+        // record stops it.
+        let r = quick_action_run(state.clone(), axum::http::Method::POST, HeaderMap::new(), raw.clone(), q(), crate::calendar::QuickLink::Valid, true).await;
+        assert!(body_text(r).await.contains(used_title));
+        assert_ne!(listed(&state), Some("whitelist".to_string()));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -3746,7 +3831,7 @@ pub(crate) mod tests {
     fn quick_link_pages_have_words_in_every_language() {
         for l in crate::locale::ALL {
             let w = quick_words(l);
-            for s in [w.ask_title, w.ask_button, w.expired_title, w.expired_detail, w.invalid_title, w.invalid_detail, w.block, w.stall, w.white, w.unblock] {
+            for s in [w.ask_title, w.ask_button, w.expired_title, w.expired_detail, w.invalid_title, w.invalid_detail, w.used_title, w.used_detail, w.block, w.stall, w.white, w.unblock] {
                 assert!(!s.trim().is_empty(), "{l:?}");
             }
         }

@@ -215,9 +215,11 @@ pub fn summary_endpoint_for(settings: &Settings, provider: Provider) -> Option<E
     None
 }
 
-/// One chat completion against any OpenAI-compatible endpoint.
+/// One chat completion against any OpenAI-compatible endpoint. The address is
+/// checked like a notification's ([`crate::notify::guarded_client`]): it
+/// carries the service key and the call's text.
 pub async fn chat_at(
-    http: &Client,
+    _http: &Client,
     endpoint: &Endpoint,
     model: &str,
     system: &str,
@@ -225,7 +227,8 @@ pub async fn chat_at(
     max_tokens: u32,
 ) -> Result<String> {
     let payload = chat_payload(endpoint, model, system, user, max_tokens);
-    let mut req = http.post(&endpoint.url).json(&payload);
+    let http = crate::notify::guarded_client(&endpoint.url).await?;
+    let mut req = http.post(&endpoint.url).json(&payload).timeout(std::time::Duration::from_secs(120));
     if !endpoint.key.is_empty() {
         req = req.bearer_auth(&endpoint.key);
     }
