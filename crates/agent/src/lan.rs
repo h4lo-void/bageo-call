@@ -10,7 +10,9 @@
 //! without one, a browser there gets a short page that says to set it on this
 //! computer first, and the API answers 403 `need_password`. Requests from this
 //! computer itself (loopback, or this computer's own LAN address) go through as
-//! before. A set `AGENT_HOST` keeps the old behavior: none of this applies.
+//! before. The same check stands with a set `AGENT_HOST` (`0.0.0.0`, a LAN
+//! address, Docker): only the check of the address a request names is
+//! narrower there ([`guard`]).
 
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -164,7 +166,7 @@ pub struct Facts<'a> {
     pub ics_key_ok: bool,
 }
 
-/// Who gets through in the automatic mode. Everything from this computer.
+/// Who gets through, whatever address is listened on. Everything from this computer.
 /// From other devices: phones only with their key; with a password set,
 /// everything else (each route checks it as before); without one, only what
 /// has its own key or shows nothing private:
@@ -229,25 +231,31 @@ fn query_param(query: Option<&str>, name: &str) -> Option<String> {
         .map(|(_, v)| v.into_owned())
 }
 
-/// [`gate`] in front of `router` (the automatic mode only).
+/// [`gate`] in front of `router`, whatever address is listened on.
 /// First of all, the address a request names must be one of this computer's
 /// ([`host_allowed`]): a web page that points its own name at this
-/// computer (DNS rebinding) gets nothing, not even from this computer.
-pub fn guard(router: Router, settings: Settings, store: Arc<SettingsStore>) -> Router {
+/// computer (DNS rebinding) gets nothing, not even from this computer. In the
+/// automatic mode (`auto`) this holds for every request; with a set
+/// `AGENT_HOST` (reverse proxies and Docker name addresses Bageo cannot know)
+/// only for a request from this computer while no password is set, the one
+/// that would pass without a password.
+pub fn guard(router: Router, settings: Settings, store: Arc<SettingsStore>, auto: bool) -> Router {
     let settings = Arc::new(settings);
     router.layer(axum::middleware::from_fn(move |req: Request, next: Next| {
         let settings = settings.clone();
         let store = store.clone();
         async move {
             let rt = store.snapshot();
+            let this_computer = from_this_computer(req.extensions(), req.headers());
+            let password_set = !crate::settings_store::active_ui_token(&settings.calls_ui_token).trim().is_empty();
             let host = request_host(req.headers());
-            let rules = HostRules {
+            let check_host = auto || (this_computer && !password_set);
+            if check_host && !host_allowed(host.as_deref(), &HostRules {
                 local: addrs(req.extensions()).and_then(|(_, local)| local).map(|l| l.ip()),
                 lan: crate::mdns::lan_ipv4(),
                 mdns: crate::mdns::parse_name_setting(&rt.mdns_name),
                 public: public_host(if rt.public_url.trim().is_empty() { &settings.public_url } else { &rt.public_url }),
-            };
-            if !host_allowed(host.as_deref(), &rules) {
+            }) {
                 let path = req.uri().path();
                 warn!("refused a request for {path:?} naming {host:?}: not an address of this computer (see Address in notifications)");
                 if is_api(path) {
@@ -258,7 +266,7 @@ pub fn guard(router: Router, settings: Settings, store: Arc<SettingsStore>) -> R
                 let (title, detail) = bad_host_words(lang);
                 return page(lang, title, detail);
             }
-            if from_this_computer(req.extensions(), req.headers()) {
+            if this_computer {
                 return next.run(req).await;
             }
             let path = req.uri().path().to_string();
@@ -280,7 +288,7 @@ pub fn guard(router: Router, settings: Settings, store: Arc<SettingsStore>) -> R
                     .and_then(|v| v.to_str().ok())
                     .is_some_and(|v| v.eq_ignore_ascii_case("websocket")),
                 this_computer: false,
-                password_set: !crate::settings_store::active_ui_token(&settings.calls_ui_token).trim().is_empty(),
+                password_set,
                 phone_key_ok,
                 mcp_token_set: !rt.mcp_token.trim().is_empty(),
                 ics_key_ok,
@@ -503,7 +511,7 @@ fn own_token_route(path: &str, websocket: bool) -> bool {
 /// `X-Real-IP`): anyone who reaches Bageo directly can write those headers,
 /// so from any other address they would let each guess look new. A proxy on
 /// another machine (a NAS) is counted as itself.
-fn try_key(ext: &Extensions, headers: &HeaderMap) -> Option<IpAddr> {
+pub fn try_key(ext: &Extensions, headers: &HeaderMap) -> Option<IpAddr> {
     let (peer, local) = addrs(ext)?;
     let peer = peer.ip().to_canonical();
     if same_computer(peer, local.map(|l| l.ip())) {
@@ -515,7 +523,10 @@ fn try_key(ext: &Extensions, headers: &HeaderMap) -> Option<IpAddr> {
 }
 
 /// The client a proxy names: the last `X-Forwarded-For` address (the one the
-/// proxy added), else `X-Real-IP`.
+/// proxy added), else `X-Real-IP`. When both are there and name different
+/// addresses, None (the connection's address counts): a proxy that sets only
+/// `X-Real-IP` passes on an `X-Forwarded-For` the browser wrote, and one that
+/// adds only to `X-Forwarded-For` passes on a written `X-Real-IP`.
 fn forwarded_client(headers: &HeaderMap) -> Option<IpAddr> {
     let parse = |s: &str| {
         let s = s.trim().trim_matches('"');
@@ -524,14 +535,18 @@ fn forwarded_client(headers: &HeaderMap) -> Option<IpAddr> {
             .or_else(|| s.parse::<SocketAddr>().ok().map(|a| a.ip()))
             .map(|ip| ip.to_canonical())
     };
-    headers
+    let forwarded = headers
         .get_all("x-forwarded-for")
         .iter()
         .filter_map(|v| v.to_str().ok())
         .flat_map(|v| v.split(','))
         .filter_map(parse)
-        .next_back()
-        .or_else(|| headers.get("x-real-ip").and_then(|v| v.to_str().ok()).and_then(parse))
+        .next_back();
+    let real = headers.get("x-real-ip").and_then(|v| v.to_str().ok()).and_then(parse);
+    match (forwarded, real) {
+        (Some(f), Some(r)) => (f == r).then_some(f),
+        (f, r) => f.or(r),
+    }
 }
 
 /// Slows down and then stops password guessing from other devices
@@ -931,6 +946,19 @@ mod tests {
         junk.insert("x-forwarded-for", HeaderValue::from_static("unknown"));
         assert_eq!(try_key(&conn("127.0.0.1:5000", "127.0.0.1:8787"), &junk), Some(ip("127.0.0.1")));
         assert_eq!(try_key(&Extensions::new(), &h), None);
+        // Both headers naming the same client (nginx's usual pair): that client.
+        let mut both = HeaderMap::new();
+        both.insert("x-real-ip", HeaderValue::from_static("203.0.113.9"));
+        both.insert("x-forwarded-for", HeaderValue::from_static("10.9.9.9, 203.0.113.9"));
+        assert_eq!(try_key(&conn("127.0.0.1:5000", "127.0.0.1:8787"), &both), Some(ip("203.0.113.9")));
+        // A proxy that sets only X-Real-IP passes on a written X-Forwarded-For (or
+        // the other way round): they disagree, and the proxy's own address counts.
+        for written in ["198.51.100.1", "198.51.100.2", "10.0.0.1, 198.51.100.3"] {
+            let mut forged = HeaderMap::new();
+            forged.insert("x-real-ip", HeaderValue::from_static("203.0.113.9"));
+            forged.insert("x-forwarded-for", HeaderValue::from_str(written).unwrap());
+            assert_eq!(try_key(&conn("127.0.0.1:5000", "127.0.0.1:8787"), &forged), Some(ip("127.0.0.1")), "{written}");
+        }
     }
 
     #[test]

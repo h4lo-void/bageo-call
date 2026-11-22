@@ -425,11 +425,11 @@ The image itself sets `AGENT_HOST=0.0.0.0`, `ASSETS_DIR=/app/assets`, `CALLS_DAT
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AGENT_HOST` | *(not set)* | Address to listen on. Not set = the console is open to your network (`AGENT_PORT` and port 80) and other devices get in once a console password is set; phones keep their own Wi-Fi port. `127.0.0.1` = this computer only. `0.0.0.0` = everything open on every network interface. |
+| `AGENT_HOST` | *(not set)* | Address to listen on. Not set = the console is open to your network (`AGENT_PORT` and port 80) and other devices get in once a console password is set; phones keep their own Wi-Fi port. `127.0.0.1` = this computer only. `0.0.0.0` = reachable on every network interface; other devices still need the console password, and phones a pairing code or `DEVICE_TOKEN`. |
 | `AGENT_PORT` | `8787` | Port of the web console and of the phones' connection. |
 | `CONSOLE_PORT_80` | *(on)* | With `AGENT_HOST` not set, the console also answers at port 80, so its address needs no `:8787`. `off` = never. When port 80 is taken or not allowed, the log says so in one line and the console stays at `AGENT_PORT`. |
 | `CALLS_UI_TOKEN` | *(empty)* | Password for the web console and API. Send as `?token=…`, `Authorization: Bearer …` or `X-Calls-Token`. **Set it to open the console from other devices**; the console's *Console password* does the same. |
-| `DEVICE_TOKEN` | *(empty)* | Phones that do not come through USB must connect with `…/ws?token=<this>`. **Set it whenever `AGENT_HOST` is set to anything but `127.0.0.1`.** |
+| `DEVICE_TOKEN` | *(empty)* | Phones that do not come through USB must connect with `…/ws?token=<this>`. **Set it whenever `AGENT_HOST` is set to anything but `127.0.0.1`.** Without it, such phones can only pair with a pairing code. |
 | `PUBLIC_URL` | *(empty)* | Same as *Address in notifications* (under [Notifications](#notifications)); the web console's value wins. Empty = automatic (see [Advanced](#advanced)). |
 | `MDNS_NAME` | `bageo` | Same as *Network name*: the console answers at `http://<this>.local/` on your network. The web console's value wins. |
 | `PHONE_WIFI_PORT` | `AGENT_PORT` + 1 (`8788`) | Port phones use over Wi-Fi. Opened on all network interfaces only while `AGENT_HOST` is not set or `127.0.0.1`; it serves only the phones' connection (no console) and always needs the pairing key or `DEVICE_TOKEN`. `0` = never. |
@@ -452,15 +452,19 @@ DEVICE_TOKEN=another-long-random-string
 
 Open `http://bageo.local:8787/?token=choose-a-long-random-string` (or the computer's IP, e.g. `http://192.0.2.10:8787/?token=…`) once; the page remembers the password.
 
+With `AGENT_HOST` set (Docker too), other devices see "Set a password first" until a console password is set, and nobody but this computer can set the first one. In Docker or on a computer without a screen, set `CALLS_UI_TOKEN` in `.env`: a browser on the Docker host counts as another device.
+
 *System → About* shows the address with a QR code to scan with your phone, and how to add the console to your home screen.
 
 The first time, Windows asks whether to allow Bageo on the network: choose *Private networks*. When other devices still cannot open it, see [Troubleshooting](TROUBLESHOOTING.md#faq).
 
-If this computer is on a VPN that sends all traffic through the tunnel, Bageo may take the VPN's address for the name, the links and the phones' Wi-Fi address. Set `AGENT_HOST` to the computer's LAN IP (e.g. `AGENT_HOST=192.0.2.10`); the name, the links and the phones then use that address (phones then connect on `AGENT_PORT`).
+If this computer is on a VPN that sends all traffic through the tunnel, Bageo may take the VPN's address for the name, the links and the phones' Wi-Fi address. Set `AGENT_HOST` to the computer's LAN IP (e.g. `AGENT_HOST=192.0.2.10`); the name, the links and the phones then use that address (phones then connect on `AGENT_PORT`). Then set both passwords too, `CALLS_UI_TOKEN` (or the console password) and `DEVICE_TOKEN`: without them other devices cannot open the console, and phones not on USB can only pair with a code.
 
 The connection is plain HTTP: fine on a home network you trust, not for the open internet. To reach the console from outside, use a VPN (WireGuard, Tailscale) or a reverse proxy with HTTPS and its own login; do not forward the port.
 
 **Reaching it from outside (reverse proxy).** First set a console password, then enter the outside address (for example `https://calls.example.org/`) under *Address in notifications*; links in notifications then use it. Bageo accepts only this computer's own names and addresses and the host of that address, so any other domain is refused. Use HTTPS on the proxy and point it at port 80 or 8787 of this computer. Everything that comes through a proxy counts as another device: without a password it does not open, and wrong passwords slow down, then wait a minute after 10 within a minute.
+
+With a reverse proxy or any forwarding on this computer (`ssh -L`/`-R`, socat), always set both passwords, `CALLS_UI_TOKEN` (or the console password) and `DEVICE_TOKEN`, and have the proxy send `X-Forwarded-For`. A connection forwarded without it reaches Bageo from this computer and counts as this computer itself.
 
 ### Data and recordings
 

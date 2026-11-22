@@ -25,7 +25,8 @@
 //! (`POST /api/phone-pairing/claim`). It then connects to the address typed,
 //! on `/ws` with the key.
 
-use std::net::Ipv4Addr;
+use std::collections::HashMap;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -267,11 +268,21 @@ pub fn wifi_urls(lan_ip: Option<Ipv4Addr>, port: u16, mdns_host: &str, key: &str
 
 /// How long a pairing code works.
 pub const CODE_TTL: Duration = Duration::from_secs(10 * 60);
-/// Wrong tries that void the code in use.
+/// Wrong tries on the code in use from one source, after which that source
+/// is refused until a new code is made. The code keeps working for the others.
 pub const CODE_MAX_WRONG: u32 = 5;
-/// Wrong tries per minute, from anywhere, after which every try is refused
-/// until the minute is over.
-pub const CLAIM_WRONG_PER_MINUTE: u32 = 20;
+/// Wrong tries on the code in use from all sources together that void it.
+pub const CODE_MAX_WRONG_ALL: u32 = 20;
+/// Wrong tries per minute from one source, after which its tries are refused
+/// until its minute is over.
+pub const CLAIM_WRONG_PER_MINUTE_EACH: u32 = 10;
+/// Wrong tries per minute from all sources together, after which every try
+/// is refused until the minute is over: the last line when many sources guess.
+pub const CLAIM_WRONG_PER_MINUTE: u32 = 40;
+/// Sources whose wrong tries are kept at most (older, finished ones are
+/// dropped first); past that, a new source counts in the totals only.
+const MAX_SOURCES: usize = 1024;
+const _: () = assert!(CODE_MAX_WRONG < CODE_MAX_WRONG_ALL && CLAIM_WRONG_PER_MINUTE_EACH < CLAIM_WRONG_PER_MINUTE);
 /// Digits in a pairing code.
 pub const CODE_DIGITS: usize = 6;
 
@@ -303,18 +314,43 @@ struct PendingCode {
     wrong: u32,
 }
 
+/// One source's wrong tries: in its current minute, and on the code in use.
+#[derive(Clone, Copy)]
+struct SourceTries {
+    window_start: Instant,
+    window_wrong: u32,
+    code_wrong: u32,
+}
+
 #[derive(Default)]
 struct CodesInner {
     pending: Option<PendingCode>,
     window_start: Option<Instant>,
     window_wrong: u32,
+    sources: HashMap<IpAddr, SourceTries>,
 }
 
 /// The pairing code the console made: one at a time, [`CODE_TTL`] long, good
-/// once, voided after [`CODE_MAX_WRONG`] wrong tries. Never logged.
+/// once. Wrong tries are counted per source ([`source_key`]) and in total: a
+/// source is held back after [`CODE_MAX_WRONG`] on the code or
+/// [`CLAIM_WRONG_PER_MINUTE_EACH`] in a minute, so one source cannot use up
+/// the tries of the phone being paired; [`CODE_MAX_WRONG_ALL`] void the code
+/// and [`CLAIM_WRONG_PER_MINUTE`] stop every try for the minute. Never logged.
 #[derive(Default)]
 pub struct PairCodes {
     inner: Mutex<CodesInner>,
+}
+
+/// Whose tries a pairing code try counts as: the address, an IPv6 one by its
+/// /64 network (one device can take any address in it).
+pub fn source_key(ip: IpAddr) -> IpAddr {
+    match ip.to_canonical() {
+        IpAddr::V6(v6) => {
+            let s = v6.segments();
+            IpAddr::V6(Ipv6Addr::new(s[0], s[1], s[2], s[3], 0, 0, 0, 0))
+        }
+        v4 => v4,
+    }
 }
 
 /// A random number below 10^[`CODE_DIGITS`], from the system's random source
@@ -343,13 +379,25 @@ impl PairCodes {
     /// A new code; the one before stops working.
     pub fn issue(&self, now: Instant) -> String {
         let code = fresh_code();
-        self.lock().pending = Some(PendingCode { code: code.clone(), made: now, wrong: 0 });
+        let mut inner = self.lock();
+        inner.pending = Some(PendingCode { code: code.clone(), made: now, wrong: 0 });
+        for s in inner.sources.values_mut() {
+            s.code_wrong = 0;
+        }
         code
     }
 
-    /// Use `code`: Ok once for the code in use, which then stops working.
+    /// [`Self::claim_from`] from one fixed source (tests).
+    #[cfg(test)]
     pub fn claim(&self, code: &str, now: Instant) -> Result<(), ClaimError> {
+        self.claim_from(code, IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1)), now)
+    }
+
+    /// Use `code`, sent from `from`: Ok once for the code in use, which then
+    /// stops working.
+    pub fn claim_from(&self, code: &str, from: IpAddr, now: Instant) -> Result<(), ClaimError> {
         let code = code.trim();
+        let from = source_key(from);
         let mut inner = self.lock();
         if inner.window_start.is_none_or(|t| now.saturating_duration_since(t) >= Duration::from_secs(60)) {
             inner.window_start = Some(now);
@@ -358,11 +406,21 @@ impl PairCodes {
         if inner.window_wrong >= CLAIM_WRONG_PER_MINUTE {
             return Err(ClaimError::TooMany);
         }
+        let source = inner.source(from, now);
+        if source.is_some_and(|s| s.window_wrong >= CLAIM_WRONG_PER_MINUTE_EACH) {
+            return Err(ClaimError::TooMany);
+        }
         if inner.pending.as_ref().is_some_and(|p| now.saturating_duration_since(p.made) >= CODE_TTL) {
             inner.pending = None;
         }
+        if inner.pending.is_none() {
+            inner.count_wrong(from, false);
+            return Err(ClaimError::NoCode);
+        }
+        if source.is_some_and(|s| s.code_wrong >= CODE_MAX_WRONG) {
+            return Err(ClaimError::TooMany);
+        }
         let Some(pending) = inner.pending.as_mut() else {
-            inner.window_wrong += 1;
             return Err(ClaimError::NoCode);
         };
         if same(code, &pending.code) {
@@ -370,11 +428,47 @@ impl PairCodes {
             return Ok(());
         }
         pending.wrong += 1;
-        if pending.wrong >= CODE_MAX_WRONG {
+        if pending.wrong >= CODE_MAX_WRONG_ALL {
             inner.pending = None;
         }
-        inner.window_wrong += 1;
+        inner.count_wrong(from, true);
         Err(ClaimError::Wrong)
+    }
+}
+
+impl CodesInner {
+    /// `from`'s tries, its minute started over when it is past; None for a
+    /// source not counted (none yet, or no room).
+    fn source(&mut self, from: IpAddr, now: Instant) -> Option<SourceTries> {
+        if !self.sources.contains_key(&from) {
+            if self.sources.len() >= MAX_SOURCES {
+                let pending = self.pending.is_some();
+                self.sources.retain(|_, s| {
+                    now.saturating_duration_since(s.window_start) < Duration::from_secs(60) || (pending && s.code_wrong > 0)
+                });
+            }
+            if self.sources.len() >= MAX_SOURCES {
+                return None;
+            }
+            self.sources.insert(from, SourceTries { window_start: now, window_wrong: 0, code_wrong: 0 });
+        }
+        let s = self.sources.get_mut(&from)?;
+        if now.saturating_duration_since(s.window_start) >= Duration::from_secs(60) {
+            s.window_start = now;
+            s.window_wrong = 0;
+        }
+        Some(*s)
+    }
+
+    /// A wrong try from `from` (`on_code`: a wrong code while one is in use).
+    fn count_wrong(&mut self, from: IpAddr, on_code: bool) {
+        self.window_wrong += 1;
+        if let Some(s) = self.sources.get_mut(&from) {
+            s.window_wrong += 1;
+            if on_code {
+                s.code_wrong += 1;
+            }
+        }
     }
 }
 
@@ -490,7 +584,7 @@ mod tests {
     }
 
     #[test]
-    fn five_wrong_tries_void_the_code() {
+    fn five_wrong_tries_hold_back_that_source_only() {
         let codes = PairCodes::new();
         let t0 = Instant::now();
         let code = codes.issue(t0);
@@ -498,9 +592,60 @@ mod tests {
         for _ in 0..CODE_MAX_WRONG {
             assert_eq!(codes.claim(wrong, t0), Err(ClaimError::Wrong));
         }
-        assert_eq!(codes.claim(&code, t0), Err(ClaimError::NoCode), "voided: even the right code is refused");
+        assert_eq!(codes.claim(&code, t0), Err(ClaimError::TooMany), "held back: even the right code is refused");
+        let phone: IpAddr = "192.168.1.30".parse().unwrap();
+        assert_eq!(codes.claim_from(&code, phone, t0), Ok(()), "another source still pairs");
         let code = codes.issue(t0);
-        assert_eq!(codes.claim(&code, t0), Ok(()), "a new code works");
+        assert_eq!(codes.claim(&code, t0), Ok(()), "a new code works for the held-back source too");
+    }
+
+    #[test]
+    fn one_source_cannot_use_up_the_tries_of_another() {
+        let codes = PairCodes::new();
+        let t0 = Instant::now();
+        let attacker: IpAddr = "203.0.113.5".parse().unwrap();
+        let phone: IpAddr = "192.168.1.30".parse().unwrap();
+        // No code in use: the attacker spends its minute.
+        for _ in 0..CLAIM_WRONG_PER_MINUTE_EACH {
+            assert_eq!(codes.claim_from("123456", attacker, t0), Err(ClaimError::NoCode));
+        }
+        assert_eq!(codes.claim_from("123456", attacker, t0), Err(ClaimError::TooMany));
+        let code = codes.issue(t0);
+        assert_eq!(codes.claim_from(&code, attacker, t0), Err(ClaimError::TooMany), "the attacker waits out its minute");
+        let wrong = if code == "000000" { "000001" } else { "000000" };
+        assert_eq!(codes.claim_from(wrong, phone, t0), Err(ClaimError::Wrong), "a typo from the phone");
+        assert_eq!(codes.claim_from(&code, phone, t0), Ok(()), "the phone pairs in the same minute");
+    }
+
+    #[test]
+    fn ipv6_addresses_of_one_network_count_as_one_source() {
+        let codes = PairCodes::new();
+        let t0 = Instant::now();
+        let code = codes.issue(t0);
+        let wrong = if code == "000000" { "000001" } else { "000000" };
+        for n in 0..CODE_MAX_WRONG {
+            let ip: IpAddr = format!("2001:db8:1:2::{:x}", n + 1).parse().unwrap();
+            assert_eq!(codes.claim_from(wrong, ip, t0), Err(ClaimError::Wrong));
+        }
+        let same_net: IpAddr = "2001:db8:1:2::ffff".parse().unwrap();
+        assert_eq!(codes.claim_from(&code, same_net, t0), Err(ClaimError::TooMany));
+        let mapped: IpAddr = "::ffff:192.168.1.30".parse().unwrap();
+        assert_eq!(source_key(mapped), "192.168.1.30".parse::<IpAddr>().unwrap());
+        assert_eq!(codes.claim_from(&code, mapped, t0), Ok(()), "another network pairs");
+    }
+
+    #[test]
+    fn many_sources_together_still_void_the_code() {
+        let codes = PairCodes::new();
+        let t0 = Instant::now();
+        let code = codes.issue(t0);
+        let wrong = if code == "000000" { "000001" } else { "000000" };
+        for n in 0..CODE_MAX_WRONG_ALL {
+            let ip: IpAddr = format!("198.51.100.{}", n / CODE_MAX_WRONG + 1).parse().unwrap();
+            assert_eq!(codes.claim_from(wrong, ip, t0), Err(ClaimError::Wrong), "try {n}");
+        }
+        let phone: IpAddr = "192.168.1.30".parse().unwrap();
+        assert_eq!(codes.claim_from(&code, phone, t0), Err(ClaimError::NoCode), "voided for everyone");
     }
 
     #[test]
@@ -520,11 +665,13 @@ mod tests {
     fn too_many_wrong_tries_a_minute_stop_every_try() {
         let codes = PairCodes::new();
         let t0 = Instant::now();
-        for _ in 0..CLAIM_WRONG_PER_MINUTE {
-            assert_eq!(codes.claim("123456", t0), Err(ClaimError::NoCode));
+        for n in 0..CLAIM_WRONG_PER_MINUTE {
+            let ip: IpAddr = format!("198.51.100.{}", n / CLAIM_WRONG_PER_MINUTE_EACH + 1).parse().unwrap();
+            assert_eq!(codes.claim_from("123456", ip, t0), Err(ClaimError::NoCode));
         }
         let code = codes.issue(t0);
-        assert_eq!(codes.claim(&code, t0), Err(ClaimError::TooMany), "held for the rest of the minute");
-        assert_eq!(codes.claim(&code, t0 + Duration::from_secs(60)), Ok(()), "the next minute it works");
+        let phone: IpAddr = "192.168.1.30".parse().unwrap();
+        assert_eq!(codes.claim_from(&code, phone, t0), Err(ClaimError::TooMany), "held for the rest of the minute");
+        assert_eq!(codes.claim_from(&code, phone, t0 + Duration::from_secs(60)), Ok(()), "the next minute it works");
     }
 }
