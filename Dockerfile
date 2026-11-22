@@ -17,6 +17,8 @@ FROM rust:bookworm AS builder
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+# The agent builds the desktop program's English texts into itself.
+COPY desktop/ui/i18n.json ./desktop/ui/i18n.json
 # A low default keeps small hosts out of memory trouble; raise it with
 #   docker compose build --build-arg CARGO_BUILD_JOBS=4
 ARG CARGO_BUILD_JOBS=2
