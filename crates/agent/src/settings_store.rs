@@ -3169,7 +3169,8 @@ fn language_country(lang: crate::locale::Lang) -> &'static str {
     match lang {
         Lang::ZhTw => "tw",
         Lang::ZhCn => "cn",
-        Lang::En | Lang::Ext(_) => "us",
+        Lang::En => "us",
+        Lang::Ext(e) => e.country(),
         Lang::Ja => "jp",
         Lang::Ko => "kr",
         Lang::Es => "es",
@@ -4763,6 +4764,29 @@ mod review_t4_tests {
                 (Some("zh-TW"), Some("Alex"))
             );
             let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    /// A language outside the nine core ones dials in its own country, not
+    /// in the United States.
+    #[test]
+    fn an_extra_language_dials_in_its_own_country() {
+        use crate::locale::{Ext, Lang};
+        for (code, region, calling) in [
+            ("it", "it", "39"),
+            ("th", "th", "66"),
+            ("vi", "vn", "84"),
+            ("id", "id", "62"),
+            ("hi", "in", "91"),
+            ("ar", "eg", "20"),
+            ("ru", "ru", "7"),
+            ("tr", "tr", "90"),
+            ("pl", "pl", "48"),
+            ("uk", "ua", "380"),
+        ] {
+            let lang = Lang::Ext(Ext::from_code(code).expect(code));
+            assert_eq!(language_country(lang), region, "{code}");
+            assert_eq!(crate::phone_region::calling_code(region), Some(calling), "{code}");
         }
     }
 

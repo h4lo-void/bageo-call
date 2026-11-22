@@ -56,6 +56,70 @@ impl Ext {
     pub fn script(self) -> Script {
         self.info().script
     }
+
+    /// The country it is mainly spoken in (ISO 3166 alpha-2, lower case):
+    /// where a call is taken to be, and where a number without a country
+    /// code is dialled, when no SIM or setting says. English is a core
+    /// language, so none of these is the United States.
+    pub fn country(self) -> &'static str {
+        match self.code() {
+            "af" => "za",
+            "am" => "et",
+            "ar" => "eg",
+            "az" => "az",
+            "be" => "by",
+            "bg" => "bg",
+            "bn" => "bd",
+            "ca" | "eu" | "gl" => "es",
+            "ceb" | "fil" => "ph",
+            "cs" => "cz",
+            "da" => "dk",
+            "el" => "gr",
+            "et" => "ee",
+            "fa" => "ir",
+            "fi" => "fi",
+            "gu" | "hi" | "kn" | "kok" | "mai" | "ml" | "mr" | "or" | "pa" | "ta" | "te" => "in",
+            "he" => "il",
+            "hr" => "hr",
+            "ht" => "ht",
+            "hu" => "hu",
+            "hy" => "am",
+            "id" | "jv" => "id",
+            "is" => "is",
+            "it" => "it",
+            "ka" => "ge",
+            "la" => "va",
+            "lb" => "lu",
+            "lo" => "la",
+            "lt" => "lt",
+            "lv" => "lv",
+            "mg" => "mg",
+            "mk" => "mk",
+            "mn" => "mn",
+            "ms" => "my",
+            "my" => "mm",
+            "nb" | "nn" => "no",
+            "ne" => "np",
+            "nl" => "nl",
+            "pl" => "pl",
+            "ps" => "af",
+            "ro" => "ro",
+            "ru" => "ru",
+            "sd" | "ur" => "pk",
+            "si" => "lk",
+            "sk" => "sk",
+            "sl" => "si",
+            "sq" => "al",
+            "sr" => "rs",
+            "sv" => "se",
+            "sw" => "ke",
+            "th" => "th",
+            "tr" => "tr",
+            "uk" => "ua",
+            "vi" => "vn",
+            _ => "us",
+        }
+    }
 }
 
 impl std::fmt::Debug for Ext {
@@ -2791,7 +2855,7 @@ mod ext_tests {
             assert_eq!(crate::voice_preview::sample_lines(l), crate::voice_preview::sample_lines(en));
             assert_eq!(crate::voice_preview::reject_announce_text_in(l), crate::voice_preview::reject_announce_text_in(en));
             // Regions, scenarios, stalling.
-            assert_eq!(crate::country_profile::lang_default_country(l), "us");
+            assert_ne!(crate::country_profile::lang_default_country(l), "us");
             assert_eq!(crate::country_profile::prompt_overhead(l), crate::country_profile::prompt_overhead(en));
             assert_eq!(crate::country_profile::stall_overhead(l), crate::country_profile::stall_overhead(en));
             let _ = crate::country_profile::resolve(None, l);

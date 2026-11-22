@@ -84,7 +84,8 @@ pub fn lang_default_country(lang: Lang) -> &'static str {
     match lang {
         Lang::ZhTw => "tw",
         Lang::ZhCn => "cn",
-        Lang::En | Lang::Ext(_) => "us",
+        Lang::En => "us",
+        Lang::Ext(e) => e.country(),
         Lang::Ja => "jp",
         Lang::Ko => "kr",
         Lang::Es => "mx",
@@ -452,6 +453,43 @@ mod tests {
         assert_eq!(resolve_with(Some("zz"), None, Lang::ZhTw), None);
         // Settings unset (unit tests): no home country.
         assert_eq!(resolve(None, Lang::De), Some(r("de")));
+    }
+
+    /// A language outside the nine core ones stands for its own country
+    /// (Italian for Italy, Thai for Thailand), not for the United States.
+    #[test]
+    fn an_extra_language_stands_for_its_own_country() {
+        for e in crate::locale::Ext::all() {
+            let c = lang_default_country(Lang::Ext(e));
+            assert!(bageo_packs::data::is_country(c), "{e:?}: {c}");
+            assert_ne!(c, "us", "{e:?}");
+            // Where the official code names a country (it-IT, th-TH), it is that one.
+            if let Some((_, cc)) = e.official().split_once('-') {
+                if cc.len() == 2 {
+                    assert_eq!(c, cc.to_ascii_lowercase(), "{e:?}");
+                }
+            }
+            assert!(resolve_with(None, None, Lang::Ext(e)).is_some(), "{e:?}");
+        }
+        for (code, country) in [
+            ("it", "it"),
+            ("th", "th"),
+            ("vi", "vn"),
+            ("id", "id"),
+            ("hi", "in"),
+            ("ar", "eg"),
+            ("ru", "ru"),
+            ("he", "il"),
+            ("fa", "ir"),
+            ("sv", "se"),
+        ] {
+            let lang = Lang::Ext(crate::locale::Ext::from_code(code).expect(code));
+            assert_eq!(lang_default_country(lang), country, "{code}");
+            assert_eq!(resolve_with(None, None, lang), Region::of_country(country), "{code}");
+            // The SIM and the home country still come first.
+            assert_eq!(resolve_with(Some("jp"), None, lang), Some(r("jp")), "{code}");
+            assert_eq!(resolve_with(None, Some("de"), lang), Some(r("de")), "{code}");
+        }
     }
 
     #[test]

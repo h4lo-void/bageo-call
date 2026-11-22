@@ -199,6 +199,9 @@ pub struct PendingView {
     pub ai_asked: bool,
     /// Our audio has been played out for [`GRACE`].
     pub quiet_for_grace: bool,
+    /// The call is being stalled (a sales or scam call). The verdict can come
+    /// after the end_call was accepted: such a call is never closed by it.
+    pub stalling: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -208,11 +211,15 @@ pub enum Step {
     Cancel,
     /// Our last words ask the caller something: wait for the answer.
     Withdraw,
+    /// The call turned out to be one to stall: the line stays open.
+    Stalled,
     HangUp,
 }
 
 pub fn step(v: &PendingView) -> Step {
-    if v.caller_spoke {
+    if v.stalling {
+        Step::Stalled
+    } else if v.caller_spoke {
         Step::Cancel
     } else if v.ai_busy || (!v.ai_spoke && v.since_accept < LINE_WAIT) {
         Step::Wait
@@ -620,6 +627,7 @@ mod tests {
             ai_spoke: true,
             ai_asked: false,
             quiet_for_grace: false,
+            stalling: false,
         }
     }
 
@@ -631,6 +639,33 @@ mod tests {
         // Even once the grace has run.
         v.quiet_for_grace = true;
         assert_eq!(step(&v), Step::Cancel);
+    }
+
+    /// The sales / scam verdict can come after an end_call was accepted (the
+    /// review runs beside the call): the line then stays open, whatever state
+    /// the closing was in.
+    #[test]
+    fn a_call_being_stalled_is_not_closed() {
+        for (busy, quiet, spoke, asked, caller) in [
+            (false, true, true, false, false),
+            (true, false, true, false, false),
+            (false, false, false, false, false),
+            (false, true, true, true, false),
+            (false, true, true, false, true),
+        ] {
+            let v = PendingView {
+                stalling: true,
+                ai_busy: busy,
+                quiet_for_grace: quiet,
+                ai_spoke: spoke,
+                ai_asked: asked,
+                caller_spoke: caller,
+                ..view()
+            };
+            assert_eq!(step(&v), Step::Stalled, "{v:?}");
+        }
+        // The same quiet line without the verdict closes.
+        assert_eq!(step(&PendingView { quiet_for_grace: true, ..view() }), Step::HangUp);
     }
 
     #[test]
@@ -746,7 +781,7 @@ mod a6rev_tests {
     }
 
     fn view() -> PendingView {
-        PendingView { since_accept: S, caller_spoke: false, ai_busy: false, ai_spoke: true, ai_asked: false, quiet_for_grace: false }
+        PendingView { since_accept: S, caller_spoke: false, ai_busy: false, ai_spoke: true, ai_asked: false, quiet_for_grace: false, stalling: false }
     }
 
     /// Statements that say "that is all" in many languages: never a question.
