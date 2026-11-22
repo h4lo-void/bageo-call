@@ -2976,9 +2976,10 @@ fn persona_resume_reply_client_content() -> String {
 /// - Stalling ([`StallReview::should_ask_confirm`]): one more look after the
 ///   caller's next [`CONFIRM_AFTER_TURNS`] turns (one, if long); a sure "normal" lets
 ///   the caller go back to an ordinary call ([`StallVerdictStep::Release`]).
-/// - Words only scammers say anywhere in the caller's side of the call: a sure
-///   "normal" does not hold (an unsure one is looked at once more); stalling is
-///   kept, or starts again after the caller was let go.
+/// - Words only scammers say anywhere in the caller's side of the call: stalling is
+///   kept, or starts again when a caller who was let go says them; an unsure
+///   "normal" is looked at once more. A sure "normal" still holds in a call that
+///   was never stalled (a bank or a relative warning about codes).
 const STALL_REVIEW_MAX: u32 = 3;
 const STALL_REVIEW_STEP: u32 = 2;
 /// The keywords trip mid-sentence: the first look may see half the
@@ -3317,10 +3318,12 @@ impl StallReview {
             Verdict::IvrRecording => StallVerdictStep::Ivr,
             Verdict::Normal => {
                 self.lows = 0;
-                if facts.hard_hit && review.confidence == Confidence::High {
-                    // A sure "normal" after words only scammers say: the look was
-                    // taken in (a spoofed saved number asking for a code sounds
-                    // ordinary), and asking it again will not help.
+                if facts.hard_hit && review.confidence == Confidence::High && self.confirm_asked {
+                    // This call was stalled and let go, and now words only scammers
+                    // say: the look was taken in (a spoofed saved number asking for
+                    // a code sounds ordinary), and asking it again will not help.
+                    // A call never stalled keeps its sure "normal": a saved number
+                    // warning about codes is not a scam.
                     self.why = EngageWhy::HardWords;
                     return StallVerdictStep::Engage;
                 }
@@ -10462,9 +10465,9 @@ mod tests {
 
     /// Words only scammers say and an unsure "normal" (a spoofed contact asking
     /// for "the code"): looked at once more, a scam when unsure twice; a sure
-    /// "normal" does not hold either.
+    /// "normal" holds in a call that was never stalled.
     #[test]
-    fn hard_words_are_not_let_be_even_on_a_sure_normal() {
+    fn hard_words_need_a_sure_normal_to_be_let_be() {
         use crate::stall_review::{Confidence::*, Verdict::*};
         let hard = StallFacts { flagged: true, hard_hit: true, protected: true };
         let mut r = StallReview::default();
@@ -10475,8 +10478,7 @@ mod tests {
         assert_eq!(r.why, EngageWhy::HardWords);
         let mut r = StallReview::default();
         assert!(r.should_ask(true, 3));
-        assert_eq!(r.decide(&review_of(Normal, High), 3, 3, hard), StallVerdictStep::Engage);
-        assert_eq!(r.why, EngageWhy::HardWords);
+        assert_eq!(r.decide(&review_of(Normal, High), 3, 3, hard), StallVerdictStep::Carry);
         // Without hard words an unsure "normal" is still normal.
         let mut r = StallReview::default();
         assert!(r.should_ask(true, 3));
@@ -10626,6 +10628,34 @@ mod tests {
             let facts = StallFacts { flagged: true, hard_hit: hard_words_said(&[], false, &after), protected: true };
             assert_eq!(r.decide(&review_of(Normal, High), 4, 4, facts), StallVerdictStep::Engage, "{scam}");
             assert_eq!(r.why, EngageWhy::HardWords);
+        }
+    }
+
+    /// A saved number that only warns about codes (a bank, a relative who was
+    /// asked for one) uses the same words as a scammer. In a call that was never
+    /// stalled, a sure "normal" holds: no stalling.
+    #[test]
+    fn a_saved_number_warning_about_codes_is_not_taken_for_a_scam() {
+        use crate::stall_review::{Confidence::*, Verdict::*};
+        let warnings = [
+            "This is your bank's fraud team: never read the verification code to anyone who calls you.",
+            "銀行からのお知らせです。認証コードは誰にも教えないでください。",
+            "Le llamamos del banco: no le diga a nadie el código de verificación.",
+            "Hier ist Ihre Bank: Nennen Sie den Bestätigungscode niemals am Telefon.",
+            "這裡是銀行防詐專線，提醒您驗證碼不要告訴任何人。",
+            "Dalla sua banca: non dica a nessuno il codice di verifica.",
+            "Dari bank Anda: jangan berikan kode OTP kepada siapa pun.",
+            "Mom here, someone just called asking me for a verification code, I didn't give it.",
+            "我是媽媽，剛剛有人打來跟我要驗證碼，我沒給。",
+        ];
+        for line in warnings {
+            let said = Some(Arc::new(std::sync::Mutex::new(format!("對方：{line}\n接聽：Okay."))));
+            let hard_hit = hard_words_said(&[], false, &said);
+            assert!(hard_hit, "the warning uses a scammer's words: {line}");
+            let mut r = StallReview::default();
+            assert!(r.should_ask(true, 3));
+            let facts = StallFacts { flagged: true, hard_hit, protected: true };
+            assert_eq!(r.decide(&review_of(Normal, High), 3, 3, facts), StallVerdictStep::Carry, "{line}");
         }
     }
 
