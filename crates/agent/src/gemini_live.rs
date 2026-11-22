@@ -5242,6 +5242,7 @@ pub async fn run_session(
     callback: bool,
     errand: Option<Arc<crate::errands::CallHooks>>,
     user_prompt_chars: usize,
+    reply_metrics: Arc<crate::TrtcTalkMetrics>,
 ) -> Result<SessionEndReason> {
     let outbound = Outbound::of(callback, errand.is_some());
     let opening_lang = lang_plan.opening.filter(|_| persona);
@@ -5790,6 +5791,8 @@ pub async fn run_session(
     let mut uplink_buf: Vec<u8> = Vec::with_capacity(chunk_target * 4);
     let mut audio_chunks_out: u64 = 0;
     let mut audio_chunks_in: u64 = 0;
+    // Reply latency per call (measurement only, see reply_latency.rs).
+    let mut reply_clock = crate::reply_latency::ReplyClock::default();
     let mut local_eou_sent: u64 = 0;
 
     // Manual activity: activityStart on first sustained voice, activityEnd after short silence.
@@ -6130,6 +6133,7 @@ pub async fn run_session(
             }
             if let Some(turn) = ctl.take_say() {
                 model_turn_pending = true;
+                reply_clock.disarm();
                 // In the language the call is held in (lang_lock), not the setting's.
                 let spoken = call_language.lang();
                 info!(
@@ -6491,6 +6495,7 @@ pub async fn run_session(
                         rotate_retry_at = None;
                         post_rotate_chunks = Some(audio_chunks_out);
                         post_rotate_rekicked = false;
+                        reply_clock.disarm();
                         turn_out_text.clear();
                         turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
                         // Calls asked on the old socket cannot be answered on this one.
@@ -6535,6 +6540,7 @@ pub async fn run_session(
                             // turnComplete (and the keep nudge it waited for) never came.
                             // The new one holds the caller instead of resuming.
                             model_turn_pending = true;
+                            reply_clock.disarm();
                             stall_turn_kept = true;
                             match send_text_before_deadline(
                                 &mut sink,
@@ -6753,6 +6759,7 @@ pub async fn run_session(
                 fd_grace = Duration::ZERO;
                 if let Some(kick) = kick {
                     model_turn_pending = true;
+                    reply_clock.disarm();
                     let sent = send_text_before_deadline(
                         &mut sink,
                         kick,
@@ -7082,6 +7089,7 @@ pub async fn run_session(
                     in_spoken_language(persona_wrap_up_client_content(), Some(call_language.spoken()))
                 };
                 model_turn_pending = true;
+                reply_clock.disarm();
                 match send_text_before_deadline(
                     &mut sink,
                     nudge,
@@ -7114,6 +7122,7 @@ pub async fn run_session(
                 if stall_keeps < STALL_KEEP_MAX {
                     stall_keeps += 1;
                     model_turn_pending = true;
+                    reply_clock.disarm();
                     stall_tx.clear();
                     match send_text_before_deadline(
                         &mut sink,
@@ -7239,6 +7248,7 @@ pub async fn run_session(
         if cold_gap.due(&cold_view) {
             cold_gap.sent(local_eou_sent);
             model_turn_pending = true;
+            reply_clock.disarm();
             repeat_guard.clear();
             match send_text_before_deadline(
                 &mut sink,
@@ -7272,6 +7282,7 @@ pub async fn run_session(
         {
             idle_nudges += 1;
             model_turn_pending = true;
+            reply_clock.disarm();
             // The nudge asks for a turn: it is no repeat.
             repeat_guard.clear();
             stall_tx.clear();
@@ -7522,6 +7533,7 @@ pub async fn run_session(
                                                 session_start.elapsed().as_secs()
                                             );
                                             model_turn_pending = true;
+                                            reply_clock.disarm();
                                             tool_open.insert(key.clone());
                                             ask_waiting.insert(key.clone());
                                             let tx = tool_tx.clone();
@@ -7580,6 +7592,7 @@ pub async fn run_session(
                                         if blocking {
                                             // The model waits for the answer: it owes a reply.
                                             model_turn_pending = true;
+                                            reply_clock.disarm();
                                             tool_open.insert(key.clone());
                                         } else {
                                             tool_bg.insert(key.clone());
@@ -7610,6 +7623,7 @@ pub async fn run_session(
                                         // the AI is told so, and gets the answer as a note.
                                         if ask_waiting.contains(&id) {
                                             model_turn_pending = true;
+                                            reply_clock.disarm();
                                             if let Err(e) = send_text_before_deadline(
                                                 &mut sink,
                                                 crate::errands::still_asking_client_content(),
@@ -7868,6 +7882,7 @@ pub async fn run_session(
                                                     stall_keep_after_turn = true;
                                                 } else {
                                                     model_turn_pending = true;
+                                                    reply_clock.disarm();
                                                     if let Err(e) = send_text_before_deadline(
                                                         &mut sink,
                                                         in_spoken_language(persona_stall_keep_with_retain(true, &mut stall_engine, serial), Some(call_language.spoken())),
@@ -8239,6 +8254,8 @@ pub async fn run_session(
                                     play_head.set_generating(false);
                                     mute_model_audio = false;
                                     repeat_guard.interrupted();
+                                    // The caller's next turn began over our reply: not a plain reply.
+                                    reply_clock.cut_in();
                                     // A call-back reply held off the line answered something
                                     // earlier: dropped (the model answers what comes now).
                                     if cb_once && cb_floor.interrupted() {
@@ -8261,6 +8278,7 @@ pub async fn run_session(
                                         );
                                     }
                                 }
+                                let new_turn_audio = has_audio && !model_generating;
                                 if has_audio {
                                     if !model_generating {
                                         // A new turn: words coming in now are its own.
@@ -8307,6 +8325,35 @@ pub async fn run_session(
                                 if n > 0 {
                                     // A reply is heard: the next farewell may be cut again.
                                     stall_turn_kept = false;
+                                    // Reply latency (measurement only): the first audio of a model
+                                    // turn that answers a caller turn. The caller stopped
+                                    // `silence_ms` before the local VAD decided (local count of
+                                    // quiet frames), so wait_ms is that silence and model_ms is what
+                                    // follows the decision. If the local turn is still open, Gemini's
+                                    // server VAD ended it first: the caller stopped `silence_ms` ago
+                                    // and the server's own window is the wait.
+                                    if new_turn_audio {
+                                        // No model audio before this one is the opening: never a reply.
+                                        let measured = if first_downlink_at.is_none() {
+                                            reply_clock.disarm();
+                                            None
+                                        } else if server_vad && activity_open {
+                                            reply_clock.audio_after_server_end(silence_ms, SERVER_VAD_SILENCE_MS)
+                                        } else {
+                                            reply_clock.audio_after_local_end(tokio::time::Instant::now())
+                                        };
+                                        if let Some(m) = measured {
+                                            info!(
+                                                "Gemini reply latency serial={serial} turn={} reply_ms={} wait_ms={} model_ms={} end={}",
+                                                m.turn,
+                                                m.timing.reply_ms,
+                                                m.timing.wait_ms,
+                                                m.timing.model_ms,
+                                                m.end_by.as_str()
+                                            );
+                                            reply_metrics.record_reply(m.timing.reply_ms, serial);
+                                        }
+                                    }
                                     if server_vad && activity_open {
                                         // Gemini ended the caller's turn before the local VAD
                                         // did: it is the one deciding, close ours to match.
@@ -8527,6 +8574,7 @@ pub async fn run_session(
                                             PostRotateTurn::Rekick => {
                                                 post_rotate_rekicked = true;
                                                 model_turn_pending = true;
+                                                reply_clock.disarm();
                                                 let preview: String =
                                                     turn_out_text.chars().take(60).collect();
                                                 match send_text_before_deadline(
@@ -8634,6 +8682,7 @@ pub async fn run_session(
                                         }
                                         stall_turn_kept = true;
                                         model_turn_pending = true;
+                                        reply_clock.disarm();
                                         let preview: String = stall_tx.chars().take(40).collect();
                                         stall_tx.clear();
                                         match send_text_before_deadline(
@@ -8996,6 +9045,7 @@ pub async fn run_session(
                     // reaches the AI, as a note.
                     let now = tokio::time::Instant::now();
                     model_turn_pending = true;
+                    reply_clock.disarm();
                     last_activity_at = now;
                     match send_text_before_deadline(
                         &mut sink,
@@ -9057,6 +9107,7 @@ pub async fn run_session(
                 if done.blocking {
                     // The model speaks after a blocking answer.
                     model_turn_pending = true;
+                    reply_clock.disarm();
                     tool_answer_at = Some(now);
                     tool_answer_chunks = audio_chunks_out;
                 }
@@ -9092,6 +9143,7 @@ pub async fn run_session(
                     Some(text) => {
                         let now = tokio::time::Instant::now();
                         model_turn_pending = true;
+                        reply_clock.disarm();
                         repeat_guard.clear();
                         match send_text_before_deadline(
                             &mut sink,
@@ -9291,6 +9343,7 @@ pub async fn run_session(
                                     let left = play_head.speech_left(phone_sr);
                                     if barged_at_chunks.map_or(true, |c| audio_chunks_out > c) {
                                         barged_at_chunks = Some(audio_chunks_out);
+                                        reply_clock.cut_in();
                                         if model_generating
                                             || left > Duration::from_millis(BARGE_IN_FINISH_MS)
                                         {
@@ -9329,6 +9382,7 @@ pub async fn run_session(
                                             } else {
                                                 local_eou_sent += 1;
                                                 model_turn_pending = true;
+                                                reply_clock.disarm();
                                                 chunks_at_last_caller_eou = audio_chunks_out;
                                                 bytes_at_last_caller_eou = downlink_pcm_bytes;
                                                 turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
@@ -9392,6 +9446,7 @@ pub async fn run_session(
                         {
                             barged_at_chunks = Some(audio_chunks_out);
                             barge_ins += 1;
+                            reply_clock.cut_in();
                             play_head.request_flush();
                             play_head.set_generating(false);
                             mute_model_audio = model_generating;
@@ -9617,6 +9672,7 @@ pub async fn run_session(
                                 last_caller_eou_at = Some(tokio::time::Instant::now());
                                 turns_at_last_caller_eou = turns_done;
                                 ai_reply_text.clear();
+                                reply_clock.caller_turn_ended(tokio::time::Instant::now(), silence_ms);
                                 info!(
                                     "Gemini Live {} serial={serial} silence_ms={silence_ms} voiced_ms={voiced_ms} activity_ms={activity_ms} forced={force_end} short={} raw_max={turn_raw_max:.0} floor={:.0} n={local_eou_sent} chunks_out={audio_chunks_out}",
                                     if server_vad { "caller voice end (local)" } else { "activityEnd" },
@@ -9672,6 +9728,11 @@ pub async fn run_session(
         .is_ok();
         info!("Gemini Live waited for {n} function call(s) at session end serial={serial} finished={done}");
     }
+    let replies = reply_clock.summary();
+    info!(
+        "Gemini reply latency summary serial={serial} replies={} avg_ms={} median_ms={} max_ms={}",
+        replies.count, replies.avg_ms, replies.median_ms, replies.max_ms
+    );
     info!(
         "Gemini Live session end serial={serial} reason={} out={audio_chunks_out} in={audio_chunks_in} eou={local_eou_sent} uplink_frames={uplink_frames} gated_frames={gated_frames} floor={:.0} stall={stall_on} stall_hits={stall_hits:?} own_matter={own_matter} idle_nudges={idle_nudges} rotations={rotations} server_vad={server_vad} barge_in={} barge_ins={barge_ins} backchannels={backchannels} tokens_in={usage_prompt_tokens} tokens_out={usage_response_tokens} talk_s={} (API closed)",
         end_reason.as_str(),
