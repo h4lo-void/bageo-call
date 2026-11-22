@@ -17,9 +17,78 @@
 
 use crate::country_profile::Region;
 use crate::locale::Lang;
+use crate::prompt_book::Text;
 use crate::stall_review::{Confidence, Verdict};
 
-crate::prompt_book::prompt_texts! {}
+// The words are in the prompt book (data/prompts/<language>.json); these are their handles.
+crate::prompt_book::prompt_texts! {
+    ZH_CUE_MARK = "zh-TW/scenario_cue_mark";
+    ZH_CUE_DELIVERY = "zh-TW/scenario_cue_delivery";
+    ZH_CUE_BANK_VERIFY = "zh-TW/scenario_cue_bank_verify";
+    ZH_CUE_IMPORTANT_NOTICE = "zh-TW/scenario_cue_important_notice";
+    ZH_CUE_SCHEDULE_INVITE = "zh-TW/scenario_cue_schedule_invite";
+    ZH_CUE_SCHEDULE_INVITE_BOOKING = "zh-TW/scenario_cue_schedule_invite_booking";
+    ZH_CUE_CASUAL_CHAT = "zh-TW/scenario_cue_casual_chat";
+    ZH_CUE_WRONG_NUMBER = "zh-TW/scenario_cue_wrong_number";
+    EN_CUE_MARK = "en/scenario_cue_mark";
+    EN_CUE_DELIVERY = "en/scenario_cue_delivery";
+    EN_CUE_BANK_VERIFY = "en/scenario_cue_bank_verify";
+    EN_CUE_IMPORTANT_NOTICE = "en/scenario_cue_important_notice";
+    EN_CUE_SCHEDULE_INVITE = "en/scenario_cue_schedule_invite";
+    EN_CUE_SCHEDULE_INVITE_BOOKING = "en/scenario_cue_schedule_invite_booking";
+    EN_CUE_CASUAL_CHAT = "en/scenario_cue_casual_chat";
+    EN_CUE_WRONG_NUMBER = "en/scenario_cue_wrong_number";
+    /// The mark of a cue for a caller in a language without a setting.
+    EN_OTHER_LANGUAGE_MARK = "en/scenario_other_language_mark";
+    JA_CUE_MARK = "ja/scenario_cue_mark";
+    JA_CUE_DELIVERY = "ja/scenario_cue_delivery";
+    JA_CUE_BANK_VERIFY = "ja/scenario_cue_bank_verify";
+    JA_CUE_IMPORTANT_NOTICE = "ja/scenario_cue_important_notice";
+    JA_CUE_SCHEDULE_INVITE = "ja/scenario_cue_schedule_invite";
+    JA_CUE_SCHEDULE_INVITE_BOOKING = "ja/scenario_cue_schedule_invite_booking";
+    JA_CUE_CASUAL_CHAT = "ja/scenario_cue_casual_chat";
+    JA_CUE_WRONG_NUMBER = "ja/scenario_cue_wrong_number";
+    KO_CUE_MARK = "ko/scenario_cue_mark";
+    KO_CUE_DELIVERY = "ko/scenario_cue_delivery";
+    KO_CUE_BANK_VERIFY = "ko/scenario_cue_bank_verify";
+    KO_CUE_IMPORTANT_NOTICE = "ko/scenario_cue_important_notice";
+    KO_CUE_SCHEDULE_INVITE = "ko/scenario_cue_schedule_invite";
+    KO_CUE_SCHEDULE_INVITE_BOOKING = "ko/scenario_cue_schedule_invite_booking";
+    KO_CUE_CASUAL_CHAT = "ko/scenario_cue_casual_chat";
+    KO_CUE_WRONG_NUMBER = "ko/scenario_cue_wrong_number";
+    ES_CUE_MARK = "es/scenario_cue_mark";
+    ES_CUE_DELIVERY = "es/scenario_cue_delivery";
+    ES_CUE_BANK_VERIFY = "es/scenario_cue_bank_verify";
+    ES_CUE_IMPORTANT_NOTICE = "es/scenario_cue_important_notice";
+    ES_CUE_SCHEDULE_INVITE = "es/scenario_cue_schedule_invite";
+    ES_CUE_SCHEDULE_INVITE_BOOKING = "es/scenario_cue_schedule_invite_booking";
+    ES_CUE_CASUAL_CHAT = "es/scenario_cue_casual_chat";
+    ES_CUE_WRONG_NUMBER = "es/scenario_cue_wrong_number";
+    FR_CUE_MARK = "fr/scenario_cue_mark";
+    FR_CUE_DELIVERY = "fr/scenario_cue_delivery";
+    FR_CUE_BANK_VERIFY = "fr/scenario_cue_bank_verify";
+    FR_CUE_IMPORTANT_NOTICE = "fr/scenario_cue_important_notice";
+    FR_CUE_SCHEDULE_INVITE = "fr/scenario_cue_schedule_invite";
+    FR_CUE_SCHEDULE_INVITE_BOOKING = "fr/scenario_cue_schedule_invite_booking";
+    FR_CUE_CASUAL_CHAT = "fr/scenario_cue_casual_chat";
+    FR_CUE_WRONG_NUMBER = "fr/scenario_cue_wrong_number";
+    DE_CUE_MARK = "de/scenario_cue_mark";
+    DE_CUE_DELIVERY = "de/scenario_cue_delivery";
+    DE_CUE_BANK_VERIFY = "de/scenario_cue_bank_verify";
+    DE_CUE_IMPORTANT_NOTICE = "de/scenario_cue_important_notice";
+    DE_CUE_SCHEDULE_INVITE = "de/scenario_cue_schedule_invite";
+    DE_CUE_SCHEDULE_INVITE_BOOKING = "de/scenario_cue_schedule_invite_booking";
+    DE_CUE_CASUAL_CHAT = "de/scenario_cue_casual_chat";
+    DE_CUE_WRONG_NUMBER = "de/scenario_cue_wrong_number";
+    PT_CUE_MARK = "pt/scenario_cue_mark";
+    PT_CUE_DELIVERY = "pt/scenario_cue_delivery";
+    PT_CUE_BANK_VERIFY = "pt/scenario_cue_bank_verify";
+    PT_CUE_IMPORTANT_NOTICE = "pt/scenario_cue_important_notice";
+    PT_CUE_SCHEDULE_INVITE = "pt/scenario_cue_schedule_invite";
+    PT_CUE_SCHEDULE_INVITE_BOOKING = "pt/scenario_cue_schedule_invite_booking";
+    PT_CUE_CASUAL_CHAT = "pt/scenario_cue_casual_chat";
+    PT_CUE_WRONG_NUMBER = "pt/scenario_cue_wrong_number";
+}
 
 /// What an ordinary call is about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -73,78 +142,78 @@ pub const MAX_CUE_CHARS: usize = 100;
 /// wrong_number — each a colleague's short reminder of what kind of call it is
 /// and where to take it, with the lines not to cross; never a line to say.
 /// Simplified Chinese is converted from Traditional.
-const CUES: [(Lang, &str, [&str; 7]); 8] = [
-    (Lang::ZhTw, "【系統小抄·不是對方說的】", [
-        "是快遞，照這裡的習慣讓他把東西放好就好；貨到付款先問金額和寄件人，他道謝收尾就自然說掰掰。",
-        "像銀行在核對刷卡：聽清楚金額、商店、時間，不說是不是你刷的、沒印象或要再想想，也不答應停卡或卡控，說你晚點自己打卡片背面的客服確認。",
-        "是正事通知，認真聽完，別推說在忙或說要確認一下；缺什麼（單位、期限、回電號碼）一次問一項，重要數字複誦。",
-        "有人約時間，開心接住，說那天晚點回他，時間先不說死，也別說要確認或查一下。",
-        "有人約時間，開心接住，照預約流程記下時間，複誦一次。",
-        "親友來聊天，放鬆跟著聊就好，不用一直問、不用客服腔。",
-        "像是打錯了，簡短跟他說就好，別報出你的名字或身分。",
+static CUES: [(Lang, &Text, [&Text; 7]); 8] = [
+    (Lang::ZhTw, &ZH_CUE_MARK, [
+        &ZH_CUE_DELIVERY,
+        &ZH_CUE_BANK_VERIFY,
+        &ZH_CUE_IMPORTANT_NOTICE,
+        &ZH_CUE_SCHEDULE_INVITE,
+        &ZH_CUE_SCHEDULE_INVITE_BOOKING,
+        &ZH_CUE_CASUAL_CHAT,
+        &ZH_CUE_WRONG_NUMBER,
     ]),
-    (Lang::En, "[Note] ", [
-        "Courier: leave it as usual; COD: amount, sender; they thank you: say bye.",
-        "Bank checking a charge: note amount, shop, time; neither yes nor no, no block; you'll call.",
-        "Notice: hear it all; ask what's missing (who, deadline, callback no.); repeat key figures.",
-        "Scheduling: welcome it; you'll get back to them later; no time fixed yet.",
-        "Scheduling: welcome it, book the date and time with the booking steps, repeat them.",
-        "Family or friend chat: relax, talk as usual, no list of questions, no service tone.",
-        "Wrong number: say so briefly; never give the owner's name or identity.",
+    (Lang::En, &EN_CUE_MARK, [
+        &EN_CUE_DELIVERY,
+        &EN_CUE_BANK_VERIFY,
+        &EN_CUE_IMPORTANT_NOTICE,
+        &EN_CUE_SCHEDULE_INVITE,
+        &EN_CUE_SCHEDULE_INVITE_BOOKING,
+        &EN_CUE_CASUAL_CHAT,
+        &EN_CUE_WRONG_NUMBER,
     ]),
-    (Lang::Ja, "[メモ] ", [
-        "宅配：いつもの置き方で。代引きは金額と差出人、お礼で締められたら挨拶を返す。",
-        "カード会社の確認らしい：金額・店名・時刻を聞き、本人利用とも違うとも覚えがないとも言わず、停止にも同意せず、後で公式窓口に確認すると伝える。",
-        "大事な連絡：最後まで聞き、足りない点（部署・期限・折り返し番号）を一つずつ聞き、数字は復唱。",
-        "日程の誘い：明るく受け、後で連絡すると伝え、日時はまだ決めない。",
-        "日程の誘い：明るく受け、予約の手順で日時を記録し復唱。",
-        "家族・友人との雑談：いつも通り気楽に。質問攻めや事務的な口調はなし。",
-        "間違い電話らしい：短く伝え、持ち主の名前や身元は言わない。",
+    (Lang::Ja, &JA_CUE_MARK, [
+        &JA_CUE_DELIVERY,
+        &JA_CUE_BANK_VERIFY,
+        &JA_CUE_IMPORTANT_NOTICE,
+        &JA_CUE_SCHEDULE_INVITE,
+        &JA_CUE_SCHEDULE_INVITE_BOOKING,
+        &JA_CUE_CASUAL_CHAT,
+        &JA_CUE_WRONG_NUMBER,
     ]),
-    (Lang::Ko, "[메모] ", [
-        "택배: 평소처럼 두게 하고, 착불이면 금액·보낸 사람 확인, 감사 인사엔 인사로 답하기.",
-        "카드사 확인 같아요: 금액·가맹점·시간을 듣고, 본인 사용 여부도 기억 안 난다고도 말하지 말고 정지 동의 없이 나중에 직접 고객센터에 확인한다고 하기.",
-        "중요한 연락: 끝까지 듣고 빠진 것(부서·기한·회신 번호)을 하나씩 묻고 숫자는 복창.",
-        "일정 약속: 반갑게 받고 나중에 연락하겠다고 하며 시간은 아직 정하지 않기.",
-        "일정 약속: 반갑게 받고 예약 절차대로 날짜와 시간을 기록하고 복창.",
-        "가족·친구와 수다: 평소처럼 편하게, 캐묻거나 상담원 말투 없이.",
-        "잘못 걸린 전화: 짧게 알려 주고 주인 이름이나 신원은 말하지 않기.",
+    (Lang::Ko, &KO_CUE_MARK, [
+        &KO_CUE_DELIVERY,
+        &KO_CUE_BANK_VERIFY,
+        &KO_CUE_IMPORTANT_NOTICE,
+        &KO_CUE_SCHEDULE_INVITE,
+        &KO_CUE_SCHEDULE_INVITE_BOOKING,
+        &KO_CUE_CASUAL_CHAT,
+        &KO_CUE_WRONG_NUMBER,
     ]),
-    (Lang::Es, "[Nota] ", [
-        "Envío: como se suele; contra reembolso: importe, remitente; si agradece, despídete.",
-        "Banco revisando un cargo: anota importe, comercio, hora; ni sí ni no; sin bloqueo; llamas tú.",
-        "Aviso importante: escucha todo, pide lo que falte (área, plazo, número) y repite las cifras.",
-        "Cita: acéptala con gusto; di que lo confirmas luego; sin fijar hora.",
-        "Cita: acéptala con gusto, anota fecha y hora con la reserva y repítelas.",
-        "Familia o amigos: charla relajada, como siempre, sin interrogar.",
-        "Número equivocado: dilo en breve, sin el nombre ni datos del titular.",
+    (Lang::Es, &ES_CUE_MARK, [
+        &ES_CUE_DELIVERY,
+        &ES_CUE_BANK_VERIFY,
+        &ES_CUE_IMPORTANT_NOTICE,
+        &ES_CUE_SCHEDULE_INVITE,
+        &ES_CUE_SCHEDULE_INVITE_BOOKING,
+        &ES_CUE_CASUAL_CHAT,
+        &ES_CUE_WRONG_NUMBER,
     ]),
-    (Lang::Fr, "[Note] ", [
-        "Colis : comme d'habitude ; à payer : combien, de qui ; s'il remercie, au revoir.",
-        "Banque, un achat : montant, commerce, heure ; ni oui ni non ; aucun blocage ; tu rappelles.",
-        "Avis : écoute tout, demande ce qui manque (service, délai, numéro), répète les chiffres.",
-        "Rendez-vous : accueille-le, tu confirmeras plus tard ; rien de fixé.",
-        "Rendez-vous : accueille-le, note date et heure avec la réservation, répète-les.",
-        "Proche ou ami : discute tranquille, comme d'habitude, sans interroger.",
-        "Faux numéro : dis-le simplement, sans le nom ni l'identité du titulaire.",
+    (Lang::Fr, &FR_CUE_MARK, [
+        &FR_CUE_DELIVERY,
+        &FR_CUE_BANK_VERIFY,
+        &FR_CUE_IMPORTANT_NOTICE,
+        &FR_CUE_SCHEDULE_INVITE,
+        &FR_CUE_SCHEDULE_INVITE_BOOKING,
+        &FR_CUE_CASUAL_CHAT,
+        &FR_CUE_WRONG_NUMBER,
     ]),
-    (Lang::De, "[Note] ", [
-        "Paket: wie üblich abgeben lassen; Nachnahme: Betrag, Absender; dankt er, verabschiede dich.",
-        "Bank prüft Kauf: Betrag, Händler, Zeit; weder ja noch nein; nichts sperren; selbst anrufen.",
-        "Mitteilung: zuhören, Fehlendes (Stelle, Frist, Rückrufnummer) erfragen, Zahlen wiederholen.",
-        "Termin: gern annehmen, du meldest dich später dazu; noch nichts festlegen.",
-        "Termin: gern annehmen, Datum und Uhrzeit per Buchung notieren und wiederholen.",
-        "Familie oder Freunde: locker plaudern wie immer, nicht ausfragen.",
-        "Falsch verbunden: kurz sagen; keinen Namen, keine Angaben des Inhabers.",
+    (Lang::De, &DE_CUE_MARK, [
+        &DE_CUE_DELIVERY,
+        &DE_CUE_BANK_VERIFY,
+        &DE_CUE_IMPORTANT_NOTICE,
+        &DE_CUE_SCHEDULE_INVITE,
+        &DE_CUE_SCHEDULE_INVITE_BOOKING,
+        &DE_CUE_CASUAL_CHAT,
+        &DE_CUE_WRONG_NUMBER,
     ]),
-    (Lang::Pt, "[Nota] ", [
-        "Entrega: como de costume; a pagar: valor, remetente; se ele agradecer, despeça-se.",
-        "Banco conferindo compra: valor, loja, hora; nem sim nem não; sem bloqueio; você liga depois.",
-        "Aviso importante: ouça tudo, pergunte o que falta (setor, prazo, número), repita os números.",
-        "Marcação: aceite com alegria, diga que confirma depois; sem fechar horário.",
-        "Marcação: aceite com alegria, registre data e hora pela reserva e repita.",
-        "Família ou amigos: conversa leve, como sempre, sem interrogar.",
-        "Número errado: diga em breve, sem o nome nem dados do titular.",
+    (Lang::Pt, &PT_CUE_MARK, [
+        &PT_CUE_DELIVERY,
+        &PT_CUE_BANK_VERIFY,
+        &PT_CUE_IMPORTANT_NOTICE,
+        &PT_CUE_SCHEDULE_INVITE,
+        &PT_CUE_SCHEDULE_INVITE_BOOKING,
+        &PT_CUE_CASUAL_CHAT,
+        &PT_CUE_WRONG_NUMBER,
     ]),
 ];
 
@@ -167,7 +236,7 @@ pub fn cue(scenario: Scenario, lang: Lang, _region: Option<Region>, booking: boo
     };
     let row_lang = if lang == Lang::ZhCn { Lang::ZhTw } else { lang.base() };
     let (_, mark, texts) = CUES.iter().find(|(l, _, _)| *l == row_lang)?;
-    let text = format!("{mark}{}", texts[i]);
+    let text = format!("{}{}", mark.get(), texts[i].get());
     Some(if lang == Lang::ZhCn { crate::zh_convert::to_cn(&text) } else { text })
 }
 
@@ -175,7 +244,7 @@ pub fn cue(scenario: Scenario, lang: Lang, _region: Option<Region>, booking: boo
 /// scripts: the caller converts the whole note).
 pub fn note_mark(lang: Lang) -> &'static str {
     let row_lang = if lang == Lang::ZhCn { Lang::ZhTw } else { lang.base() };
-    CUES.iter().find(|(l, _, _)| *l == row_lang).map_or("[Note] ", |(_, mark, _)| *mark)
+    CUES.iter().find(|(l, _, _)| *l == row_lang).map_or("[Note] ", |(_, mark, _)| mark.get())
 }
 
 /// Words of a courier or a delivery, in the languages of the cues.
@@ -457,7 +526,7 @@ impl Router {
         if other {
             let en = cue(s, Lang::En, self.region, self.booking)?;
             let text = en.strip_prefix(note_mark(Lang::En)).unwrap_or(&en);
-            return Some((s, format!("{OTHER_LANGUAGE_MARK}{text}")));
+            return Some((s, format!("{EN_OTHER_LANGUAGE_MARK}{text}")));
         }
         let lang = match spoken {
             Some(l) if !(l.is_zh() && self.lang.is_zh()) => l,
@@ -466,9 +535,6 @@ impl Router {
         Some((s, cue(s, lang, self.region, self.booking)?))
     }
 }
-
-/// The mark of a cue for a caller in a language without a setting.
-const OTHER_LANGUAGE_MARK: &str = "[Note, in caller's language] ";
 
 #[cfg(test)]
 mod tests {
@@ -654,8 +720,8 @@ mod tests {
         let mut r = Router::new(Lang::ZhTw, Some(self::r("tw")), false);
         r.on_review(Scenario::Delivery, Verdict::Normal, Confidence::High, false);
         let (_, text) = r.take_pending(false, Some(Lang::ZhTw), true).unwrap();
-        assert!(text.starts_with(OTHER_LANGUAGE_MARK) && !text.contains("系統小抄") && !text.contains("[Note] "), "{text}");
-        assert!(text.chars().count() <= MAX_CUE_CHARS + OTHER_LANGUAGE_MARK.len(), "{text}");
+        assert!(text.starts_with(EN_OTHER_LANGUAGE_MARK.get()) && !text.contains("系統小抄") && !text.contains("[Note] "), "{text}");
+        assert!(text.chars().count() <= MAX_CUE_CHARS + EN_OTHER_LANGUAGE_MARK.get().len(), "{text}");
     }
 }
 

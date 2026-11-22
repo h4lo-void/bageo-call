@@ -250,6 +250,14 @@ crate::prompt_book::prompt_texts! {
     PT_SHORT_TEXT_END = "pt/short_text_end";
     PT_SHORT_TEXT_PERSONA = "pt/short_text_persona";
     PT_SHORT_TEXT_ASSISTANT = "pt/short_text_assistant";
+    ZH_CALL_LANGUAGE_NOTE = "zh-TW/prompts_call_language_note";
+    EN_CALL_LANGUAGE_NOTE = "en/prompts_call_language_note";
+    ZH_OTHER_CALL_LANGUAGE_NOTE = "zh-TW/prompts_other_call_language_note";
+    EN_OTHER_CALL_LANGUAGE_NOTE = "en/prompts_other_call_language_note";
+    ZH_LANGUAGE_DRIFT_NOTE = "zh-TW/prompts_language_drift_note";
+    EN_LANGUAGE_DRIFT_NOTE = "en/prompts_language_drift_note";
+    ZH_LEGACY_PERSONA_V2 = "zh-TW/prompts_legacy_persona_v2";
+    EN_EXT_LANGUAGE_LINE = "en/prompts_ext_language_line";
     EN_RENDER_1 = "en/render_1";
     EN_RENDER_2 = "en/render_2";
     EN_RENDER_3 = "en/render_3";
@@ -513,7 +521,7 @@ fn generic_pack(lang: Lang) -> Pack {
     let st = short_text(lang);
     // Another language's prompts are the English ones that name it.
     let language = match lang {
-        Lang::Ext(_) => format!("Speak {}, in everyday phone speech.", ph.name_en),
+        Lang::Ext(_) => EN_EXT_LANGUAGE_LINE.fill(&[("language", &ph.name_en)]),
         _ => st.language.to_string(),
     };
     let short = |t: &str| -> String {
@@ -771,10 +779,10 @@ fn zh_call_label(lang: Lang) -> &'static str {
 pub fn call_language_note(pack_lang: Lang, call: Lang) -> String {
     if zh_ins(pack_lang) {
         let l = zh_call_label(call);
-        zh_text(pack_lang, format!("（這通電話對方講{l}，這句也用{l}說，不要換成別的語言。）"))
+        zh_text(pack_lang, ZH_CALL_LANGUAGE_NOTE.fill(&[("caller_language", &l)]))
     } else {
         let l = crate::urgency::language_name(call);
-        format!(" (The caller is speaking {l} on this call: say it in {l}, without switching to another language.)")
+        EN_CALL_LANGUAGE_NOTE.fill(&[("caller_language", &l)])
     }
 }
 
@@ -783,9 +791,9 @@ pub fn call_language_note(pack_lang: Lang, call: Lang) -> String {
 /// falling back to the owner's setting language.
 pub fn other_call_language_note(pack_lang: Lang) -> String {
     if zh_ins(pack_lang) {
-        zh_text(pack_lang, "（用對方正在講的語言說這句。）".to_string())
+        zh_text(pack_lang, ZH_OTHER_CALL_LANGUAGE_NOTE.get().to_string())
     } else {
-        " (Say this in the language the caller is speaking.)".to_string()
+        EN_OTHER_CALL_LANGUAGE_NOTE.get().to_string()
     }
 }
 
@@ -797,11 +805,11 @@ pub fn language_drift_note(pack_lang: Lang, call: Lang) -> String {
         let l = zh_call_label(call);
         zh_text(
             pack_lang,
-            format!("【系統提示·不是對方說的話】對方講的是{l}，你剛剛那句換成別的語言了。接下來一直用{l}回，對方自己整句換成別的語言才跟著換。"),
+            ZH_LANGUAGE_DRIFT_NOTE.fill(&[("caller_language", &l)]),
         )
     } else {
         let l = crate::urgency::language_name(call);
-        format!("[System note — not said by the caller] The caller is speaking {l}, but your last line came out in another language. Answer in {l} from now on; change only if the caller clearly switches whole sentences to another language.")
+        EN_LANGUAGE_DRIFT_NOTE.fill(&[("caller_language", &l)])
     }
 }
 
@@ -1234,18 +1242,12 @@ fn legacy_templates() -> &'static [(Lang, bool, String)] {
     LEGACY.get_or_init(|| {
         let tw = gl::legacy_persona_prompt().replace(gl::PERSONA_LANGUAGE_LINE_LEGACY.get(), gl::PERSONA_LANGUAGE_LINE_CAF7BC4);
         let cn = to_cn(&tw);
-        let v2_tw = format!(
-            "【你是誰】你就是{{owner}}本人，在接自己的電話。不要自我介紹，不要說自己是幫誰接的。\n\n\
-【講話的樣子】像真人講電話：用自己的話，簡短、自然、口語；不要客服腔，不要念稿，不要條列。{}\n\n\
-【接起來】先簡短打聲招呼就停，讓對方說。\n\n\
-【聽對方說】對方講事情就讓他講完，不搶話。需要處理的事，弄清楚是誰打來、什麼事、要你做什麼。講電話的當下你查不了任何東西，也不知道{{owner}}的行程：不要編答案，也不要叫對方等。\n\n\
-【不答應的事】{}{}\n\n\
-{}",
-            gl::PERSONA_LANGUAGE_LINE.get(),
-            gl::PERSONA_HOLD_OFF_DEFAULT.get(),
-            gl::PERSONA_SALES_REJECT_DEFAULT.get(),
-            gl::PERSONA_END_DEFAULT.get()
-        );
+        let v2_tw = ZH_LEGACY_PERSONA_V2.fill(&[
+            ("language_line", &gl::PERSONA_LANGUAGE_LINE.get()),
+            ("hold_off", &gl::PERSONA_HOLD_OFF_DEFAULT.get()),
+            ("sales_reject", &gl::PERSONA_SALES_REJECT_DEFAULT.get()),
+            ("end", &gl::PERSONA_END_DEFAULT.get()),
+        ]);
         let v2_cn = to_cn(&v2_tw);
         let mut all = vec![(Lang::ZhTw, false, tw), (Lang::ZhCn, false, cn)];
         for l in locale::ALL.iter() {

@@ -32,6 +32,20 @@
       "[Things you should not agree to] Dinheiro e dados pessoais: não aceite nada e não informe nada; diga que vai repassar para {owner}. {SALES}",
       "",
       "{END}"
-    ]
+    ],
+    "errands_check_assistant": "Vou confirmar com {owner}, um momento por favor",
+    "errands_example_question": "Não há mesa às 7; às 7:30 tudo bem?",
+    "errands_readback": "Então fica para hoje às 16:30, certo?",
+    "errands_intro_assistant": "Olá, falo em nome de {owner}",
+    "errands_intro_owner": "Olá, aqui é {owner}",
+    "appointments_read_back_example": "\"Então fica para {weekday}, {day} de {month}, às {hour}:{minute}, certo?\"",
+    "scenario_cue_mark": "[Nota] ",
+    "scenario_cue_delivery": "Entrega: como de costume; a pagar: valor, remetente; se ele agradecer, despeça-se.",
+    "scenario_cue_bank_verify": "Banco conferindo compra: valor, loja, hora; nem sim nem não; sem bloqueio; você liga depois.",
+    "scenario_cue_important_notice": "Aviso importante: ouça tudo, pergunte o que falta (setor, prazo, número), repita os números.",
+    "scenario_cue_schedule_invite": "Marcação: aceite com alegria, diga que confirma depois; sem fechar horário.",
+    "scenario_cue_schedule_invite_booking": "Marcação: aceite com alegria, registre data e hora pela reserva e repita.",
+    "scenario_cue_casual_chat": "Família ou amigos: conversa leve, como sempre, sem interrogar.",
+    "scenario_cue_wrong_number": "Número errado: diga em breve, sem o nome nem dados do titular."
   }
 }

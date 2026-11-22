@@ -34,6 +34,19 @@
       "{END}"
     ],
     "errands_errand_prompt_with_1": "Um 19 Uhr ist kein Tisch frei; passt 19:30 Uhr?",
-    "errands_errand_prompt_with_2": "Also heute Nachmittag um 16:30 Uhr, richtig?"
+    "errands_errand_prompt_with_2": "Also heute Nachmittag um 16:30 Uhr, richtig?",
+    "errands_check_assistant": "Ich frage kurz bei {owner} nach, einen Moment bitte",
+    "errands_check_owner": "Ich prüfe das kurz, einen Moment bitte",
+    "errands_intro_assistant": "Guten Tag, ich rufe im Auftrag von {owner} an",
+    "errands_intro_owner": "Guten Tag, hier spricht {owner}",
+    "appointments_read_back_example": "\"Also {weekday}, der {day}. {month} um {hour}:{minute} Uhr, stimmt das?\"",
+    "scenario_cue_mark": "[Note] ",
+    "scenario_cue_delivery": "Paket: wie üblich abgeben lassen; Nachnahme: Betrag, Absender; dankt er, verabschiede dich.",
+    "scenario_cue_bank_verify": "Bank prüft Kauf: Betrag, Händler, Zeit; weder ja noch nein; nichts sperren; selbst anrufen.",
+    "scenario_cue_important_notice": "Mitteilung: zuhören, Fehlendes (Stelle, Frist, Rückrufnummer) erfragen, Zahlen wiederholen.",
+    "scenario_cue_schedule_invite": "Termin: gern annehmen, du meldest dich später dazu; noch nichts festlegen.",
+    "scenario_cue_schedule_invite_booking": "Termin: gern annehmen, Datum und Uhrzeit per Buchung notieren und wiederholen.",
+    "scenario_cue_casual_chat": "Familie oder Freunde: locker plaudern wie immer, nicht ausfragen.",
+    "scenario_cue_wrong_number": "Falsch verbunden: kurz sagen; keinen Namen, keine Angaben des Inhabers."
   }
 }

@@ -85,6 +85,17 @@ crate::prompt_book::prompt_texts! {
     EN_LIVE_CALLBACK_UNHEARD_CLIENT_CONTENT_1 = "en/live_callback_unheard_client_content_1";
     EN_LIVE_CALLBACK_UNHEARD_CLIENT_CONTENT_2 = "en/live_callback_unheard_client_content_2";
     ZH_LIVE_CLARIFY_OR_RECAP_KICK_TEXT = "zh-TW/live_clarify_or_recap_kick_text";
+    ZH_LIVE_GREET_KICK_STYLE_HI_NOTE = "zh-TW/live_greet_kick_style_hi_note";
+    ZH_LIVE_GREET_KICK_STYLE_HELLO_LEAVE_MESSAGE = "zh-TW/live_greet_kick_style_hello_leave_message";
+    ZH_LIVE_GREET_KICK_STYLE_LISTENING = "zh-TW/live_greet_kick_style_listening";
+    ZH_LIVE_GREET_KICK_STYLE_HALLO = "zh-TW/live_greet_kick_style_hallo";
+    ZH_LIVE_GREET_KICK_STYLE_STATE_REASON = "zh-TW/live_greet_kick_style_state_reason";
+    ZH_LIVE_GREET_KICK_STYLE_AWAY = "zh-TW/live_greet_kick_style_away";
+    ZH_LIVE_GREET_KICK_OPEN = "zh-TW/live_greet_kick_open";
+    ZH_LIVE_GREET_KICK_OPEN_WITH_STATUS = "zh-TW/live_greet_kick_open_with_status";
+    ZH_LIVE_STATUS_RETRY_KICK = "zh-TW/live_status_retry_kick";
+    ZH_LIVE_OWNER_STATUS_BLOCK = "zh-TW/live_owner_status_block";
+    ZH_LIVE_DEFAULT_PERSONA_PROMPT = "zh-TW/live_default_persona_prompt";
 }
 
 const DEFAULT_MODEL: &str = "gemini-3.8-live";
@@ -578,13 +589,13 @@ pub async fn speak_lines_coded(
 }
 
 /// Spoken opening styles rotated per call (kick picks one; do not recite as a script).
-const GREET_KICK_STYLES: &[&str] = &[
-    "嗨，我是這邊的 AI 助理，您說，我幫您記下來轉達。",
-    "你好呀，我是 AI 助理。有要留話或轉達的，直接說就好。",
-    "喂，我來聽。我是 AI 助理，要幫忙轉達什麼？",
-    "哈囉，我是 AI 助理。您請說，我幫您轉達。",
-    "你好，我是 AI 助理。您請說事由就好，我幫您記下來轉達。",
-    "嗨嗨，我是 AI 助理，人現在不在，我可以幫您轉達。",
+static GREET_KICK_STYLES: [&crate::prompt_book::Text; 6] = [
+    &ZH_LIVE_GREET_KICK_STYLE_HI_NOTE,
+    &ZH_LIVE_GREET_KICK_STYLE_HELLO_LEAVE_MESSAGE,
+    &ZH_LIVE_GREET_KICK_STYLE_LISTENING,
+    &ZH_LIVE_GREET_KICK_STYLE_HALLO,
+    &ZH_LIVE_GREET_KICK_STYLE_STATE_REASON,
+    &ZH_LIVE_GREET_KICK_STYLE_AWAY,
 ];
 
 fn greets_kick_style_index(seed: u128) -> usize {
@@ -641,17 +652,13 @@ pub fn with_owner_status(system: &str, enabled: bool, text: &str) -> String {
         return system.to_string();
     }
     let base = neutralize_opening_conflicts(system);
-    format!(
-        "{OWNER_STATUS_BEGIN}\
-這通電話最高優先：你一開口的第一句就必須親口說出下面原文\
-（前後可加「嗨／我是 AI 助理」，但原文詞必須出現）：\
-{OWNER_STATUS_CONTENT_PREFIX}{status}\n\
-{OWNER_STATUS_CONTENT_END}\
-不准只問好、不准等對方先問、不准說不知道、不准用別的句子代替這段。\
-不要唸「目前狀態」四個字。講完現況再用半句請對方留話或轉達。\
-即使對方已經在說話，也要先把這段講完再回應。\n\n\
-{base}"
-    )
+    ZH_LIVE_OWNER_STATUS_BLOCK.fill(&[
+        ("status_begin", &OWNER_STATUS_BEGIN),
+        ("content_prefix", &OWNER_STATUS_CONTENT_PREFIX),
+        ("status", &status),
+        ("content_end", &OWNER_STATUS_CONTENT_END),
+        ("base", &base),
+    ])
 }
 
 /// Pull the desk-status note back out of a system prompt (empty if unset).
@@ -671,29 +678,13 @@ fn greets_kick_user_text(style_idx: usize) -> String {
 }
 
 fn greets_kick_user_text_for(style_idx: usize, owner_status: &str) -> String {
-    let sample = GREET_KICK_STYLES[style_idx % GREET_KICK_STYLES.len()];
-    let text = format!(
-        "來電已接通。對方剛聽完時段轉接錄音，不要重複「轉接專人／請稍後」。\
-請立刻用一句自然有溫度的台灣華語開場（一兩句、像真人接電話）。\
-本通請用接近這個感覺、但不要逐字照唸：「{sample}」。\
-禁止固定唸「我是AI助手／有什麼要轉達」或同一句罐頭開場。\
-可自然表明你是 AI 助理、願意幫忙轉達或聽事由。不要長篇自我介紹。\
-不要問找哪位、找誰、是不是王先生；對方不知道名字也可以直接留話。\
-此回合只開場，絕對不要說再見／掰掰／感謝來電，也不要空轉達。不要自稱主人助理，不要問要不要回電。"
-    );
+    let sample = GREET_KICK_STYLES[style_idx % GREET_KICK_STYLES.len()].get();
+    let text = ZH_LIVE_GREET_KICK_OPEN.fill(&[("sample", &sample)]);
     let status = sanitize_owner_status(owner_status);
     if status.is_empty() {
         return text;
     }
-    format!(
-        "【系統指令·立刻開口·這不是來電者講的話】\
-來電已接通。對方剛聽完時段轉接錄音，不要重複「轉接專人／請稍後」。\
-你現在必須立刻用嘴巴講開場。第一句話就必須包含這段原文，關鍵詞一個都不能少：「{status}」。\
-不准省略，不准等對方先問。\
-完整感覺接近：「嗨，我是 AI 助理。{status}。還有要轉達的直接說。」不要只問好就停。\
-禁止跳過現況。禁止先問對方有什麼事再講現況。禁止等對方說話。\
-不要問找哪位、找誰、是不是王先生。此回合只開場，絕對不要說再見／掰掰／感謝來電，也不要空轉達。不要自稱主人助理。"
-    )
+    ZH_LIVE_GREET_KICK_OPEN_WITH_STATUS.fill(&[("status", &status)])
 }
 
 fn status_retry_kick_client_content(owner_status: &str) -> String {
@@ -703,10 +694,7 @@ fn status_retry_kick_client_content(owner_status: &str) -> String {
             "turns": [{
                 "role": "user",
                 "parts": [{
-                    "text": format!(
-                        "【系統指令·補講現況】你剛剛開場沒有把現況講清楚。立刻再講一句，\
-第一個詞開始就要包含這段原文：「{status}」。不准再只問好。講完再用半句請對方留話。不要說再見。"
-                    )
+                    "text": ZH_LIVE_STATUS_RETRY_KICK.fill(&[("status", &status)])
                 }]
             }],
             "turnComplete": true
@@ -819,14 +807,12 @@ pub(crate) fn legacy_persona_prompt() -> &'static str {
 pub fn default_persona_prompt() -> &'static str {
     static PROMPT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     PROMPT.get_or_init(|| {
-        format!(
-            "【你是誰】你就是{{owner}}本人，在接自己的電話。不要自我介紹，不要說自己是幫誰接的；被問是不是{{owner}}就自然回「對，我是」。\n\n\
-【講話的樣子】像真人講電話：用自己的話，簡短、自然、口語；不要客服腔，不要念稿，不要條列。{PERSONA_LANGUAGE_LINE}\n\n\
-【接起來】先簡短打聲招呼就停，讓對方說。\n\n\
-【聽對方說】對方講事情就讓他講完，不搶話。需要處理的事，弄清楚是誰打來、什麼事、要你做什麼。講電話的當下你查不了任何東西，這點自己知道就好，別跟對方說「沒辦法查／不清楚行程」：不要編答案，也不要叫對方等；有人約時間或問有沒有空就自然說「我晚點看一下再跟你說」。\n\n\
-【不答應的事】{PERSONA_HOLD_OFF_DEFAULT}{PERSONA_SALES_REJECT_DEFAULT}\n\n\
-{PERSONA_END_DEFAULT}"
-        )
+        ZH_LIVE_DEFAULT_PERSONA_PROMPT.fill(&[
+            ("language_line", &PERSONA_LANGUAGE_LINE),
+            ("hold_off", &PERSONA_HOLD_OFF_DEFAULT),
+            ("sales_reject", &PERSONA_SALES_REJECT_DEFAULT),
+            ("end", &PERSONA_END_DEFAULT),
+        ])
     })
 }
 
@@ -12738,6 +12724,7 @@ mod tests {
         ));
         // Kick/opening lines must never arm.
         for style in GREET_KICK_STYLES {
+            let style = style.get();
             assert!(
                 !looks_like_complete_relay_ack(style),
                 "greeting style must not be a recap: {style}"
@@ -12913,6 +12900,7 @@ mod tests {
         assert!(p.contains("語氣溫暖"));
         assert!(GREET_KICK_STYLES.len() >= 5);
         for style in GREET_KICK_STYLES {
+            let style = style.get();
             assert!(style.contains("AI 助理"));
             assert!(
                 style.contains("轉達") || style.contains("留話"),
@@ -12938,7 +12926,7 @@ mod tests {
             assert!(t.contains("禁止固定唸「我是AI助手／有什麼要轉達」"));
             assert!(t.contains("絕對不要說再見"));
             assert!(t.contains("不要自稱主人助理"));
-            assert!(t.contains(GREET_KICK_STYLES[i]));
+            assert!(t.contains(GREET_KICK_STYLES[i].get()));
         }
         let live = greets_kick_client_content();
         assert!(live.contains("clientContent"));

@@ -58,6 +58,8 @@ crate::prompt_book::prompt_texts! {
     DIALECT_STT_NOTE = "en/stall_review_dialect_stt_note";
     EN_STALL_REVIEW_PURPOSE_LINE_1 = "en/stall_review_purpose_line_1";
     EN_STALL_REVIEW_PURPOSE_LINE_2 = "en/stall_review_purpose_line_2";
+    /// Over the list of types in the full instruction.
+    EN_STALL_REVIEW_TYPES_HEADER = "en/stall_review_types_header";
 }
 
 /// What the reviewing model makes of a call.
@@ -266,7 +268,7 @@ fn system_instruction() -> &'static str {
     static TEXT: OnceLock<String> = OnceLock::new();
     TEXT.get_or_init(|| {
         let db = crate::scam_db::db();
-        let mut s = format!("{SYSTEM_PROMPT}\n\n{ANSWER_RULES}\n\nTypes (id (scam or sales; ! = what they ask is a scam whoever asks): what it is):\n");
+        let mut s = format!("{SYSTEM_PROMPT}\n\n{ANSWER_RULES}\n\n{EN_STALL_REVIEW_TYPES_HEADER}\n");
         for t in &db.typologies {
             let bang = if t.hard { "!" } else { "" };
             s.push_str(&format!("- {} ({}{bang}): {}\n", t.id, t.category.as_str(), t.name(crate::locale::Lang::En)));

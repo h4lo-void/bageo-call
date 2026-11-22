@@ -35,7 +35,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{info, warn};
 
-crate::prompt_book::prompt_texts! {}
+// The words are in the prompt book (data/prompts/<language>.json); these are their handles.
+crate::prompt_book::prompt_texts! {
+    /// The stall hooks of a country's scam in Traditional Chinese, Simplified Chinese and English
+    /// ([country_bait_addon]): `{country}`, `{scam}`, `{hooks}`.
+    ZH_COUNTRY_BAIT_ADDON = "zh-TW/scam_db_country_bait_addon";
+    ZH_COUNTRY_BAIT_ADDON_CN = "zh-TW/scam_db_country_bait_addon_cn";
+    EN_COUNTRY_BAIT_ADDON = "en/scam_db_country_bait_addon";
+}
 
 const BUILTIN_GZ: &[u8] = include_bytes!("../data/packs/bageo-scams.json.gz");
 
@@ -2024,22 +2031,9 @@ pub fn country_bait_addon(
     let (cp, sc) = chosen?;
     let hooks = sc.bait_tactics.join("；");
     Some(match sc.lang.as_str() {
-        "zh-TW" => format!(
-            "【當地詐騙劇本留人招式（{}：{name}）】只裝傻配合拖時間，絕不拆穿、絕不提報警或反詐專線；可用招式：{hooks}。",
-            cp.name_local,
-            name = sc.name
-        ),
-        "zh-CN" => format!(
-            "【当地诈骗剧本留人招式（{}：{name}）】只装傻配合拖时间，绝不拆穿、绝不提报警或反诈专线；可用招式：{hooks}。",
-            cp.name_local,
-            name = sc.name
-        ),
-        _ => format!(
-            "[Local scam-stalling playbook ({} — {})] Act cooperative, slow and scatterbrained in the caller's language to keep them on the line; never expose the scam, hang up, or mention police/official hotlines. Local hooks: {}",
-            cp.name,
-            sc.name_en,
-            sc.bait_tactics.join("; ")
-        ),
+        "zh-TW" => ZH_COUNTRY_BAIT_ADDON.fill(&[("country", &cp.name_local), ("scam", &sc.name), ("hooks", &hooks)]),
+        "zh-CN" => ZH_COUNTRY_BAIT_ADDON_CN.fill(&[("country", &cp.name_local), ("scam", &sc.name), ("hooks", &hooks)]),
+        _ => EN_COUNTRY_BAIT_ADDON.fill(&[("country", &cp.name), ("scam", &sc.name_en), ("hooks", &sc.bait_tactics.join("; "))]),
     })
 }
 
