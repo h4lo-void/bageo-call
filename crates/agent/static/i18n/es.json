@@ -323,11 +323,11 @@
     "f_notify_lang_h": "El idioma de las notificaciones y los resúmenes que lees tú. No cambia el idioma en que la IA habla con quien llama.",
     "nl_same": "El mismo idioma que habla la IA",
     "f_simlang": "Idioma principal de cada SIM",
-    "f_simlang_h": "Solo si el teléfono tiene una SIM de otro país: las llamadas a esa SIM empiezan en el idioma elegido aquí. Requiere la app del teléfono 1.0 o posterior.",
-    "sl_country": "País de la SIM",
+    "f_simlang_h": "Solo hace falta si un teléfono tiene una SIM de otra región: las llamadas a esa SIM empiezan en el idioma que elijas aquí. Requiere la app 1.0 o posterior.",
+    "sl_country": "Región de la SIM",
     "sl_lang": "Idioma principal",
-    "sl_pick": "Elige un país",
-    "sl_add": "Añadir país de SIM",
+    "sl_pick": "Elige una región",
+    "sl_add": "Añadir región de SIM",
     "sl_remove": "Quitar esta SIM",
     "sl_empty": "Sin configurar: todas las llamadas empiezan en el idioma de arriba.",
     "f_owner": "Tu nombre",
@@ -1192,8 +1192,8 @@
     "ippair_docker": "Introduce la IP del equipo con Docker",
     "ippair_need_password": "Para obtener un código de emparejamiento desde otro dispositivo, primero pon una contraseña a la consola o abre la consola en el ordenador donde funciona Bageo.",
     "err_phone_wifi_off": "Primero activa «Conectar teléfonos también por Wi-Fi».",
-    "f_home_country": "País donde vives",
-    "f_home_country_h": "La IA sigue las costumbres de ese país, como dónde dejar paquetes. Automático: según el número del teléfono.",
+    "f_home_country": "Región",
+    "f_home_country_h": "La IA sigue la forma de hablar y las costumbres de esa región. Automático: según el número del teléfono.",
     "hc_auto": "Según el número del teléfono",
     "pk_title": "Datos locales",
     "pk_ver_builtin": "En uso: {date} (incluida)",
@@ -1293,6 +1293,7 @@
     "ex_lvl_basic": "Solo llamadas",
     "ex_switched": "Consola cambiada a {lang}.",
     "ex_r_in_use": "No se puede eliminar mientras siga en uso.",
-    "ex_empty": "Sin idiomas que coincidan"
+    "ex_empty": "Sin idiomas que coincidan",
+    "ph_app_ver_diff": "Difiere de Bageo {v}"
   }
 }

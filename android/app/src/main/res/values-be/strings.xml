@@ -40,6 +40,7 @@
     <string name="header_compat">Праверана на Pixel 7, 7a, 8 і 9. Іншыя тэлефоны з root могуць працаваць; выкарыстоўвайце на свой страх і рызыку.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Версія %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo версіі %1$s (версія адрозніваецца)</string>
     <string name="ip_addr_hint">Напрыклад 192.168.1.20</string>
     <string name="ip_addr_label">IP-адрас Bageo</string>
     <string name="ip_code_hint">Атрымайце на старонцы Сістэма ў вэб-кансолі</string>

@@ -16,6 +16,7 @@
 
     <!-- Header -->
     <string name="header_version">版本 %1$s（%2$d）</string>
+    <string name="header_version_diff">电脑的 Bageo 为 %1$s（版本不同）</string>
     <string name="header_device">%1$s · Android %2$s（API %3$d）</string>
     <string name="header_compat">已在 Pixel 7、7a、8、9 上实测。其他已 root 的手机也许可用，风险自负。</string>
 

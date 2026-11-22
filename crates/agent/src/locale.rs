@@ -2797,8 +2797,15 @@ mod ext_tests {
             let _ = crate::country_profile::resolve(None, l);
             for r in regions.iter().copied().take(4) {
                 assert_eq!(crate::country_profile::block(r, l, false), crate::country_profile::block(r, en, false));
-                assert_eq!(crate::country_profile::habits_block(r, l), crate::country_profile::habits_block(r, en));
-                assert_eq!(crate::country_profile::style_line(r, l, false, 3, "Alex"), crate::country_profile::style_line(r, en, false, 3, "Alex"));
+                if crate::country_profile::has_lang_override(r, l) {
+                    let hb = crate::country_profile::habits_block(r, l);
+                    let sl = crate::country_profile::style_line(r, l, false, 3, "Alex");
+                    assert!(!hb.is_empty() && hb != crate::country_profile::habits_block(r, en), "{r:?} {l:?}");
+                    assert!(!sl.is_empty() && sl != crate::country_profile::style_line(r, en, false, 3, "Alex"), "{r:?} {l:?}");
+                } else {
+                    assert_eq!(crate::country_profile::habits_block(r, l), crate::country_profile::habits_block(r, en));
+                    assert_eq!(crate::country_profile::style_line(r, l, false, 3, "Alex"), crate::country_profile::style_line(r, en, false, 3, "Alex"));
+                }
                 assert_eq!(crate::country_profile::stall_line(r, l), crate::country_profile::stall_line(r, en));
                 assert_eq!(crate::country_profile::stall_block(r, l), crate::country_profile::stall_block(r, en));
                 assert_eq!(crate::prompts::dialect_note(r, l), crate::prompts::dialect_note(r, en));

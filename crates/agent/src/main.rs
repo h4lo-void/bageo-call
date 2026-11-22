@@ -2946,6 +2946,7 @@ async fn send_agent_info(state: &AppState, sink: &WsSink, link: PhoneLink) {
     };
     let mut msg = serde_json::Map::new();
     msg.insert("type".into(), json!("agent_info"));
+    msg.insert("agent_version".into(), json!(env!("CARGO_PKG_VERSION")));
     if let Some(url) = calls_http::phone_console_url(&base) {
         msg.insert("console_url".into(), json!(url));
     }

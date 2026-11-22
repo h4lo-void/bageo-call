@@ -323,11 +323,11 @@
     "f_notify_lang_h": "你收到的通知和摘要用这个语言。AI 跟来电者说话的语言不受影响。",
     "nl_same": "与 AI 说话的语言相同",
     "f_simlang": "各 SIM 卡的主要语言",
-    "f_simlang_h": "手机有其他国家的 SIM 卡才需要设置：打到那张卡的电话，AI 会用这里选的语言开场。手机 App 需要 1.0 以上。",
-    "sl_country": "SIM 卡国家",
+    "f_simlang_h": "手机有其他地区的 SIM 卡才需要设：打到那张卡的电话，AI 会用这里选的语言开场。手机 App 要 1.0 以上。",
+    "sl_country": "SIM 卡地区",
     "sl_lang": "主要语言",
-    "sl_pick": "选择国家",
-    "sl_add": "添加 SIM 卡国家",
+    "sl_pick": "选择地区",
+    "sl_add": "添加 SIM 卡地区",
     "sl_remove": "移除这张 SIM 卡",
     "sl_empty": "还没设置，每通电话都用上面选的语言开场。",
     "f_owner": "你的名字",
@@ -1192,8 +1192,8 @@
     "ippair_docker": "输入 Docker 主机的 IP",
     "ippair_need_password": "要从其他设备生成配对码，请先设置控制台密码，或在运行 Bageo 的电脑上打开控制台。",
     "err_phone_wifi_off": "请先打开“手机也能用 Wi-Fi 连接”。",
-    "f_home_country": "所在国家",
-    "f_home_country_h": "AI 按这个国家的生活习惯接电话，比如快递放哪里。自动：按手机号码判断。",
+    "f_home_country": "地区",
+    "f_home_country_h": "AI 按当地的说话方式和生活习惯接电话。自动：按手机号码判断。",
     "hc_auto": "按号码自动判断",
     "pk_title": "当地数据",
     "pk_ver_builtin": "当前版本：{date}（内置）",
@@ -1293,6 +1293,7 @@
     "ex_lvl_basic": "仅通话",
     "ex_switched": "控制台已切换为{lang}。",
     "ex_r_in_use": "设置仍在使用这个语言，请先换掉再删除。",
-    "ex_empty": "找不到匹配的语言"
+    "ex_empty": "找不到匹配的语言",
+    "ph_app_ver_diff": "与 Bageo {v} 版本不同"
   }
 }

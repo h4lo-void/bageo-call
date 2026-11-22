@@ -784,6 +784,19 @@ mod tests {
             let answers = [("phone".to_string(), "0912345678".to_string())];
             texts.push(crate::preflight::prompt_block("Book at 7 pm, otherwise 8:30 pm", &answers, lang));
         }
+        for e in crate::locale::Ext::all() {
+            let l = crate::locale::Lang::Ext(e);
+            for r in crate::country_profile::all() {
+                if crate::country_profile::has_lang_override(r, l) {
+                    texts.push(crate::country_profile::habits_block(r, l));
+                    for level in 1..=5 {
+                        for assistant in [false, true] {
+                            texts.push(crate::country_profile::style_line(r, l, assistant, level, "Alex"));
+                        }
+                    }
+                }
+            }
+        }
         assert!(texts.len() > 500, "{}", texts.len());
         for t in &texts {
             let low = t.to_lowercase();

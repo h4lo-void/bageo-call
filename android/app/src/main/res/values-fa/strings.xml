@@ -40,6 +40,7 @@
     <string name="header_compat">آزمایش‌شده روی Pixel 7، 7a، 8 و 9. سایر تلفن‌های روت‌شده شاید کار کنند؛ با مسئولیت خودتان امتحان کنید.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">نسخه %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo نسخه %1$s است (نسخه متفاوت است)</string>
     <string name="ip_addr_hint">مثلاً 192.168.1.20</string>
     <string name="ip_addr_label">نشانی IP مربوط به Bageo</string>
     <string name="ip_code_hint">آن را از صفحه سیستم در کنسول وب بگیرید</string>

@@ -40,6 +40,7 @@
     <string name="header_compat">پر Pixel 7، 7a، 8 او 9 ازمویل شوی. نور روټ شوي فونونه ښایي کار وکړي؛ په خپل مسوولیت یې وازمایئ.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">نسخه %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo نسخه %1$s ده (نسخه توپیر لري)</string>
     <string name="ip_addr_hint">د بېلګې په توګه 192.168.1.20</string>
     <string name="ip_addr_label">د Bageo IP پته</string>
     <string name="ip_code_hint">په وېب کنسول کې یې د سیسټم له پاڼې واخلئ</string>

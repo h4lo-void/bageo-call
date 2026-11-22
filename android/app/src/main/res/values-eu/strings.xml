@@ -40,6 +40,7 @@
     <string name="header_compat">Pixel 7, 7a, 8 eta 9 modeloetan probatua. Root egindako beste telefono batzuk ibil daitezke; erabili zure ardurapean.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">%1$s bertsioa (%2$d)</string>
+    <string name="header_version_diff">Bageo %1$s da (bertsio desberdina)</string>
     <string name="ip_addr_hint">Adibidez 192.168.1.20</string>
     <string name="ip_addr_label">Bageo-ren IP helbidea</string>
     <string name="ip_code_hint">Lortu web kontsolako Sistema orritik</string>

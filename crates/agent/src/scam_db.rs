@@ -1872,11 +1872,12 @@ mod tests {
     use super::*;
     use crate::locale::Lang;
 
-    /// The 27 languages the database covers.
-    const LANGS: [&str; 61] = [
+    /// The 80 languages the database covers.
+    const LANGS: [&str; 80] = [
         "zh-TW", "zh-CN", "en", "es", "fr", "de", "pt", "it", "vi", "id", "ms", "tl", "tr", "ru", "ja", "ko", "hi", "ar", "th",
         "nl", "pl", "ro", "uk", "bn", "mr", "ta", "te", "sv", "nb", "da", "fi", "is", "cs", "sk", "hu", "bg", "el", "hr", "sr",
         "sl", "mk", "sq", "he", "ur", "ne", "si", "my", "lo", "mn", "fa", "ps", "az", "hy", "ka", "sw", "am", "af", "et", "lv", "lt", "be",
+        "ca", "ceb", "eu", "fil", "gl", "gu", "ht", "jv", "kn", "kok", "la", "lb", "mai", "mg", "ml", "nn", "or", "pa", "sd",
     ];
 
     fn temp_dir(tag: &str) -> PathBuf {

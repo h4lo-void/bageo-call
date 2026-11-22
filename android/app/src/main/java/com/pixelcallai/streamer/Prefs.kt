@@ -28,6 +28,8 @@ object Prefs {
     const val KEY_IP_URL = "IP_PAIRED_URL"
     /** Web console address the agent sent (`agent_info`); cleared on every new connection. */
     const val KEY_CONSOLE_URL = "CONSOLE_URL"
+    /** Version of the connected Bageo agent (`agent_info`); cleared on every new connection. */
+    const val KEY_AGENT_VERSION = "AGENT_VERSION"
     /** Id of the last mode switch whose `set_mode_result` went to the agent. */
     const val KEY_REPORTED_APPLY_ID = "REPORTED_APPLY_ID"
     /**
@@ -151,6 +153,18 @@ object Prefs {
         val cleaned = url?.trim().orEmpty()
         val editor = sp(ctx).edit()
         if (isWebUrl(cleaned)) editor.putString(KEY_CONSOLE_URL, cleaned) else editor.remove(KEY_CONSOLE_URL)
+        editor.apply()
+    }
+
+    /** Version of the connected Bageo agent, when the agent sent one. */
+    fun agentVersion(ctx: Context): String? =
+        sp(ctx).getString(KEY_AGENT_VERSION, null)?.trim()?.takeIf { it.isNotEmpty() }
+
+    /** Blank removes it (the version mismatch hint is hidden). */
+    fun setAgentVersion(ctx: Context, version: String?) {
+        val cleaned = version?.trim().orEmpty()
+        val editor = sp(ctx).edit()
+        if (cleaned.isNotEmpty()) editor.putString(KEY_AGENT_VERSION, cleaned) else editor.remove(KEY_AGENT_VERSION)
         editor.apply()
     }
 

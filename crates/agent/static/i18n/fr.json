@@ -323,11 +323,11 @@
     "f_notify_lang_h": "La langue des notifications et des résumés que vous lisez. Elle ne change pas la langue dans laquelle l'IA parle aux correspondants.",
     "nl_same": "Comme la langue de l'IA",
     "f_simlang": "Langue principale de chaque SIM",
-    "f_simlang_h": "Seulement si le téléphone a une SIM d'un autre pays : les appels reçus sur cette SIM commencent dans la langue choisie ici. Nécessite l'application téléphone 1.0 ou plus récente.",
-    "sl_country": "Pays de la SIM",
+    "f_simlang_h": "Utile seulement si un téléphone a une SIM d'une autre région : les appels sur cette SIM commencent dans la langue choisie ici. Application 1.0 ou plus récente.",
+    "sl_country": "Région de la SIM",
     "sl_lang": "Langue principale",
-    "sl_pick": "Choisir un pays",
-    "sl_add": "Ajouter un pays de SIM",
+    "sl_pick": "Choisir une région",
+    "sl_add": "Ajouter une région de SIM",
     "sl_remove": "Retirer cette SIM",
     "sl_empty": "Rien de défini : chaque appel commence dans la langue ci-dessus.",
     "f_owner": "Votre nom",
@@ -1192,8 +1192,8 @@
     "ippair_docker": "Saisissez l’IP de la machine Docker",
     "ippair_need_password": "Pour obtenir un code d’association depuis un autre appareil, définissez d’abord un mot de passe pour la console, ou ouvrez la console sur l’ordinateur où tourne Bageo.",
     "err_phone_wifi_off": "Activez d’abord « Connecter aussi les téléphones en Wi-Fi ».",
-    "f_home_country": "Pays où vous vivez",
-    "f_home_country_h": "L'IA suit les habitudes de ce pays, par exemple où laisser les colis. Automatique : d'après le numéro du téléphone.",
+    "f_home_country": "Région",
+    "f_home_country_h": "L'IA suit la façon de parler et les habitudes de cette région. Automatique : d'après le numéro du téléphone.",
     "hc_auto": "D'après le numéro du téléphone",
     "pk_title": "Données locales",
     "pk_ver_builtin": "Utilisée : {date} (intégrée)",
@@ -1293,6 +1293,7 @@
     "ex_lvl_basic": "Appels uniquement",
     "ex_switched": "Console passée en {lang}.",
     "ex_r_in_use": "Impossible de supprimer tant qu'elle est utilisée.",
-    "ex_empty": "Aucune langue correspondante"
+    "ex_empty": "Aucune langue correspondante",
+    "ph_app_ver_diff": "Différent de Bageo {v}"
   }
 }

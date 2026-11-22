@@ -40,6 +40,7 @@
     <string name="header_compat">Đã thử trên Pixel 7, 7a, 8 và 9. Các điện thoại đã root khác có thể chạy được; hãy tự chịu rủi ro khi thử.</string>
     <string name="header_device">%1$s · Android phiên bản %2$s (API %3$d)</string>
     <string name="header_version">Phiên bản %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo là %1$s (phiên bản khác)</string>
     <string name="ip_addr_hint">Ví dụ 192.168.1.20</string>
     <string name="ip_addr_label">Địa chỉ IP của Bageo</string>
     <string name="ip_code_hint">Lấy ở trang Hệ thống của bảng điều khiển trên web</string>

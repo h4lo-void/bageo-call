@@ -323,11 +323,11 @@
     "f_notify_lang_h": "The language of the notifications and summaries you read. It does not change the language the AI speaks to callers.",
     "nl_same": "Same as the AI's language",
     "f_simlang": "Main language for each SIM",
-    "f_simlang_h": "Only for a phone with a SIM from another country: calls to that SIM start in the language picked here. Needs phone app 1.0 or later.",
-    "sl_country": "SIM country",
+    "f_simlang_h": "Only needed when a phone has a SIM from another region: calls to that SIM open in the language you pick here. Needs the phone app 1.0 or newer.",
+    "sl_country": "SIM region",
     "sl_lang": "Main language",
-    "sl_pick": "Choose a country",
-    "sl_add": "Add a SIM country",
+    "sl_pick": "Choose a region",
+    "sl_add": "Add a SIM region",
     "sl_remove": "Remove this SIM",
     "sl_empty": "Nothing set: every call starts in the language above.",
     "f_owner": "Your name",
@@ -1192,8 +1192,8 @@
     "ippair_docker": "Enter the IP of the Docker host",
     "ippair_need_password": "To get a pairing code from another device, set a console password first, or open the console on the computer that runs Bageo.",
     "err_phone_wifi_off": "Turn on \"Phones can also connect over Wi-Fi\" first.",
-    "f_home_country": "Country you live in",
-    "f_home_country_h": "The AI follows this country's everyday habits, such as where parcels go. Automatic: from the phone number.",
+    "f_home_country": "Region",
+    "f_home_country_h": "The AI follows this region's way of speaking and everyday habits. Automatic: from the phone number.",
     "hc_auto": "Decide from the phone number",
     "pk_title": "Local data",
     "pk_ver_builtin": "In use: {date} (built in)",
@@ -1293,6 +1293,7 @@
     "ex_lvl_basic": "Calls only",
     "ex_switched": "Switched console to {lang}.",
     "ex_r_in_use": "Can't delete while selected in settings.",
-    "ex_empty": "No matching languages"
+    "ex_empty": "No matching languages",
+    "ph_app_ver_diff": "Differs from Bageo {v}"
   }
 }

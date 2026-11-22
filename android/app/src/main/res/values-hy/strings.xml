@@ -40,6 +40,7 @@
     <string name="header_compat">Փորձարկված է Pixel 7, 7a, 8 և 9-ում։ Այլ root արված հեռախոսներ կարող են աշխատել՝ փորձեք ձեր ռիսկով։</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Տարբերակ %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo-ն %1$s է (տարբերակը տարբեր է)</string>
     <string name="ip_addr_hint">Օրինակ՝ 192.168.1.20</string>
     <string name="ip_addr_label">Bageo-ի IP հասցեն</string>
     <string name="ip_code_hint">Վերցրեք այն վեբ վահանակի Համակարգ էջից</string>

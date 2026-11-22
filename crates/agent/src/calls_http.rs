@@ -1279,6 +1279,7 @@ async fn packs_regions(State(state): State<CallsState>, headers: HeaderMap, Quer
                     "zh": r.name.zh.as_deref().unwrap_or(&r.name.en),
                 },
                 "lang": r.lang,
+                "other_langs": r.other_langs,
                 "status": r.status,
                 "delivery": { "en": r.delivery.en, "zh": r.delivery.zh },
             })

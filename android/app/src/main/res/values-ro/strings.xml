@@ -40,6 +40,7 @@
     <string name="header_compat">Testat pe Pixel 7, 7a, 8 și 9. Alte telefoane cu root pot funcționa; încearcă pe propria răspundere.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versiunea %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo este %1$s (versiune diferită)</string>
     <string name="ip_addr_hint">De exemplu 192.168.1.20</string>
     <string name="ip_addr_label">Adresa IP a Bageo</string>
     <string name="ip_code_hint">Îl găsești pe pagina Sistem din consola web</string>

@@ -1401,6 +1401,7 @@ pub fn call_lang_plan(
         {
             None
         }
+        (Some(_), None) if crate::locale::active().home_country.is_some() => None,
         _ => sim,
     };
     let region = crate::country_profile::resolve(region_sim, sim_lang.unwrap_or(lang));

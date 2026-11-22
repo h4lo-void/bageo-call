@@ -323,11 +323,11 @@
     "f_notify_lang_h": "あなたに届く通知と要約の言語です。AI が相手と話す言語は変わりません。",
     "nl_same": "AI が話す言語と同じ",
     "f_simlang": "SIM ごとの主な言語",
-    "f_simlang_h": "別の国の SIM が入っているスマホだけ設定します。その SIM への電話は、ここで選んだ言語で始まります。スマホアプリ 1.0 以降が必要です。",
-    "sl_country": "SIM の国",
+    "f_simlang_h": "ほかの地域の SIM があるときだけ設定します。その SIM への着信は、ここで選んだ言語で話し始めます（スマホアプリ 1.0 以上）。",
+    "sl_country": "SIM の地域",
     "sl_lang": "主な言語",
-    "sl_pick": "国を選択",
-    "sl_add": "SIM の国を追加",
+    "sl_pick": "地域を選択",
+    "sl_add": "SIM の地域を追加",
     "sl_remove": "この SIM を削除",
     "sl_empty": "未設定：すべての電話が上の言語で始まります。",
     "f_owner": "あなたの名前",
@@ -1192,8 +1192,8 @@
     "ippair_docker": "Docker ホストの IP を入力",
     "ippair_need_password": "ほかの端末でペアリングコードを出すには、先にコンソールのパスワードを設定するか、Bageo が動いているパソコンでコンソールを開いてください。",
     "err_phone_wifi_off": "先に「スマホを Wi-Fi でもつなぐ」をオンにしてください。",
-    "f_home_country": "お住まいの国",
-    "f_home_country_h": "AI はこの国の習慣に合わせて電話に出ます（荷物の置き場所など）。自動：電話番号から判断。",
+    "f_home_country": "地域",
+    "f_home_country_h": "AI はこの地域の話し方や生活習慣に合わせて電話に出ます。自動：電話番号から判断。",
     "hc_auto": "電話番号から自動で判断",
     "pk_title": "地域データ",
     "pk_ver_builtin": "使用中：{date}（内蔵）",
@@ -1293,6 +1293,7 @@
     "ex_lvl_basic": "通話のみ",
     "ex_switched": "コンソールを{lang}に切り替えました。",
     "ex_r_in_use": "設定で使われているため削除できません。",
-    "ex_empty": "一致する言語がありません"
+    "ex_empty": "一致する言語がありません",
+    "ph_app_ver_diff": "Bageo {v} とバージョンが異なります"
   }
 }

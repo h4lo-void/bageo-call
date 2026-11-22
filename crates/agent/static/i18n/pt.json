@@ -323,11 +323,11 @@
     "f_notify_lang_h": "O idioma das notificações e dos resumos que você lê. Não muda o idioma em que a IA fala com quem liga.",
     "nl_same": "O mesmo idioma da IA",
     "f_simlang": "Idioma principal de cada SIM",
-    "f_simlang_h": "Só para telefone com SIM de outro país: as ligações recebidas nesse SIM começam no idioma escolhido aqui. Requer o app do telefone 1.0 ou mais recente.",
-    "sl_country": "País do SIM",
+    "f_simlang_h": "Só é preciso se um telefone tiver um chip de outra região: as chamadas para esse chip começam no idioma escolhido aqui. Requer o app 1.0 ou mais recente.",
+    "sl_country": "Região do SIM",
     "sl_lang": "Idioma principal",
-    "sl_pick": "Escolha um país",
-    "sl_add": "Adicionar país de SIM",
+    "sl_pick": "Escolha uma região",
+    "sl_add": "Adicionar região de SIM",
     "sl_remove": "Remover este SIM",
     "sl_empty": "Nada definido: toda ligação começa no idioma acima.",
     "f_owner": "Seu nome",
@@ -1192,8 +1192,8 @@
     "ippair_docker": "Digite o IP do host do Docker",
     "ippair_need_password": "Para gerar um código de pareamento em outro dispositivo, defina antes uma senha para o console ou abra o console no computador onde o Bageo está rodando.",
     "err_phone_wifi_off": "Primeiro ative “Conectar celulares também por Wi-Fi”.",
-    "f_home_country": "País onde você mora",
-    "f_home_country_h": "A IA segue os costumes desse país, como onde deixar encomendas. Automático: pelo número do telefone.",
+    "f_home_country": "Região",
+    "f_home_country_h": "A IA segue o jeito de falar e os costumes dessa região. Automático: pelo número do telefone.",
     "hc_auto": "Pelo número do telefone",
     "pk_title": "Dados locais",
     "pk_ver_builtin": "Em uso: {date} (incluída)",
@@ -1293,6 +1293,7 @@
     "ex_lvl_basic": "Somente chamadas",
     "ex_switched": "Console alterado para {lang}.",
     "ex_r_in_use": "Não pode excluir enquanto estiver em uso.",
-    "ex_empty": "Nenhum idioma correspondente"
+    "ex_empty": "Nenhum idioma correspondente",
+    "ph_app_ver_diff": "Diferente do Bageo {v}"
   }
 }
