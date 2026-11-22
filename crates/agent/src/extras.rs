@@ -11,8 +11,9 @@
 //! fixed host allowlist, redirect checks, SHA-256 verification and size caps:
 //! - Index: at most [MAX_INDEX_BYTES] (256 KiB), format <= [EXTRAS_FORMAT].
 //! - Language pack: at most [MAX_EXTRA_LANG_BYTES] (600 KiB) both compressed
-//!   and unpacked ([crate::locales_store::install_extra_lang]), shared 8-install
-//!   cap per run across installs and deletions.
+//!   and unpacked ([crate::locales_store::install_extra_lang]); installs and
+//!   deletions share the translations' per-run memory cap
+//!   ([crate::locales_store::MAX_NEW_BYTES]).
 //! - Mascot art: at most [MAX_ART_BYTES] (64 KiB), 800 SVG nodes, depth 6
 //!   ([bageo_packs::extras::check_art]), served public only from already-verified
 //!   files with `X-Content-Type-Options: nosniff` (never triggers a download).
@@ -913,17 +914,19 @@ mod tests {
         assert_eq!(serve_art_from(&root, "art-tw.json", &HeaderMap::new()).status(), StatusCode::NOT_FOUND);
         assert_eq!(serve_art_from(&root, "art-th.json", &HeaderMap::new()).status(), StatusCode::NOT_FOUND);
 
-        // Restore clears the kept index; remove_art & remove_lang clean up files and count toward cap.
+        // Restore clears the kept index; remove_art & remove_lang clean up files.
         restore_builtin_index(&root).unwrap();
         assert!(!kept_index(&root));
         assert_eq!(remove_art(&root, "vn"), Outcome::Removed);
         assert_eq!(remove_art(&root, "vn"), Outcome::NotListed);
         assert_eq!(serve_art_from(&root, "art-vn.json", &HeaderMap::new()).status(), StatusCode::NOT_FOUND);
+        // Removing the only pack goes back to the built-in table: nothing new kept.
+        let before = count.load(Ordering::SeqCst);
         let removed = remove_lang_with(|| {
             locales_store::remove_extra_lang_counted(&count, &packs_dir, Ext::from_code("th").unwrap()).map(|(_, r)| r)
         });
         assert_eq!(removed, Outcome::Removed);
-        assert_eq!(count.load(Ordering::SeqCst), 2);
+        assert_eq!(count.load(Ordering::SeqCst), before);
     }
 
     #[tokio::test]
@@ -1086,7 +1089,7 @@ mod tests {
 
     #[test]
     fn install_cap_returns_restart_on_extra_lang() {
-        let count = AtomicUsize::new(locales_store::MAX_INSTALLS);
+        let count = AtomicUsize::new(locales_store::MAX_NEW_BYTES);
         let res = locales_store::install_extra_lang_counted(&count, Path::new("/nonexistent"), Path::new("/nonexistent"), Ext::from_code("th").unwrap(), Some(1));
         let Err(issues) = res else { panic!("expected install cap error"); };
         assert_eq!(map_lang_issues(&issues).outcome_for_test(), Outcome::Restart);
