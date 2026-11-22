@@ -775,6 +775,17 @@ mod tests {
     }
 
     #[test]
+    fn only_this_computer_among_the_candidates_gets_the_password() {
+        for own in [None, Some("http://127.0.0.1:9000/")] {
+            for c in discovery_candidates(own, false) {
+                let this_computer = c.starts_with("http://127.0.0.1:");
+                assert_eq!(crate::status::is_trusted(&c, None, own), this_computer, "{c}");
+                assert_eq!(crate::status::password_for(Some("pw-123"), &c, None, own).is_some(), this_computer, "{c}");
+            }
+        }
+    }
+
+    #[test]
     fn fourth_stop_within_five_minutes_ends_restarting() {
         let s = Duration::from_secs;
         let mut r = Restarts::default();

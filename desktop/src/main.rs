@@ -119,6 +119,27 @@ async fn save_config(
     }
 }
 
+/// Saves the address Bageo was found at, after the user pressed "Connect". From then on the
+/// password is sent there. `address` must be the one the window showed.
+#[tauri::command(rename_all = "snake_case")]
+fn confirm_address(app: AppHandle, state: State<'_, Shared>, address: String) -> Result<(), String> {
+    let wanted = status::normalize_address(&address).ok_or_else(|| "addr".to_string())?;
+    let candidate = lock(&state.snapshot).candidate.clone();
+    let same = |a: &str| status::normalize_address(a).map(|n| n.to_lowercase());
+    if candidate.is_empty() || same(&candidate) != same(&wanted) {
+        return Err("changed".to_string());
+    }
+    let cfg = {
+        let mut cfg = lock(&state.config);
+        cfg.address = wanted;
+        cfg.clone()
+    };
+    let saved = config::save(&app, &cfg);
+    state.reset.store(true, Ordering::SeqCst);
+    state.notify.notify_one();
+    saved
+}
+
 /// Opens the console in the default browser, then hides the window. Does nothing without an address.
 pub fn launch_console(app: &AppHandle) {
     let address = lock(&app.state::<Shared>().snapshot).address.clone();
@@ -207,6 +228,7 @@ fn main() {
             get_snapshot,
             get_config,
             save_config,
+            confirm_address,
             open_console,
             toast_get,
             toast_open,

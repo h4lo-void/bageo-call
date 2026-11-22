@@ -39,6 +39,8 @@ pub enum Reason {
     NeedAdb,
     /// Bageo answers, but its console still lists settings to fill in.
     Setup,
+    /// Bageo answered at an address nobody saved: waiting for the user to connect.
+    Found,
 }
 
 #[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug)]
@@ -79,6 +81,8 @@ pub struct Snapshot {
     pub locked: bool,
     pub has_password: bool,
     pub address: String,
+    /// An address found by itself that is not trusted yet: no password goes there until the user connects.
+    pub candidate: String,
     pub version: String,
     pub lang: String,
     pub phones: Vec<Phone>,
@@ -104,6 +108,7 @@ impl Snapshot {
             locked: false,
             has_password,
             address: address.to_string(),
+            candidate: String::new(),
             version: String::new(),
             lang: lang.to_string(),
             phones: Vec::new(),
@@ -112,6 +117,13 @@ impl Snapshot {
             adb: String::new(),
             setup_todo: 0,
         }
+    }
+
+    /// Bageo answered at `candidate`, an address the user never saved. Nothing else is asked of it.
+    pub fn found(lang: &str, has_password: bool, candidate: &str) -> Self {
+        let mut s = Snapshot::blank(Level::Unknown, Reason::Found, lang, has_password, "");
+        s.candidate = candidate.to_string();
+        s
     }
 }
 
@@ -190,6 +202,57 @@ pub fn shown_address(base: &str, reported: &str, reachable: bool) -> String {
         reported.trim().to_string()
     } else {
         base.to_string()
+    }
+}
+
+/// An address without its scheme and trailing slash, for sentences ("bageo.local").
+pub fn short_address(addr: &str) -> String {
+    let t = addr.trim();
+    let lower = t.to_lowercase();
+    let cut = if lower.starts_with("https://") {
+        8
+    } else if lower.starts_with("http://") {
+        7
+    } else {
+        0
+    };
+    t[cut..].trim_end_matches('/').to_string()
+}
+
+/// True when the address points at this computer: localhost, 127.x.x.x or [::1].
+pub fn is_loopback_address(base: &str) -> bool {
+    let lower = base.trim().to_lowercase();
+    let Some(rest) = lower.strip_prefix("http://").or_else(|| lower.strip_prefix("https://")) else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    // The host is what follows any "user@".
+    let host_port = authority.rsplit('@').next().unwrap_or("");
+    let host = match host_port.strip_prefix('[') {
+        Some(inner) => inner.split(']').next().unwrap_or(""),
+        None => host_port.split(':').next().unwrap_or(""),
+    };
+    host == "localhost"
+        || host.parse::<std::net::Ipv4Addr>().is_ok_and(|a| a.is_loopback())
+        || host.parse::<std::net::Ipv6Addr>().is_ok_and(|a| a.is_loopback())
+}
+
+/// Whether the console password may be sent to `base`: only to this computer (a loopback
+/// address, or the address of the Bageo started from this program's own folder, `own`) or to
+/// the address the user saved (typed it, or pressed "Connect" for a found one).
+pub fn is_trusted(base: &str, saved: Option<&str>, own: Option<&str>) -> bool {
+    let same = |a: &str| normalize_address(a).map(|n| n.to_lowercase());
+    let base_norm = same(base);
+    let matches = |other: Option<&str>| other.and_then(same).is_some_and(|s| Some(s) == base_norm);
+    matches(saved) || matches(own) || is_loopback_address(base)
+}
+
+/// The password to send to `base`, or None when `base` is not trusted.
+pub fn password_for<'a>(password: Option<&'a str>, base: &str, saved: Option<&str>, own: Option<&str>) -> Option<&'a str> {
+    if is_trusted(base, saved, own) {
+        password
+    } else {
+        None
     }
 }
 
@@ -429,6 +492,76 @@ pub fn after_failure(last_good: Option<&Snapshot>, failures: u32, lang: &str, ha
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn password_stays_home_for_an_address_found_by_itself() {
+        // Nothing saved, this computer not listening, bageo.local answered the probe.
+        for found in ["http://bageo.local/", "http://bageo.local:8787/", "http://192.168.1.20:8787/", "https://bageo.example/"] {
+            assert_eq!(password_for(Some("pw-123"), found, None, None), None, "{found}");
+            assert!(!is_trusted(found, None, None), "{found}");
+        }
+        // A saved address that is some other host does not vouch for it.
+        assert_eq!(password_for(Some("pw-123"), "http://bageo.local/", Some("http://192.168.1.20:8787/"), None), None);
+        assert_eq!(password_for(Some("pw-123"), "http://bageo.local/", Some(""), None), None);
+        // Nor does the address of the Bageo running next to this program.
+        assert_eq!(password_for(Some("pw-123"), "http://bageo.local/", None, Some("http://127.0.0.1:8787/")), None);
+    }
+
+    #[test]
+    fn password_goes_to_this_computer() {
+        for local in ["http://127.0.0.1:8787/", "http://127.0.0.1:9000/", "http://localhost:8787/", "http://[::1]:8787/", "http://127.1.2.3/", "HTTP://LOCALHOST/"] {
+            assert_eq!(password_for(Some("pw-123"), local, None, None), Some("pw-123"), "{local}");
+        }
+        assert_eq!(password_for(None, "http://127.0.0.1:8787/", None, None), None);
+        // The Bageo this program started may listen on a LAN address of this computer.
+        assert_eq!(password_for(Some("pw-123"), "http://192.168.1.20:8787/", None, Some("http://192.168.1.20:8787/")), Some("pw-123"));
+    }
+
+    #[test]
+    fn password_goes_to_a_saved_address() {
+        let saved = Some("http://bageo.local/");
+        assert_eq!(password_for(Some("pw-123"), "http://bageo.local/", saved, None), Some("pw-123"));
+        // Saved in another spelling (trailing /calls, capitals, no slash) is the same address.
+        assert_eq!(password_for(Some("pw-123"), "http://bageo.local/", Some("HTTP://Bageo.local/calls"), None), Some("pw-123"));
+        assert_eq!(password_for(Some("pw-123"), "http://192.168.1.20:8787/", Some("http://192.168.1.20:8787"), None), Some("pw-123"));
+        assert_eq!(password_for(Some("pw-123"), "https://bageo.example/", Some("https://bageo.example/"), None), Some("pw-123"));
+    }
+
+    #[test]
+    fn names_that_only_look_like_this_computer_are_not() {
+        for fake in [
+            "http://127.0.0.1@bageo.local/",
+            "http://localhost@bageo.local:8787/",
+            "http://127.0.0.1.bageo.example/",
+            "http://localhost.bageo.example/",
+            "http://127.0.0.1:8787@192.168.1.20/",
+            "http://[::2]:8787/",
+            "http://128.0.0.1/",
+            "ftp://127.0.0.1/",
+            "127.0.0.1",
+            "",
+        ] {
+            assert!(!is_loopback_address(fake), "{fake}");
+            assert_eq!(password_for(Some("pw-123"), fake, None, None), None, "{fake}");
+        }
+    }
+
+    #[test]
+    fn found_snapshot_asks_the_user_and_shows_no_address() {
+        let s = Snapshot::found("en", true, "http://bageo.local/");
+        assert_eq!((s.level, s.reason), (Level::Unknown, Reason::Found));
+        assert_eq!(s.candidate, "http://bageo.local/");
+        assert!(s.address.is_empty() && s.phones.is_empty() && !s.locked);
+        let v = serde_json::to_value(&s).unwrap();
+        assert_eq!((v["reason"].as_str(), v["candidate"].as_str()), (Some("found"), Some("http://bageo.local/")));
+    }
+
+    #[test]
+    fn short_address_drops_scheme_and_slash() {
+        assert_eq!(short_address("http://bageo.local/"), "bageo.local");
+        assert_eq!(short_address("HTTPS://bageo.example:8787/"), "bageo.example:8787");
+        assert_eq!(short_address(""), "");
+    }
 
     fn health() -> Value {
         json!({"ok": true, "version": "1.4.0", "notify_language": "en", "active_call_count": 0, "control_idle_clients": 0})

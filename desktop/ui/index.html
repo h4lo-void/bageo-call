@@ -106,6 +106,13 @@
       </div>
     </div>
 
+    <div class="sec" id="secFound" hidden>
+      <div class="note">
+        <div data-i18n="found_hint"></div>
+        <button type="button" class="btn primary" id="btnConnect" data-i18n="connect"></button>
+      </div>
+    </div>
+
     <div class="sec" id="secLang" hidden><span class="hint" data-i18n="lang_unreviewed"></span></div>
 
     <footer class="foot">
@@ -214,6 +221,7 @@
       case "launch_failed": return t("r_launch_failed");
       case "need_adb": return t("r_need_adb");
       case "setup": return t("r_setup", { n: s.setup_todo });
+      case "found": return t("r_found", { address: shortAddr(s.candidate) });
       default: return t("r_starting");
     }
   }
@@ -241,7 +249,10 @@
     $("addr").textContent = shortAddr(s.address);
     $("addr").title = s.address || "";
 
-    const reached = !["offline", "starting", "launching", "launch_failed"].includes(s.reason) && !!snap;
+    // Bageo answered at an address nobody saved: only the question to connect shows.
+    const found = s.reason === "found" && !!s.candidate;
+    $("secFound").hidden = !found;
+    const reached = !["offline", "starting", "launching", "launch_failed", "found"].includes(s.reason) && !!snap;
     const phones = Array.isArray(s.phones) ? s.phones : [];
     const list = $("phones");
     list.textContent = "";
@@ -337,6 +348,9 @@
     copiedTimer = setTimeout(() => { b.textContent = t("copy"); }, 1600);
   });
   $("btnSet").addEventListener("click", showSettings);
+  $("btnConnect").addEventListener("click", () => {
+    if (snap && snap.candidate) invoke("confirm_address", { address: snap.candidate }).catch(() => {});
+  });
   $("btnPw").addEventListener("click", showSettings);
   $("btnAdb").addEventListener("click", () => invoke("install_adb").catch(() => {}));
   $("btnQuit").addEventListener("click", () => invoke("quit"));

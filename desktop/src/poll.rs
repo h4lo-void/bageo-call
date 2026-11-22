@@ -29,6 +29,38 @@ const UI_URL_QUICK_TRIES: u32 = 5;
 const REDISCOVER_AFTER: u32 = 3;
 const TOKEN_HEADER: &str = "x-calls-token";
 
+/// Whether a redirect from `from` to `to` stays with the same Bageo: same host and port, and
+/// the same scheme or http to https (on the default ports that counts as the same place).
+fn redirect_stays(from: &reqwest::Url, to: &reqwest::Url) -> bool {
+    let scheme_ok = from.scheme() == to.scheme() || (from.scheme() == "http" && to.scheme() == "https");
+    let port = |u: &reqwest::Url| match (u.port(), u.scheme()) {
+        (Some(p), _) => Some(p),
+        (None, "http") | (None, "https") => None,
+        (None, _) => u.port_or_known_default(),
+    };
+    scheme_ok
+        && from.host_str().is_some_and(|h| to.host_str().is_some_and(|t| t.eq_ignore_ascii_case(h)))
+        && port(from) == port(to)
+}
+
+/// The client for talking to Bageo. Requests may carry the password header, which a
+/// redirect would otherwise take along to another host: only redirects that stay with
+/// the same Bageo are followed, any other one comes back as is.
+fn http_client() -> Option<Client> {
+    let same_bageo = reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() >= 10 {
+            return attempt.error("too many redirects");
+        }
+        let ok = attempt.previous().first().is_some_and(|first| redirect_stays(first, attempt.url()));
+        if ok {
+            attempt.follow()
+        } else {
+            attempt.stop()
+        }
+    });
+    Client::builder().no_proxy().timeout(TIMEOUT).redirect(same_bageo).build().ok()
+}
+
 async fn get(client: &Client, url: &str, token: Option<&str>) -> Option<(u16, Option<Value>)> {
     let mut req = client.get(url);
     if let Some(t) = token {
@@ -94,7 +126,7 @@ struct Poller {
 
 impl Poller {
     fn new(system_locale: String) -> Option<Self> {
-        let client = Client::builder().no_proxy().timeout(TIMEOUT).build().ok()?;
+        let client = http_client()?;
         let lang = status::locale_to_lang(&system_locale);
         Some(Poller {
             client,
@@ -243,7 +275,10 @@ impl Poller {
             if configured.is_none() && self.failures >= REDISCOVER_AFTER {
                 self.found = None;
             }
-            let base_for_address = configured.clone().or_else(|| self.found.clone());
+            // An address found by itself and never saved is not shown as Bageo's address.
+            let base_for_address = configured
+                .clone()
+                .or_else(|| self.found.clone().filter(|b| status::is_trusted(b, None, local_base)));
             let address = self.address(base_for_address.as_deref());
             let mut snap = match local::launch_reason(managed, gave_up, connected, since_launch) {
                 Some((level, reason)) => Snapshot::blank(level, reason, &self.lang, has_password, &address),
@@ -259,6 +294,14 @@ impl Poller {
         }
         if configured.is_none() {
             self.found = Some(base.clone());
+        }
+
+        // The password goes only to this computer or to an address the user saved. Bageo
+        // answered somewhere else by itself (a name on the network that anyone could claim):
+        // ask first, and send nothing but the plain health check until the user says yes.
+        if !status::is_trusted(&base, configured.as_deref(), local_base) {
+            self.last_good = None;
+            return Snapshot::found(&self.lang, has_password, &base);
         }
 
         // Step 3 (before building the snapshot so the address is current).
@@ -392,4 +435,84 @@ pub fn spawn(app: AppHandle) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::{Arc, Mutex};
+
+    const OK: &str = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}";
+
+    fn moved(to: &str) -> String {
+        format!("HTTP/1.1 302 Found\r\nLocation: {to}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+    }
+
+    /// A tiny HTTP server on this computer. `reply` gets the request path and returns the
+    /// whole response; the head of every request it got is kept, lower-cased.
+    fn serve(reply: impl Fn(&str) -> String + Send + 'static) -> (u16, Arc<Mutex<Vec<String>>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let log = seen.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut s) = stream else { continue };
+                let _ = s.set_read_timeout(Some(Duration::from_secs(5)));
+                let mut head = Vec::new();
+                let mut buf = [0u8; 1024];
+                while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match s.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => head.extend_from_slice(&buf[..n]),
+                    }
+                }
+                let head = String::from_utf8_lossy(&head).to_lowercase();
+                let path = head.split_whitespace().nth(1).unwrap_or("").to_string();
+                log.lock().unwrap().push(head);
+                let _ = s.write_all(reply(&path).as_bytes());
+            }
+        });
+        (port, seen)
+    }
+
+    fn carried_password(heads: &[String]) -> bool {
+        heads.iter().any(|h| h.contains("x-calls-token: pw-123"))
+    }
+
+    #[test]
+    fn password_does_not_follow_a_redirect_to_another_host() {
+        // The saved address answers 302 to a server on another port of this computer.
+        let (other, other_seen) = serve(|_| OK.to_string());
+        let (saved, saved_seen) = serve(move |_| moved(&format!("http://127.0.0.1:{other}/health")));
+        let client = http_client().unwrap();
+        let got = tauri::async_runtime::block_on(get(&client, &format!("http://127.0.0.1:{saved}/health"), Some("pw-123")));
+        assert_eq!(got.map(|(code, body)| (code, body.is_some())), Some((302, false)));
+        assert!(carried_password(&saved_seen.lock().unwrap()));
+        assert!(other_seen.lock().unwrap().is_empty(), "the other host got a request");
+    }
+
+    #[test]
+    fn redirect_within_the_same_bageo_is_still_followed() {
+        let (port, seen) = serve(|path| if path == "/health" { moved("/calls/health") } else { OK.to_string() });
+        let client = http_client().unwrap();
+        let got = tauri::async_runtime::block_on(get(&client, &format!("http://127.0.0.1:{port}/health"), Some("pw-123")));
+        assert_eq!(got.map(|(code, body)| (code, body.is_some())), Some((200, true)));
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 2);
+        assert!(seen.iter().all(|h| h.contains("x-calls-token: pw-123")));
+    }
+
+    #[test]
+    fn redirect_stays_only_on_the_same_host_and_port() {
+        let u = |s: &str| reqwest::Url::parse(s).unwrap();
+        assert!(redirect_stays(&u("http://bageo.local/health"), &u("https://Bageo.local/health")));
+        assert!(redirect_stays(&u("http://192.168.1.20:8787/a"), &u("http://192.168.1.20:8787/b")));
+        assert!(!redirect_stays(&u("http://192.168.1.20:8787/a"), &u("http://192.168.1.21:8787/a")));
+        assert!(!redirect_stays(&u("http://192.168.1.20:8787/a"), &u("http://192.168.1.20:8788/a")));
+        assert!(!redirect_stays(&u("https://bageo.example/a"), &u("http://bageo.example/a")));
+        assert!(!redirect_stays(&u("http://bageo.local/a"), &u("http://bageo.local.example/a")));
+    }
 }

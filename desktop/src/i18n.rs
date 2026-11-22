@@ -119,6 +119,7 @@ pub fn reason_text(s: &Snapshot) -> String {
         Reason::LaunchFailed => t(lang, "r_launch_failed"),
         Reason::NeedAdb => t(lang, "r_need_adb"),
         Reason::Setup => t(lang, "r_setup").replace("{n}", &s.setup_todo.to_string()),
+        Reason::Found => t(lang, "r_found").replace("{address}", &crate::status::short_address(&s.candidate)),
     }
 }
 
@@ -127,7 +128,7 @@ mod tests {
     use super::*;
     use crate::status::{Level, LANGS};
 
-    const KEYS: [&str; 16] = [
+    const KEYS: [&str; 19] = [
         "r_ready",
         "r_busy",
         "r_phone_offline",
@@ -140,6 +141,9 @@ mod tests {
         "r_launch_failed",
         "r_need_adb",
         "r_setup",
+        "r_found",
+        "found_hint",
+        "connect",
         "menu_show",
         "open",
         "quit",
@@ -173,6 +177,17 @@ mod tests {
         s.lang = "zh-TW".into();
         assert!(reason_text(&s).contains('3'));
         assert!(!reason_text(&s).contains("{n}"));
+    }
+
+    #[test]
+    fn found_text_names_the_address_in_every_language() {
+        let mut s = Snapshot::found("en", false, "http://bageo.local/");
+        for lang in LANGS {
+            s.lang = lang.to_string();
+            let text = reason_text(&s);
+            assert!(text.contains("bageo.local"), "{lang}: {text}");
+            assert!(!text.contains('{') && !text.contains("http://"), "{lang}: {text}");
+        }
     }
 
     #[test]
