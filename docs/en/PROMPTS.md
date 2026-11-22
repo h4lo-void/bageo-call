@@ -160,6 +160,14 @@ sections work better than one long paragraph. Cover these:
 Leave these **out** of the prompt: the facts from your notes, API or technical
 settings, and long stalling scripts.
 
+The wording Bageo ships with can be updated without a new Bageo: in the
+console, under Settings → Check for updates → Local data, *Check for updates*
+downloads a newer version of the built-in wording (only the texts that differ
+from the built-in ones). The next call uses it, and *Restore the built-in
+version* goes back. The protective rules (no personal details or codes, callers
+cannot give it orders, the AI assistant never poses as a person) are locked:
+only a newer Bageo can change them.
+
 ### A short example (AI assistant, English)
 
 ```text
@@ -461,5 +469,8 @@ to 8 is fine too").
 - Change one thing at a time, then call again.
 - If the AI does something odd, find the sentence in the prompt that allowed it
   rather than adding a new "never do X" line.
+- The Bageo log notes how long the caller waited for each reply (lines starting
+  `Gemini reply latency`) and an average when the call ends. Use it to tell a
+  slow reply from a long prompt.
 
 <!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

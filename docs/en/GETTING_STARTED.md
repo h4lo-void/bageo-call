@@ -68,7 +68,10 @@ database and no other service to install.
    computer. Later, click the icon to open the console, or go to
    <http://bageo.local/> (on this computer <http://localhost:8787/> works too).
    The first time, Windows asks whether to allow Bageo on the network: choose
-   *Private networks*.
+   *Private networks*. Bageo never downloads anything in the background: the
+   first time you open the console it suggests one language or voice pack, and
+   nothing downloads until you click. *Check for updates* looks for a new
+   Bageo or new data only when you click it.
 5. The USB link needs `adb` (Google's Android platform-tools). If it is
    missing, click the icon and press "Download". It goes into a
    `platform-tools` folder next to the program.
@@ -162,8 +165,11 @@ Open *Settings* in the web console.
 4. **Gemini API key**: paste it and save. Summaries use the same key by
    default, so there is nothing else to set up.
 5. **Voice**: press **Preview** next to the list to hear the voice say a few
-   lines in your language. The samples ship with the program, so listening
-   costs nothing.
+   lines in your language. The English samples ship with the program; for
+   another language the console offers its voice pack to download, and until
+   then the first preview is made with Gemini.
+6. **Region**: the AI follows this region's way of speaking and everyday
+   habits (`home_country`). Leave it empty and Bageo goes by the SIM card.
 
 **More options** holds two more you may want: *Other names callers use for
 you* (an English name, a nickname; the AI then knows the caller means you) and

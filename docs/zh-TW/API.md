@@ -11,7 +11,7 @@ Bageo 網頁控制台做的每件事，都是透過你自己電腦上的一個�
 
 | | |
 |---|---|
-| **基底位址** | Bageo 監聽的位置：預設在區網監聽 `8787` 連接埠（可用時也會監聽 `80` 連接埠供 `http://bageo.local/` 使用），設為 `AGENT_HOST=127.0.0.1` 時則只在 `http://127.0.0.1:8787`。API 路由都以 `/calls/api/` 開頭，例外是 `/health` 和手機用的 WebSocket。控制台本身在 `/calls/`（`/` 會轉址過去）。 |
+| **基底位址** | Bageo 監聽的位置：預設在區網監聽 `8787` 連接埠（可用時也會監聽 `80` 連接埠供 `http://bageo.local/` 使用），設為 `AGENT_HOST=127.0.0.1` 時則只在 `http://127.0.0.1:8787`。API 路由都以 `/calls/api/` 開頭，例外是 `/health`、手機用的 WebSocket（`/` 和 `/ws`）、`POST /api/phone-pairing/claim`（手機用配對碼換配對金鑰）、`POST /mcp`（見下一列）和 `/calls/` 底下控制台自己的檔案（`/calls/i18n/…`、`/calls/extras/art/…`）。`POST /v1/turn` 和 `GET`／`POST /v1/transfer` 是舊的測試路由，只要求控制台密碼。控制台本身在 `/calls/`（`/` 會轉址過去）。 |
 | **AI 代理** | `POST /mcp` 是 Model Context Protocol 伺服器，有自己的 Token，預設關閉：見 [MCP](MCP.md)。 |
 | **格式** | UTF-8 的 JSON；路由另有說明的除外（WAV、CSV、vCard、iCalendar）。送 JSON body 時請帶 `Content-Type: application/json`。 |
 | **時間** | 通話紀錄：UTC 的 RFC 3339（`2026-11-14T07:02:11Z`）。行程預約：當地時間（`TZ`），格式 `YYYY-MM-DDTHH:MM`。AI 代打：帶時差的當地時間（`2026-11-15T19:00:00+08:00`）。 |
@@ -48,7 +48,7 @@ Authorization: Bearer <token>
 X-Calls-Token: <token>
 ```
 
-密碼錯誤或沒帶，會得到 HTTP 401，內容是 `{"error": "unauthorized", "code": "unauthorized", "hint": …}`。`/health` 沒帶密碼也會回應，但只給監控用的幾個欄位（見[手機與健康狀態](#手機與健康狀態)）。完整的 `/health` 資料也要帶密碼；控制台用 `GET /calls/api/health` 讀。
+密碼錯誤或沒帶，會得到 HTTP 401，內容是 `{"error": "unauthorized", "code": "unauthorized", "hint": …}`。`/health` 沒帶密碼也會回應，但只給監控用的幾個欄位（見[手機與健康狀態](#手機與健康狀態)）。完整的 `/health` 資料也要帶密碼（沒設密碼時，只有 Bageo 那台電腦拿得到）；控制台用 `GET /calls/api/health` 讀。
 
 ```bash
 curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
@@ -314,7 +314,7 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 | `clip=reject` | 用這個聲音念的拒接語音。 |
 | `lang` | `ja`、`zh-TW`… |
 
-內建的 30 個聲音在 9 種語言都已預先錄好試聽和拒接語音（`assets/voices/` 裡共 1,080 段），所以試聽不用連 Gemini。只有 `regen=true` 或沒有預錄的聲音才會開一次連線。
+內建的 30 個聲音在 9 種語言都預先錄好了試聽和拒接語音（原始碼的 `assets/voices/` 裡共 1,080 段），安裝檔和 Docker 映像只帶英文那份。有錄好的就不用連 Gemini；只有 `regen=true` 或沒有預錄的聲音才會開一次連線。
 Bageo 沒附的語言和地區，可以另外下載語音包（見[語音下載](#語音下載)）。
 
 錯誤：400 `unknown_voice`／`unknown_background`、404 `background_missing`（背景音檔沒載入）、502 `preview_failed`。
@@ -704,7 +704,7 @@ Content-Type: application/json
 
 ## 當地資料
 
-三個路由用來查看和更新 AI 參考的各國生活習慣資料，以及核心九種語言以外的翻譯，對應控制台設定「更多選項」裡的「當地資料」。只有呼叫 `POST …/packs/update` 時 Bageo 才會連線，不會自己檢查；連線時直接從 GitHub 公開資料庫 `h4lo-void/bageo-packs` 最新的 Release 下載清單、資料檔，有較新的翻譯時再下載翻譯檔（`bageo-locales.json.gz`），不會送出其他資料。每個檔各自檢查，壞掉的那個被拒收，不影響另一個。它們遵循控制台的密碼規則，兩個 `POST` 也要遵循上面的 `Content-Type: application/json` 規則。
+五個路由用來查看和更新 AI 參考的各國生活習慣資料，以及核心九種語言以外的翻譯，對應控制台設定「檢查更新」頁的「當地資料」。只有呼叫 `POST …/packs/update` 或 `POST …/packs/bageo-check` 時 Bageo 才會連線，不會自己檢查；連線時直接從 GitHub 公開資料庫 `h4lo-void/bageo-packs` 最新的 Release 下載清單、資料檔，有較新的翻譯時再下載翻譯檔（`bageo-locales.json.gz`），不會送出其他資料。每個檔各自檢查，壞掉的那個被拒收，不影響另一個。它們遵循控制台的密碼規則，兩個 `POST` 也要遵循上面的 `Content-Type: application/json` 規則。
 
 同一次檢查在 Release 有較新的提示詞時，也會下載提示詞檔（`bageo-prompts.json.gz`，最多 512 KiB）：裡面只有跟 Bageo 內建不同的提示詞，下一通電話起使用。每段提示詞各自跟內建同一個 key 的文字比對（`{佔位符}` 相同、頭尾的空白與換行相同、長度最多是原本的兩倍或多 400 字、不能有控制字元、方向控制字元或看不見的字元）；不合的那段沿用內建文字，其他段照常使用。鎖定的提示詞是 Bageo 一定要守的規則，只有新版 Bageo 才會改。
 
@@ -713,11 +713,14 @@ Content-Type: application/json
 | `GET /calls/api/packs/update` | 目前使用的資料：`{version, date, builtin, regions, locales: {version, date, builtin, languages}, prompts: {version, date, builtin, texts}, voice_list_kept, running, last_check}`。`prompts.texts` 是目前跟內建不同的提示詞段數。`last_check` 另有 `pack_result`、`locales_result`、`prompts_result` 和 `prompts_version`。 |
 | `POST /calls/api/packs/update` | Body `{}`。馬上檢查有沒有新版，有就安裝：欄位同 `GET`，另加 `result`（任一個檔更新了就是 `updated`）。 |
 | `POST /calls/api/packs/restore` | Body `{}`。刪掉下載的資料、翻譯與提示詞，以及下載的語音清單（`voice_list_kept`）和擴充包清單（`extras_index_kept`），改回 Bageo 內建的版本：欄位同上，`result` 是 `restored`（正在檢查時是 `busy`；有檔案刪不掉時是 `io`，刪不掉的那個繼續使用）。 |
+| `GET /calls/api/packs/regions` | 目前使用的當地資料裡的地區清單，給控制台的國家選單用（不含機密，也不連網）：`{version, regions: [{code, countries, name: {en, native, zh}, lang, other_langs, status, delivery: {en, zh}}], bubbles}`。 |
+| `POST /calls/api/packs/bageo-check` | Body `{}`。問 GitHub 最新的 Bageo 是哪一版，什麼都不安裝：`{ok, result, current, latest, url}`；`result` 是 `update_available`、`up_to_date` 或 `offline`（這時沒有 `latest`）。`url` 是下載頁。就是控制台「Bageo」下面的「檢查更新」。 |
 | `GET /calls/api/extras` | 全部 70 種擴充語言與已知地區插圖清單：`{ok, version, running, langs, art}`。 |
 | `POST /calls/api/extras/download` | Body `{"lang": "<code>"}` 或 `{"art": "<region>"}`。直接從 GitHub 下載並安裝一個語言擴充包或地區插圖檔，回 `{..., result}`。 |
 | `POST /calls/api/extras/delete` | Body `{"lang": "<code>"}` 或 `{"art": "<region>"}`。刪除已下載的擴充檔（設定仍在使用時回 `in_use`，其餘為 `removed`、`not_listed`、`restart`）。 |
 | `GET /calls/extras/art/{file}` | 公開靜態路由，只回傳這台電腦已下載且驗證過的 `art-<region>.json`（不會觸發下載；附 `no-cache`、`nosniff`）。 |
 | `GET /calls/i18n/desktop/{file}` | 公開靜態路由，回傳已下載語言的桌面狀態小程式文字（`<code>.json`），缺少的鍵值自動退回英文。 |
+| `GET /calls/i18n/{code}.json` | 公開靜態路由，回傳一種控制台語言：內建九種之一，或已下載的擴充語言。兩者都沒有時回 HTTP 404。 |
 
 細節：
 
@@ -729,7 +732,7 @@ Content-Type: application/json
 
 ## 語音下載
 
-四個路由用來列出、下載、刪除和匯入語音包：一種語言（或某個地區的這種語言）預錄好的試聽句和拒接語音。對應控制台設定「更多選項」裡的「語音下載」，以及控制台用到還沒下載的語音時出現的提示卡。只有呼叫 `POST …/voices/download` 時 Bageo 才會連線，直接連到 GitHub 上 `h4lo-void/bageo-packs` 最新的 Release。沒有語音包也不會壞：那種語言第一次試聽時照舊請 Gemini 現場生成。這些路由遵循控制台的密碼規則，`download` 和 `delete` 也要遵循上面的 `Content-Type: application/json` 規則。
+四個路由用來列出、下載、刪除和匯入語音包：一種語言（或某個地區的這種語言）預錄好的試聽句和拒接語音。對應控制台設定「檢查更新」頁的「語音下載」，以及控制台用到還沒下載的語音時出現的提示卡。只有呼叫 `POST …/voices/download` 時 Bageo 才會連線，直接連到 GitHub 上 `h4lo-void/bageo-packs` 最新的 Release。沒有語音包也不會壞：那種語言第一次試聽時照舊請 Gemini 現場生成。這些路由遵循控制台的密碼規則，`download` 和 `delete` 也要遵循上面的 `Content-Type: application/json` 規則。
 
 | 方法與路徑 | 內容 |
 |---|---|
@@ -757,7 +760,9 @@ Content-Type: application/json
 | `DELETE /calls/api/devices/{serial}` | 移除一支沒連線的舊手機（同時清除手機清單、已存名稱與 SIM 紀錄，保留過往通話紀錄）：`{ok, serial}`。手機還在線或通話中回 HTTP 409 `device_online`／`device_in_call`。 |
 | `PUT /calls/api/devices/{serial}/sim-number` | Body `{"sub_id": <整數>, "number": "..."}`。設定（空白代表清除）這支手機某張 SIM 的門號，讓來電與 AI 代打直接顯示並依門號挑選：`{ok, serial, sims}`。 |
 | `POST /calls/api/phone-pairing/renew` | 更換 Wi-Fi 配對金鑰（`phone-pairing.key`）並中斷透過 Wi-Fi 連線的手機，每支手機重新插上 USB 一次即可取得新金鑰：`{ok: true}`（失敗回傳 HTTP 500 `save_failed`）。金鑰本身不會回傳。 |
-| `GET /health` | 排查問題用的大型 JSON 物件：版本、語言、哪些東西已設定、已連線的手機、進行中的通話；不含金鑰或密碼。要帶密碼才拿得到（見下方說明最後一點）。 |
+| `POST /calls/api/phone-pairing/code` | Body `{}`（JSON）。產生 6 位數配對碼，10 分鐘內有效，讓手機不用 USB，輸入 IP 位址和配對碼就能配對；新的碼會取代前一個：`{ok, code, expires_in, port, lan_ips, in_container}`。沒設控制台密碼時，只有 Bageo 那台電腦能要（否則 HTTP 403 `need_password`）；「手機也能用 Wi-Fi 連」關閉時回 HTTP 409 `phone_wifi_off`。 |
+| `POST /api/phone-pairing/claim` | 不在 `/calls/api/` 底下，也不用密碼：配對碼就是憑證。Body `{"code": "123456"}`（JSON）。只回答一次 `{ok: true, token, path: "/ws"}`（走 Wi-Fi 入口埠時另有 `ws_port`）：`token` 就是配對金鑰，手機接著用 `/ws?token=<金鑰>` 連線。錯誤都帶 `code`：`bad_request`、`phone_wifi_off`、`no_code`（沒有可用的碼、已過期或已用過）、`wrong_code`、`too_many_tries`（HTTP 429；輸錯的次數依來源計算，請等一分鐘）。 |
+| `GET /health` | 排查問題用的大型 JSON 物件：版本、語言、哪些東西已設定、已連線的手機、進行中的通話；不含金鑰或密碼。完整內容要帶控制台密碼；沒設密碼時，只有 Bageo 那台電腦拿得到，其他來源拿短版（見下方說明最後一點）。 |
 | `GET /calls/api/health` | 控制台用，內容和 `/health` 的完整版相同。跟其他 `/calls/api/` 路由一樣：有設密碼而沒帶回 HTTP 401，沒設密碼就開放。 |
 
 `GET /calls/api/devices` 的內容：
@@ -770,10 +775,11 @@ Content-Type: application/json
 `GET /health` 的內容：
 
 - `control_idle_clients`／`control_idle_serials` 算的是所有連上的手機；`normal_mode_serials` 列出切成一般手機的那幾支。
+- `GET /health` 的 `build` 是這個 Bageo 編譯時的 git commit 短碼（有未提交的改動時加 `-dirty`），否則是編譯時給的建置代號，再不然是 `unknown`；只看 `version` 的話，不同次發行之間可能一樣。短版也有這個欄位。
 - `local_time` 是 Bageo 依 `TZ` 的時鐘。
 - `summary_ready`（`summary_api_key_set` 是同一個值）表示有沒有設定摘要服務。
 - `setup_missing` 列出控制台「都準備好了嗎？」還沒完成的項目：`ai_off`、`gemini_key`、`owner_name`、`notify`、`summary`（只有名稱，沒有設定值）；全部設好是空陣列。
-- `GET /health` 只有帶了控制台密碼的請求才拿到完整內容。沒設密碼時，只有這台電腦自己送的請求拿得到（經過反向代理的不算；用 Docker 預設網路時，從主機送的請求也算別台電腦）。其他來源只回 `ok`、`version`、`local_time`、`language`、`notify_language`、`active_call_count`、`control_idle_clients` 和 `setup_missing`，監控用已經足夠。
+- `GET /health` 只有帶了控制台密碼的請求才拿到完整內容。沒設密碼時，只有這台電腦自己送的請求拿得到（經過反向代理的不算；用 Docker 預設網路時，從主機送的請求也算別台電腦）。其他來源只回 `ok`、`version`、`build`、`local_time`、`language`、`notify_language`、`active_call_count`、`control_idle_clients` 和 `setup_missing`，監控用已經足夠。
 
 切換模式後，`mode` 是手機現在的模式（不知道時為 `null`）；成功時 `error_code` 是 `null`，否則是下面其中之一：
 

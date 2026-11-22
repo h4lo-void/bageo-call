@@ -369,6 +369,13 @@ Before anything is restored, the console shows when the backup was made, which v
 3. Open the console and click *Import settings*, pick the file, and confirm with *Restore*.
 4. If the phones do not connect by themselves, plug each one in with USB once.
 
+**Check for updates** has its own page under *Settings* (between *Backup & restore* and *Advanced*). Nothing on it connects to the internet until you press a button, and everything comes straight from GitHub:
+
+- *Bageo*: shows your version. *Check for updates* opens the download page when a newer Bageo exists.
+- *Local data*: *Check for updates* downloads newer regional data, scam tables, translations and the wording the AI is told ([Prompts](PROMPTS.md#writing-or-editing-it-yourself)). The next call uses it; *Restore the built-in version* goes back.
+- *Voice downloads*: the voices on this computer (*No voices downloaded yet* when there are none). Delete one here, or *Import a file* when you have no internet.
+- *Other languages*: download or delete the 70 extra language packs. Calls work in all of them without a download; a pack adds the console or notifications in that language.
+
 ### Advanced
 
 | Setting | Default | What it does |
@@ -389,7 +396,7 @@ The first time you open the console without a password, it offers to set one.
 - *Turn on MCP* (`mcp_enabled`): turn it on and set the token below, or it does nothing. The address is the console's address plus `/mcp`.
 - *Token* (`mcp_token`): enter this token (a Bearer token) in the AI tool.
 - *May it ask the AI to place calls?* (`mcp_calls`): *No (look up only)*, *Yes, but ask me in a chat first* or *Yes, call right away*. Asking first needs a chat with commands turned on.
-- *Most AI calls per hour* (`mcp_errands_per_hour`): counted across all AI tools, 0 to 30.
+- *Most AI calls per hour* (`mcp_errands_per_hour`): counted across all AI tools, 0 to 30; the default is 3.
 - *Allowed websites* (`mcp_allowed_origins`): needed only for web-based AI tools, one address per line, e.g. `https://app.example`. Otherwise leave it empty.
 
 Left empty, *Address in notifications* (under *Notifications*) is filled in by itself. With `AGENT_HOST` not set (the default) it is `http://<network name>.local/` while Bageo answers that name, `http://<network name>.local:8787/` when port 80 cannot be opened, else the computer's network address; with `AGENT_HOST=0.0.0.0` it always carries `:8787`.

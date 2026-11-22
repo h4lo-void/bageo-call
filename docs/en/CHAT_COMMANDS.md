@@ -189,7 +189,7 @@ Beyond Telegram, Discord, Slack and Matrix two-way chat, **all 32 notification c
       - **Bark / Pushover / Gotify / Chanify**: Native tap-to-open URLs (`url` / `click` / `link`)
       - **Discord / Slack / LINE / Matrix / WeCom / DingTalk / Feishu / Email**: Clickable signed action links appended to the message
       - **Webhook (JSON)**: Structured `actions: [{ "label": "...", "url": "..." }]` array
-   - A link first opens a confirmation page, and the action runs only when you press the button on it. A link stops working after 7 days. Behind them is `GET/POST /calls/api/quick-action`.
+   - A link first opens a confirmation page, and the action runs only when you press the button on it. Each link works only once (pressing it again shows "Already done", even after Bageo restarts) and stops working after 7 days. Behind them is `GET/POST /calls/api/quick-action`.
 
 2. **Universal inbound command endpoint (`POST /calls/api/control/inbound`)**
    - Connect Home Assistant, n8n, Make, Apple Shortcuts, or custom Discord / Slack / LINE / WeCom / Feishu bots by POSTing any slash command or natural language message:

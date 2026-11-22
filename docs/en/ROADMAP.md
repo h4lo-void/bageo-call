@@ -38,7 +38,7 @@ missing, with no date.
 
 | Wish | Status | Notes |
 |---|---|---|
-| Many languages, localised prompts | Done | Nine full languages: voice, prompts, console, app and notifications. Traditional Chinese is proven on real calls, the others in simulated calls. |
+| Many languages, localised prompts | Done | The phone app has 79 languages built in; the console has nine and can download 70 more (six written right to left). Calls follow the languages Gemini supports, and the built-in prompts come in nine. Traditional Chinese is proven on real calls, the others in simulated calls. |
 | Language detection, switching mid-call | Done | The opening follows the caller's number and the SIM; mid-call the AI follows the caller. Simulated with callers speaking 28 languages. |
 | Dual SIM with a language per SIM | Done | *Main language for each SIM*. |
 | Translated transcripts | Done | Lines in another language keep their wording, with a translation into your notification language. |
