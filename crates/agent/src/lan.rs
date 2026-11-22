@@ -523,7 +523,10 @@ pub fn try_key(ext: &Extensions, headers: &HeaderMap) -> Option<IpAddr> {
 }
 
 /// The client a proxy names: the last `X-Forwarded-For` address (the one the
-/// proxy added), else `X-Real-IP`.
+/// proxy added), else `X-Real-IP`. When both are there and name different
+/// addresses, None (the connection's address counts): a proxy that sets only
+/// `X-Real-IP` passes on an `X-Forwarded-For` the browser wrote, and one that
+/// adds only to `X-Forwarded-For` passes on a written `X-Real-IP`.
 fn forwarded_client(headers: &HeaderMap) -> Option<IpAddr> {
     let parse = |s: &str| {
         let s = s.trim().trim_matches('"');
@@ -532,14 +535,18 @@ fn forwarded_client(headers: &HeaderMap) -> Option<IpAddr> {
             .or_else(|| s.parse::<SocketAddr>().ok().map(|a| a.ip()))
             .map(|ip| ip.to_canonical())
     };
-    headers
+    let forwarded = headers
         .get_all("x-forwarded-for")
         .iter()
         .filter_map(|v| v.to_str().ok())
         .flat_map(|v| v.split(','))
         .filter_map(parse)
-        .next_back()
-        .or_else(|| headers.get("x-real-ip").and_then(|v| v.to_str().ok()).and_then(parse))
+        .next_back();
+    let real = headers.get("x-real-ip").and_then(|v| v.to_str().ok()).and_then(parse);
+    match (forwarded, real) {
+        (Some(f), Some(r)) => (f == r).then_some(f),
+        (f, r) => f.or(r),
+    }
 }
 
 /// Slows down and then stops password guessing from other devices
@@ -939,6 +946,19 @@ mod tests {
         junk.insert("x-forwarded-for", HeaderValue::from_static("unknown"));
         assert_eq!(try_key(&conn("127.0.0.1:5000", "127.0.0.1:8787"), &junk), Some(ip("127.0.0.1")));
         assert_eq!(try_key(&Extensions::new(), &h), None);
+        // Both headers naming the same client (nginx's usual pair): that client.
+        let mut both = HeaderMap::new();
+        both.insert("x-real-ip", HeaderValue::from_static("203.0.113.9"));
+        both.insert("x-forwarded-for", HeaderValue::from_static("10.9.9.9, 203.0.113.9"));
+        assert_eq!(try_key(&conn("127.0.0.1:5000", "127.0.0.1:8787"), &both), Some(ip("203.0.113.9")));
+        // A proxy that sets only X-Real-IP passes on a written X-Forwarded-For (or
+        // the other way round): they disagree, and the proxy's own address counts.
+        for written in ["198.51.100.1", "198.51.100.2", "10.0.0.1, 198.51.100.3"] {
+            let mut forged = HeaderMap::new();
+            forged.insert("x-real-ip", HeaderValue::from_static("203.0.113.9"));
+            forged.insert("x-forwarded-for", HeaderValue::from_str(written).unwrap());
+            assert_eq!(try_key(&conn("127.0.0.1:5000", "127.0.0.1:8787"), &forged), Some(ip("127.0.0.1")), "{written}");
+        }
     }
 
     #[test]

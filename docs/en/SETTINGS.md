@@ -464,6 +464,8 @@ The connection is plain HTTP: fine on a home network you trust, not for the open
 
 **Reaching it from outside (reverse proxy).** First set a console password, then enter the outside address (for example `https://calls.example.org/`) under *Address in notifications*; links in notifications then use it. Bageo accepts only this computer's own names and addresses and the host of that address, so any other domain is refused. Use HTTPS on the proxy and point it at port 80 or 8787 of this computer. Everything that comes through a proxy counts as another device: without a password it does not open, and wrong passwords slow down, then wait a minute after 10 within a minute.
 
+With a reverse proxy or any forwarding on this computer (`ssh -L`/`-R`, socat), always set both passwords, `CALLS_UI_TOKEN` (or the console password) and `DEVICE_TOKEN`, and have the proxy send `X-Forwarded-For`. A connection forwarded without it reaches Bageo from this computer and counts as this computer itself.
+
 ### Data and recordings
 
 | Variable | Default | Meaning |

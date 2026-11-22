@@ -1702,12 +1702,15 @@ async fn root(
 /// set, nobody else may connect: a phone that is not on USB pairs with a code
 /// instead. A connection through a reverse proxy on this machine (`proxied`:
 /// it carries a forwarding header) is not this machine's own even from
-/// loopback: it needs `DEVICE_TOKEN`. The pairing key ([`phone_wifi`]) is
-/// checked apart, in [`phone_ws`].
-fn phone_allowed(peer: &SocketAddr, proxied: bool, token: Option<&str>, required: &str) -> bool {
+/// loopback: it needs `DEVICE_TOKEN`. Neither is one that names a web page
+/// (`from_page`: an `Origin` header): only a browser sends it, and the phone
+/// app and `adb reverse` never do, so a page open on this computer cannot pose
+/// as a phone on `ws://127.0.0.1`. The pairing key ([`phone_wifi`]) is checked
+/// apart, in [`phone_ws`].
+fn phone_allowed(peer: &SocketAddr, proxied: bool, from_page: bool, token: Option<&str>, required: &str) -> bool {
     let required = required.trim();
     let token_ok = !required.is_empty() && token.is_some_and(|t| crate::mcp::same(t, required));
-    if proxied {
+    if proxied || from_page {
         return token_ok;
     }
     peer.ip().to_canonical().is_loopback() || token_ok
@@ -1721,12 +1724,13 @@ fn phone_ws(
     state: AppState,
 ) -> axum::response::Response {
     let proxied = calls_http::came_through_proxy(headers);
+    let from_page = headers.contains_key(axum::http::header::ORIGIN);
     let token = q.get("token").map(String::as_str);
     // A phone paired over USB that reaches this port over Wi-Fi (the agent is
     // open to the LAN): its pairing key counts while phone Wi-Fi is on.
     let paired = state.settings_store.snapshot().phone_wifi && phone_wifi::pairing().accepts(token);
-    if !paired && !phone_allowed(&peer, proxied, token, &state.settings.device_token) {
-        warn!("phone websocket refused from {peer} (through a proxy: {proxied}): missing or wrong token");
+    if !paired && !phone_allowed(&peer, proxied, from_page, token, &state.settings.device_token) {
+        warn!("phone websocket refused from {peer} (through a proxy: {proxied}, from a web page: {from_page}): missing or wrong token");
         return (StatusCode::UNAUTHORIZED, "device token required").into_response();
     }
     let device_token = state.settings.device_token.trim();
@@ -12619,18 +12623,23 @@ mod access_and_whitelist_tests {
     fn a_phone_through_a_reverse_proxy_needs_the_device_token() {
         let lo: SocketAddr = "127.0.0.1:50000".parse().unwrap();
         let lan: SocketAddr = "192.168.1.20:50000".parse().unwrap();
-        assert!(!phone_allowed(&lan, false, None, ""), "no DEVICE_TOKEN set: a LAN connection is refused");
-        assert!(!phone_allowed(&lan, false, Some("anything"), ""), "any token is wrong when none is set");
-        assert!(phone_allowed(&lo, false, None, ""));
-        assert!(phone_allowed(&"[::ffff:127.0.0.1]:50000".parse().unwrap(), false, None, ""), "loopback as IPv4-mapped");
-        assert!(phone_allowed(&"[::1]:50000".parse().unwrap(), false, None, ""));
-        assert!(phone_allowed(&lo, false, None, "dev-test"), "the USB tunnel");
-        assert!(!phone_allowed(&lan, false, None, "dev-test"));
-        assert!(phone_allowed(&lan, false, Some("dev-test"), "dev-test"));
-        assert!(!phone_allowed(&lo, true, None, ""), "proxied, no token set");
-        assert!(!phone_allowed(&lo, true, None, "dev-test"));
-        assert!(!phone_allowed(&lo, true, Some("wrong"), "dev-test"));
-        assert!(phone_allowed(&lo, true, Some("dev-test"), "dev-test"));
+        assert!(!phone_allowed(&lan, false, false, None, ""), "no DEVICE_TOKEN set: a LAN connection is refused");
+        assert!(!phone_allowed(&lan, false, false, Some("anything"), ""), "any token is wrong when none is set");
+        assert!(phone_allowed(&lo, false, false, None, ""));
+        assert!(phone_allowed(&"[::ffff:127.0.0.1]:50000".parse().unwrap(), false, false, None, ""), "loopback as IPv4-mapped");
+        assert!(phone_allowed(&"[::1]:50000".parse().unwrap(), false, false, None, ""));
+        assert!(phone_allowed(&lo, false, false, None, "dev-test"), "the USB tunnel");
+        assert!(!phone_allowed(&lan, false, false, None, "dev-test"));
+        assert!(phone_allowed(&lan, false, false, Some("dev-test"), "dev-test"));
+        assert!(!phone_allowed(&lo, true, false, None, ""), "proxied, no token set");
+        assert!(!phone_allowed(&lo, true, false, None, "dev-test"));
+        assert!(!phone_allowed(&lo, true, false, Some("wrong"), "dev-test"));
+        assert!(phone_allowed(&lo, true, false, Some("dev-test"), "dev-test"));
+        // A web page open on this computer (it sends Origin) is no phone without the key.
+        assert!(!phone_allowed(&lo, false, true, None, ""), "a page on this computer, no token set");
+        assert!(!phone_allowed(&lo, false, true, None, "dev-test"));
+        assert!(!phone_allowed(&lo, false, true, Some("wrong"), "dev-test"));
+        assert!(phone_allowed(&lo, false, true, Some("dev-test"), "dev-test"), "with DEVICE_TOKEN it may");
     }
 
     /// The Wi-Fi entry: no pairing key, no entry, even from this computer
@@ -13097,10 +13106,10 @@ mod audit_a_tests {
     async fn phone_allowed_and_media_play_gate_behave_safely() {
         let lan: SocketAddr = "203.0.113.10:1234".parse().unwrap();
         let lo: SocketAddr = "127.0.0.1:1234".parse().unwrap();
-        assert!(phone_allowed(&lan, false, Some("dev-tok-1"), "dev-tok-1"));
-        assert!(!phone_allowed(&lan, false, Some("dev-tok-2"), "dev-tok-1"));
-        assert!(phone_allowed(&lo, true, Some("dev-tok-1"), "dev-tok-1"));
-        assert!(!phone_allowed(&lo, true, None, ""));
+        assert!(phone_allowed(&lan, false, false, Some("dev-tok-1"), "dev-tok-1"));
+        assert!(!phone_allowed(&lan, false, false, Some("dev-tok-2"), "dev-tok-1"));
+        assert!(phone_allowed(&lo, true, false, Some("dev-tok-1"), "dev-tok-1"));
+        assert!(!phone_allowed(&lo, true, false, None, ""));
         assert_eq!(urgent_call::masked("0912345678"), "***5678");
 
         let gate = MediaPlayGate::default();
@@ -13440,6 +13449,67 @@ mod health_access_tests {
         let (base, root) = serve_full("docker-test-pw", "docker-dev-token", "172.17.0.1:40000", None).await;
         assert_eq!(get_json(&base, "/ws?token=docker-test-pw", &[]).await.0, 401, "the console password is not the phones' key");
         assert_ne!(get_json(&base, "/ws?token=docker-dev-token", &[]).await.0, 401, "DEVICE_TOKEN");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Open `path` of `base` as a WebSocket, sending `Origin` when given:
+    /// Ok when let in (101), else the HTTP status of the refusal.
+    async fn ws_open(base: &str, path: &str, origin: Option<&str>) -> Result<(), u16> {
+        use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+        let mut req = format!("{}{path}", base.replacen("http://", "ws://", 1)).into_client_request().unwrap();
+        if let Some(o) = origin {
+            req.headers_mut().insert("origin", o.parse().unwrap());
+        }
+        match tokio_tungstenite::connect_async(req).await {
+            Ok(_) => Ok(()),
+            Err(tokio_tungstenite::tungstenite::Error::Http(res)) => Err(res.status().as_u16()),
+            Err(e) => panic!("{path}: {e}"),
+        }
+    }
+
+    /// A web page open on this computer that opens `ws://127.0.0.1:<port>/ws`
+    /// (its browser sends `Origin`) is no phone, in every mode; the phone app
+    /// and `adb reverse` send no `Origin` and still connect.
+    #[tokio::test]
+    async fn a_web_page_on_this_computer_cannot_pose_as_a_phone() {
+        for (mode, auto_local) in [("set address", None), ("automatic", Some("127.0.0.1:8787"))] {
+            let (base, root) = serve_as("", "127.0.0.1:5000", auto_local).await;
+            assert_eq!(ws_open(&base, "/ws", None).await, Ok(()), "{mode}: the USB tunnel");
+            for origin in ["http://evil.example", "https://evil.example:8443", "null", "http://127.0.0.1:8787", "http://localhost"] {
+                assert_eq!(ws_open(&base, "/ws", Some(origin)).await, Err(401), "{mode}: {origin} on /ws");
+                assert_eq!(ws_open(&base, "/", Some(origin)).await, Err(401), "{mode}: {origin} on /");
+            }
+            let _ = std::fs::remove_dir_all(&root);
+        }
+        // With the phones' key a client that sends Origin may connect; a wrong key may not.
+        let (base, root) = serve_full("origin-test-pw", "origin-dev-token", "127.0.0.1:5000", None).await;
+        assert_eq!(ws_open(&base, "/ws?token=origin-dev-token", Some("http://evil.example")).await, Ok(()));
+        assert_eq!(ws_open(&base, "/ws?token=origin-test-pw", Some("http://evil.example")).await, Err(401), "the console password is not the key");
+        assert_eq!(ws_open(&base, "/ws", None).await, Ok(()), "the USB tunnel needs no key");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A proxy on this computer that sets only `X-Real-IP` passes on the
+    /// `X-Forwarded-For` a guesser writes: a new one each time does not give
+    /// each guess a fresh count.
+    #[tokio::test]
+    async fn a_written_forwarded_for_does_not_reset_the_wrong_password_count() {
+        let (base, root) = serve("proxy-throttle-pw", "127.0.0.1:5000").await;
+        let mut last = 0;
+        for n in 1..=lan::MAX_TRIES + 1 {
+            let forged = format!("198.51.100.{n}");
+            let (status, _) = get_json(
+                &base,
+                &format!("/calls/api/devices?token=wrong-{n}"),
+                &[("x-real-ip", "203.0.113.50"), ("x-forwarded-for", &forged)],
+            )
+            .await;
+            last = status;
+            if n <= lan::MAX_TRIES {
+                assert_eq!(status, 401, "try {n}");
+            }
+        }
+        assert_eq!(last, 429, "held back after {} wrong passwords", lan::MAX_TRIES);
         let _ = std::fs::remove_dir_all(&root);
     }
 
