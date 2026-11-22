@@ -67,6 +67,7 @@ mod phone_region;
 mod phone_wifi;
 mod place_habits;
 mod preflight;
+mod prompt_book;
 mod prompts;
 mod recent_notices;
 mod services;
