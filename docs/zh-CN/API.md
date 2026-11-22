@@ -227,7 +227,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 | `talk_style_level` | 说话风格，1（随性）到 5（商务）；默认 3。 |
 | `about_callers` | 谁打来得比较多：`""`、`"family"`、`"work"` 或 `"both"`。 |
 | `about_work`／`about_parcel`／`about_extra` | 工作或日常（最多 120 字）、快递放哪里（80）、其他（300）。 |
-| `about_say`／`about_avoid` | 常说的话／不会说的话：各最多 3 个，每个最多 24 字。 |
+| `about_say`／`about_avoid` | 常说的话／不会说的话：各最多 10 个，每个最多 24 字。 |
 | `about_message_asks` | AI 助理留言要问的：`"name"`、`"callback"`、`"reason"`、`"urgency"` 任选（默认四个都有）。 |
 | `answer_style` | `assistant`／`persona`（AI 以你本人身份接听）。 |
 | `gemini_assistant_prompt`／`gemini_persona_prompt` | `assistant`／`persona` 各自的自定义提示词（留空 = 内置）。 |

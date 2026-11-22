@@ -752,10 +752,20 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
 .cb-list li.cb-none{color:var(--muted);cursor:default}
 /* ---------- About you ---------- */
 .choice.three{grid-template-columns:repeat(3,minmax(0,1fr))}
-.ab-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ab-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%;min-height:40px;padding:5px 10px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--surface);cursor:text;transition:border-color .14s}
+.ab-chips:hover{border-color:var(--line-strong)}
+.ab-chips:focus-within{outline:2px solid color-mix(in srgb,var(--focus) 35%,transparent);outline-offset:0;border-color:var(--focus)}
+.ab-chip{display:inline-flex;align-items:center;gap:4px;max-width:100%;padding-block:3px;padding-inline:10px 5px;border-radius:999px;background:var(--surface2);border:1px solid var(--line);color:var(--text);font-size:.88rem;line-height:1.35}
+.ab-chip-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ab-chip-x{display:inline-grid;place-items:center;flex:0 0 auto;width:20px;height:20px;padding:0;border:0;border-radius:999px;background:transparent;color:var(--muted);cursor:pointer;font-size:.95rem;line-height:1}
+.ab-chip-x:hover,.ab-chip-x:focus-visible{background:var(--line-strong);color:var(--text)}
+.ab-chips input.ab-in{flex:1 1 8rem;width:auto;min-width:6rem;min-height:26px;padding:2px 4px;border:0;background:transparent;outline:none}
+.ab-chips input.ab-in:focus-visible{outline:none;border:0}
 @media (max-width:720px){
   .ts{grid-template-columns:minmax(0,1fr)}
-  .choice.three,.ab-list{grid-template-columns:minmax(0,1fr)}
+  .choice.three{grid-template-columns:minmax(0,1fr)}
+  .ab-chips{min-height:44px}
+  .ab-chips input.ab-in{min-height:28px}
 }
 #exLangDlg{max-width:560px;width:calc(100vw - 32px)}
 .ex-list{max-height:52vh;overflow:auto;margin-top:10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg)}
@@ -1623,12 +1633,12 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
           <div class="field"><label for="f-about_work" data-i18n="ab_work"></label>
             <input type="text" id="f-about_work" data-k="about_work" data-t="text" maxlength="120" data-i18n-ph="ab_work_ph" /></div>
           <div class="field" id="abSayField"><div class="lbl" id="lbl-ab-say" data-i18n="ab_say"></div>
-            <div class="ab-list" id="f-about_say" data-k="about_say" data-t="list3" role="group" aria-labelledby="lbl-ab-say">
-              <input type="text" maxlength="24" data-i18n-ph="ab_say_ph" data-i18n-aria="ab_say" /><input type="text" maxlength="24" data-i18n-aria="ab_say" /><input type="text" maxlength="24" data-i18n-aria="ab_say" />
+            <div class="ab-chips" id="f-about_say" data-k="about_say" data-t="chips" role="group" aria-labelledby="lbl-ab-say">
+              <input type="text" class="ab-in" maxlength="120" data-i18n-ph="ab_say_ph" data-i18n-aria="ab_say" />
             </div></div>
           <div class="field" id="abAvoidField"><div class="lbl" id="lbl-ab-avoid" data-i18n="ab_avoid"></div>
-            <div class="ab-list" id="f-about_avoid" data-k="about_avoid" data-t="list3" role="group" aria-labelledby="lbl-ab-avoid">
-              <input type="text" maxlength="24" data-i18n-ph="ab_avoid_ph" data-i18n-aria="ab_avoid" /><input type="text" maxlength="24" data-i18n-aria="ab_avoid" /><input type="text" maxlength="24" data-i18n-aria="ab_avoid" />
+            <div class="ab-chips" id="f-about_avoid" data-k="about_avoid" data-t="chips" role="group" aria-labelledby="lbl-ab-avoid">
+              <input type="text" class="ab-in" maxlength="120" data-i18n-ph="ab_avoid_ph" data-i18n-aria="ab_avoid" />
             </div>
             <div class="help" data-i18n="ab_say_h"></div></div>
           <div class="field" id="abAsksField" hidden><div class="lbl" id="lbl-ab-asks" data-i18n="ab_asks"></div>
@@ -4846,6 +4856,86 @@ $("btnChanAdd").addEventListener("click", () => {
 });
 
 // ----- generic fields
+const AB_PHRASE_MAX = 24;
+const AB_PHRASES_MAX = 10;
+const AB_SPLIT_RE = /[,，、;；\n]+/;
+function abCleanPhrase(raw) {
+  const bare = Array.from(String(raw || ""))
+    .map((c) => (/[\u0000-\u001F\u007F-\u009F]/.test(c) ? " " : c))
+    .filter((c) => !'{}\u005b\u005d【】"“”「」'.includes(c))
+    .join("");
+  const joined = bare.trim().split(/\s+/).filter(Boolean).join(" ");
+  return Array.from(joined).slice(0, AB_PHRASE_MAX).join("").trim();
+}
+function abCleanList(list) {
+  const out = [];
+  for (const item of list || []) {
+    for (const part of String(item || "").split(AB_SPLIT_RE)) {
+      const s = abCleanPhrase(part);
+      if (!s || out.some((o) => o.toLowerCase() === s.toLowerCase())) continue;
+      out.push(s);
+      if (out.length === AB_PHRASES_MAX) return out;
+    }
+  }
+  return out;
+}
+function abChipVals(box) {
+  return Array.from(box.querySelectorAll(".ab-chip")).map((c) => c.dataset.v || "").filter(Boolean);
+}
+function abSyncBox(box) {
+  const inp = box && box.querySelector("input.ab-in");
+  if (!inp) return;
+  const chips = box.querySelectorAll(".ab-chip");
+  chips.forEach((c) => {
+    const x = c.querySelector(".ab-chip-x");
+    if (x) x.setAttribute("aria-label", `${t("ct_delete")}: ${c.dataset.v || ""}`);
+  });
+  inp.placeholder = chips.length ? "" : t(inp.dataset.i18nPh);
+  inp.readOnly = chips.length >= AB_PHRASES_MAX;
+}
+function abSetChips(box, vals) {
+  const inp = box.querySelector("input.ab-in");
+  box.querySelectorAll(".ab-chip").forEach((c) => c.remove());
+  for (const v of abCleanList(vals)) {
+    const chip = h("span", { class: "ab-chip", dataset: { v } },
+      h("span", { class: "ab-chip-t", text: v }),
+      h("button", {
+        type: "button",
+        class: "ab-chip-x",
+        "aria-label": `${t("ct_delete")}: ${v}`,
+        text: "×",
+        onclick: (e) => {
+          e.stopPropagation();
+          chip.remove();
+          abSyncBox(box);
+          updateDirty();
+          if (inp) inp.focus();
+        },
+      }));
+    box.insertBefore(chip, inp);
+  }
+  abSyncBox(box);
+}
+function abCommitInput(box, keepTail) {
+  const inp = box.querySelector("input.ab-in");
+  if (!inp || !inp.value) return;
+  if (keepTail) {
+    const parts = inp.value.split(/[,，、;；\n]/);
+    const tail = parts.pop() || "";
+    if (parts.length) abSetChips(box, abChipVals(box).concat(parts));
+    inp.value = abChipVals(box).length >= AB_PHRASES_MAX ? "" : tail;
+  } else {
+    const raw = inp.value;
+    inp.value = "";
+    abSetChips(box, abChipVals(box).concat([raw]));
+  }
+  abSyncBox(box);
+}
+function abCurValue(box) {
+  const inp = box.querySelector("input.ab-in");
+  const extra = inp && inp.value.trim() ? [inp.value] : [];
+  return abCleanList(abChipVals(box).concat(extra));
+}
 function curValue(el) {
   switch (el.dataset.t) {
     case "bool": return el.checked;
@@ -4855,7 +4945,7 @@ function curValue(el) {
     case "simlangs": return simLangValue();
     case "channels": return chanValue();
     case "lines": return el.value.split("\n").map((s) => s.trim()).filter(Boolean);
-    case "list3": return Array.from(el.querySelectorAll("input")).map((i) => i.value.trim()).filter(Boolean);
+    case "chips": return abCurValue(el);
     case "multi": return Array.from(el.querySelectorAll("input:checked")).map((i) => i.value);
     default: return el.value.trim();
   }
@@ -4868,7 +4958,7 @@ function origValue(el) {
     case "simlangs": return simLangObj(simLangNorm(v));
     case "channels": return chanOrig(v);
     case "lines": return Array.isArray(v) ? v.map((s) => String(s).trim()).filter(Boolean) : [];
-    case "list3": return Array.isArray(v) ? v.map((s) => String(s).trim()).filter(Boolean).slice(0, 3) : [];
+    case "chips": return Array.isArray(v) ? abCleanList(v) : [];
     // Not saved yet: every box ticked (the agent's default).
     case "multi": {
       const all = Array.from(el.querySelectorAll("input")).map((i) => i.value);
@@ -4945,7 +5035,7 @@ function populate() {
       case "simlangs": renderSimLangRows(); break;
       case "channels": chansFromSettings(); renderChannels(); break;
       case "lines": el.value = Array.isArray(v) ? v.join("\n") : ""; break;
-      case "list3": { const vals = origValue(el); el.querySelectorAll("input").forEach((i, n) => { i.value = vals[n] || ""; }); break; }
+      case "chips": { const inp = el.querySelector("input.ab-in"); if (inp) inp.value = ""; abSetChips(el, origValue(el)); break; }
       case "multi": { const vals = origValue(el); el.querySelectorAll("input").forEach((i) => { i.checked = vals.includes(i.value); }); break; }
       case "secret": el.value = ""; delete el.dataset.clear; refreshSecret(k); break;
       default: el.value = v == null ? "" : String(v);
@@ -6321,7 +6411,7 @@ function renderHomeCountry() {
   hcCombo.setValue(cur);
 }
 
-// ----- "About you": where parcels go, as the country does it
+// ----- "About you": where parcels go, as the country does it, and phrase chips
 function renderAboutHints() {
   const r = regionOfCountry(homeCountryNow()) || (packRegions || []).find((x) => x.code === "default");
   // The region's own way in English or Chinese; other languages, or a Chinese line with
@@ -6329,6 +6419,40 @@ function renderAboutHints() {
   let d = r && r.delivery ? String((lang === "en" ? r.delivery.en : lang.startsWith("zh") ? r.delivery.zh : "") || "") : "";
   if (lang.startsWith("zh") && /[^\u0000-\u024F\u2000-\u206F\u3000-\u30FF\u3400-\u9FFF\uAC00-\uD7AF\uFF00-\uFFEF]/.test(d)) d = "";
   $("f-about_parcel").placeholder = d ? t("ab_parcel_ph", { x: d }) : t("ab_parcel_ph0");
+  abSyncBox($("f-about_say"));
+  abSyncBox($("f-about_avoid"));
+}
+for (const id of ["f-about_say", "f-about_avoid"]) {
+  const box = $(id);
+  const inp = box && box.querySelector("input.ab-in");
+  if (!box || !inp) continue;
+  box.addEventListener("click", (e) => {
+    if (!e.target.closest(".ab-chip-x")) inp.focus();
+  });
+  const lbl = $(box.getAttribute("aria-labelledby"));
+  if (lbl) lbl.addEventListener("click", () => inp.focus());
+  inp.addEventListener("keydown", (e) => {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (inp.value.trim()) { abCommitInput(box, false); updateDirty(); }
+    } else if (e.key === "Backspace" && !inp.value) {
+      const chips = box.querySelectorAll(".ab-chip");
+      const last = chips[chips.length - 1];
+      if (last) { e.preventDefault(); last.remove(); abSyncBox(box); updateDirty(); }
+    }
+  });
+  inp.addEventListener("input", (e) => {
+    if (e.isComposing) return;
+    if (/[,，、;；\n]/.test(inp.value)) abCommitInput(box, true);
+  });
+  inp.addEventListener("compositionend", () => {
+    if (/[,，、;；\n]/.test(inp.value)) { abCommitInput(box, true); updateDirty(); }
+  });
+  inp.addEventListener("blur", () => {
+    if (inp.value.trim()) { abCommitInput(box, false); updateDirty(); }
+    else { inp.value = ""; abSyncBox(box); }
+  });
 }
 // Answer 1 suggests where the talk style starts (family 2, work 4, both 3): only
 // while the slider was not moved by hand and still sits where the saved answer put it.

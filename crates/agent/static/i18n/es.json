@@ -1260,7 +1260,7 @@
     "ab_say_ph": "p. ej. Sin problema",
     "ab_avoid": "Frases que nunca dices",
     "ab_avoid_ph": "p. ej. Estimado cliente",
-    "ab_say_h": "Hasta 3 de cada. La IA usa tus frases de vez en cuando y evita las otras.",
+    "ab_say_h": "Pulsa Enter o pon una coma tras cada frase. La IA usa tus frases de vez en cuando y evita las otras.",
     "ab_asks": "Qué preguntar en un mensaje",
     "ab_ask_name": "Nombre",
     "ab_ask_callback": "Número para devolver la llamada",

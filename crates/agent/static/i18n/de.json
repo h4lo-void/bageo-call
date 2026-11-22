@@ -1260,7 +1260,7 @@
     "ab_say_ph": "z. B. Passt schon",
     "ab_avoid": "Was du nie sagst",
     "ab_avoid_ph": "z. B. Sehr geehrter Kunde",
-    "ab_say_h": "Je bis zu 3. Die KI nutzt deine Sprüche ab und zu und meidet die anderen.",
+    "ab_say_h": "Nach jedem Spruch Enter oder Komma tippen. Die KI nutzt deine Sprüche ab und zu und meidet die anderen.",
     "ab_asks": "Was in einer Nachricht erfragt wird",
     "ab_ask_name": "Name",
     "ab_ask_callback": "Rückrufnummer",
