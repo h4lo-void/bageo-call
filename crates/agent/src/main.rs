@@ -2068,6 +2068,16 @@ fn setup_missing(rt: &RuntimeSettings, eff: &Settings) -> Vec<&'static str> {
     out
 }
 
+/// Which build this is: the short git commit (`-dirty` with uncommitted
+/// changes), else the `BAGEO_BUILD_ID` given at build time, else `unknown`
+/// (`build.rs`). The version number alone stays the same between releases.
+const BUILD_ID: &str = env!("BAGEO_BUILD");
+
+// The rules for the build id live in `build.rs`; its tests run with these.
+#[cfg(test)]
+#[path = "../build.rs"]
+mod build_id_rules;
+
 /// Who gets the full `/health` JSON (phone serials, caller numbers of calls in
 /// progress, folder paths, prompts): with a console password set, a request that
 /// carries it; with none set, only a request from this machine itself, which
@@ -2087,8 +2097,10 @@ async fn health(
     Query(q): Query<HashMap<String, String>>,
 ) -> Json<Value> {
     // Anyone else only learns that the agent is up (enough for monitors and the
-    // SMS forwarder). The web console reads the full version from
-    // `GET /calls/api/health`, which has the console's own password check.
+    // SMS forwarder), and which build runs: the version and the build id are the
+    // same kind of fact (the public source's release and commit), and a monitor
+    // needs them to tell builds apart. The web console reads the full answer
+    // from `GET /calls/api/health`, which has the console's own password check.
     let password_set = !settings_store::active_ui_token(&state.settings.calls_ui_token).is_empty();
     let token_ok = calls_http::token_ok_parts(&state.settings, &headers, q.get("token").map(String::as_str));
     // Loopback, or this computer's own LAN address (`http://bageo.local/health` here).
@@ -2099,6 +2111,7 @@ async fn health(
         return Json(json!({
             "ok": true,
             "version": env!("CARGO_PKG_VERSION"),
+            "build": BUILD_ID,
             "local_time": chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
             "language": rt.language,
             // What the owner reads (the SMS forwarder labels its messages with it).
@@ -2359,6 +2372,7 @@ async fn health_full(state: &AppState) -> Value {
     // The same, under the name the console's own API uses.
     body.insert("console_url".into(), json!(settings_store::effective_console_url(s)));
     body.insert("version".into(), json!(env!("CARGO_PKG_VERSION")));
+    body.insert("build".into(), json!(BUILD_ID));
     // The clock notifications and "today" use (set TZ when it is not yours).
     body.insert(
         "local_time".into(),
@@ -13231,10 +13245,11 @@ mod health_access_tests {
     const FULL_ONLY: [&str; 4] = ["active_calls", "device_labels", "calls_data_dir", "control_idle_serials"];
 
     fn assert_brief(body: &Value) {
-        for key in ["ok", "version", "language", "notify_language", "local_time", "active_call_count", "control_idle_clients", "setup_missing"] {
+        for key in ["ok", "version", "build", "language", "notify_language", "local_time", "active_call_count", "control_idle_clients", "setup_missing"] {
             assert!(body.get(key).is_some(), "short health lacks {key}");
         }
-        assert_eq!(body.as_object().unwrap().len(), 8, "short health has other keys: {body}");
+        assert_eq!(body["build"], json!(BUILD_ID));
+        assert_eq!(body.as_object().unwrap().len(), 9, "short health has other keys: {body}");
         for key in FULL_ONLY {
             assert!(body.get(key).is_none(), "short health leaks {key}");
         }
@@ -13246,6 +13261,11 @@ mod health_access_tests {
         }
         assert_eq!(body["ok"], json!(true));
         assert!(body.get("version").is_some() && body.get("setup_missing").is_some());
+        // The build id is what tells two builds of the same version apart.
+        let build = body["build"].as_str().expect("full health has a build id");
+        assert_eq!(build, BUILD_ID);
+        assert!(!build.is_empty() && build.len() <= 40, "{build}");
+        assert!(build.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')), "{build}");
     }
 
     #[test]

@@ -30,6 +30,10 @@ jobs:
   agent:
     name: agent ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    env:
+      # The build id shown by /health and the console (the checkout's own git
+      # commit is used first; this is the same commit).
+      BAGEO_BUILD_ID: ${{ github.sha }}
     strategy:
       fail-fast: false
       matrix:

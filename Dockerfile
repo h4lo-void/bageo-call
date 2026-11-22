@@ -21,6 +21,10 @@ COPY crates ./crates
 #   docker compose build --build-arg CARGO_BUILD_JOBS=4
 ARG CARGO_BUILD_JOBS=2
 ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
+# The commit this image is built from (the image build has no .git), shown by /health:
+#   docker build --build-arg BAGEO_BUILD_ID=$(git rev-parse --short=7 HEAD) .
+ARG BAGEO_BUILD_ID=
+ENV BAGEO_BUILD_ID=${BAGEO_BUILD_ID}
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/src/target \
