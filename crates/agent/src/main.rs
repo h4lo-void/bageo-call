@@ -70,6 +70,7 @@ mod preflight;
 mod prompt_book;
 mod prompts;
 mod recent_notices;
+mod reply_latency;
 mod services;
 mod settings_store;
 mod sms_store;
@@ -977,6 +978,16 @@ struct TrtcTalkMetrics {
 }
 
 impl TrtcTalkMetrics {
+    /// One measured reply (`reply_latency`, from the Gemini Live loop): feeds the
+    /// latency fields of the status report. The serial is kept truncated.
+    fn record_reply(&self, reply_ms: u64, serial: &str) {
+        self.last_reply_latency_ms.store(reply_ms, Ordering::Relaxed);
+        self.sum_reply_latency_ms.fetch_add(reply_ms, Ordering::Relaxed);
+        self.reply_count.fetch_add(1, Ordering::Relaxed);
+        if let Ok(mut s) = self.last_serial.lock() {
+            *s = serial.chars().take(8).collect();
+        }
+    }
 
     fn avg_ms(&self) -> u64 {
         let n = self.reply_count.load(Ordering::Relaxed);
@@ -6576,6 +6587,7 @@ fn start_ring_prewarm(
         None,
         None,
         None,
+        state.trtc_talk.clone(),
     );
     let id = state.ring_prewarm.insert(
         serial,
@@ -6990,6 +7002,7 @@ async fn spawn_gemini_session_tasks(
         Some(media_call_guard.clone()),
         callback.as_ref().map(|c| c.script.clone()),
         errand,
+        state.trtc_talk.clone(),
     );
     // Kept for one fresh-socket retry if this session never delivers audio
     // (not for a call-back: nobody may have answered, and a retry would greet).
@@ -7061,6 +7074,7 @@ fn start_gemini_session_core(
     media_guard: Option<MediaCallGuard>,
     callback_script: Option<String>,
     errand: Option<Arc<errands::CallHooks>>,
+    reply_metrics: Arc<TrtcTalkMetrics>,
 ) -> GeminiSessionCore {
     // The AI's own call-back with an appointment's answer
     // (`appointments::callback_for_call`): its script instead of the answering
@@ -7325,6 +7339,7 @@ fn start_gemini_session_core(
                 is_callback,
                 errand,
                 user_prompt_chars,
+                reply_metrics,
             )
             .await
         })
@@ -13083,6 +13098,23 @@ mod audit_a_tests {
         assert!(!gate.claim("pixel-1010111", MediaPlayKind::Greet, &c2).await);
         gate.release("pixel-10111").await;
         assert!(gate.claim("pixel-1010111", MediaPlayKind::Greet, &c2).await);
+    }
+}
+
+#[cfg(test)]
+mod reply_metrics_tests {
+    use super::*;
+
+    #[test]
+    fn measured_replies_fill_the_status_fields() {
+        let m = TrtcTalkMetrics::default();
+        assert_eq!((m.avg_ms(), m.reply_count.load(Ordering::Relaxed)), (0, 0));
+        m.record_reply(1000, "ABCDEFGHIJKL");
+        m.record_reply(2000, "ABCDEFGHIJKL");
+        assert_eq!(m.last_reply_latency_ms.load(Ordering::Relaxed), 2000);
+        assert_eq!(m.avg_ms(), 1500);
+        assert_eq!(m.reply_count.load(Ordering::Relaxed), 2);
+        assert_eq!(*m.last_serial.lock().unwrap(), "ABCDEFGH");
     }
 }
 
