@@ -16,6 +16,8 @@
 #   /data/adb/pixelcallai/pending     exists until every step has worked; the app asks
 #                                     for the switch again when its service starts and
 #                                     finds it
+#                                     (a failed switch to AI that undid all its steps
+#                                     and put the phone back as a normal phone removes it)
 #   /data/adb/pixelcallai/last_apply  key=value lines: id, mode, step_<name>=ok|fail,
 #                                     then error=<code> or result=ok, and done=1 last
 #   /data/adb/pixelcallai/apply.lock  held while a run is going (its pid inside)
@@ -62,19 +64,33 @@ o() { $T "$@" 2>/dev/null; }
 note() { echo "$1" >> "$LOG"; }
 IN_REVERT=0
 IN_NORMAL=0
+# Set before the first command of each AI step: what a failed switch to AI has to undo.
+T_DIALER=0
+T_GOOGLE=0
+T_DND=0
+T_VOL=0
+OLD_VOL_RING=
+OLD_VOL_NOTIFICATION=
 PREV_MODE=$(tr -d "$STRIP" < "$DIR/mode" 2>/dev/null || echo ai)
 [ "$PREV_MODE" = normal ] || PREV_MODE=ai
 step() { note "step_$1=$2"; }
 fail() {
   step "$1" fail
-  if [ "$MODE" = normal ] && [ "$IN_NORMAL" -eq 1 ] && [ "$IN_REVERT" -eq 0 ]; then
+  if [ "$IN_REVERT" -eq 0 ]; then
     IN_REVERT=1
-    note "revert=ai"
-    echo ai > "$DIR/mode"
-    apply_ai || true
-    rm -f "$DIR/pending"
-  elif [ "$IN_REVERT" -eq 0 ]; then
-    echo "$PREV_MODE" > "$DIR/mode"
+    if [ "$MODE" = normal ] && [ "$IN_NORMAL" -eq 1 ]; then
+      note "revert=ai"
+      echo ai > "$DIR/mode"
+      apply_ai || true
+      rm -f "$DIR/pending"
+    elif [ "$MODE" = ai ] && [ "$PREV_MODE" = normal ]; then
+      # The phone was a normal phone and the AI switch broke half way: undo every step
+      # it did, so the owner's phone still rings and Google Phone answers.
+      note "revert=normal"
+      revert_to_normal
+    else
+      echo "$PREV_MODE" > "$DIR/mode"
+    fi
   fi
   note "error=$2"
   note "finished=$(date +%s)"
@@ -245,6 +261,47 @@ apply_normal() {
 bageo_dialer() { [ "$(dialer)" = "$PKG" ]; }
 dnd_on() { z=$(zen); [ -n "$z" ] && [ "$z" != "0" ]; }
 
+# A failed switch to AI: put back what the steps of apply_ai changed (the phone app, the
+# phone app that was turned off, Do Not Disturb, the two volumes), then the mode file.
+# Google Phone goes first so the phone is never without a phone app. Best effort; the
+# pending flag goes only when the phone is checked to be a normal phone again.
+revert_to_normal() {
+  if [ "$T_GOOGLE" -eq 1 ]; then
+    q pm enable "$GD"
+    q pm enable "$GD/com.android.incallui.InCallServiceImpl"
+    q pm enable "$GD/com.android.incallui.InCallActivity"
+    q pm enable "$GD/com.android.incallui.LegacyInCallActivity"
+  fi
+  if [ "$T_DND" -eq 1 ]; then
+    q cmd notification set_dnd off
+    q settings put global zen_mode 0
+  fi
+  if [ "$T_VOL" -eq 1 ]; then
+    case "$OLD_VOL_RING" in ''|*[!0-9]*|0) ;; *) q settings put system volume_ring "$OLD_VOL_RING" ;; esac
+    case "$OLD_VOL_NOTIFICATION" in ''|*[!0-9]*|0) ;; *) q settings put system volume_notification "$OLD_VOL_NOTIFICATION" ;; esac
+  fi
+  good=1
+  if [ "$T_DIALER" -eq 1 ]; then
+    remove_holder android.app.role.CALL_SCREENING "$PKG"
+    if o pm list packages | grep -qx "package:$GD"; then
+      add_holder android.app.role.DIALER "$GD"
+      q telecom set-default-dialer "$GD"
+      until_ok google_ready || good=0
+    else
+      remove_holder android.app.role.DIALER "$PKG"
+      until_ok other_ready || good=0
+    fi
+  fi
+  if [ "$T_DND" -eq 1 ]; then until_ok dnd_off || good=0; fi
+  echo normal > "$DIR/mode"
+  if [ "$good" -eq 1 ]; then
+    rm -f "$DIR/pending"
+    note "revert_ok=1"
+  else
+    note "revert_ok=0"
+  fi
+}
+
 apply_ai() {
   for p in RECORD_AUDIO READ_PHONE_STATE READ_PHONE_NUMBERS ANSWER_PHONE_CALLS ACCESS_NOTIFICATION_POLICY \
       POST_NOTIFICATIONS READ_CALL_LOG CALL_PHONE SEND_SMS; do
@@ -253,6 +310,7 @@ apply_ai() {
   q cmd appops set "$PKG" ACCESS_NOTIFICATION_POLICY allow
 
   # 1. Bageo is the phone app and the call screener (as service.sh does at boot).
+  T_DIALER=1
   q cmd role add-role-holder android.app.role.DIALER "$PKG"
   q cmd role add-role-holder android.app.role.CALL_SCREENING "$PKG"
   q telecom set-default-dialer "$PKG"
@@ -263,6 +321,7 @@ apply_ai() {
   step screening ok
 
   # 2. Only now that Bageo answers calls: Google Phone off.
+  T_GOOGLE=1
   q pm disable "$GD/com.android.incallui.InCallServiceImpl"
   q pm disable "$GD/com.android.incallui.InCallActivity"
   q pm disable-user --user 0 "$GD"
@@ -270,10 +329,14 @@ apply_ai() {
 
   # 3. Do Not Disturb on, ringer and notification volume settings zero (the app's
   #    audio guard zeroes the live volumes when its service arms).
+  T_DND=1
   q settings put global zen_mode 2
   q cmd notification set_dnd on
   until_ok dnd_on || fail dnd dnd_failed
   step dnd ok
+  T_VOL=1
+  OLD_VOL_RING=$(o settings get system volume_ring | tr -d "$STRIP")
+  OLD_VOL_NOTIFICATION=$(o settings get system volume_notification | tr -d "$STRIP")
   q settings put system volume_ring 0
   q settings put system volume_notification 0
   step volume ok
