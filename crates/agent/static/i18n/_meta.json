@@ -3261,12 +3261,12 @@
     "placeholders": []
   },
   "f_home_country": {
-    "where": "a label or sentence in the console. English: Country you live in",
+    "where": "a label or sentence in the console. English: Region",
     "who": "the owner",
     "placeholders": []
   },
   "f_home_country_h": {
-    "where": "a label or sentence in the console. English: The AI follows this country's everyday habits, such as where parcels go. Automatic: fro...",
+    "where": "a label or sentence in the console. English: The AI follows this region's speaking style and everyday habits, such as where parcels go.",
     "who": "the owner",
     "placeholders": []
   },
@@ -3504,7 +3504,7 @@
     "placeholders": []
   },
   "f_simlang_h": {
-    "where": "a label or sentence in the console. English: Only for a phone with a SIM from another country: calls to that SIM start in the langua...",
+    "where": "a label or sentence in the console. English: Only for a phone with a SIM from another region: calls to that SIM start in the language you pick here.",
     "who": "the owner",
     "placeholders": []
   },
@@ -5048,6 +5048,13 @@
       "{v}"
     ]
   },
+  "ph_app_ver_diff": {
+    "where": "a short note next to the phone app version when it differs from Bageo's version. English: Differs from Bageo {v}",
+    "who": "the owner",
+    "placeholders": [
+      "{v}"
+    ]
+  },
   "ph_forget": {
     "where": "a label or sentence in the console. English: Delete",
     "who": "the owner",
@@ -5719,7 +5726,7 @@
     "placeholders": []
   },
   "sl_add": {
-    "where": "a label or sentence in the console. English: Add a SIM country",
+    "where": "a label or sentence in the console. English: Add a SIM region",
     "who": "the owner",
     "placeholders": []
   },
@@ -5729,7 +5736,7 @@
     "placeholders": []
   },
   "sl_country": {
-    "where": "a label or sentence in the console. English: SIM country",
+    "where": "a label or sentence in the console. English: SIM region",
     "who": "the owner",
     "placeholders": []
   },
@@ -5744,7 +5751,7 @@
     "placeholders": []
   },
   "sl_pick": {
-    "where": "a label or sentence in the console. English: Choose a country",
+    "where": "a label or sentence in the console. English: Choose a region",
     "who": "the owner",
     "placeholders": []
   },
@@ -6578,7 +6585,8 @@
     "placeholders": [
       "{lang}",
       "{region}"
-    ]
+    ],
+    "same_ok": true
   },
   "vp_none": {
     "where": "the voice downloads section. English: No voices downloaded yet",
@@ -6718,6 +6726,11 @@
   },
   "wl_title": {
     "where": "a label or sentence in the console. English: Forward to your phone",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ts_get_art": {
+    "where": "a button in the talk-style mascot box when a region's scene art is not downloaded yet. English: Download local scene",
     "who": "the owner",
     "placeholders": []
   }

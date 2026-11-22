@@ -40,6 +40,7 @@
     <string name="header_compat">Probatum in Pixel 7, 7a, 8 et 9. Alia telephona cum root operari possunt; tuo periculo utere.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versio %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo est %1$s (versio differt)</string>
     <string name="ip_addr_hint">Exempli gratia 192.168.1.20</string>
     <string name="ip_addr_label">Inscriptio IP Bageo</string>
     <string name="ip_code_hint">Sume ex pagina Systematis in tabulato</string>

@@ -40,6 +40,7 @@
     <string name="header_compat">Pixel 7, 7a, 8 နှင့် 9 တို့တွင် စမ်းသပ်ပြီး။ အခြား root ဖောက်ထားသော ဖုန်းများလည်း ရနိုင်သည်၊ ကိုယ်ပိုင်ဆုံးဖြတ်ချက်ဖြင့် စမ်းပါ။</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">ဗားရှင်း %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo သည် %1$s ဖြစ်သည် (ဗားရှင်းမတူပါ)</string>
     <string name="ip_addr_hint">ဥပမာ 192.168.1.20</string>
     <string name="ip_addr_label">Bageo ၏ IP လိပ်စာ</string>
     <string name="ip_code_hint">ဝဘ်ကွန်ဆိုးလ်၏ စနစ်စာမျက်နှာတွင် ရယူပါ</string>

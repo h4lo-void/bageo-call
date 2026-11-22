@@ -251,23 +251,6 @@ pub fn format_smtp_data_payload(rfc822: &str) -> String {
     out
 }
 
-/// AUTH LOGIN + MAIL/RCPT/DATA on an already TLS-upgraded SMTP stream.
-pub async fn smtp_send_authenticated<S>(
-    stream: S,
-    user: &str,
-    app_password: &str,
-    to: &str,
-    rfc822: &str,
-) -> Result<()>
-where
-    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
-{
-    let user = validate_gmail_user(user)?;
-    let app_password = validate_app_password(app_password)?;
-    let to = validate_recipient(to)?;
-    smtp_session(stream, false, user, app_password, to, rfc822).await
-}
-
 /// The SMTP conversation on a TLS stream. `greeting`: the server's 220 greeting
 /// is still unread (TLS from the start); after STARTTLS there is none.
 async fn smtp_session<S>(stream: S, greeting: bool, user: &str, password: &str, to: &str, rfc822: &str) -> Result<()>

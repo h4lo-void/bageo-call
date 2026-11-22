@@ -25,6 +25,17 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
+// The words are in the prompt book (data/prompts/<language>.json); these are their handles.
+crate::prompt_book::prompt_texts! {
+    ZH_URGENT_CALL_NOT_ANSWERED_TURN_1 = "zh-TW/urgent_call_not_answered_turn_1";
+    ZH_URGENT_CALL_NOT_ANSWERED_TURN_2 = "zh-TW/urgent_call_not_answered_turn_2";
+    EN_URGENT_CALL_NOT_ANSWERED_TURN = "en/urgent_call_not_answered_turn";
+    ZH_URGENT_CALL_CALLBACK_TURN_1 = "zh-TW/urgent_call_callback_turn_1";
+    ZH_URGENT_CALL_CALLBACK_TURN_2 = "zh-TW/urgent_call_callback_turn_2";
+    EN_URGENT_CALL_CALLBACK_TURN = "en/urgent_call_callback_turn";
+    EN_URGENT_CALL_WITH_CALLER_LANGUAGE = "en/urgent_call_with_caller_language";
+}
+
 /// How long the phone lets the owner's phone ring.
 pub const OWNER_ANSWER_TIMEOUT: Duration = Duration::from_secs(25);
 /// How long the agent waits for the phone to settle it (dial, ring, merge)
@@ -321,7 +332,7 @@ pub fn with_caller_language(turn: &str, spoken: Option<Lang>) -> String {
             let name = crate::urgency::language_name(l);
             format!(" [Language: the caller is speaking {name} on this call. Say it in {name}, whatever language this note is in.]")
         }
-        None => " [Language: say it in the language the caller is speaking on this call, whatever language this note is in.]".to_string(),
+        None => EN_URGENT_CALL_WITH_CALLER_LANGUAGE.get().to_string(),
     };
     let Ok(mut v) = serde_json::from_str::<Value>(turn) else {
         return turn.to_string();
@@ -517,11 +528,6 @@ impl CallCtl {
         self.say.lock().ok().and_then(|mut g| g.take())
     }
 
-    /// The AI's output held the hold-on line (first time counts).
-    pub fn note_hold_line(&self) {
-        self.note_hold_line_from(0);
-    }
-
     /// Record when the hold-on line was spoken along with `base_bytes` of
     /// `delivered_bytes` at the start of the turn (first time counts).
     pub fn note_hold_line_from(&self, base_bytes: u64) {
@@ -614,11 +620,11 @@ pub fn deliver(msg: &Value) -> bool {
 pub fn not_answered_turn(lang: Lang, assistant: bool, owner: &str) -> String {
     let owner = crate::prompts::owner_label(lang, owner);
     let text = match (lang, assistant) {
-        (Lang::ZhTw, false) => "（系統：剛才沒有接通。不要再叫對方等或不要掛，自然地向對方致歉、說明剛才沒接通並表示會馬上回電打給你，請用對方這通電話講的語言自然說話，不要預設中文。不要說已經接通，也不要說要轉給誰。）".to_string(),
+        (Lang::ZhTw, false) => ZH_URGENT_CALL_NOT_ANSWERED_TURN_1.get().to_string(),
         (Lang::ZhTw, true) => format!("（系統：{owner}沒有接電話。不要再叫對方等或不要掛，自然地告訴對方{owner}現在沒接，你已經通知他請他馬上打給你，請用對方這通電話講的語言自然說話，不要預設中文。不要說已經接通。）"),
-        (Lang::ZhCn, false) => "（系统：刚才没有接通。不要再叫对方等或不要挂，自然地向对方致歉、说明刚才没接通并表示会马上回电打给你，请用对方这通电话讲的语言自然说话，不要默认中文。不要说已经接通，也不要说要转给谁。）".to_string(),
+        (Lang::ZhCn, false) => ZH_URGENT_CALL_NOT_ANSWERED_TURN_2.get().to_string(),
         (Lang::ZhCn, true) => format!("（系统：{owner}没有接电话。不要再叫对方等或不要挂，自然地告诉对方{owner}现在没接，你已经通知他请他马上打给你，请用对方这通电话讲的语言自然说话，不要默认中文。不要说已经接通。）"),
-        (_, false) => "(System: the call did not go through. Do not ask them to hold on or stay on the line any more. Briefly explain in your own words that it didn't connect and let them know you'll call them back right away, speaking in the language the caller is speaking on this call, not necessarily English. Do not say anyone is on the line.)".to_string(),
+        (_, false) => EN_URGENT_CALL_NOT_ANSWERED_TURN.get().to_string(),
         (_, true) => format!("(System: {owner} did not answer. Do not ask them to hold on or stay on the line any more. Briefly tell them in your own words that {owner} isn't picking up and you've asked them to call them back straight away, speaking in the language the caller is speaking on this call, not necessarily English. Do not say anyone is on the line.)"),
     };
     crate::prompts::client_turn(&text)
@@ -630,11 +636,11 @@ pub fn not_answered_turn(lang: Lang, assistant: bool, owner: &str) -> String {
 pub fn callback_turn(lang: Lang, assistant: bool, owner: &str) -> String {
     let owner = crate::prompts::owner_label(lang, owner);
     let text = match (lang, assistant) {
-        (Lang::ZhTw, false) => "（系統：現在不轉接。不要再叫對方等或不要掛，自然地表示已經瞭解情況，等一下會盡快回電打給你，請用對方這通電話講的語言自然說話，不要預設中文。不要說已經接通，也不要說要轉給誰。）".to_string(),
+        (Lang::ZhTw, false) => ZH_URGENT_CALL_CALLBACK_TURN_1.get().to_string(),
         (Lang::ZhTw, true) => format!("（系統：現在不轉接。不要再叫對方等或不要掛，自然地告訴對方你會請{owner}盡快回電打給你，請用對方這通電話講的語言自然說話，不要預設中文。不要說已經接通。）"),
-        (Lang::ZhCn, false) => "（系统：现在不转接。不要再叫对方等或不要挂，自然地表示已经了解情况，等一下会尽快回电打给你，请用对方这通电话讲的语言自然说话，不要默认中文。不要说已经接通，也不要说要转给谁。）".to_string(),
+        (Lang::ZhCn, false) => ZH_URGENT_CALL_CALLBACK_TURN_2.get().to_string(),
         (Lang::ZhCn, true) => format!("（系统：现在不转接。不要再叫对方等或不要挂，自然地告诉对方你会请{owner}尽快回电打给你，请用对方这通电话讲的语言自然说话，不要默认中文。不要说已经接通。）"),
-        (_, false) => "(System: no call is put through now. Do not ask them to hold on or stay on the line any more. Briefly confirm you've got it and let them know in your own words that you'll call them back as soon as you can, speaking in the language the caller is speaking on this call, not necessarily English. Do not say anyone is on the line.)".to_string(),
+        (_, false) => EN_URGENT_CALL_CALLBACK_TURN.get().to_string(),
         (_, true) => format!("(System: no call is put through now. Do not ask them to hold on or stay on the line any more. Briefly let them know in your own words that you'll ask {owner} to call them back as soon as possible, speaking in the language the caller is speaking on this call, not necessarily English. Do not say anyone is on the line.)"),
     };
     crate::prompts::client_turn(&text)

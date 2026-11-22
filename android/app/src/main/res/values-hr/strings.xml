@@ -40,6 +40,7 @@
     <string name="header_compat">Testirano na Pixelu 7, 7a, 8 i 9. Drugi telefoni s root pristupom možda rade; isprobajte na vlastitu odgovornost.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Verzija %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo je %1$s (drugačija verzija)</string>
     <string name="ip_addr_hint">Na primjer 192.168.1.20</string>
     <string name="ip_addr_label">IP adresa Bagea</string>
     <string name="ip_code_hint">Pronađite ga na stranici Sustav u web-konzoli</string>

@@ -18,7 +18,12 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-const DATA: &str = include_str!("../data/place_habits.json");
+// The words are in the prompt book (data/prompts/<language>.json); these are their handles.
+crate::prompt_book::prompt_texts! {
+    EN_PLACE_HABITS_CALL_BLOCK_1 = "en/place_habits_call_block_1";
+    EN_PLACE_HABITS_CALL_BLOCK_2 = "en/place_habits_call_block_2";
+    EN_PLACE_HABITS_CALL_BLOCK_3 = "en/place_habits_call_block_3";
+}
 
 /// The kinds of business call the data describes.
 pub const TYPES: [&str; 17] = [
@@ -78,14 +83,8 @@ const ASKED_MAX: usize = 5;
 /// The most situations of one way of handling them, in the block.
 const HANDLED_MAX: usize = 3;
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
-struct Data {
-    regions: Vec<Region>,
-}
-
 /// One region's habits, under the data file's own field names.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Region {
     /// Its id (`tw`, `us`, `hk-mo`).
@@ -119,7 +118,7 @@ pub struct Region {
 }
 
 /// What one kind of call is like in a region.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Place {
     /// How often such places take bookings by phone (`often`, `rarely`, …).
@@ -139,7 +138,7 @@ pub struct Place {
 }
 
 /// Something that may come up on the call and how to handle it.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Situation {
     pub what: String,
@@ -149,7 +148,7 @@ pub struct Situation {
 
 /// How owners write the details of a call in one language: examples, each
 /// maybe with a note in brackets after it.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Writing {
     pub party: Vec<String>,
@@ -166,10 +165,14 @@ pub struct Writing {
     pub false_friends: Vec<String>,
 }
 
-/// All regions of the data (the tests make sure it reads).
+/// All regions of the data (read from `packs_store`, hot-updated with `bageo-pack`).
 pub fn regions() -> &'static [Region] {
-    static R: OnceLock<Vec<Region>> = OnceLock::new();
-    R.get_or_init(|| serde_json::from_str::<Data>(DATA).map(|d| d.regions).unwrap_or_default())
+    let cur = crate::packs_store::current();
+    if !cur.place_habits.is_empty() {
+        &cur.place_habits
+    } else {
+        &crate::packs_store::builtin().place_habits
+    }
 }
 
 /// The region a country (ISO 3166 alpha-2) belongs to.
@@ -488,10 +491,10 @@ pub fn call_block(r: &Region, kind: &str) -> String {
                 .take(HANDLED_MAX)
                 .collect()
         };
-        push_within(&mut out, "Do not give these; say the person you call for will provide them", &handled("owner_only"), room);
+        push_within(&mut out, EN_PLACE_HABITS_CALL_BLOCK_1.get(), &handled("owner_only"), room);
         push_within(&mut out, "Politely decline", &handled("decline"), room);
-        push_within(&mut out, "Check through ask_owner before you agree to", &handled("ask_owner"), room);
-        push_within(&mut out, "You may settle these yourself within the matter", &handled("ai_can_answer"), room);
+        push_within(&mut out, EN_PLACE_HABITS_CALL_BLOCK_2.get(), &handled("ask_owner"), room);
+        push_within(&mut out, EN_PLACE_HABITS_CALL_BLOCK_3.get(), &handled("ai_can_answer"), room);
     }
     if !language.is_empty() {
         push_list(&mut out, LANGUAGE, &[language]);
@@ -532,7 +535,7 @@ mod tests {
     use serde_json::Value;
 
     fn data() -> Value {
-        serde_json::from_str(DATA).expect("place_habits.json reads")
+        serde_json::json!({ "regions": crate::packs_store::builtin().place_habits_raw })
     }
 
     /// An example without the note in brackets after it ("兩個小時（時長非人數）").
@@ -585,8 +588,8 @@ mod tests {
         assert_eq!(
             regs.iter().map(|r| r.region.as_str()).collect::<Vec<_>>(),
             [
-                "tw", "us", "hk-mo", "jp", "cn", "sg", "kr", "gb-ie", "ca", "au-nz", "es", "mx", "latam", "ar-uy", "fr", "be", "lu", "de", "at", "ch", "br",
-                "pt"
+                "ar-uy", "at", "au-nz", "be", "br", "ca", "ch", "cn", "de", "es", "fr", "gb-ie", "hk-mo", "jp", "kr", "latam", "lu", "mx", "pt", "sg",
+                "tw", "us"
             ]
         );
         let mut countries: Vec<&str> = Vec::new();

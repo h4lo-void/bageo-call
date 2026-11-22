@@ -40,6 +40,7 @@
     <string name="header_compat">Pixel 7, 7a, 8 आनी 9 चेर तपासलां. हेर रूट केल्ले फोन काम करूंक शकतात; स्वताच्या जापसालदारकेर वापरात.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">आवृत्ती %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo %1$s आसा (आवृत्ती वेगळी आसा)</string>
     <string name="ip_addr_hint">देखिक 192.168.1.20</string>
     <string name="ip_addr_label">Bageo चो IP पत्तो</string>
     <string name="ip_code_hint">नियंत्रण फळ्याच्या सिस्टम पाना वयल्यान घेयात</string>

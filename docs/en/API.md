@@ -115,7 +115,7 @@ Bageo never answers preflights. This covers:
 - `POST /calls/api/backup/run`, `…/export`, `…/file-ticket`, `…/restore`, `…/delete`, `…/unlock`, `…/apply`, `…/discard`, `…/open-folder` (`POST /calls/api/backup/import` needs an `X-Filename` header instead).
 - `POST /calls/api/packs/update` and `POST /calls/api/packs/restore`.
 - `POST /calls/api/voices/download` and `POST /calls/api/voices/delete` (`POST /calls/api/voices/import` takes the zip as `application/zip` instead);
-- `POST /calls/api/extras/download`, `POST /calls/api/extras/delete` and `POST /calls/api/extras/auto`.
+- `POST /calls/api/extras/download` and `POST /calls/api/extras/delete`.
 
 Where a route allows an empty body, it counts as `{}`. This is the second line
 of defence. The first is setting a password (`CALLS_UI_TOKEN`) whenever your
@@ -273,7 +273,6 @@ Fields worth knowing (all of them are in `RuntimeSettings` in
 | `ui_password` | Password for external console/API access (masked on read; `"ui_password_clear": true` clears it). |
 | `country_code` | Digits only (`886`, `1`). Not shown in the console; a value here wins over `COUNTRY_CODE`. |
 | `gemini_thinking_level` | `low` (default) / `medium` / `high`, for thinking models only. |
-| `extras_auto` | `true` (default) / `false`: when the console opens, download missing extra language packs matching settings or the browser and the home country's mascot art from GitHub (`POST /calls/api/extras/auto`). |
 
 Rules for `PUT`:
 
@@ -758,22 +757,23 @@ Details:
 
 Three routes show and update the local data the AI uses for each country's habits, and the translations of the languages beyond the nine core ones: the same as *Local data* under *More options* in the console settings. Bageo connects only when `POST …/packs/update` is called; it never checks on its own. It then downloads the index, the data file and, when the release has newer ones, the translations (`bageo-locales.json.gz`) straight from the latest release of the public `h4lo-void/bageo-packs` repository on GitHub, and nothing else is sent. Each file is checked on its own: a broken one is refused without affecting the other. They follow the console's password rule, and both `POST` routes the `Content-Type: application/json` rule above.
 
+The same check also downloads newer prompt texts (`bageo-prompts.json.gz`, at most 512 KiB) when the release has them: the texts that differ from the ones built into Bageo, used from the next call. Each text is checked on its own against the built-in text of the same key (the same `{placeholders}`, the same spaces and line breaks at both ends, at most twice its length or 400 characters more, no control, direction or invisible characters); a text that fails keeps the built-in words, and the rest are still used. Locked texts, the rules Bageo always keeps, only change with a new Bageo.
+
 | Method and path | What |
 |---|---|
-| `GET /calls/api/packs/update` | The data in use: `{version, date, builtin, regions, locales: {version, date, builtin, languages}, voice_list_kept, running, last_check}`. `last_check` also has `pack_result` and `locales_result`. |
+| `GET /calls/api/packs/update` | The data in use: `{version, date, builtin, regions, locales: {version, date, builtin, languages}, prompts: {version, date, builtin, texts}, voice_list_kept, running, last_check}`. `prompts.texts` is how many prompt texts in use differ from the built-in ones. `last_check` also has `pack_result`, `locales_result`, `prompts_result` and `prompts_version`. |
 | `POST /calls/api/packs/update` | Body `{}`. Checks for newer files now and installs them: the same fields as `GET`, plus `result` (`updated` when either file was). |
-| `POST /calls/api/packs/restore` | Body `{}`. Deletes the downloaded data and translations, and a downloaded voice list (`voice_list_kept`) and extras index (`extras_index_kept`), and goes back to the ones built into Bageo: the same fields, with `result` `restored` (`busy` while a check runs; `io` when a file cannot be deleted, and then that one stays in use). |
-| `GET /calls/api/extras` | All 70 extra languages and known region art: `{ok, version, extras_auto, running, langs, art}`. |
+| `POST /calls/api/packs/restore` | Body `{}`. Deletes the downloaded data, translations and prompt texts, and a downloaded voice list (`voice_list_kept`) and extras index (`extras_index_kept`), and goes back to the ones built into Bageo: the same fields, with `result` `restored` (`busy` while a check runs; `io` when a file cannot be deleted, and then that one stays in use). |
+| `GET /calls/api/extras` | All 70 extra languages and known region art: `{ok, version, running, langs, art}`. |
 | `POST /calls/api/extras/download` | Body `{"lang": "<code>"}` or `{"art": "<region>"}`. Downloads and installs one extra language pack or region mascot art file straight from GitHub; returns `{..., result}`. |
 | `POST /calls/api/extras/delete` | Body `{"lang": "<code>"}` or `{"art": "<region>"}`. Deletes a downloaded extra file (`in_use` if the language is still set in settings, `removed`, `not_listed`, `restart`). |
-| `POST /calls/api/extras/auto` | Body `{"browser": ["..."]}`. When `extras_auto` is `true`, queues up to 3 missing items (settings languages, first browser tag, `local_reviewed` home region art) in the background: `{ok: true, started}`. |
 | `GET /calls/extras/art/{file}` | Public static route serving an already-downloaded and verified `art-<region>.json` file (never triggers a download; `no-cache`, `nosniff`). |
 | `GET /calls/i18n/desktop/{file}` | Public static route serving a downloaded extra language's desktop widget strings (`<code>.json`) with English fallback per missing key. |
 
 Details:
 
 - `version` is `YYYYMMDDNN`, `date` the same as `YYYY-MM-DD`; `builtin` is `true` while the version built into Bageo is in use; `regions` is how many regions it has; `running` says a check is going on; `last_check` is `null` or `{at, result, version}` of the last check since Bageo started.
-- `result`: `up_to_date`, `updated` (calls from now on use it; a call already going keeps the old data), `offline` (no connection, a time-out or GitHub did not answer: try again later), `bad_pack` (the download was refused; nothing changed), `update_bageo` (the data needs a newer Bageo), `restart` (8 updates were installed since Bageo started: restart it first), `io` (it could not be saved) or `busy` (another check is running).
+- `result`: `up_to_date`, `updated` (calls from now on use it; a call already going keeps the old data), `offline` (no connection, a time-out or GitHub did not answer: try again later), `bad_pack` (the download was refused; nothing changed), `update_bageo` (the data needs a newer Bageo), `restart` (too many updates were installed since Bageo started: restart it first), `io` (it could not be saved) or `busy` (another check is running).
 - What Bageo checks: it reads `bageo-pack-index.json` (at most 16 KiB) from `https://github.com/h4lo-void/bageo-packs/releases/latest/download/`, then the file it names (a plain file name, at most 4 MiB) in the same release. Every address, including each of at most 5 redirects, must be `https` on the standard port, without a user name, on `github.com` (under that repository's releases), `objects.githubusercontent.com` or `release-assets.githubusercontent.com`. The size and SHA-256 must match the index, the index's `format` and `min_bageo` must fit this Bageo, and the version must be newer than the one in use. The file is then checked in full, like the built-in one, and renamed into place in one step. The address cannot be changed by a setting.
 - The downloaded version is kept as `packs/bageo-pack.json` in the data folder and checked again each time Bageo starts; a download left unfinished there is deleted.
 - On-demand extra language packs (`lang-<code>.json.gz`, up to 600 KiB compressed and unpacked; calls already have all 70 languages built in) and region art files (`art-<region>.json`, up to 64 KiB, strict SVG element/attribute allowlist) come from `bageo-extras-index.json` (up to 256 KiB) in the same GitHub repository and live under `packs/extras/`. Extra packs are not backed up.

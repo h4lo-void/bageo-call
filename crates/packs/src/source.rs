@@ -176,6 +176,26 @@ pub struct Sources {
     pub layers: Vec<SourceFile<SrcLayer>>,
     /// languages/<code>/names.json, where present.
     pub names: Vec<SourceFile<SrcNames>>,
+    /// regions_multilang.json, where present.
+    pub multilang: Vec<MultilangEntry>,
+    /// bubbles.json, where present.
+    pub bubbles: BTreeMap<String, serde_json::Value>,
+    /// places/*.json, where present.
+    pub place_habits: Vec<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SrcMultilangDoc {
+    schema: u32,
+    entries: Vec<MultilangEntry>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SrcBubblesDoc {
+    schema: u32,
+    regions: BTreeMap<String, serde_json::Value>,
 }
 
 const MAX_SOURCE_BYTES: usize = 256 * 1024;
@@ -252,6 +272,46 @@ pub fn load_sources(dir: &Path) -> Result<Sources, Vec<Issue>> {
                 let file = format!("languages/{id}/call.json");
                 if let Some((sha256, data)) = read_json::<SrcLayer>(&call, &file, &mut issues) {
                     s.layers.push(SourceFile { id, file, sha256, data });
+                }
+            }
+        }
+    }
+
+    let ml_path = dir.join("regions_multilang.json");
+    if ml_path.is_file() {
+        if let Some((_, doc)) = read_json::<SrcMultilangDoc>(&ml_path, "regions_multilang.json", &mut issues) {
+            if doc.schema != 1 {
+                issues.push(Issue::new("regions_multilang.json", "schema", rule::FORMAT, format!("schema {} is not 1", doc.schema)));
+            } else {
+                s.multilang = doc.entries;
+            }
+        }
+    }
+
+    let bub_path = dir.join("bubbles.json");
+    if bub_path.is_file() {
+        if let Some((_, doc)) = read_json::<SrcBubblesDoc>(&bub_path, "bubbles.json", &mut issues) {
+            if doc.schema != 1 {
+                issues.push(Issue::new("bubbles.json", "schema", rule::FORMAT, format!("schema {} is not 1", doc.schema)));
+            } else {
+                s.bubbles = doc.regions;
+            }
+        }
+    }
+
+    let places_dir = dir.join("places");
+    if places_dir.is_dir() {
+        if let Ok(paths) = sorted_paths(&places_dir) {
+            for p in paths.iter().filter(|p| p.extension().and_then(|e| e.to_str()) == Some("json")) {
+                let name = name_of(p);
+                let file = format!("places/{name}");
+                let stem = name.trim_end_matches(".json");
+                if let Some((_, val)) = read_json::<serde_json::Value>(p, &file, &mut issues) {
+                    if val.get("region").and_then(serde_json::Value::as_str) != Some(stem) {
+                        issues.push(Issue::new(&file, "region", rule::CODE, format!("must match file name \"{stem}\"")));
+                    } else {
+                        s.place_habits.push(val);
+                    }
                 }
             }
         }
@@ -551,6 +611,9 @@ fn pipeline(s: &Sources, version: u64, commit: &str, built_at: &str) -> (Bundle,
         countries: owner,
         languages,
         regions,
+        multilang: s.multilang.clone(),
+        bubbles: s.bubbles.clone(),
+        place_habits: s.place_habits.clone(),
     };
     issues.extend(check_bundle_impl(&bundle, true, now));
     (bundle, issues)

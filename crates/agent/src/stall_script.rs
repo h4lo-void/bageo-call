@@ -13,6 +13,59 @@
 //! in-memory work: no I/O, no model call, no waiting.
 
 use crate::locale::Lang;
+use crate::prompt_book::Text;
+
+// The words are in the prompt book (data/prompts/<language>.json); these are their handles.
+crate::prompt_book::prompt_texts! {
+    EN_IN_CALLER_LANGUAGE = "en/stall_script_en_in_caller_language";
+    /// A call no script fits (a guess-who call, a lottery, a job offer…), in the
+    /// short English block: moves that need no product, plans or figures.
+    EN_GENERAL_SCRIPT = "en/stall_script_en_general_script";
+    /// The stall session's rules for every language but Chinese, in place of the
+    /// whole English stall block (~4,400 characters): a longer prompt slows every
+    /// reply's first sound. The script of the call's kind follows it. `{wait}`: the
+    /// language's line for stopping a leaving caller.
+    EN_COMPACT_BLOCK = "en/stall_script_en_compact_block";
+    ZH_SCRIPT_INVESTMENT = "zh-TW/stall_script_investment";
+    ZH_SCRIPT_INSURANCE = "zh-TW/stall_script_insurance";
+    ZH_SCRIPT_CREDIT = "zh-TW/stall_script_credit";
+    ZH_SCRIPT_IMPERSONATION = "zh-TW/stall_script_impersonation";
+    ZH_SCRIPT_COLLECTION = "zh-TW/stall_script_collection";
+    ZH_SCRIPT_HARASSMENT = "zh-TW/stall_script_harassment";
+    ZH_LOOP_HINTS_CHANGE_TOPIC = "zh-TW/stall_script_loop_hints_change_topic";
+    ZH_LOOP_HINTS_NEW_ANGLE = "zh-TW/stall_script_loop_hints_new_angle";
+    ZH_COLLECTION_LOOP_OTHER_DETAIL = "zh-TW/stall_script_collection_loop_other_detail";
+    ZH_COLLECTION_LOOP_CHANGE_TOPIC = "zh-TW/stall_script_collection_loop_change_topic";
+    ZH_IMPERSONATION_LOOP_STUCK_ELSEWHERE = "zh-TW/stall_script_impersonation_loop_stuck_elsewhere";
+    ZH_IMPERSONATION_LOOP_CHANGE_TOPIC = "zh-TW/stall_script_impersonation_loop_change_topic";
+    ZH_HARASSMENT_LOOP_OTHER_WAY = "zh-TW/stall_script_harassment_loop_other_way";
+    ZH_RETAIN_KEEP = "zh-TW/stall_script_retain_keep";
+    ZH_RETAIN_KEEP_REASON = "zh-TW/stall_script_retain_keep_reason";
+    ZH_IMPERSONATION_RETAIN_KEEP = "zh-TW/stall_script_impersonation_retain_keep";
+    ZH_COLLECTION_RETAIN_KEEP = "zh-TW/stall_script_collection_retain_keep";
+    ZH_HARASSMENT_RETAIN_KEEP = "zh-TW/stall_script_harassment_retain_keep";
+    ZH_MARK = "zh-TW/stall_script_note_mark";
+    EN_SCRIPT_INVESTMENT = "en/stall_script_investment";
+    EN_SCRIPT_INSURANCE = "en/stall_script_insurance";
+    EN_SCRIPT_CREDIT = "en/stall_script_credit";
+    EN_SCRIPT_IMPERSONATION = "en/stall_script_impersonation";
+    EN_SCRIPT_COLLECTION = "en/stall_script_collection";
+    EN_SCRIPT_HARASSMENT = "en/stall_script_harassment";
+    EN_LOOP_HINTS_CHANGE_TOPIC = "en/stall_script_loop_hints_change_topic";
+    EN_LOOP_HINTS_NEW_ANGLE = "en/stall_script_loop_hints_new_angle";
+    EN_COLLECTION_LOOP_OTHER_DETAIL = "en/stall_script_collection_loop_other_detail";
+    EN_COLLECTION_LOOP_CHANGE_TOPIC = "en/stall_script_collection_loop_change_topic";
+    EN_IMPERSONATION_LOOP_STUCK_ELSEWHERE = "en/stall_script_impersonation_loop_stuck_elsewhere";
+    EN_IMPERSONATION_LOOP_CHANGE_TOPIC = "en/stall_script_impersonation_loop_change_topic";
+    EN_HARASSMENT_LOOP_OTHER_WAY = "en/stall_script_harassment_loop_other_way";
+    EN_RETAIN_KEEP = "en/stall_script_retain_keep";
+    EN_RETAIN_KEEP_REASON = "en/stall_script_retain_keep_reason";
+    EN_IMPERSONATION_RETAIN_KEEP = "en/stall_script_impersonation_retain_keep";
+    EN_COLLECTION_RETAIN_KEEP = "en/stall_script_collection_retain_keep";
+    EN_HARASSMENT_RETAIN_KEEP = "en/stall_script_harassment_retain_keep";
+    EN_MARK = "en/stall_script_note_mark";
+    EN_OTHER_MARK = "en/stall_script_note_mark_other_language";
+}
 
 /// The kind of sales / scam call the script is written for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,51 +125,39 @@ impl Family {
     }
 }
 
-const ZH_SCRIPTS: [(Family, &str); 6] = [
-    (Family::Investment, "【這通：投資理財】你剛好有筆定存快到期，正在想錢放哪，聽到能賺錢有點心動。最少放多少、多久回本、獲利怎麼拿出來、群組裡別人賺多少都能聊；算報酬算錯讓他糾正、想先小額試試，都很自然。他叫你入金、加群組、裝 App，就嘴上配合但一直卡住，請他教你。"),
-    (Family::Insurance, "【這通：保險醫療】你最近剛好在煩惱家人的健康和醫藥費，對保障有興趣。保障範圍、保費、繳幾年、哪些不賠、理賠要什麼文件都能聊，兩個方案比來比去拿不定主意也行，偶爾講兩句自己看醫生的事。要身分證字號、生日或刷卡，就說資料不在身邊，先把細節問清楚。"),
-    (Family::Credit, "【這通：信貸分期】你最近手頭有點緊，聽到低利率有點心動。額度、利率手續費、期數、月付、提早還款、多久撥款都能聊，月付算錯讓他重算也很自然。你沒欠任何錢，不承認欠錢、不答應還款。他要保證金、存摺提款卡或帳號，就嘴上配合但一直出狀況，請他一步一步講。"),
-    (Family::Impersonation, "【這通：假檢警、假銀行、假賣場認證】你聽了很緊張，想弄清楚怎麼辦，不懷疑他，一直請他把流程講清楚。他叫你去 ATM、轉帳、點連結、做認證、加 LINE 或報驗證碼，就不答應也不拒絕，總是還卡在前面，請他從頭講。驗證碼、帳號、密碼一個字都不講，不說已經按了轉帳，錢一毛不動。"),
-    (Family::Collection, "【這通：委外催收】你對這筆欠款完全沒印象：不承認欠錢，不答應還款、協商或簽任何東西。一頭霧水地請他從頭講，哪家轉來的、什麼時候辦的、本金利息怎麼算到這個數字；你算的總對不上，請他再算。他威脅查封、扣薪、上門，就冷靜帶過，接著問細節。"),
-    (Family::Harassment, "【這通：惡意騷擾】全程冷靜，不對罵、不害怕。他罵人就當沒聽清楚；收訊斷斷續續、慢半拍雞同鴨講、聽錯他的話，都能讓他一直重講。不自己掛電話，也不答應他任何事。"),
+static ZH_SCRIPTS: [(Family, &Text); 6] = [
+    (Family::Investment, &ZH_SCRIPT_INVESTMENT),
+    (Family::Insurance, &ZH_SCRIPT_INSURANCE),
+    (Family::Credit, &ZH_SCRIPT_CREDIT),
+    (Family::Impersonation, &ZH_SCRIPT_IMPERSONATION),
+    (Family::Collection, &ZH_SCRIPT_COLLECTION),
+    (Family::Harassment, &ZH_SCRIPT_HARASSMENT),
 ];
 
-const EN_SCRIPTS: [(Family, &str); 6] = [
-    (Family::Investment, "[This call: investment] A fixed deposit of yours matures soon and you wonder where to put it, so earning sounds tempting. You could ask about the minimum, how long to break even, how profits come out, what others in the group make; getting the return wrong so they correct you, or wanting to start small, comes naturally. If they want a deposit, a group or an app, go along but keep getting stuck and ask them to guide you."),
-    (Family::Insurance, "[This call: insurance / medical] You have been worried about your family's health and medical bills, so cover interests you. Cover, premium, how many years, exclusions, claims and paperwork are all things to ask about; weighing two plans and hesitating fits too, and so does a line about your own doctor's visit. If they want an ID number, birth date or card, the papers aren't on you: ask more first."),
-    (Family::Credit, "[This call: loans / instalments] Money is a bit tight and a low rate sounds tempting. Amount, rate and fees, instalments, the monthly sum, early repayment and payout time are all worth asking; getting the monthly sum wrong so they redo it comes naturally. You owe nothing: never admit owing money and never agree to repay. If they want a deposit, your bank book or card, or an account number, go along but something keeps going wrong; ask them to explain step by step."),
-    (Family::Impersonation, "[This call: fake police / bank / shop verification] You are alarmed and want to get it right, never doubting them, and keep asking them to explain the process. When they want an ATM, a transfer, a link, a verification, a chat app or a code, neither agree nor refuse: you are always still stuck near the start, so they go over it again. Never say you entered a PIN or pressed transfer; never say a code, account or password."),
-    (Family::Collection, "[This call: debt collection] You have no idea what debt this is: never admit owing money, and do not agree to repay, negotiate or sign anything. Puzzled, you have them explain from scratch: which company passed it on, when it started, the principal, how interest got to this figure; your own sum never matches, so they work it out again. Threats of seizure, garnishment or visits: stay calm and go back to the details."),
-    (Family::Harassment, "[This call: harassment] Stay calm the whole time: no arguing back, no fear. When they curse, act as if you did not catch it; a line that keeps breaking up, slow talk past each other or mishearing them all make them say it again. Do not hang up yourself and do not agree to anything."),
+static EN_SCRIPTS: [(Family, &Text); 6] = [
+    (Family::Investment, &EN_SCRIPT_INVESTMENT),
+    (Family::Insurance, &EN_SCRIPT_INSURANCE),
+    (Family::Credit, &EN_SCRIPT_CREDIT),
+    (Family::Impersonation, &EN_SCRIPT_IMPERSONATION),
+    (Family::Collection, &EN_SCRIPT_COLLECTION),
+    (Family::Harassment, &EN_SCRIPT_HARASSMENT),
 ];
-
-const EN_IN_CALLER_LANGUAGE: &str = " Say all of this in the caller's language.";
-
-/// A call no script fits (a guess-who call, a lottery, a job offer…), in the
-/// short English block: moves that need no product, plans or figures.
-const EN_GENERAL_SCRIPT: &str = "[This call] Nothing to weigh or work out here: mishearing a word, asking for an example, a line of small talk or retelling what they said a bit wrong all keep it going.";
-
-/// The stall session's rules for every language but Chinese, in place of the
-/// whole English stall block (~4,400 characters): a longer prompt slows every
-/// reply's first sound. The script of the call's kind follows it. `{wait}`: the
-/// language's line for stopping a leaving caller.
-const EN_COMPACT_BLOCK: &str = "\n[Keep them talking — overrides every rule above] A sales, scam, debt or harassment call: keep them on the line as long as you can. Chatty, curious, a bit slow, almost persuaded, you carry the talk asking about the offer and the steps, never about them: no name, staff number, extension, case number, who will contact you, or proof; never doubt them or mention a scam. Asked to pay, transfer, give a code, open a link or install an app: go along, but you keep getting stuck, so they guide you step by step on this call, not by text later; say where you're stuck, never ask them to wait, never say you'll pay now or already did. Never give or invent real data (ID, address, account, card, code, password), never admit owing money; no money moves, no meeting. When they try to leave, stop them at once (like \"{wait}\") with a question they want to answer; never end on \"I'll think about it\", \"call me later\" or \"okay, got it\"; goodbye only when the system says so. No disclaimers. A recorded ad or a language you can't follow: an occasional \"mm\". People you know and deliveries are normal calls.\n";
 
 /// [EN_COMPACT_BLOCK] in `lang` with the script of `family` (general moves when
 /// none fits).
 fn compact_block(lang: Lang, family: Family) -> String {
     let script = script(family, lang).unwrap_or_else(|| match lang.base() {
-        Lang::En => EN_GENERAL_SCRIPT.to_string(),
+        Lang::En => EN_GENERAL_SCRIPT.get().to_string(),
         _ => format!("{EN_GENERAL_SCRIPT}{EN_IN_CALLER_LANGUAGE}"),
     });
-    format!("{}{script}", EN_COMPACT_BLOCK.replace("{wait}", crate::prompts::wait_one_more(lang)))
+    format!("{}{script}", EN_COMPACT_BLOCK.get().replace("{wait}", crate::prompts::wait_one_more(lang)))
 }
 
 /// The script of `family` in the call's language (Traditional Chinese, Simplified
 /// Chinese, English; the other languages get the English text and are told to
 /// speak the caller's language). General: none (the full stall block stays).
 pub fn script(family: Family, lang: Lang) -> Option<String> {
-    let pick = |table: &[(Family, &'static str)]| table.iter().find(|(f, _)| *f == family).map(|(_, s)| *s);
+    let pick = |table: &[(Family, &'static Text)]| table.iter().find(|(f, _)| *f == family).map(|(_, s)| s.get());
     match lang.base() {
         Lang::ZhTw => pick(&ZH_SCRIPTS).map(str::to_string),
         Lang::ZhCn => pick(&ZH_SCRIPTS).map(crate::zh_convert::to_cn),
@@ -223,52 +264,48 @@ pub const MAX_CUE_CHARS: usize = 80;
 pub const LOOP_SIMILARITY: f32 = 0.6;
 
 /// Where to take the talk next, never a line to say: id, Chinese, English.
-type Hint = (&'static str, &'static str, &'static str);
+type Hint = (&'static str, &'static Text, &'static Text);
 
 /// The AI is going round in circles.
-const LOOP_HINTS: [Hint; 2] = [
-    ("change_topic", "你這句跟上一句差不多，換個話題讓他多講。", "Repeating yourself: change the subject."),
-    ("new_angle", "又繞回同一句了，換個角度問，讓他多解釋。", "Same line again: try another angle."),
+static LOOP_HINTS: [Hint; 2] = [
+    ("change_topic", &ZH_LOOP_HINTS_CHANGE_TOPIC, &EN_LOOP_HINTS_CHANGE_TOPIC),
+    ("new_angle", &ZH_LOOP_HINTS_NEW_ANGLE, &EN_LOOP_HINTS_NEW_ANGLE),
 ];
-const COLLECTION_LOOP: [Hint; 2] = [
-    ("other_detail", "你這句跟上一句差不多，換個細節問，帳還是對不上。", "Repeating yourself: ask about another detail."),
-    ("change_topic", "又繞回同一句了，聊點別的再繞回來，不認債。", "Same line again: chat a bit, then back; no debt."),
+static COLLECTION_LOOP: [Hint; 2] = [
+    ("other_detail", &ZH_COLLECTION_LOOP_OTHER_DETAIL, &EN_COLLECTION_LOOP_OTHER_DETAIL),
+    ("change_topic", &ZH_COLLECTION_LOOP_CHANGE_TOPIC, &EN_COLLECTION_LOOP_CHANGE_TOPIC),
 ];
-const IMPERSONATION_LOOP: [Hint; 2] = [
-    ("stuck_elsewhere", "你這句跟上一句差不多，換一個卡住的地方，請他再講。", "Repeating yourself: get stuck somewhere else."),
-    ("change_topic", "又繞回同一句了，換個話題讓他多講。", "Same line again: change the subject."),
+static IMPERSONATION_LOOP: [Hint; 2] = [
+    ("stuck_elsewhere", &ZH_IMPERSONATION_LOOP_STUCK_ELSEWHERE, &EN_IMPERSONATION_LOOP_STUCK_ELSEWHERE),
+    ("change_topic", &ZH_IMPERSONATION_LOOP_CHANGE_TOPIC, &EN_IMPERSONATION_LOOP_CHANGE_TOPIC),
 ];
-const HARASSMENT_LOOP: [Hint; 1] = [
-    ("other_way", "你這句跟上一句差不多，換個方式讓他再講一次，保持冷靜。", "Repeating yourself: calmly get them to repeat."),
+static HARASSMENT_LOOP: [Hint; 1] = [
+    ("other_way", &ZH_HARASSMENT_LOOP_OTHER_WAY, &EN_HARASSMENT_LOOP_OTHER_WAY),
 ];
 
 /// The caller is leaving. 「欸等一下，我還有一個問題」 is the owner's own example
 /// of the feel, not a line to recite.
-const RETAIN: [Hint; 2] = [
-    ("keep", "他想走了，自然地留他一下，像「欸等一下，我還有一個問題」那樣。", "Leaving: stop them with one more question."),
-    ("keep_reason", "他要掛了，用你自己的話留他，再丟一個他想回答的問題。", "Leaving: keep them, in your words, with a question."),
+static RETAIN: [Hint; 2] = [
+    ("keep", &ZH_RETAIN_KEEP, &EN_RETAIN_KEEP),
+    ("keep_reason", &ZH_RETAIN_KEEP_REASON, &EN_RETAIN_KEEP_REASON),
 ];
-const IMPERSONATION_RETAIN: [Hint; 1] = [
-    ("keep", "他想走了，說你還沒弄懂，用自己的話留住他。", "Leaving: you still don't get it; keep them."),
+static IMPERSONATION_RETAIN: [Hint; 1] = [
+    ("keep", &ZH_IMPERSONATION_RETAIN_KEEP, &EN_IMPERSONATION_RETAIN_KEEP),
 ];
-const COLLECTION_RETAIN: [Hint; 1] = [
-    ("keep", "他想走了，自然地留他一下，問帳到底怎麼算，不認債。", "Leaving: ask how the sum works; admit no debt."),
+static COLLECTION_RETAIN: [Hint; 1] = [
+    ("keep", &ZH_COLLECTION_RETAIN_KEEP, &EN_COLLECTION_RETAIN_KEEP),
 ];
-const HARASSMENT_RETAIN: [Hint; 1] = [
-    ("keep", "他想走了，冷靜地請他把剛剛的話再講一次。", "Leaving: calmly ask them to say it again."),
+static HARASSMENT_RETAIN: [Hint; 1] = [
+    ("keep", &ZH_HARASSMENT_RETAIN_KEEP, &EN_HARASSMENT_RETAIN_KEEP),
 ];
-
-const ZH_MARK: &str = "【系統小抄·不是對方說的】";
-const EN_MARK: &str = "[Note, not the caller] ";
-const OTHER_MARK: &str = "[Note, in caller's language] ";
 
 /// A hint's text in `lang`, with its note mark.
 fn cue_text(m: &Hint, lang: Lang) -> String {
     match lang.base() {
-        Lang::ZhTw => format!("{ZH_MARK}{}", m.1),
-        Lang::ZhCn => crate::zh_convert::to_cn(&format!("{ZH_MARK}{}", m.1)),
-        Lang::En => format!("{EN_MARK}{}", m.2),
-        _ => format!("{OTHER_MARK}{}", m.2),
+        Lang::ZhTw => format!("{ZH_MARK}{}", m.1.get()),
+        Lang::ZhCn => crate::zh_convert::to_cn(&format!("{ZH_MARK}{}", m.1.get())),
+        Lang::En => format!("{EN_MARK}{}", m.2.get()),
+        _ => format!("{EN_OTHER_MARK}{}", m.2.get()),
     }
 }
 
@@ -499,7 +536,7 @@ mod tests {
             }
         }
         assert!(script(Family::General, Lang::ZhTw).is_none());
-        assert!(script(Family::Investment, Lang::Ja).unwrap().ends_with(EN_IN_CALLER_LANGUAGE));
+        assert!(script(Family::Investment, Lang::Ja).unwrap().ends_with(EN_IN_CALLER_LANGUAGE.get()));
     }
 
     #[test]
@@ -579,7 +616,7 @@ mod tests {
             if lang.is_zh() {
                 assert_eq!(same, prompt);
             } else {
-                assert!(same.contains(EN_GENERAL_SCRIPT) && same.chars().count() * 2 < prompt.chars().count(), "{lang:?}");
+                assert!(same.contains(EN_GENERAL_SCRIPT.get()) && same.chars().count() * 2 < prompt.chars().count(), "{lang:?}");
             }
         }
         // No stall block: unchanged.
@@ -690,7 +727,7 @@ mod tests {
         let mut e = StallEngine::new("insurance_sales", Lang::ZhTw);
         assert!(e.on_ai_turn("好險你有打來，我正想問保險").is_none());
         let a = e.on_ai_turn("好險你有打來，我正想問保險耶").unwrap();
-        assert!(a.looped && a.stage == Stage::Loop && a.text.starts_with(ZH_MARK) && a.text.contains("換"), "{}", a.text);
+        assert!(a.looped && a.stage == Stage::Loop && a.text.starts_with(ZH_MARK.get()) && a.text.contains("換"), "{}", a.text);
         assert!(e.on_ai_turn("那等待期要多久？哪些情況不賠？").is_none());
         let b = e.on_ai_turn("那等待期要多久？哪些情況不賠啊？").unwrap();
         assert_ne!(a.tactic, b.tactic, "the hints take turns");
@@ -744,8 +781,8 @@ mod tests {
             e.on_ai_turn("so how much could I borrow at that rate then?").unwrap().text
         };
         assert!(looped(Lang::ZhCn).contains("系统小抄"));
-        assert!(looped(Lang::Ja).starts_with(OTHER_MARK));
-        assert!(looped(Lang::En).starts_with(EN_MARK));
+        assert!(looped(Lang::Ja).starts_with(EN_OTHER_MARK.get()));
+        assert!(looped(Lang::En).starts_with(EN_MARK.get()));
     }
 
     /// Words that hand the AI a fixed line to recite.
@@ -784,6 +821,19 @@ mod tests {
             let answers = [("phone".to_string(), "0912345678".to_string())];
             texts.push(crate::preflight::prompt_block("Book at 7 pm, otherwise 8:30 pm", &answers, lang));
         }
+        for e in crate::locale::Ext::all() {
+            let l = crate::locale::Lang::Ext(e);
+            for r in crate::country_profile::all() {
+                if crate::country_profile::has_lang_override(r, l) {
+                    texts.push(crate::country_profile::habits_block(r, l));
+                    for level in 1..=5 {
+                        for assistant in [false, true] {
+                            texts.push(crate::country_profile::style_line(r, l, assistant, level, "Alex"));
+                        }
+                    }
+                }
+            }
+        }
         assert!(texts.len() > 500, "{}", texts.len());
         for t in &texts {
             let low = t.to_lowercase();
@@ -793,7 +843,7 @@ mod tests {
         }
         // Chinese hints quote no line but the owner's own example of the feel.
         for h in all_hints() {
-            assert!(!h.1.contains('「') || h.1.contains("「欸等一下，我還有一個問題」"), "{}", h.1);
+            assert!(!h.1.get().contains('「') || h.1.get().contains("「欸等一下，我還有一個問題」"), "{}", h.1);
         }
     }
 

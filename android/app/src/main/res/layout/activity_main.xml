@@ -33,6 +33,13 @@
             style="@style/PcaBody"
             android:layout_marginTop="0dp" />
 
+        <TextView
+            android:id="@+id/versionHint"
+            style="@style/PcaBody"
+            android:layout_marginTop="2dp"
+            android:textColor="@color/pca_status_check"
+            android:visibility="gone" />
+
         <!-- What the phone does now, and the switch between the two modes -->
         <LinearLayout
             android:id="@+id/statusCard"

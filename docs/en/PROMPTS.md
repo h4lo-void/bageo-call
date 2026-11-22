@@ -27,7 +27,7 @@ in this order:
 
 | # | Part | Added when |
 |---|---|---|
-| 1 | **The prompt**: the built-in one for your language and answer style (with your *Talk style*, your country's habits and your *About you* answers), or your text in *Settings → About you → Advanced → Your own prompt* | always |
+| 1 | **The prompt**: the built-in one for your language and answer style (with your *Talk style*, your region's habits and your *About you* answers), or your text in *Settings → About you → Advanced → Your own prompt* | always |
 | 2 | **Status note** ("Waiting for a parcel today") | it is switched on |
 | 3 | **Notes the AI may answer from** | you wrote some |
 | 4 | **Stall Mode instructions** (see [below](#sales-and-scam-calls-stall-mode)) | the call is confirmed as sales or scam |
@@ -86,9 +86,9 @@ prompt.
 
 - **Talk style** (*Settings → How it answers*): five steps from *Casual and
   lively* to *Brisk and businesslike*. The myna beside the slider changes
-  clothes with each step.
-- **Country you live in** (*Settings → Basics → More options*): the everyday
-  habits the AI follows, such as where parcels go. Empty: from the phone's SIM.
+  clothes and shows how people in your region speak at each step.
+- **Region** (*Settings → Basics*): the speaking style and everyday habits the
+  AI follows, such as where parcels go. Empty: from the phone's SIM.
 - **About you** (*Settings → About you*), all optional: who calls this phone
   most, your work or day in one line, phrases you often say and never say (up
   to ten each), where parcels and deliveries go, and anything else (up to 300

@@ -40,6 +40,7 @@
     <string name="header_compat">Pixel 7, 7a, 8 болон 9 дээр туршсан. Бусад root хийсэн утаснууд ажиллаж магадгүй; өөрийн эрсдэлээр туршина уу.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Хувилбар %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo нь %1$s (хувилбар өөр)</string>
     <string name="ip_addr_hint">Жишээ нь 192.168.1.20</string>
     <string name="ip_addr_label">Bageo-н IP хаяг</string>
     <string name="ip_code_hint">Вэб консолын Систем хуудаснаас авна уу</string>

@@ -185,35 +185,6 @@ fn decode_audio_to_pcm16_ffmpeg_with_af(
     Ok(output.stdout)
 }
 
-/// Peak-normalize s16le mono toward `target_peak` (e.g. 0.85 of full scale).
-#[allow(dead_code)]
-fn peak_normalize_s16le(pcm: &mut [u8], target_peak: f32) {
-    if pcm.len() < 2 || !(0.1..=0.99).contains(&target_peak) {
-        return;
-    }
-    let mut peak = 0i32;
-    for pair in pcm.chunks_exact(2) {
-        let s = i16::from_le_bytes([pair[0], pair[1]]) as i32;
-        peak = peak.max(s.abs());
-    }
-    if peak < 256 {
-        return;
-    }
-    let target = (target_peak * i16::MAX as f32) as i32;
-    let gain = target as f64 / peak as f64;
-    // Always aim at target (boost quiet masters; cut hot ones). Soft-limit follows.
-    if (gain - 1.0).abs() < 0.01 {
-        return;
-    }
-    for pair in pcm.chunks_exact_mut(2) {
-        let s = i16::from_le_bytes([pair[0], pair[1]]) as f64 * gain;
-        let out = s.round().clamp(i16::MIN as f64, i16::MAX as f64) as i16;
-        let b = out.to_le_bytes();
-        pair[0] = b[0];
-        pair[1] = b[1];
-    }
-}
-
 /// Whole-buffer RMS normalize — keeps perceived level steady (unlike peak-norm
 /// which makes transient high notes dominate).
 fn rms_normalize_s16le(pcm: &mut [u8], target_rms: f32) {
@@ -276,11 +247,6 @@ pub fn soft_limit_s16le(pcm: &mut [u8], ceiling: f32) {
         pair[0] = b[0];
         pair[1] = b[1];
     }
-}
-
-/// Backward-compatible alias used by older call sites / docs.
-pub fn decode_mp3_to_pcm16(path: &Path, sample_rate: u32) -> Result<Vec<u8>> {
-    decode_audio_to_pcm16(path, sample_rate)
 }
 
 /// Fixed-loudness decode graph (mp3 fallback path only; the pre-rendered WAV
@@ -431,17 +397,6 @@ pub fn load_ivr_segments(paths: &[PathBuf], sample_rate: u32) -> Option<Vec<IvrS
         segs.iter().map(|s| s.label.as_str()).collect::<Vec<_>>()
     );
     Some(segs)
-}
-
-/// Concatenate decoded PCM from each path (legacy helper / tests).
-/// Prefer [`load_ivr_segments`] for IVR menu playback.
-pub fn load_concat_audio_pcm(paths: &[PathBuf], sample_rate: u32) -> Option<Vec<u8>> {
-    let segs = load_ivr_segments(paths, sample_rate)?;
-    let mut out = Vec::new();
-    for s in segs {
-        out.extend_from_slice(&s.pcm);
-    }
-    Some(out)
 }
 
 /// Load a single fail / voicemail clip; `None` → Piper stub.

@@ -17,6 +17,11 @@ use tracing::{info, warn};
 use crate::ambience::AmbienceMixer;
 use crate::locale::Lang;
 
+// The words are in the prompt book (data/prompts/<language>.json); these are their handles.
+crate::prompt_book::prompt_texts! {
+    EN_VOICE_PREVIEW_REGION_SYSTEM = "en/voice_preview_region_system";
+}
+
 /// Gemini Live prebuilt voices: (name, character, male). Male voices first;
 /// the settings page translates the character words.
 pub const VOICES: &[(&str, &str, bool)] = &[
@@ -96,6 +101,23 @@ fn model_dir(model: &str) -> String {
     if m.is_empty() { "default".into() } else { m }
 }
 
+/// Whether `lang` speaks its own words: a core language, or an extended one
+/// whose language pack has call speech ([crate::locale::phrases]). Any other
+/// extended language reads English, so what is said and recorded for it is English.
+fn own_words(lang: Lang) -> bool {
+    match lang {
+        Lang::Ext(e) => crate::locales_store::current().phrases(e).is_some(),
+        _ => true,
+    }
+}
+
+/// Start of the names of the previews made here. An extended language without
+/// words keeps its English ones apart, so they are never taken for its own
+/// once its language pack arrives.
+fn made_prefix(lang: Lang) -> &'static str {
+    if own_words(lang) { "" } else { "en_" }
+}
+
 fn read_lines(paths: &[PathBuf]) -> Option<Vec<Vec<u8>>> {
     let mut out = Vec::with_capacity(paths.len());
     for p in paths {
@@ -132,10 +154,11 @@ impl VoicePreviews {
     }
 
     fn paths(&self, model: &str, voice: &str, lang: Lang) -> Vec<PathBuf> {
-        // Per language: the lines are spoken in it.
-        let dir = self.dir.join(model_dir(model)).join(lang.base().code());
+        // Per language, extended ones included: the lines are spoken in it.
+        let dir = self.dir.join(model_dir(model)).join(lang.code());
+        let prefix = made_prefix(lang);
         (0..LINES)
-            .map(|i| dir.join(format!("{voice}_{i}.pcm")))
+            .map(|i| dir.join(format!("{prefix}{voice}_{i}.pcm")))
             .collect()
     }
 
@@ -147,12 +170,13 @@ impl VoicePreviews {
     }
 
     /// [Self::bundled_clip] for `region`: the region's pack, then the language's
-    /// pack, then the bundled samples (a language without its own: English);
+    /// pack, then the bundled samples (a language that reads English: English's);
     /// the first that has the clip.
     pub(crate) fn clip_in(&self, lang: Lang, region: Option<&str>, voice: &str, part: &str, sample_rate: u32) -> Option<Vec<u8>> {
         let name = format!("{}_{part}.wav", file_voice(voice));
         let mut dirs = self.packs.as_deref().map(|p| crate::voice_packs::pack_dirs(p, lang.code(), region)).unwrap_or_default();
-        dirs.push(self.bundled.join(lang.base().code()));
+        // A language with words of its own never plays English's samples as its own.
+        dirs.push(self.bundled.join((if own_words(lang) { lang } else { lang.base() }).code()));
         dirs.into_iter().find_map(|d| {
             let (rate, pcm) = crate::adpcm::decode_wav(&std::fs::read(d.join(&name)).ok()?).ok()?;
             (rate == sample_rate && pcm.len() >= 3_200).then_some(pcm)
@@ -221,21 +245,31 @@ impl VoicePreviews {
     fn reject_path(&self, model: &str, voice: &str, lang: Lang) -> PathBuf {
         self.dir
             .join(model_dir(model))
-            .join(lang.base().code())
-            .join(format!("{}_reject.pcm", file_voice(voice)))
+            .join(lang.code())
+            .join(format!("{}{}_reject.pcm", made_prefix(lang), file_voice(voice)))
     }
 
-    /// The blocked-number announcement in `voice` and `lang`: made here before, else
-    /// a voice pack's or the bundled one. The call path only ever reads this — it never calls Gemini.
-    pub fn cached_reject_clip(&self, model: &str, voice: &str, lang: Lang, sample_rate: u32) -> Option<Vec<u8>> {
+    /// The announcement as `lang` itself says it: made here before, else a voice
+    /// pack's or the bundled one.
+    fn own_reject_clip(&self, model: &str, voice: &str, lang: Lang, sample_rate: u32) -> Option<Vec<u8>> {
         std::fs::read(self.reject_path(model, voice, lang))
             .ok()
             .filter(|b| b.len() >= 3_200)
             .or_else(|| self.bundled_clip(lang, voice, "reject", sample_rate))
     }
 
+    /// The blocked-number announcement in `voice` and `lang`: [Self::own_reject_clip],
+    /// else (a language with words of its own that has none yet) the bundled
+    /// English one, better than silence. The call path only ever reads this — it never calls Gemini.
+    pub fn cached_reject_clip(&self, model: &str, voice: &str, lang: Lang, sample_rate: u32) -> Option<Vec<u8>> {
+        self.own_reject_clip(model, voice, lang, sample_rate).or_else(|| {
+            if own_words(lang) { self.bundled_clip(Lang::En, voice, "reject", sample_rate) } else { None }
+        })
+    }
+
     /// Make the announcement once (one short Live session, ~2 s) and keep it on
-    /// disk; `Ok(false)` when it was there already (bundled or made before).
+    /// disk; `Ok(false)` when the language's own was there already (bundled or
+    /// made before; the English stand-in does not count).
     #[allow(clippy::too_many_arguments)]
     pub async fn ensure_reject_clip(
         &self,
@@ -246,13 +280,17 @@ impl VoicePreviews {
         lang: Lang,
         sample_rate: u32,
     ) -> Result<bool> {
-        if self.cached_reject_clip(model, voice, lang, sample_rate).is_some() {
+        if self.own_reject_clip(model, voice, lang, sample_rate).is_some() {
             return Ok(false);
         }
         let _one = self.gen_lock.lock().await;
-        if self.cached_reject_clip(model, voice, lang, sample_rate).is_some() {
+        if self.own_reject_clip(model, voice, lang, sample_rate).is_some() {
             return Ok(false);
         }
+        // Where it goes is settled with the words, before the call: a language
+        // pack that comes or goes meanwhile must not rename what was spoken.
+        let path = self.reject_path(model, voice, lang);
+        let words = reject_announce_text_in(lang);
         let t0 = std::time::Instant::now();
         let pcm = crate::gemini_live::speak_lines_as(
             lang,
@@ -261,7 +299,7 @@ impl VoicePreviews {
             model,
             thinking_level,
             file_voice(voice),
-            &[reject_announce_text_in(lang)],
+            &[words],
             sample_rate,
         )
         .await?
@@ -269,7 +307,6 @@ impl VoicePreviews {
         .next()
         .unwrap_or_default();
         anyhow::ensure!(pcm.len() >= 3_200, "Gemini did not speak the announcement");
-        let path = self.reject_path(model, voice, lang);
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
@@ -544,7 +581,7 @@ fn region_system(base: &str, region: crate::country_profile::Region, lang: Lang)
     let note = match lang {
         Lang::ZhTw => NOTE_TW.to_string(),
         Lang::ZhCn => crate::zh_convert::to_cn(NOTE_TW),
-        _ => "This only shapes your tone, pace and politeness; the line itself stays word for word.".to_string(),
+        _ => EN_VOICE_PREVIEW_REGION_SYSTEM.get().to_string(),
     };
     format!("{base}{ways}{style}\n{note}")
 }
@@ -781,6 +818,151 @@ mod tests {
         assert!(reject_announce_text().contains("無法接通"));
         assert!(reject_announce_text_in(Lang::En).contains("not available"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn ext(code: &str) -> Lang {
+        Lang::Ext(crate::locale::Ext::from_code(code).unwrap_or_else(|| panic!("{code}")))
+    }
+
+    /// Recordings that come with the program, English only: `bundled/en/Kore_<part>.wav`.
+    fn bundle_english(bundled: &Path, samples: usize) -> usize {
+        let tone: Vec<u8> = (0..samples as i32).flat_map(|i| (((i % 40) - 20) as i16 * 500).to_le_bytes()).collect();
+        std::fs::create_dir_all(bundled.join("en")).unwrap();
+        for part in ["0", "1", "2", "reject"] {
+            std::fs::write(bundled.join("en").join(format!("Kore_{part}.wav")), crate::adpcm::encode_wav(&tone, 16_000)).unwrap();
+        }
+        tone.len()
+    }
+
+    #[test]
+    fn extended_languages_keep_their_previews_in_their_own_folders() {
+        for with_words in [true, false] {
+            if with_words {
+                crate::locales_store::testing::use_table();
+            } else {
+                crate::locales_store::testing::use_empty();
+            }
+            let p = VoicePreviews::new(std::path::PathBuf::from("cache"), std::path::PathBuf::from("bundled"));
+            let model = "models/gemini-3.8-live";
+            let en = p.paths(model, "Kore", Lang::En);
+            let en_reject = p.reject_path(model, "Kore", Lang::En);
+            for code in ["it", "th", "vi", "ar", "hi"] {
+                let l = ext(code);
+                let own = p.paths(model, "Kore", l);
+                let reject = p.reject_path(model, "Kore", l);
+                assert_ne!(own, en, "{code} words={with_words}");
+                assert_ne!(reject, en_reject, "{code} words={with_words}");
+                for path in own.iter().chain([&reject]) {
+                    assert_eq!(path.parent().unwrap().file_name().unwrap(), code, "{code} words={with_words}");
+                    assert!(!path.starts_with(PathBuf::from("cache").join("gemini-3.8-live").join("en")), "{code}");
+                }
+            }
+            // Core languages keep the places their made previews have always been in.
+            for (l, code) in [(Lang::En, "en"), (Lang::Ja, "ja"), (Lang::De, "de"), (Lang::ZhTw, "zh-TW")] {
+                let dir = PathBuf::from("cache").join("gemini-3.8-live").join(code);
+                assert_eq!(p.paths(model, "Kore", l), (0..LINES).map(|i| dir.join(format!("Kore_{i}.pcm"))).collect::<Vec<_>>(), "{code}");
+                assert_eq!(p.reject_path(model, "Kore", l), dir.join("Kore_reject.pcm"), "{code}");
+            }
+        }
+        crate::locales_store::testing::use_builtin();
+    }
+
+    #[test]
+    fn announcement_and_sample_say_the_translation_when_there_is_one() {
+        crate::locales_store::testing::use_table();
+        // Test translations: it, th, ar, fa have call speech; vi, hi, ru have none.
+        for code in ["it", "th", "ar", "fa"] {
+            let l = ext(code);
+            assert_eq!(reject_announce_text_in(l), crate::locale::phrases(l).unavailable, "{code}");
+            assert_ne!(reject_announce_text_in(l), reject_announce_text_in(Lang::En), "{code}");
+            assert_ne!(sample_lines(l), sample_lines(Lang::En), "{code}");
+            assert!(own_words(l), "{code}");
+        }
+        assert!(reject_announce_text_in(ext("it")).contains("richiamo"));
+        for code in ["vi", "hi", "ru"] {
+            let l = ext(code);
+            assert_eq!(reject_announce_text_in(l), reject_announce_text_in(Lang::En), "{code}");
+            assert_eq!(sample_lines(l), sample_lines(Lang::En), "{code}");
+            assert!(!own_words(l), "{code}");
+        }
+        for l in [Lang::En, Lang::Ja, Lang::Ko, Lang::De, Lang::ZhTw] {
+            assert!(own_words(l));
+        }
+        crate::locales_store::testing::use_empty();
+        assert_eq!(reject_announce_text_in(ext("it")), reject_announce_text_in(Lang::En));
+        assert!(!own_words(ext("it")));
+        crate::locales_store::testing::use_builtin();
+    }
+
+    #[tokio::test]
+    async fn english_is_never_taken_for_the_announcement_of_a_language_with_words() {
+        crate::locales_store::testing::use_table();
+        let dir = std::env::temp_dir().join(format!("vp-ext-words-{}", uuid::Uuid::new_v4()));
+        let p = VoicePreviews::new(dir.join("cache"), dir.join("bundled"));
+        let model = "gemini-3.8-live";
+        let english = bundle_english(&dir.join("bundled"), 6_000);
+        // An English owner made the announcement here before.
+        let en_made = p.reject_path(model, "Kore", Lang::En);
+        std::fs::create_dir_all(en_made.parent().unwrap()).unwrap();
+        std::fs::write(&en_made, vec![7u8; 9_000]).unwrap();
+        for code in ["it", "th", "ar"] {
+            let l = ext(code);
+            // Not its own: neither the English cache nor the bundled English sample.
+            assert!(p.own_reject_clip(model, "Kore", l, 16_000).is_none(), "{code}");
+            assert!(p.disk_lines(model, "Kore", l, 16_000).is_none(), "{code}");
+            // On a call, until its own is made, the bundled English one beats silence.
+            assert_eq!(p.cached_reject_clip(model, "Kore", l, 16_000).unwrap().len(), english, "{code}");
+            // Made for it: its own folder only, and the English owner is unaffected.
+            let own = p.reject_path(model, "Kore", l);
+            std::fs::create_dir_all(own.parent().unwrap()).unwrap();
+            std::fs::write(&own, vec![3u8; 5_000]).unwrap();
+            assert_eq!(p.own_reject_clip(model, "Kore", l, 16_000).unwrap().len(), 5_000, "{code}");
+            assert_eq!(p.cached_reject_clip(model, "Kore", l, 16_000).unwrap().len(), 5_000, "{code}");
+            // Nothing left to make: no Gemini session is started.
+            assert!(!p.ensure_reject_clip("", model, "", "Kore", l, 16_000).await.unwrap(), "{code}");
+        }
+        assert_eq!(std::fs::read(&en_made).unwrap().len(), 9_000);
+        assert_eq!(p.cached_reject_clip(model, "Kore", Lang::En, 16_000).unwrap().len(), 9_000);
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::locales_store::testing::use_builtin();
+    }
+
+    #[tokio::test]
+    async fn a_language_without_words_keeps_reading_english_but_never_from_another_languages_folder() {
+        crate::locales_store::testing::use_table();
+        let dir = std::env::temp_dir().join(format!("vp-ext-nowords-{}", uuid::Uuid::new_v4()));
+        let p = VoicePreviews::new(dir.join("cache"), dir.join("bundled"));
+        let model = "gemini-3.8-live";
+        let en_made = p.reject_path(model, "Kore", Lang::En);
+        std::fs::create_dir_all(en_made.parent().unwrap()).unwrap();
+        std::fs::write(&en_made, vec![7u8; 9_000]).unwrap();
+        for code in ["vi", "hi", "ru"] {
+            let l = ext(code);
+            // The English owner's cache is not read for it.
+            assert!(p.cached_reject_clip(model, "Kore", l, 16_000).is_none(), "{code}");
+        }
+        // With the bundled English sample, the announcement is English, as before, and counts as there.
+        let english = bundle_english(&dir.join("bundled"), 6_000);
+        for code in ["vi", "hi", "ru"] {
+            let l = ext(code);
+            assert_eq!(p.own_reject_clip(model, "Kore", l, 16_000).unwrap().len(), english, "{code}");
+            assert_eq!(p.cached_reject_clip(model, "Kore", l, 16_000).unwrap().len(), english, "{code}");
+            assert!(!p.ensure_reject_clip("", model, "", "Kore", l, 16_000).await.unwrap(), "{code}");
+            assert_eq!(p.disk_lines(model, "Kore", l, 16_000).unwrap()[0].len(), english, "{code}");
+            // What gets made for it (English words) is kept apart from its own, future, recordings.
+            let made = p.reject_path(model, "Kore", l);
+            assert_eq!(made.file_name().unwrap(), "en_Kore_reject.pcm", "{code}");
+            assert_eq!(made.parent().unwrap().file_name().unwrap(), code, "{code}");
+            std::fs::create_dir_all(made.parent().unwrap()).unwrap();
+            std::fs::write(&made, vec![5u8; 4_000]).unwrap();
+            assert_eq!(p.cached_reject_clip(model, "Kore", l, 16_000).unwrap().len(), 4_000, "{code}");
+            assert_eq!(p.paths(model, "Kore", l)[0].file_name().unwrap(), "en_Kore_0.pcm", "{code}");
+        }
+        // Once the language pack arrives its own announcement is still to be made.
+        crate::locales_store::testing::use_table();
+        assert_eq!(p.reject_path(model, "Kore", ext("it")).file_name().unwrap(), "Kore_reject.pcm");
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::locales_store::testing::use_builtin();
     }
 
     #[test]

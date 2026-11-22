@@ -5,6 +5,11 @@
 //! would read), by the same code in CI and inside Bageo.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::{Read, Write};
+
+use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
+use flate2::Compression;
 
 use crate::data::*;
 use crate::guard::{has_web_address, hidden_char, hidden_reason, rule_change, Writing};
@@ -546,6 +551,52 @@ pub(crate) fn check_bundle_impl(b: &Bundle, sources_style: bool, now: i64) -> Ve
         };
         check_region(&mut out, &file, &prefix, r, now);
     }
+
+    if b.multilang.len() > 256 {
+        push(&mut out, hf, "multilang", rule::LENGTH, format!("{} entries, the limit is 256", b.multilang.len()));
+    }
+    let mut seen_ml = BTreeSet::new();
+    for (i, m) in b.multilang.iter().enumerate() {
+        let mf = if sources_style { "regions_multilang.json".to_string() } else { hf.to_string() };
+        let mp = format!("multilang[{i}]");
+        if !b.regions.contains_key(&m.region) {
+            push(&mut out, &mf, &format!("{mp}.region"), rule::CODE, format!("unknown region \"{}\"", m.region));
+        }
+        if !seen_ml.insert((m.region.as_str(), m.lang.as_str())) {
+            push(&mut out, &mf, &mp, rule::CODE, format!("duplicate ({}, {})", m.region, m.lang));
+        }
+        let w = Writing::of(primary_subtag(&m.lang));
+        hello_fields(&mut out, &mf, &format!("{mp}.hello"), &m.hello, w);
+        text_field(&mut out, &mf, &format!("{mp}.habits"), &m.habits, HABITS_MAX, false);
+        for (who, cells) in [("persona", &m.talk_style.persona), ("assistant", &m.talk_style.assistant)] {
+            for (idx, cell) in cells.iter().enumerate() {
+                text_field(&mut out, &mf, &format!("{mp}.talk_style.{who}.{}", idx + 1), cell, CELL_MAX, true);
+            }
+        }
+    }
+
+    if b.bubbles.len() > 128 {
+        push(&mut out, hf, "bubbles", rule::LENGTH, format!("{} entries, the limit is 128", b.bubbles.len()));
+    }
+    for (k, v) in &b.bubbles {
+        if !valid_code(k) {
+            push(&mut out, hf, &format!("bubbles.{k}"), rule::CODE, "invalid region code");
+        }
+        let s = v.to_string();
+        if s.chars().any(|c| (c as u32) < 0x20) {
+            push(&mut out, hf, &format!("bubbles.{k}"), rule::CHARSET, "contains control characters");
+        }
+    }
+
+    if b.place_habits.len() > 128 {
+        push(&mut out, hf, "place_habits", rule::LENGTH, format!("{} entries, the limit is 128", b.place_habits.len()));
+    }
+    for (i, p) in b.place_habits.iter().enumerate() {
+        if p.get("region").and_then(serde_json::Value::as_str).is_none_or(str::is_empty) {
+            push(&mut out, hf, &format!("place_habits[{i}].region"), rule::REQUIRED, "missing region");
+        }
+    }
+
     out
 }
 
@@ -581,6 +632,47 @@ pub fn parse_bundle(json: &str) -> Result<Bundle, Vec<Issue>> {
         Ok(bundle)
     } else {
         Err(issues)
+    }
+}
+
+/// Packs a bundle as deterministic gzip (`bageo-pack.json.gz`).
+pub fn pack_bundle(b: &Bundle) -> Result<Vec<u8>, String> {
+    let json = serde_json::to_vec(b).map_err(|e| e.to_string())?;
+    let mut enc = GzEncoder::new(Vec::new(), Compression::best());
+    enc.write_all(&json).map_err(|e| e.to_string())?;
+    enc.finish().map_err(|e| e.to_string())
+}
+
+/// Parses either a plain UTF-8 `bageo-pack.json` or a gzipped `bageo-pack.json.gz`
+/// (capped at `MAX_BUNDLE_BYTES` unpacked, single gzip member).
+pub fn parse_bundle_bytes(bytes: &[u8]) -> Result<Bundle, Vec<Issue>> {
+    let one = |rule: &'static str, detail: String| vec![Issue::new(BUNDLE_FILE, "", rule, detail)];
+    if bytes.len() > MAX_BUNDLE_BYTES {
+        return Err(one(rule::LENGTH, format!("{} bytes, the limit is {MAX_BUNDLE_BYTES}", bytes.len())));
+    }
+    if bytes.starts_with(&[0x1f, 0x8b]) {
+        let mut dec = GzDecoder::new(bytes);
+        let mut out = Vec::new();
+        let mut buf = vec![0u8; 64 * 1024];
+        loop {
+            let n = dec.read(&mut buf).map_err(|e| one(rule::FORMAT, format!("cannot unpack: {e}")))?;
+            if n == 0 {
+                break;
+            }
+            if out.len() + n > MAX_BUNDLE_BYTES {
+                return Err(one(rule::LENGTH, format!("more than {MAX_BUNDLE_BYTES} bytes unpacked; stopped reading")));
+            }
+            out.extend_from_slice(&buf[..n]);
+        }
+        let rest = dec.into_inner();
+        if !rest.is_empty() {
+            return Err(one(rule::FORMAT, format!("{} bytes after the packed data", rest.len())));
+        }
+        let text = String::from_utf8(out).map_err(|_| one(rule::FORMAT, "not UTF-8".into()))?;
+        parse_bundle(&text)
+    } else {
+        let text = std::str::from_utf8(bytes).map_err(|_| one(rule::FORMAT, "not UTF-8".into()))?;
+        parse_bundle(text)
     }
 }
 
@@ -633,6 +725,8 @@ pub fn check_index(ix: &Index) -> Vec<Issue> {
         push(&mut out, f, "min_bageo", rule::RELEASE_INDEX, "must look like 1.6.9");
     }
     out.extend(sound_locales(ix).1);
+    out.extend(crate::scams::sound_scams(ix).1);
+    out.extend(crate::prompts::sound_prompts(ix).1);
     out
 }
 
@@ -651,9 +745,13 @@ pub fn parse_index_noting(json: &str) -> Result<(Index, Option<Issue>), Vec<Issu
     let mut ix: Index = serde_json::from_str(json).map_err(|e| vec![Issue::new(f, "", rule::FORMAT, e.to_string())])?;
     let (locales, note) = sound_locales(&ix);
     ix.locales = locales;
+    let (scams, scam_note) = crate::scams::sound_scams(&ix);
+    ix.scams = scams;
+    let (prompts, prompts_note) = crate::prompts::sound_prompts(&ix);
+    ix.prompts = prompts;
     let issues = check_index(&ix);
     if issues.is_empty() {
-        Ok((ix, note))
+        Ok((ix, note.or(scam_note).or(prompts_note)))
     } else {
         Err(issues)
     }

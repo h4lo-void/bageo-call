@@ -19,6 +19,8 @@
 //! and desktop parts into the apps' resource files and [sync] copies the
 //! English originals out of bageo-call. The [extras] module holds the
 //! on-demand downloads: one file per extra language and per region drawing.
+//! The [prompts] module holds the words Bageo tells the models and the
+//! download of changed ones, bageo-prompts.json.gz.
 
 pub mod check;
 pub mod data;
@@ -27,13 +29,18 @@ pub mod extras;
 pub mod guard;
 pub mod locales;
 pub mod model;
+pub mod prompts;
+pub mod scams;
 pub mod source;
 pub mod sync;
 pub mod util;
 
 use std::fmt;
 
-pub use check::{check_bundle, check_bundle_at, check_index, parse_bundle, parse_index, parse_index_noting, sound_locales};
+pub use check::{
+    check_bundle, check_bundle_at, check_index, pack_bundle, parse_bundle, parse_bundle_bytes, parse_index, parse_index_noting,
+    sound_locales,
+};
 pub use extras::{
     build_extras, check_art, load_art, parse_extras_index, parse_lang_file, read_art_source, ExtraLang, ExtrasArtRef, ExtrasBuild,
     ExtrasIndex, ExtrasLangRef, EXTRAS_FORMAT, EXTRAS_INDEX_FILE,
@@ -43,7 +50,16 @@ pub use locales::{
     parse_locales_limited, sanitize_locales, unpack_locales, ClosingJudge, English, Kind, LocaleSources, Locales, LOCALES_FORMAT,
     MAX_LANG_BYTES, MAX_LOCALES_BYTES,
 };
-pub use model::{Bundle, DeliveryKey, Entry, Hello, Index, LangInfo, LocalesRef, Name, RegionData, TalkStyle, Text};
+pub use model::{Bundle, DeliveryKey, Entry, Hello, Index, LangInfo, LocalesRef, MultilangEntry, Name, RegionData, TalkStyle, Text};
+pub use prompts::{
+    build_prompts_at, builtin_book, check_prompts_ref, check_text, load_prompt_changes, pack_prompts, parse_book_file, parse_prompts,
+    sound_prompts, BookFile, BuiltinBook, PromptText, PromptsPack, TextProblem, MAX_PROMPTS_BYTES, MAX_PROMPTS_PACKED, PROMPTS_FILE,
+    PROMPTS_FORMAT,
+};
+pub use scams::{
+    build_scams_at, check_scams_ref, pack_scams, parse_scams, scam_counts, sound_scams, unpack_scams_bytes, ScamBundle, MAX_SCAMS_BYTES,
+    SCAMS_FILE, SCAMS_FORMAT,
+};
 pub use source::{build, build_at, check_sources, load_sources, Sources};
 pub use util::sha256_hex;
 

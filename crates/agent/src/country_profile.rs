@@ -17,9 +17,10 @@
 //! others (as every other part of those prompts, [crate::prompts]); local words
 //! stay in the local script.
 
+use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 
-use bageo_packs::{RegionData, Text};
+use bageo_packs::{Hello, MultilangEntry, RegionData, Text};
 
 use crate::locale::Lang;
 use crate::packs_store;
@@ -83,7 +84,8 @@ pub fn lang_default_country(lang: Lang) -> &'static str {
     match lang {
         Lang::ZhTw => "tw",
         Lang::ZhCn => "cn",
-        Lang::En | Lang::Ext(_) => "us",
+        Lang::En => "us",
+        Lang::Ext(e) => e.country(),
         Lang::Ja => "jp",
         Lang::Ko => "kr",
         Lang::Es => "mx",
@@ -220,7 +222,10 @@ pub fn delivery_key(region: Region, lang: Lang) -> Option<&'static str> {
 /// The regional identity and speaking-style sentence placed right at the front
 /// of a call's prompt (`【你是誰】` / `[Who you are] `): tells the model where
 /// it is from and to use that place's speaking style and accent. Empty for the
-/// generic fallback region (`default`).
+/// generic fallback region (`default`). Where callers may speak a Chinese
+/// dialect Gemini Live does not speak ([chinese_dialects_heard]), the Chinese
+/// sentence says in the same breath that the speaking is Mandarin: the local
+/// accent is wanted, the dialect is not, and the two must not pull apart.
 pub fn identity_line(region: Region, lang: Lang) -> String {
     if region.0.code == "default" {
         return String::new();
@@ -237,10 +242,11 @@ pub fn identity_line(region: Region, lang: Lang) -> String {
             || place.contains('與')
             || place.ends_with('區')
             || place.ends_with('家');
+        let mandarin = if chinese_dialects_heard(region) { "，講普通話、不講方言" } else { "" };
         let tw = if multi {
-            format!("你是{place}當地人，請多用當地人說話方式跟腔調。")
+            format!("你是{place}當地人，請多用當地人說話方式跟腔調{mandarin}。")
         } else {
-            format!("你是{place}人，請多用{place}人說話方式跟腔調。")
+            format!("你是{place}人，請多用{place}人說話方式跟腔調{mandarin}。")
         };
         if lang == Lang::ZhCn {
             crate::zh_convert::to_cn(&tw)
@@ -257,10 +263,36 @@ pub fn identity_line(region: Region, lang: Lang) -> String {
     }
 }
 
+fn multilang_styles() -> &'static BTreeMap<(String, String), MultilangEntry> {
+    let cur = packs_store::current();
+    if !cur.multilang.is_empty() {
+        &cur.multilang
+    } else {
+        &packs_store::builtin().multilang
+    }
+}
+
+fn lang_override(region: Region, lang: Lang) -> Option<&'static MultilangEntry> {
+    multilang_styles().get(&(region.code().to_string(), lang.code().to_string()))
+}
+
+/// Whether `bageo-pack` defines a language-specific speech/style
+/// override for `(region, lang)`.
+pub fn has_lang_override(region: Region, lang: Lang) -> bool {
+    lang_override(region, lang).is_some()
+}
+
+/// Region+language local phone greeting override from `bageo-pack`,
+/// when `(region, lang)` has one.
+pub fn lang_hello(region: Region, lang: Lang) -> Option<&'static Hello> {
+    lang_override(region, lang).map(|m| &m.hello)
+}
+
 /// The region's local ways of talking (words to use and avoid, date order…),
 /// led by a line break; empty when it has none. Only with the built-in prompt.
 pub fn habits_block(region: Region, lang: Lang) -> String {
-    let t = pick(&region.0.habits, lang);
+    let text = lang_override(region, lang).map(|m| &m.habits).unwrap_or(&region.0.habits);
+    let t = pick(text, lang);
     if t.trim().is_empty() {
         return String::new();
     }
@@ -273,7 +305,7 @@ pub fn habits_block(region: Region, lang: Lang) -> String {
 /// It goes after the local rules and ways and before the owner's notes and the
 /// hard lines ([crate::prompts::scope_to_region]), which come last and win.
 pub fn style_line(region: Region, lang: Lang, assistant: bool, level: u8, owner: &str) -> String {
-    let ts = &region.0.talk_style;
+    let ts = lang_override(region, lang).map(|m| &m.talk_style).unwrap_or(&region.0.talk_style);
     let cells = if assistant { &ts.assistant } else { &ts.persona };
     let i = usize::from(level.clamp(1, 5)) - 1;
     let text: String = pick(&cells[i], lang).replace("{owner}", owner).chars().filter(|c| *c != '{' && *c != '}').collect();
@@ -427,6 +459,43 @@ mod tests {
         assert_eq!(resolve(None, Lang::De), Some(r("de")));
     }
 
+    /// A language outside the nine core ones stands for its own country
+    /// (Italian for Italy, Thai for Thailand), not for the United States.
+    #[test]
+    fn an_extra_language_stands_for_its_own_country() {
+        for e in crate::locale::Ext::all() {
+            let c = lang_default_country(Lang::Ext(e));
+            assert!(bageo_packs::data::is_country(c), "{e:?}: {c}");
+            assert_ne!(c, "us", "{e:?}");
+            // Where the official code names a country (it-IT, th-TH), it is that one.
+            if let Some((_, cc)) = e.official().split_once('-') {
+                if cc.len() == 2 {
+                    assert_eq!(c, cc.to_ascii_lowercase(), "{e:?}");
+                }
+            }
+            assert!(resolve_with(None, None, Lang::Ext(e)).is_some(), "{e:?}");
+        }
+        for (code, country) in [
+            ("it", "it"),
+            ("th", "th"),
+            ("vi", "vn"),
+            ("id", "id"),
+            ("hi", "in"),
+            ("ar", "eg"),
+            ("ru", "ru"),
+            ("he", "il"),
+            ("fa", "ir"),
+            ("sv", "se"),
+        ] {
+            let lang = Lang::Ext(crate::locale::Ext::from_code(code).expect(code));
+            assert_eq!(lang_default_country(lang), country, "{code}");
+            assert_eq!(resolve_with(None, None, lang), Region::of_country(country), "{code}");
+            // The SIM and the home country still come first.
+            assert_eq!(resolve_with(Some("jp"), None, lang), Some(r("jp")), "{code}");
+            assert_eq!(resolve_with(None, Some("de"), lang), Some(r("de")), "{code}");
+        }
+    }
+
     #[test]
     fn a_line_is_in_the_prompts_instruction_language() {
         let tw = line(r("tw"), Kind::Delivery, Lang::ZhTw).unwrap();
@@ -504,5 +573,54 @@ mod tests {
         for c in ["us", "jp", "de", "ch", "pt", "ca", "th"] {
             assert!(!chinese_dialects_heard(r(c)), "{c}");
         }
+    }
+
+    #[test]
+    fn multilang_overrides_cover_all_51_pairs_and_fit_budgets() {
+        let map = multilang_styles();
+        assert_eq!(map.len(), 51, "expected 51 region/lang overrides");
+        for ((code, lang_code), style) in map {
+            let reg = r(code);
+            let lang = Lang::parse_any(lang_code).unwrap_or_else(|| panic!("invalid lang {lang_code}"));
+            assert!(has_lang_override(reg, lang), "{code}/{lang_code}");
+            assert!(lang_hello(reg, lang).is_some(), "{code}/{lang_code}");
+            assert!(!style.hello.hello.trim().is_empty() && !style.hello.hello_again.trim().is_empty(), "{code}/{lang_code}");
+
+            let h = habits_block(reg, lang);
+            assert!(!h.trim().is_empty() && !h.contains('{') && !h.contains('}'), "{code}/{lang_code}: {h}");
+
+            for assistant in [false, true] {
+                let lines: Vec<String> = (1..=5).map(|l| style_line(reg, lang, assistant, l, "Alex")).collect();
+                for (i, a) in lines.iter().enumerate() {
+                    assert!(!a.is_empty() && !a.contains('{') && !a.contains('}'), "{code}/{lang_code} {a}");
+                    for b in &lines[i + 1..] {
+                        assert_ne!(a, b, "{code}/{lang_code} assistant={assistant}");
+                    }
+                }
+            }
+
+            let base_en = reg.0.delivery.en.chars().count()
+                + reg.0.readback.as_ref().map_or(0, |t| t.en.chars().count())
+                + reg.0.fraud.en.chars().count();
+            let base_zh = reg.0.delivery.zh.chars().count()
+                + reg.0.readback.as_ref().map_or(0, |t| t.zh.chars().count())
+                + reg.0.fraud.zh.chars().count();
+            let cells = style.talk_style.persona.iter().chain(style.talk_style.assistant.iter());
+            let max_cell_en = cells.clone().map(|t| t.en.chars().count()).max().unwrap_or(0);
+            let max_cell_zh = cells.map(|t| t.zh.chars().count()).max().unwrap_or(0);
+            let sum_en = base_en + style.habits.en.chars().count() + max_cell_en;
+            let sum_zh = base_zh + style.habits.zh.chars().count() + max_cell_zh;
+            assert!(
+                sum_en <= bageo_packs::check::PROMPT_SUM_MAX.0 && sum_zh <= bageo_packs::check::PROMPT_SUM_MAX.1,
+                "{code}/{lang_code}: prompt sum ({sum_en}, {sum_zh}) exceeded {:?}",
+                bageo_packs::check::PROMPT_SUM_MAX
+            );
+        }
+        assert_ne!(habits_block(r("ca"), Lang::Fr), habits_block(r("ca"), Lang::En));
+        assert_ne!(style_line(r("ca"), Lang::Fr, false, 2, "Alex"), style_line(r("ca"), Lang::En, false, 2, "Alex"));
+        assert_ne!(habits_block(r("sg"), Lang::ZhTw), habits_block(r("sg"), Lang::En));
+        assert!(habits_block(r("sg"), Lang::ZhCn).contains("组屋"));
+        assert!(habits_block(r("ch"), Lang::Fr).contains("natel"));
+        assert!(habits_block(r("us"), Lang::Es).contains("Zelle"));
     }
 }

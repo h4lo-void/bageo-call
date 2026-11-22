@@ -15,17 +15,19 @@
 //! languages is left out of a table on its own; the rest of the bundle is used.
 
 use std::collections::BTreeMap;
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock, RwLock};
 
 use bageo_packs::data::is_official_lang;
-use bageo_packs::{check_bundle_at, rule, Bundle, Issue, RegionData, FORMAT, MAX_BUNDLE_BYTES};
+use bageo_packs::{check_bundle_at, rule, Bundle, Issue, MultilangEntry, RegionData, FORMAT, MAX_BUNDLE_BYTES};
+use flate2::read::GzDecoder;
 
 use crate::prompts::LocalHello;
 
-/// The bundle compiled into Bageo.
-const BUILTIN: &str = include_str!("../data/packs/bageo-pack.json");
+/// The bundle compiled into Bageo (`bageo-pack.json.gz`).
+const BUILTIN_GZ: &[u8] = include_bytes!("../data/packs/bageo-pack.json.gz");
 
 /// The installed bundle's file name, in {CALLS_DATA_DIR}/packs/.
 pub const FILE_NAME: &str = "bageo-pack.json";
@@ -46,6 +48,14 @@ pub struct Table {
     pub skipped: Vec<String>,
     /// Each region's way of answering the phone, where it has one.
     hellos: BTreeMap<String, LocalHello>,
+    /// Secondary `(region, lang)` speech/style overrides.
+    pub multilang: BTreeMap<(String, String), MultilangEntry>,
+    /// Talk-style bubble sample lines per region code.
+    pub bubbles: BTreeMap<String, serde_json::Value>,
+    /// Business place habits for AI errands.
+    pub place_habits: Vec<crate::place_habits::Region>,
+    /// Raw JSON objects for `place_habits::tests`.
+    pub place_habits_raw: Vec<serde_json::Value>,
 }
 
 impl Table {
@@ -92,11 +102,41 @@ impl Table {
                 },
             );
         }
-        Table { version: bundle.version, countries: bundle.countries, regions: bundle.regions, skipped, hellos }
+        let multilang = bundle
+            .multilang
+            .into_iter()
+            .map(|e| ((e.region.clone(), e.lang.clone()), e))
+            .collect();
+        let place_habits_raw = bundle.place_habits;
+        let place_habits = place_habits_raw
+            .iter()
+            .filter_map(|v| serde_json::from_value::<crate::place_habits::Region>(v.clone()).ok())
+            .collect();
+        Table {
+            version: bundle.version,
+            countries: bundle.countries,
+            regions: bundle.regions,
+            skipped,
+            hellos,
+            multilang,
+            bubbles: bundle.bubbles,
+            place_habits,
+            place_habits_raw,
+        }
     }
 
     fn empty() -> Self {
-        Table { version: 0, countries: BTreeMap::new(), regions: BTreeMap::new(), skipped: Vec::new(), hellos: BTreeMap::new() }
+        Table {
+            version: 0,
+            countries: BTreeMap::new(),
+            regions: BTreeMap::new(),
+            skipped: Vec::new(),
+            hellos: BTreeMap::new(),
+            multilang: BTreeMap::new(),
+            bubbles: BTreeMap::new(),
+            place_habits: Vec::new(),
+            place_habits_raw: Vec::new(),
+        }
     }
 }
 
@@ -140,6 +180,7 @@ fn prune(b: &mut Bundle) -> Vec<String> {
         b.regions.remove(code);
         b.countries.retain(|_, c| c != code);
         b.manifest.retain(|e| !(e.kind == "region" && e.id == *code));
+        b.multilang.retain(|m| m.region != *code);
     }
     gone
 }
@@ -188,11 +229,45 @@ fn parse_from(json: &str, origin: Origin, today: i64) -> Result<(Bundle, Vec<Str
     }
 }
 
+/// Unpacks a gzipped bundle (`[0x1f, 0x8b]`) or decodes UTF-8 JSON, capped at `MAX_BUNDLE_BYTES`.
+fn decode_bundle_bytes(bytes: &[u8]) -> Result<String, Vec<Issue>> {
+    if bytes.len() > MAX_BUNDLE_BYTES {
+        return Err(issue(rule::LENGTH, format!("{} bytes, the limit is {MAX_BUNDLE_BYTES}", bytes.len())));
+    }
+    if bytes.starts_with(&[0x1f, 0x8b]) {
+        let mut dec = GzDecoder::new(bytes);
+        let mut out = Vec::new();
+        let mut buf = vec![0u8; 64 * 1024];
+        loop {
+            let n = dec.read(&mut buf).map_err(|e| issue(rule::FORMAT, format!("cannot unpack: {e}")))?;
+            if n == 0 {
+                break;
+            }
+            if out.len() + n > MAX_BUNDLE_BYTES {
+                return Err(issue(rule::LENGTH, format!("more than {MAX_BUNDLE_BYTES} bytes unpacked; stopped reading")));
+            }
+            out.extend_from_slice(&buf[..n]);
+        }
+        let rest = dec.into_inner();
+        if !rest.is_empty() {
+            return Err(issue(rule::FORMAT, format!("{} bytes after the packed data", rest.len())));
+        }
+        String::from_utf8(out).map_err(|_| issue(rule::FORMAT, "not UTF-8 text"))
+    } else {
+        std::str::from_utf8(bytes).map(str::to_string).map_err(|_| issue(rule::FORMAT, "not UTF-8 text"))
+    }
+}
+
+fn builtin_str() -> &'static str {
+    static S: OnceLock<String> = OnceLock::new();
+    S.get_or_init(|| decode_bundle_bytes(BUILTIN_GZ).expect("built-in bageo-pack.json.gz unpacks"))
+}
+
 /// The built-in table. A built-in bundle that does not pass (a build mistake,
 /// caught by the tests) leaves an empty table: calls get no regional part.
 pub fn builtin() -> &'static Table {
     static T: OnceLock<&'static Table> = OnceLock::new();
-    T.get_or_init(|| match parse_from(BUILTIN, Origin::Builtin, 0) {
+    T.get_or_init(|| match parse_from(builtin_str(), Origin::Builtin, 0) {
         Ok((b, skipped)) => Box::leak(Box::new(Table::new(b, skipped))),
         Err(issues) => {
             tracing::error!("built-in local data pack rejected: {}", issues.first().map(|i| i.to_string()).unwrap_or_default());
@@ -317,7 +392,8 @@ fn load_installed(dir: &Path, version: u64) -> Option<&'static Table> {
         tracing::warn!("installed local data pack too large ({} bytes); using the built-in one", meta.len());
         return None;
     }
-    let json = std::fs::read_to_string(&path).ok()?;
+    let raw = std::fs::read(&path).ok()?;
+    let json = decode_bundle_bytes(&raw).ok()?;
     match parse(&json) {
         Ok((b, skipped)) if b.version > version => {
             tracing::info!(
@@ -377,9 +453,9 @@ fn check_staged(count: &AtomicUsize, staged: &Path, in_use: u64, want: Option<u6
     if len > MAX_BUNDLE_BYTES as u64 {
         return Err(issue(rule::LENGTH, format!("{len} bytes, the limit is {MAX_BUNDLE_BYTES}")));
     }
-    let json = std::fs::read(staged).map_err(io)?;
-    let text = std::str::from_utf8(&json).map_err(|_| issue(rule::FORMAT, "not UTF-8 text"))?;
-    let (bundle, skipped) = parse(text)?;
+    let raw = std::fs::read(staged).map_err(io)?;
+    let text = decode_bundle_bytes(&raw)?;
+    let (bundle, skipped) = parse(&text)?;
     if want.is_some_and(|w| w != bundle.version) {
         return Err(issue(rule::STATUS, format!("version {} is not the one the index names", bundle.version)));
     }
@@ -402,7 +478,7 @@ fn install_counted(count: &AtomicUsize, dir: &Path, json: &[u8], in_use: u64) ->
 /// The built-in bundle's text, for tests that make variants of it.
 #[cfg(test)]
 pub(crate) fn builtin_json() -> &'static str {
-    BUILTIN
+    builtin_str()
 }
 
 /// Goes back to the built-in bundle: the installed one is deleted. When it
@@ -438,14 +514,14 @@ mod tests {
     }
 
     fn builtin_with(edit: impl FnOnce(&mut serde_json::Value)) -> String {
-        let mut v: serde_json::Value = serde_json::from_str(BUILTIN).unwrap();
+        let mut v: serde_json::Value = serde_json::from_str(builtin_json()).unwrap();
         edit(&mut v);
         serde_json::to_string(&v).unwrap()
     }
 
     #[test]
     fn builtin_pack_passes_check() {
-        let (b, skipped) = parse(BUILTIN).unwrap_or_else(|i| panic!("{}", i.iter().map(|x| x.to_string()).collect::<Vec<_>>().join("\n")));
+        let (b, skipped) = parse(builtin_json()).unwrap_or_else(|i| panic!("{}", i.iter().map(|x| x.to_string()).collect::<Vec<_>>().join("\n")));
         assert!(skipped.is_empty(), "{skipped:?}");
         assert!(b.regions.len() >= 4 && b.version >= 2026112001, "{}", b.regions.len());
         assert_eq!(builtin().regions.len(), b.regions.len());
@@ -543,10 +619,10 @@ mod tests {
     #[test]
     fn a_clock_that_is_behind_keeps_the_builtin_pack_and_refuses_later_downloads() {
         // Today is 1970-01-01: the built-in pack is still read...
-        assert!(parse_from(BUILTIN, Origin::Builtin, 0).is_ok());
+        assert!(parse_from(builtin_json(), Origin::Builtin, 0).is_ok());
         assert!(builtin().region("tw").is_some());
         // ...and the same text as a download is refused for its date.
-        let e = parse_from(BUILTIN, Origin::Downloaded, 0).unwrap_err();
+        let e = parse_from(builtin_json(), Origin::Downloaded, 0).unwrap_err();
         assert!(e.iter().any(|i| i.detail.contains("later than tomorrow")), "{}", e[0]);
         // With the real clock a download dated in the future is refused too.
         let future = builtin_with(|v| v["version"] = 2999010101u64.into());

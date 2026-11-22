@@ -1100,6 +1100,10 @@ struct OtherLatin {
     unique_tokens: usize,
     /// Index of the best language in [OTHER_LATIN_CODES].
     best_idx: usize,
+    /// Each language's score (common words and letters), in [OTHER_LATIN_CODES] order.
+    scores: [i32; 7],
+    /// Each language's common words, in [OTHER_LATIN_CODES] order.
+    word_hits: [i32; 7],
 }
 
 /// The languages [other_latin_stats] scores, in its order.
@@ -1263,6 +1267,8 @@ fn other_latin_stats(text: &str) -> OtherLatin {
         unique_script: unique_tokens[best_idx] > 0,
         unique_tokens: unique_tokens[best_idx],
         best_idx,
+        scores,
+        word_hits,
     }
 }
 
@@ -1309,6 +1315,89 @@ pub fn read_other(said: &str) -> Option<OtherReading> {
     }
     None
 }
+
+/// Another translated language than `now` that `said`, written in the same
+/// script, is told to be in by its own words: Latin words by the word lists of
+/// [other_latin_stats] when `now` has one too to weigh against, Russian and
+/// Ukrainian by their common words with none of the letters only the other
+/// (or Belarusian, Bulgarian, Serbian…) writes. Four words or more, at least
+/// two common words of the language, a third of the words, and well ahead of
+/// `now`'s: a short reply, a name or a borrowed word tells nothing. None
+/// when only the script tells (Arabic letters do not tell Arabic, Persian and
+/// Urdu apart; a Swedish call has no word list to weigh against).
+pub fn other_told_apart(said: &str, now: crate::locale::Ext) -> Option<Lang> {
+    use bageo_packs::data::Script;
+    let ready = |code: &str| {
+        crate::locale::Ext::from_code(code)
+            .filter(|e| *e != now && crate::locales_store::current().stage(*e) >= crate::locales_store::Stage::Call)
+            .map(Lang::Ext)
+    };
+    match now.script() {
+        Script::Latin => {
+            let ci = OTHER_LATIN_CODES.iter().position(|c| *c == now.code())?;
+            if !is_strong_other_latin(said) {
+                return None;
+            }
+            let o = other_latin_stats(said);
+            let bi = o.best_idx;
+            let words = said.split_whitespace().filter(|w| w.chars().any(char::is_alphabetic)).count() as i32;
+            let next = o.scores.iter().enumerate().filter(|(i, _)| *i != bi).map(|(_, s)| *s).max().unwrap_or(0);
+            let told = bi != ci
+                && words >= 4
+                && o.word_hits[bi] >= 3
+                && o.word_hits[bi] * 3 >= words
+                && o.word_hits[bi] - o.word_hits[ci] >= 2
+                && o.scores[bi] - next >= 2;
+            if told { ready(OTHER_LATIN_CODES[bi]) } else { None }
+        }
+        Script::Cyrillic => {
+            let to = match now.code() {
+                "uk" => "ru",
+                "ru" => "uk",
+                _ => return None,
+            };
+            let (mut ru_only, mut uk_only, mut foreign) = (0, 0, 0);
+            for c in said.chars().flat_map(char::to_lowercase) {
+                match c {
+                    'ы' | 'э' | 'ъ' | 'ё' => ru_only += 1,
+                    'і' | 'ї' | 'є' | 'ґ' => uk_only += 1,
+                    'а'..='я' => {}
+                    '\u{400}'..='\u{52F}' if c.is_alphabetic() => foreign += 1,
+                    _ => {}
+                }
+            }
+            let mixed = foreign > 0 || if to == "ru" { uk_only > 0 } else { ru_only > 0 };
+            let tokens: Vec<String> = said
+                .split(|c: char| !(c.is_alphabetic() || matches!(c, '\'' | '\u{2019}')))
+                .filter(|t| t.chars().any(|c| ('\u{400}'..='\u{52F}').contains(&c)))
+                .map(|t| t.to_lowercase().replace('\u{2019}', "'"))
+                .collect();
+            let list = if to == "ru" { RU_WORDS } else { UK_WORDS };
+            let hits = tokens.iter().filter(|t| list.contains(&t.as_str())).count();
+            if mixed || tokens.len() < 4 || hits < 2 || hits * 3 < tokens.len() {
+                return None;
+            }
+            ready(to)
+        }
+        _ => None,
+    }
+}
+
+/// Common Russian words that Ukrainian and Belarusian write otherwise.
+const RU_WORDS: &[&str] = &[
+    "это", "что", "сейчас", "здравствуйте", "пожалуйста", "спасибо", "хорошо", "нет", "да", "извините",
+    "конечно", "очень", "уже", "есть", "только", "когда", "где", "почему", "если", "тогда", "сегодня", "здесь",
+    "меня", "ничего", "можно", "курьер", "посылка", "посылку", "оставлю", "оставить", "перезвоните", "позвоните",
+    "соседей", "сказать", "привет", "ещё", "еще", "вечером",
+];
+
+/// Common Ukrainian words that Russian and Belarusian write otherwise.
+const UK_WORDS: &[&str] = &[
+    "це", "що", "дякую", "ласка", "добре", "вибачте", "ні", "вже", "дуже", "сьогодні", "мене", "привіт",
+    "добрий", "розумію", "українською", "залиште", "посилку", "посилка", "її", "він", "вона", "його",
+    "коли", "де", "чому", "якщо", "є", "немає", "буде", "лише", "тільки", "кур'єр", "вдома", "ввечері",
+    "біля", "передзвоніть",
+];
 
 fn is_strong_other_latin(text: &str) -> bool {
     let (_, total_scores, word_scores) = latin_word_and_total_scores(text);

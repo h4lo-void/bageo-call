@@ -40,6 +40,7 @@
     <string name="header_compat">ທົດສອບໃນ Pixel 7, 7a, 8 ແລະ 9 ແລ້ວ. ເຄື່ອງອື່ນທີ່ root ແລ້ວອາດໃຊ້ໄດ້; ລອງໃຊ້ດ້ວຍຄວາມສ່ຽງຂອງທ່ານເອງ.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">ເວີຊັນ %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo ແມ່ນ %1$s (ເວີຊັນຕ່າງກັນ)</string>
     <string name="ip_addr_hint">ຕົວຢ່າງ 192.168.1.20</string>
     <string name="ip_addr_label">ທີ່ຢູ່ IP ຂອງ Bageo</string>
     <string name="ip_code_hint">ເອົາລະຫັດຢູ່ໜ້າລະບົບຂອງເວັບຄອນໂຊນ</string>

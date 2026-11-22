@@ -40,6 +40,7 @@
     <string name="header_compat">Pixel 7, 7a, 8 ۽ 9 تي آزمايل۔ ٻيا روٽ ٿيل فون ڪم ڪري سگهن ٿا؛ پنهنجي ذميواري تي استعمال ڪريو۔</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">ورجن %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo %1$s آهي (ورزن مختلف آهي)</string>
     <string name="ip_addr_hint">مثال طور 192.168.1.20</string>
     <string name="ip_addr_label">Bageo جو IP پتو</string>
     <string name="ip_code_hint">ويب ڪنسول جي سسٽم صفحي تان وٺو</string>

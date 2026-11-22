@@ -40,6 +40,7 @@
     <string name="header_compat">በPixel 7፣ 7a፣ 8 እና 9 ላይ ተሞክሯል። ሌሎች root የተደረጉ ስልኮች ሊሰሩ ይችላሉ፤ በራስዎ ኃላፊነት ይሞክሩ።</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">ስሪት %1$s (%2$d)</string>
+    <string name="header_version_diff">Bageo %1$s ነው (ስሪት ይለያያል)</string>
     <string name="ip_addr_hint">ለምሳሌ 192.168.1.20</string>
     <string name="ip_addr_label">የBageo IP አድራሻ</string>
     <string name="ip_code_hint">በድር ኮንሶሉ የስርዓት ገጽ ላይ ያግኙት</string>

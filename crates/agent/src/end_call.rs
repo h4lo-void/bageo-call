@@ -27,6 +27,15 @@
 use serde_json::{json, Value};
 use std::time::Duration;
 
+// The words are in the prompt book (data/prompts/<language>.json); these are their handles.
+crate::prompt_book::prompt_texts! {
+    EN_END_CALL_DECLARATION_1 = "en/end_call_declaration_1";
+    EN_END_CALL_DECLARATION_2 = "en/end_call_declaration_2";
+    EN_END_CALL_NEXT_1 = "en/end_call_next_1";
+    EN_END_CALL_NEXT_2 = "en/end_call_next_2";
+    EN_END_CALL_NEXT_3 = "en/end_call_next_3";
+}
+
 /// The function's name in the Live setup.
 pub const NAME: &str = "end_call";
 /// No end_call this soon after the call was answered (the AI's first words).
@@ -49,13 +58,13 @@ pub const REASONS: &[&str] = &["matter_done", "caller_finishing", "other"];
 pub fn declaration(non_blocking: bool) -> Value {
     let mut d = json!({
         "name": NAME,
-        "description": "End the call. Call it once the business is done and the caller is ready to finish (they need not have said goodbye), right after your own natural closing line. Do not call it while the caller is still talking or asking something, or before you have answered them. Answers {\"status\": \"ending\"} (the line closes once your words have played and the caller stays quiet; if they speak again, carry on with them) or {\"status\": \"not_ended\"} (the call goes on: do what next says).",
+        "description": EN_END_CALL_DECLARATION_1.get(),
         "parameters": {
             "type": "OBJECT",
             "properties": {
                 "reason": {
                     "type": "STRING",
-                    "description": "One of: matter_done (everything is settled), caller_finishing (the caller is wrapping up), other."
+                    "description": EN_END_CALL_DECLARATION_2.get()
                 }
             },
             "required": ["reason"]
@@ -119,9 +128,9 @@ impl Refusal {
     /// What the model is told to do instead (it reads the answer, the caller does not).
     fn next(self) -> &'static str {
         match self {
-            Refusal::Stalling => "The call is not over. Keep the caller talking as your instructions say; do not close.",
-            Refusal::TooEarly => "The call has only just begun. Carry on the conversation with the caller.",
-            Refusal::UnansweredQuestion => "The caller asked you something you have not answered. Answer it first and see whether they have anything else; call end_call only once they are ready to finish.",
+            Refusal::Stalling => EN_END_CALL_NEXT_1.get(),
+            Refusal::TooEarly => EN_END_CALL_NEXT_2.get(),
+            Refusal::UnansweredQuestion => EN_END_CALL_NEXT_3.get(),
         }
     }
 }
@@ -199,6 +208,9 @@ pub struct PendingView {
     pub ai_asked: bool,
     /// Our audio has been played out for [`GRACE`].
     pub quiet_for_grace: bool,
+    /// The call is being stalled (a sales or scam call). The verdict can come
+    /// after the end_call was accepted: such a call is never closed by it.
+    pub stalling: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -208,11 +220,15 @@ pub enum Step {
     Cancel,
     /// Our last words ask the caller something: wait for the answer.
     Withdraw,
+    /// The call turned out to be one to stall: the line stays open.
+    Stalled,
     HangUp,
 }
 
 pub fn step(v: &PendingView) -> Step {
-    if v.caller_spoke {
+    if v.stalling {
+        Step::Stalled
+    } else if v.caller_spoke {
         Step::Cancel
     } else if v.ai_busy || (!v.ai_spoke && v.since_accept < LINE_WAIT) {
         Step::Wait
@@ -620,6 +636,7 @@ mod tests {
             ai_spoke: true,
             ai_asked: false,
             quiet_for_grace: false,
+            stalling: false,
         }
     }
 
@@ -631,6 +648,33 @@ mod tests {
         // Even once the grace has run.
         v.quiet_for_grace = true;
         assert_eq!(step(&v), Step::Cancel);
+    }
+
+    /// The sales / scam verdict can come after an end_call was accepted (the
+    /// review runs beside the call): the line then stays open, whatever state
+    /// the closing was in.
+    #[test]
+    fn a_call_being_stalled_is_not_closed() {
+        for (busy, quiet, spoke, asked, caller) in [
+            (false, true, true, false, false),
+            (true, false, true, false, false),
+            (false, false, false, false, false),
+            (false, true, true, true, false),
+            (false, true, true, false, true),
+        ] {
+            let v = PendingView {
+                stalling: true,
+                ai_busy: busy,
+                quiet_for_grace: quiet,
+                ai_spoke: spoke,
+                ai_asked: asked,
+                caller_spoke: caller,
+                ..view()
+            };
+            assert_eq!(step(&v), Step::Stalled, "{v:?}");
+        }
+        // The same quiet line without the verdict closes.
+        assert_eq!(step(&PendingView { quiet_for_grace: true, ..view() }), Step::HangUp);
     }
 
     #[test]
@@ -746,7 +790,7 @@ mod a6rev_tests {
     }
 
     fn view() -> PendingView {
-        PendingView { since_accept: S, caller_spoke: false, ai_busy: false, ai_spoke: true, ai_asked: false, quiet_for_grace: false }
+        PendingView { since_accept: S, caller_spoke: false, ai_busy: false, ai_spoke: true, ai_asked: false, quiet_for_grace: false, stalling: false }
     }
 
     /// Statements that say "that is all" in many languages: never a question.

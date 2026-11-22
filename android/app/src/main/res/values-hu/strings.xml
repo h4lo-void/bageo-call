@@ -40,6 +40,7 @@
     <string name="header_compat">Pixel 7, 7a, 8 és 9 készüléken tesztelve. Más root hozzáférésű telefonokon is működhet; csak saját felelősségre próbálja ki.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Verzió: %1$s (%2$d)</string>
+    <string name="header_version_diff">A Bageo %1$s verziójú (eltérő verzió)</string>
     <string name="ip_addr_hint">Például 192.168.1.20</string>
     <string name="ip_addr_label">A Bageo IP-címe</string>
     <string name="ip_code_hint">A webes konzol Rendszer oldalán található</string>

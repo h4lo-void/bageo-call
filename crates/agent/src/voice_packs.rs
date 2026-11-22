@@ -143,13 +143,11 @@ fn valid_lang(s: &str) -> bool {
     base_ok && rest_ok
 }
 
-/// A region code of the data pack: `tw`, `latam`, `hk-mo`.
+/// A region code of the data pack: `tw`, `latam`, `hk-mo`, `ke-tz-et-mg-ht`.
 fn valid_region(s: &str) -> bool {
-    let word = |w: &str| (2..=8).contains(&w.len()) && w.bytes().all(|b| b.is_ascii_lowercase()) && !reserved(w);
-    match s.split_once('-') {
-        None => word(s),
-        Some((a, b)) => word(a) && word(b),
-    }
+    let parts: Vec<&str> = s.split('-').collect();
+    (1..=6).contains(&parts.len())
+        && parts.iter().all(|w| (2..=8).contains(&w.len()) && w.bytes().all(|b| b.is_ascii_lowercase()) && !reserved(w))
 }
 
 /// A Windows device name (con, prn, aux, nul, com1–9, lpt1–9): never a folder name.
@@ -159,7 +157,7 @@ fn reserved(w: &str) -> bool {
     matches!(w.as_str(), "con" | "prn" | "aux" | "nul") || (b.len() == 4 && (w.starts_with("com") || w.starts_with("lpt")) && (b'1'..=b'9').contains(&b[3]))
 }
 
-/// A pack id in any case: a language of 2–3 letters, then up to three parts of
+/// A pack id in any case: a language of 2–3 letters, then up to six parts of
 /// 2–8 letters (script, region), none a Windows device name. Folders and the
 /// setting keep it in lowercase ([Entry::id]).
 pub(crate) fn valid_id(id: &str) -> bool {
@@ -171,7 +169,7 @@ pub(crate) fn valid_id(id: &str) -> bool {
         && (2..=3).contains(&first.len())
         && first.bytes().all(|b| b.is_ascii_lowercase())
         && !reserved(first)
-        && rest.len() <= 3
+        && rest.len() <= 6
         && rest.iter().all(|w| (2..=8).contains(&w.len()) && w.bytes().all(|b| b.is_ascii_lowercase()) && !reserved(w))
 }
 
@@ -563,6 +561,9 @@ fn clear_made(cache: &Path, entry: &Entry) {
         for v in &entry.voices {
             for p in PARTS {
                 let _ = std::fs::remove_file(dir.join(format!("{v}_{p}.pcm")));
+                // Made in English while the language had no words of its own yet
+                // (voice_preview: the `en_` files).
+                let _ = std::fs::remove_file(dir.join(format!("en_{v}_{p}.pcm")));
             }
         }
     }
@@ -1086,7 +1087,10 @@ mod tests {
     #[test]
     fn the_builtin_index_is_empty_and_valid() {
         let ix = parse_index(BUILTIN_INDEX).expect("built-in voice index");
-        assert_eq!(ix.voices.len(), crate::voice_lines::codes().len());
+        assert!(!ix.voices.is_empty() && ix.voices.len() <= crate::voice_lines::codes().len());
+        for e in &ix.voices {
+            assert!(e.region.as_deref().is_some_and(|r| crate::voice_lines::for_region(r).is_some()), "{}", e.id());
+        }
         let d = tmp();
         let v = list_json(&d.0, &d.0.join("bundled"), &[]);
         assert_eq!((v["packs"].as_array().map(Vec::len), v["downloaded"].as_array().map(Vec::len)), (Some(ix.voices.len()), Some(0)));

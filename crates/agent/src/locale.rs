@@ -56,6 +56,70 @@ impl Ext {
     pub fn script(self) -> Script {
         self.info().script
     }
+
+    /// The country it is mainly spoken in (ISO 3166 alpha-2, lower case):
+    /// where a call is taken to be, and where a number without a country
+    /// code is dialled, when no SIM or setting says. English is a core
+    /// language, so none of these is the United States.
+    pub fn country(self) -> &'static str {
+        match self.code() {
+            "af" => "za",
+            "am" => "et",
+            "ar" => "eg",
+            "az" => "az",
+            "be" => "by",
+            "bg" => "bg",
+            "bn" => "bd",
+            "ca" | "eu" | "gl" => "es",
+            "ceb" | "fil" => "ph",
+            "cs" => "cz",
+            "da" => "dk",
+            "el" => "gr",
+            "et" => "ee",
+            "fa" => "ir",
+            "fi" => "fi",
+            "gu" | "hi" | "kn" | "kok" | "mai" | "ml" | "mr" | "or" | "pa" | "ta" | "te" => "in",
+            "he" => "il",
+            "hr" => "hr",
+            "ht" => "ht",
+            "hu" => "hu",
+            "hy" => "am",
+            "id" | "jv" => "id",
+            "is" => "is",
+            "it" => "it",
+            "ka" => "ge",
+            "la" => "va",
+            "lb" => "lu",
+            "lo" => "la",
+            "lt" => "lt",
+            "lv" => "lv",
+            "mg" => "mg",
+            "mk" => "mk",
+            "mn" => "mn",
+            "ms" => "my",
+            "my" => "mm",
+            "nb" | "nn" => "no",
+            "ne" => "np",
+            "nl" => "nl",
+            "pl" => "pl",
+            "ps" => "af",
+            "ro" => "ro",
+            "ru" => "ru",
+            "sd" | "ur" => "pk",
+            "si" => "lk",
+            "sk" => "sk",
+            "sl" => "si",
+            "sq" => "al",
+            "sr" => "rs",
+            "sv" => "se",
+            "sw" => "ke",
+            "th" => "th",
+            "tr" => "tr",
+            "uk" => "ua",
+            "vi" => "vn",
+            _ => "us",
+        }
+    }
 }
 
 impl std::fmt::Debug for Ext {
@@ -2791,14 +2855,21 @@ mod ext_tests {
             assert_eq!(crate::voice_preview::sample_lines(l), crate::voice_preview::sample_lines(en));
             assert_eq!(crate::voice_preview::reject_announce_text_in(l), crate::voice_preview::reject_announce_text_in(en));
             // Regions, scenarios, stalling.
-            assert_eq!(crate::country_profile::lang_default_country(l), "us");
+            assert_ne!(crate::country_profile::lang_default_country(l), "us");
             assert_eq!(crate::country_profile::prompt_overhead(l), crate::country_profile::prompt_overhead(en));
             assert_eq!(crate::country_profile::stall_overhead(l), crate::country_profile::stall_overhead(en));
             let _ = crate::country_profile::resolve(None, l);
             for r in regions.iter().copied().take(4) {
                 assert_eq!(crate::country_profile::block(r, l, false), crate::country_profile::block(r, en, false));
-                assert_eq!(crate::country_profile::habits_block(r, l), crate::country_profile::habits_block(r, en));
-                assert_eq!(crate::country_profile::style_line(r, l, false, 3, "Alex"), crate::country_profile::style_line(r, en, false, 3, "Alex"));
+                if crate::country_profile::has_lang_override(r, l) {
+                    let hb = crate::country_profile::habits_block(r, l);
+                    let sl = crate::country_profile::style_line(r, l, false, 3, "Alex");
+                    assert!(!hb.is_empty() && hb != crate::country_profile::habits_block(r, en), "{r:?} {l:?}");
+                    assert!(!sl.is_empty() && sl != crate::country_profile::style_line(r, en, false, 3, "Alex"), "{r:?} {l:?}");
+                } else {
+                    assert_eq!(crate::country_profile::habits_block(r, l), crate::country_profile::habits_block(r, en));
+                    assert_eq!(crate::country_profile::style_line(r, l, false, 3, "Alex"), crate::country_profile::style_line(r, en, false, 3, "Alex"));
+                }
                 assert_eq!(crate::country_profile::stall_line(r, l), crate::country_profile::stall_line(r, en));
                 assert_eq!(crate::country_profile::stall_block(r, l), crate::country_profile::stall_block(r, en));
                 assert_eq!(crate::prompts::dialect_note(r, l), crate::prompts::dialect_note(r, en));

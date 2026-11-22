@@ -20,6 +20,10 @@ use serde_json::Value;
 
 use crate::locale::{self, Lang};
 
+crate::prompt_book::prompt_texts! {
+    EN_CALENDAR_EXTRACTION_PROMPT = "en/calendar_extraction_prompt";
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Event {
     pub title: String,
@@ -62,19 +66,12 @@ pub struct Links {
 pub fn extraction_prompt(lang: Lang, owner: &str, now: NaiveDateTime) -> String {
     let owner = crate::prompts::owner_label(lang, owner);
     let language = locale::phrases(lang).name_en;
-    format!(
-        "You read a phone call that {owner}'s AI phone answered and decide whether {owner} should put something in the calendar.\n\
-Only when the call fixes a concrete date: an appointment, a visit, a delivery window, a deadline, a time someone will call back or come by.\n\
-The current local date and time is {} ({}). Resolve relative dates (\"tomorrow afternoon\", \"next Wednesday\") against it. \
-A part of the day without a clock time: morning = 09:00, noon = 12:00, afternoon = 14:00, evening = 19:00.\n\
-Answer with JSON only, no other text.\n\
-- Nothing to schedule, no concrete date, or a sales / scam call: {{\"event\": null}}\n\
-- Otherwise: {{\"event\": {{\"title\": \"<a few words, in {language}>\", \"start\": \"YYYY-MM-DDTHH:MM\", \"end\": \"YYYY-MM-DDTHH:MM, or empty when unknown\", \"all_day\": false}}}}\n\
-For a whole day without a time set \"all_day\": true and give the date at 00:00.\n\
-Do not invent a date the call does not give.",
-        now.format("%Y-%m-%d %H:%M"),
-        now.format("%A"),
-    )
+    EN_CALENDAR_EXTRACTION_PROMPT.fill(&[
+        ("owner", &owner),
+        ("language", &language),
+        ("now", &now.format("%Y-%m-%d %H:%M")),
+        ("weekday", &now.format("%A")),
+    ])
 }
 
 fn parse_stamp(s: &str) -> Option<NaiveDateTime> {

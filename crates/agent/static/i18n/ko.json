@@ -323,11 +323,11 @@
     "f_notify_lang_h": "내가 받는 알림과 요약의 언어입니다. AI가 상대방과 말하는 언어는 바뀌지 않습니다.",
     "nl_same": "AI가 말하는 언어와 같음",
     "f_simlang": "SIM별 주 언어",
-    "f_simlang_h": "다른 나라 SIM이 있는 휴대폰에만 필요합니다. 그 SIM으로 온 전화는 여기서 고른 언어로 시작합니다. 휴대폰 앱 1.0 이상이 필요합니다.",
-    "sl_country": "SIM 국가",
+    "f_simlang_h": "다른 지역 SIM이 있을 때만 설정하세요. 그 SIM으로 오는 전화는 여기서 고른 언어로 인사합니다(앱 1.0 이상).",
+    "sl_country": "SIM 지역",
     "sl_lang": "주 언어",
-    "sl_pick": "국가 선택",
-    "sl_add": "SIM 국가 추가",
+    "sl_pick": "지역 선택",
+    "sl_add": "SIM 지역 추가",
     "sl_remove": "이 SIM 삭제",
     "sl_empty": "설정 없음: 모든 전화가 위의 언어로 시작합니다.",
     "f_owner": "내 이름",
@@ -1192,8 +1192,8 @@
     "ippair_docker": "Docker 호스트의 IP를 입력하세요",
     "ippair_need_password": "다른 기기에서 페어링 코드를 받으려면 먼저 콘솔 비밀번호를 설정하거나, Bageo가 실행 중인 컴퓨터에서 콘솔을 여세요.",
     "err_phone_wifi_off": "먼저 '휴대폰을 Wi-Fi로도 연결'을 켜세요.",
-    "f_home_country": "사는 나라",
-    "f_home_country_h": "AI가 이 나라 생활 습관대로 전화를 받아요(택배 두는 곳 등). 자동: 전화번호로 판단.",
+    "f_home_country": "지역",
+    "f_home_country_h": "AI가 이 지역의 말투와 생활 습관대로 전화를 받아요. 자동: 전화번호로 판단.",
     "hc_auto": "전화번호로 자동 판단",
     "pk_title": "지역 데이터",
     "pk_ver_builtin": "사용 중: {date}(기본 내장)",
@@ -1293,6 +1293,8 @@
     "ex_lvl_basic": "통화만 지원",
     "ex_switched": "콘솔을 {lang}(으)로 바꿨습니다.",
     "ex_r_in_use": "설정에서 사용 중이라 삭제할 수 없습니다.",
-    "ex_empty": "일치하는 언어가 없습니다"
+    "ex_empty": "일치하는 언어가 없습니다",
+    "ph_app_ver_diff": "Bageo {v}과 버전이 다릅니다",
+    "ts_get_art": "이 지역 일러스트 다운로드"
   }
 }

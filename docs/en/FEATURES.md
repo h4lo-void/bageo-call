@@ -202,7 +202,7 @@ skipped, and the whole list exports as vCard.
 Every contact can be assigned to one of four lists (from the Contacts page, via one-tap buttons on call summary notifications, or via chat commands `/block`, `/stall`, `/white`, `/unblock`):
 
 - **Contacts**: the AI knows who is calling and reads your note about them.
-- **Whitelist (`whitelist`)**: close friends, family and clients, who can be put through to your phone (turn on *Turn on forwarding* in **Settings → How it answers**; the Contacts page can set it too). It is off by default, so the AI answers as usual and tells you afterwards, and a confirmation box comes first when you turn it on. Once it is on, choose *Who can be forwarded* (**Whitelist** by default, plus optional **Other contacts** and **Numbers not in your contacts**, the latter at most one call to you every 30 minutes); Blacklist, stall-list and confirmed sales or scam calls are never forwarded. Two ways:
+- **Whitelist (`whitelist`)**: close friends, family and clients, who can be put through to your phone (turn on *Turn on forwarding* in **Settings → How it answers**). It is off by default, so the AI answers as usual and tells you afterwards, and a confirmation box comes first when you turn it on. Once it is on, choose *Who can be forwarded* (**Whitelist** by default, plus optional **Other contacts** and **Numbers not in your contacts**, the latter at most one call to you every 30 minutes); Blacklist, stall-list and confirmed sales or scam calls are never forwarded. Two ways:
   1. *AI answers, puts you through if urgent*: the AI answers first. If the caller says it is urgent (in any of the 9 languages), the AI asks them to hold and this phone calls you (background sound pauses while dialing); once you pick up you talk to them directly, and Bageo sends you an urgent alert at once. Without your number you only get the alert. The summary records whether you were put through, could not be reached, or only got an alert.
   2. *Don't answer: send to your phone*: this phone doesn't answer; your carrier forwards the call to your phone, the AI stays silent, and you get a notification at once. First switch the phone to normal phone and dial `**67*your number#` to turn on forward-when-busy, or callers reach voicemail.
 - **Blacklist (`blacklist`)**: turned away while ringing, or after a short "not available" announcement, without using the AI; the **Blacklist** tab sets which. A number ending in `*` (`0800*`, at least three digits not counting leading zeros) covers every number that starts that way.
@@ -282,10 +282,10 @@ The built-in prompts work out of the box. To make the AI sound more like you:
 
 1. Pick a **Talk style** under **Settings → How it answers**: five steps from
    *Casual and lively* to *Brisk and businesslike*. A small myna next to the
-   slider changes clothes with each step.
-2. Check **Country you live in** under **Settings → Basics → More options**
-   (empty: from the phone's SIM). The AI follows that country's everyday
-   habits, such as where parcels go.
+   slider changes clothes and shows how people in your region speak at each step.
+2. Check **Region** under **Settings → Basics** (empty: from the phone's SIM).
+   The AI follows that region's speaking style and everyday habits, such as
+   where parcels go.
 3. Answer the short questions under **Settings → About you**: who calls this
    phone most, your work or day, phrases you often say and never say, and where
    parcels go. All optional; Bageo turns them into a short part of the prompt.

@@ -477,7 +477,7 @@ Agent to app:
 | `place_call` | `number`, `call_id`, `task_id`, `sub_id` (optional) | Dial `number` from the SIM with subscription id `sub_id` when given (Android's default when that SIM is not found). Answered with `place_call_ack` or `place_call_failed`. |
 | `set_mode` | `mode` (`"ai"` / `"normal"`), `id` | Switch the phone mode; answered with `set_mode_result`. |
 | `send_sms` | `id` (1–64 characters), `to` (3–20 digits, optional leading `+`), `text` (1–500 characters), `sub_id` (optional) | Send `text` from the phone's own number: the SIM with subscription id `sub_id`, else the default SMS SIM. Answered with `send_sms_result` and, when the network reports it, `send_sms_delivered`. A repeat of an id still being sent is ignored; a repeat of an id already sent is answered again without sending twice. |
-| `agent_info` | `console_url`, `wifi` (optional: `{"urls": [...]}`) | The web console's address for **Open the web console**, plus the paired Wi-Fi WebSocket addresses (`urls`). Sent after `hello`; omitting `wifi` keeps stored URLs, while an empty `urls` list clears them. |
+| `agent_info` | `console_url`, `agent_version`, `wifi` (optional: `{"urls": [...]}`) | The web console's address for **Open the web console**, Bageo's version (so the phone can show a small hint when it differs from this app), plus the paired Wi-Fi WebSocket addresses (`urls`). Sent after `hello`; omitting `wifi` keeps stored URLs, while an empty `urls` list clears them. |
 | `blocklist_sync` | `numbers` (array) | Stored but unused: the agent decides rejections with `answer_plan` `reject`. |
 | `hello_ack`, `hello_ok`, `ack`, `pong` | | Logged only. |
 
