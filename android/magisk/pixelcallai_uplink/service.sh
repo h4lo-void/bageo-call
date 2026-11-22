@@ -5,9 +5,10 @@
 # Late-start: roles + mute + arm service. Never abort boot; all ops best-effort.
 #
 # Phone mode, kept outside the module folder so it survives module updates:
-#   /data/adb/pixelcallai/mode = "normal": an ordinary phone. Only grant the app's
-#     permissions and start its service; leave the phone app, Google Phone,
-#     Do Not Disturb and the volumes alone.
+#   /data/adb/pixelcallai/mode = "normal": an ordinary phone. Grant the app's
+#     permissions and start its service; heal_mode.sh only puts Google Phone and the
+#     phone app right when a cut-short switch left them wrong; Do Not Disturb and the
+#     volumes are left alone.
 #   No file, or anything else: AI mode, the takeover below (how every phone ran
 #     before the switch existed). apply_mode.sh writes the file when the app switches
 #     (Bageo > "AI answers my calls"); mode_daemon.sh runs it as root for the app.
@@ -74,6 +75,10 @@ rm -f /data/adb/pixelcallai/daemon.pid 2>/dev/null || true
   if [ "$MODE" = "normal" ]; then
     DEF=$(telecom get-default-dialer 2>/dev/null || true)
     log -t pixelcallai_uplink "service.sh: normal phone mode ($MODE_FILE) — no takeover"
+    # The mode file wins: undo what a cut-short switch left behind (Google Phone off,
+    # Bageo still the phone app).
+    /system/bin/sh "$MODDIR/heal_mode.sh" </dev/null >/dev/null 2>&1 || true
+    DEF=$(telecom get-default-dialer 2>/dev/null || true)
   else
     cmd role add-role-holder android.app.role.DIALER "$PKG" >/dev/null 2>&1 || true
     cmd role add-role-holder android.app.role.CALL_SCREENING "$PKG" >/dev/null 2>&1 || true

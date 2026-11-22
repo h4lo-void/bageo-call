@@ -70,7 +70,7 @@ state_lines() {
   if [ "$run" != 1 ]; then
     run=0
     p=$(cat "$DIR/apply.lock/pid" 2>/dev/null)
-    if [ -n "$p" ] && kill -0 "$p" 2>/dev/null && grep -q apply_mode "/proc/$p/cmdline" 2>/dev/null; then
+    if [ -n "$p" ] && kill -0 "$p" 2>/dev/null && grep -qE 'apply_mode|heal_mode' "/proc/$p/cmdline" 2>/dev/null; then
       run=1
     fi
   fi

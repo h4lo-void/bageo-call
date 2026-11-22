@@ -42,6 +42,12 @@ import kotlin.math.abs
  * `pending` until every step worked; the next start of the service asks for the switch
  * again ([syncFromRoot]). A switch is refused during a call, and fails with
  * [ERR_NO_ROOT] when nobody takes the request (the module is not running).
+ *
+ * The app never guesses the mode: [Prefs.phoneMode], the muting and the listeners follow
+ * the mode file as the script reports it, and only once the run has ended. While a switch
+ * runs, or when no result comes in time, the app keeps the mode it had. A switch to the AI
+ * phone that fails puts the phone back as a normal phone (the script undoes its steps),
+ * and `heal_mode.sh` does the same at boot when a normal phone was left half switched.
  */
 object PhoneModeManager {
     const val ERR_IN_CALL = "in_call"
@@ -344,30 +350,61 @@ object PhoneModeManager {
             Log.e(TAG, "nobody took the mode request (id=$id, early=$early)")
             return Result(false, before, if (early) ERR_BUSY else ERR_NO_ROOT)
         }
-        if (target == Prefs.PHONE_MODE_NORMAL) {
-            // Stop muting at once; the module's script changes the system settings.
-            Prefs.setPhoneMode(ctx, Prefs.PHONE_MODE_NORMAL)
-            LocalAudioGuard(ctx).release()
-            unmuteMicrophone(ctx)
-            notifyListeners(Prefs.PHONE_MODE_NORMAL)
-        }
         val log = waitForRun(ctx, id)
-        // No result in time: the script may still be running, so the state file still has
-        // the old mode. Keep the app's copy; the next service start brings it in line.
-        if (log == null) return Result(false, Prefs.phoneMode(ctx), ERR_FAILED)
-        // The mode file is the truth (a failed "save" step leaves the old mode).
-        val mode = readRootMode(ctx) ?: Prefs.phoneMode(ctx)
-        Prefs.setPhoneMode(ctx, mode)
-        notifyListeners(mode)
-        if (!log.ok) {
+        if (log == null) {
+            // No result in time: the script may still be running. Keep the mode the app
+            // had, and follow the mode file once the script has ended.
+            followLateFinish(ctx)
+            return resolveOutcome(target, before, null, null)
+        }
+        // The mode file is the truth (a failed switch puts the old mode back).
+        val result = resolveOutcome(target, before, log, readRootMode(ctx))
+        adoptMode(ctx, result.mode)
+        if (!result.ok) {
             // Do Not Disturb that will not go off stays on until the owner turns that mode
             // off, and every try first puts the phone back in AI mode: no automatic retry.
             if (allowRetry && log.error != ERR_DND) scheduleRetry(ctx, target)
-            return Result(false, mode, log.error.ifEmpty { ERR_FAILED }, log.dndMode)
+            return result
         }
         clearRetry()
         Prefs.clearLegacyAiSwitch(ctx)
-        return Result(true, mode, "")
+        return result
+    }
+
+    /**
+     * The app's copy of the mode becomes [mode], the one the module's file has. In normal
+     * mode muting stops too (the script has changed the system settings by now).
+     */
+    private fun adoptMode(ctx: Context, mode: String) {
+        Prefs.setPhoneMode(ctx, mode)
+        if (mode == Prefs.PHONE_MODE_NORMAL) {
+            LocalAudioGuard(ctx).release()
+            unmuteMicrophone(ctx)
+        }
+        notifyListeners(mode)
+    }
+
+    /**
+     * After a switch timed out: once the helper reports no run, take over the mode file's
+     * mode if it differs from the app's copy (a switch the app started again, or the next
+     * start-up check, does that itself).
+     */
+    private fun followLateFinish(ctx: Context) {
+        Thread({ followLateFinishBlocking(ctx) }, "phone-mode-follow").apply { isDaemon = true }.start()
+    }
+
+    private fun followLateFinishBlocking(ctx: Context) {
+        val start = SystemClock.elapsedRealtime()
+        while (SystemClock.elapsedRealtime() - start < SCRIPT_MAX_MS) {
+            if (!pause(SYNC_POLL_MS) || busy.get()) return
+            val state = readRootState(ctx)
+            if (state == null || !state.current || state.running) continue
+            if (state.mode != Prefs.phoneMode(ctx)) {
+                Log.i(TAG, "late finish: the module's mode file says ${state.mode}")
+                adoptMode(ctx, state.mode)
+            }
+            return
+        }
     }
 
     private fun notifyListeners(mode: String) {
@@ -580,4 +617,27 @@ object PhoneModeManager {
             Log.w(TAG, "microphone unmute: ${e.message}")
         }
     }
+}
+
+/**
+ * What a switch to [target] came to. [log] is the script's report (null: none in time),
+ * [rootMode] the mode file as the helper reports it (null: unknown), [before] the mode the
+ * app had. The mode is the file's, and a switch only counts as done when the file says
+ * [target]. Top level, so it needs nothing from Android.
+ */
+internal fun resolveOutcome(
+    target: String,
+    before: String,
+    log: PhoneModeManager.ApplyLog?,
+    rootMode: String?,
+): PhoneModeManager.Result {
+    if (log == null) return PhoneModeManager.Result(false, before, PhoneModeManager.ERR_FAILED)
+    val mode = rootMode ?: before
+    if (log.ok && mode == target) return PhoneModeManager.Result(true, mode, "")
+    return PhoneModeManager.Result(
+        false,
+        mode,
+        log.error.ifEmpty { PhoneModeManager.ERR_FAILED },
+        log.dndMode,
+    )
 }
