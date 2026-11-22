@@ -434,7 +434,9 @@ fn fresh_link_key() -> [u8; QUICK_LINK_KEY_LEN] {
 
 fn hex_bytes(s: &str) -> Option<Vec<u8>> {
     let s = s.trim();
-    if s.len() % 2 != 0 || !s.is_ascii() {
+    // Hex digits only: a number parser would also take "+a" for "0a", so one
+    // signature could be written several ways.
+    if s.len() % 2 != 0 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok()).collect()
@@ -543,6 +545,9 @@ pub enum QuickLink {
     Expired,
     /// Not signed by this agent (or changed since).
     Invalid,
+    /// Signed and in time, but already used: it works once, so nothing is
+    /// done and the page says it was handled ([`crate::used_links`]).
+    Used,
 }
 
 fn check_quick_action_with(key: &[u8], op: &str, target: &str, name: &str, exp: &str, sig: &str, now: i64) -> QuickLink {
@@ -576,9 +581,20 @@ fn check_quick_action_with(key: &[u8], op: &str, target: &str, name: &str, exp: 
 }
 
 /// Check a one-tap link's parts as they came in the address (`exp`: empty for
-/// an older link).
+/// an older link). A link that was already used answers [`QuickLink::Used`].
 pub fn check_quick_action(op: &str, target: &str, name: &str, exp: &str, sig: &str) -> QuickLink {
-    check_quick_action_with(quick_action_key(), op, target, name, exp, sig, chrono::Utc::now().timestamp())
+    let now = chrono::Utc::now().timestamp();
+    match check_quick_action_with(quick_action_key(), op, target, name, exp, sig, now) {
+        QuickLink::Valid if quick_link_id(sig).is_some_and(|id| crate::used_links::global().is_used(&id, now)) => QuickLink::Used,
+        other => other,
+    }
+}
+
+/// The id a one-tap link is recorded under once used ([`crate::used_links::link_id`]
+/// of its signature's bytes): the same for every way of writing the signature
+/// that passes the check. None when the signature is not hex.
+pub fn quick_link_id(sig: &str) -> Option<String> {
+    hex_bytes(sig).map(|b| crate::used_links::link_id(&b))
 }
 
 fn quick_action_url_with(key: &[u8], public_url: &str, op: &str, target: &str, name: &str, now: i64) -> String {

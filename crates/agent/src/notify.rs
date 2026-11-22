@@ -13,7 +13,7 @@
 //! The wording follows the agent's language ([`crate::locale`]).
 
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -1004,26 +1004,6 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
     })
 }
 
-/// The client notifications go out with. It follows a redirect only within the
-/// same host: a service that answers with a redirect to another host must not
-/// get the tokens in our headers (or the message).
-fn notify_client() -> &'static Client {
-    static CLIENT: OnceLock<Client> = OnceLock::new();
-    CLIENT.get_or_init(|| {
-        Client::builder()
-            .redirect(reqwest::redirect::Policy::custom(|attempt| {
-                let same = attempt.previous().last().map_or(true, |from| same_host_redirect(from, attempt.url()));
-                if same && attempt.previous().len() < 5 {
-                    attempt.follow()
-                } else {
-                    attempt.stop()
-                }
-            }))
-            .build()
-            .unwrap_or_else(|_| Client::new())
-    })
-}
-
 /// A redirect that stays on the same host (and port); an http address may
 /// move to https on the standard port.
 fn same_host_redirect(from: &url::Url, to: &url::Url) -> bool {
@@ -1038,7 +1018,11 @@ fn same_host_redirect(from: &url::Url, to: &url::Url) -> bool {
 }
 
 async fn send_prepared(_http: &Client, p: &Prepared) -> Result<()> {
-    let http = notify_client();
+    // Notifications go out through [`guarded_client`]: the address is checked
+    // on every send, and a redirect to another host is not followed (a
+    // service that answers with one must not get the tokens in our headers,
+    // or the message).
+    let http = guarded_client(&p.url).await?;
     let mut req = if p.put { http.put(&p.url) } else { http.post(&p.url) };
     for (k, v) in &p.headers {
         req = req.header(k, v);
@@ -1124,7 +1108,6 @@ async fn send_channel_inner(http: &Client, ch: &Channel, msg: &Message) -> Resul
     }
     if ch.kind == "smtp" {
         let (server, login) = crate::gmail::parse_smtp_url(&ch.url)?;
-        refuse_metadata_host(&server.host, server.port, testing).await?;
         let to = if ch.target.trim().is_empty() { login.as_str() } else { ch.target.trim() };
         return crate::gmail::send_mail_via(
             &server,
@@ -1156,7 +1139,6 @@ async fn send_channel_inner(http: &Client, ch: &Channel, msg: &Message) -> Resul
         };
     }
     let prepared = prepare(ch, msg, now_ms)?;
-    refuse_metadata(&prepared.url, testing).await?;
     let sent = match send_prepared(http, &prepared).await {
         // Telegram refuses HTML it cannot parse, and buttons whose address it will not
         // open (a `.local` name): send the plain text, then the plain text without the
@@ -1276,8 +1258,10 @@ pub(crate) async fn send_discord_bot(http: &Client, api: &str, ch: &Channel, msg
 
 /// The private chat of the bot with one person (Discord opens it if it is not there yet).
 async fn discord_dm_channel(api: &str, token: &str, user: &str) -> Result<String> {
-    let resp = notify_client()
-        .post(format!("{}/users/@me/channels", api.trim_end_matches('/')))
+    let url = format!("{}/users/@me/channels", api.trim_end_matches('/'));
+    let resp = guarded_client(&url)
+        .await?
+        .post(url)
         .header("Authorization", format!("Bot {}", token.trim()))
         .header("User-Agent", DISCORD_AGENT)
         .json(&json!({ "recipient_id": user }))
@@ -1323,8 +1307,7 @@ async fn matrix_ready(ch: &Channel, msg: &Message) -> Result<Channel> {
         return Ok(out);
     }
     let testing = msg.event == "test";
-    refuse_metadata(&base, testing).await?;
-    let client = notify_client();
+    let client = guarded_client(&base).await?;
     let ask = |url: String| client.get(url).bearer_auth(token).timeout(std::time::Duration::from_secs(15)).send();
     if target.starts_with('#') {
         let url = format!("{base}/_matrix/client/v3/directory/room/{}", pct(target));
@@ -1389,42 +1372,96 @@ fn is_metadata_ip(ip: IpAddr) -> bool {
     }
 }
 
-/// Refuse an address that leads to a metadata service. A name is also
-/// looked up when resolve is set (the settings page's test), so that a name
-/// pointing there is caught too.
-async fn refuse_metadata(url: &str, resolve: bool) -> Result<()> {
-    let Ok(u) = url::Url::parse(url.trim()) else {
-        return Ok(());
-    };
-    let port = u.port_or_known_default().unwrap_or(443);
-    match u.host() {
-        Some(url::Host::Ipv4(ip)) if is_metadata_ip(IpAddr::V4(ip)) => Err(blocked_address()),
-        Some(url::Host::Ipv6(ip)) if is_metadata_ip(IpAddr::V6(ip)) => Err(blocked_address()),
-        Some(url::Host::Domain(d)) => refuse_metadata_host(d, port, resolve).await,
-        _ => Ok(()),
-    }
-}
-
-async fn refuse_metadata_host(host: &str, port: u16, resolve: bool) -> Result<()> {
+/// Every address a request to `host` may connect to, looked up once. Anything
+/// that leads to a metadata service is refused: such an address, a name that
+/// is one, or a name that resolves to one. The same check runs for the
+/// settings page's test and for every real send (notification channels, the
+/// summary service, the plugin address), and the request then connects to
+/// exactly these addresses ([`guarded_client`]), so a name cannot lead
+/// somewhere else after the check. A name that cannot be looked up is a
+/// network error, as the request itself would be.
+pub(crate) async fn checked_addrs(host: &str, port: u16) -> Result<Vec<SocketAddr>> {
     let h = host.trim().trim_end_matches('.').to_ascii_lowercase();
     if h.is_empty() {
-        return Ok(());
+        return Ok(Vec::new());
     }
     if let Ok(ip) = h.trim_matches(['[', ']']).parse::<IpAddr>() {
-        return if is_metadata_ip(ip) { Err(blocked_address()) } else { Ok(()) };
+        return if is_metadata_ip(ip) { Err(blocked_address()) } else { Ok(vec![SocketAddr::new(ip, port)]) };
     }
     if matches!(h.as_str(), "metadata.google.internal" | "metadata" | "instance-data" | "instance-data.ec2.internal") {
         return Err(blocked_address());
     }
-    if resolve {
-        let lookup = tokio::net::lookup_host((h.as_str(), port));
-        if let Ok(Ok(addrs)) = tokio::time::timeout(std::time::Duration::from_secs(5), lookup).await {
-            if addrs.into_iter().any(|a| is_metadata_ip(a.ip())) {
-                return Err(blocked_address());
+    let lookup_failed = |why: String| ChannelError::new("network_error", "", format!("could not look up {h}: {why}"));
+    let found = match tokio::time::timeout(std::time::Duration::from_secs(5), lookup_all(&h, port)).await {
+        Ok(Ok(addrs)) => addrs,
+        Ok(Err(e)) => return Err(lookup_failed(e.to_string()).into()),
+        Err(_) => return Err(lookup_failed("no answer in 5 s".into()).into()),
+    };
+    if found.iter().any(|a| is_metadata_ip(a.ip())) {
+        return Err(blocked_address());
+    }
+    if found.is_empty() {
+        return Err(lookup_failed("no address".into()).into());
+    }
+    Ok(found)
+}
+
+/// Names that resolve to chosen addresses under test.
+#[cfg(test)]
+static TEST_HOSTS: std::sync::Mutex<Vec<(String, Vec<IpAddr>)>> = std::sync::Mutex::new(Vec::new());
+
+async fn lookup_all(host: &str, port: u16) -> std::io::Result<Vec<SocketAddr>> {
+    #[cfg(test)]
+    {
+        let hosts = TEST_HOSTS.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((_, ips)) = hosts.iter().find(|(h, _)| h == host) {
+            return Ok(ips.iter().map(|ip| SocketAddr::new(*ip, port)).collect());
+        }
+    }
+    Ok(tokio::net::lookup_host((host, port)).await?.collect())
+}
+
+/// Refuse an address that leads to a metadata service ([`checked_addrs`]).
+async fn refuse_metadata(url: &str) -> Result<()> {
+    let Ok(u) = url::Url::parse(url.trim()) else {
+        return Ok(());
+    };
+    let port = u.port_or_known_default().unwrap_or(443);
+    match u.host_str() {
+        Some(host) => checked_addrs(host, port).await.map(|_| ()),
+        None => Ok(()),
+    }
+}
+
+/// A client for one request to `url`: the address is checked
+/// ([`checked_addrs`]) and the client connects to the addresses that were
+/// checked, never to a new answer of the name server. A redirect is followed
+/// only within the same host (which keeps those addresses). The caller sets
+/// the request's own timeout.
+pub(crate) async fn guarded_client(url: &str) -> Result<Client> {
+    let mut builder = Client::builder().redirect(reqwest::redirect::Policy::custom(|attempt| {
+        let same = attempt.previous().last().map_or(true, |from| same_host_redirect(from, attempt.url()));
+        if same && attempt.previous().len() < 5 {
+            attempt.follow()
+        } else {
+            attempt.stop()
+        }
+    }));
+    if let Ok(u) = url::Url::parse(url.trim()) {
+        let port = u.port_or_known_default().unwrap_or(443);
+        if let Some(host) = u.host_str() {
+            let addrs = checked_addrs(host, port).await?;
+            if matches!(u.host(), Some(url::Host::Domain(_))) && !addrs.is_empty() {
+                // Port 0: each request goes to the port in its own address, else its
+                // scheme's (an http address that moves to https goes to 443).
+                let pinned: Vec<SocketAddr> = addrs.iter().map(|a| SocketAddr::new(a.ip(), 0)).collect();
+                builder = builder.resolve_to_addrs(host, &pinned);
             }
         }
     }
-    Ok(())
+    builder
+        .build()
+        .map_err(|e| ChannelError::new("network_error", "", format!("request failed: {}", e.without_url())).into())
 }
 
 fn add_secret(out: &mut Vec<String>, s: &str) {
@@ -2987,6 +3024,7 @@ mod tests {
 
     #[tokio::test]
     async fn cloud_metadata_addresses_are_refused_and_lan_ones_are_not() {
+        host_resolves_to("ntfy.example.org", &["203.0.113.7"]);
         for url in [
             "http://169.254.169.254/latest/meta-data",
             "http://[fd00:ec2::254]/x",
@@ -2994,17 +3032,189 @@ mod tests {
             "http://100.100.100.200/",
             "http://[::ffff:169.254.169.254]/",
         ] {
-            let e = refuse_metadata(url, false).await.unwrap_err();
+            let e = refuse_url(url).await.unwrap_err();
             assert_eq!(channel_error(&e).map(|c| c.code), Some("blocked_address"), "{url}");
         }
-        for url in ["http://127.0.0.1:8080/x", "http://192.168.1.20/ntfy", "http://localhost:8787", "https://ntfy.sh", "http://[::1]:80/"] {
-            assert!(refuse_metadata(url, false).await.is_ok(), "{url}");
+        for url in ["http://127.0.0.1:8080/x", "http://192.168.1.20/ntfy", "http://localhost:8787", "https://ntfy.example.org", "http://[::1]:80/"] {
+            assert!(refuse_url(url).await.is_ok(), "{url}");
         }
         // The test message is refused before anything is sent.
         let e = send_channel(&Client::new(), &ch("webhook", "http://169.254.169.254/latest", "", ""), &test_message()).await.unwrap_err();
         assert_eq!(code_and_field(&e), Some(("blocked_address", "url")));
         let e = send_channel(&Client::new(), &ch("smtp", "smtp://wang@example.org@169.254.169.254:25", "pw", ""), &test_message()).await.unwrap_err();
         assert_eq!(code_and_field(&e), Some(("blocked_address", "url")));
+    }
+
+    /// The address check on a URL as it is written.
+    async fn refuse_url(url: &str) -> Result<()> {
+        let u = url::Url::parse(url).unwrap();
+        checked_addrs(u.host_str().unwrap(), u.port_or_known_default().unwrap_or(443)).await.map(|_| ())
+    }
+
+    /// Make a name that no name server knows lead to these addresses.
+    fn host_resolves_to(name: &str, ips: &[&str]) {
+        let ips: Vec<IpAddr> = ips.iter().map(|ip| ip.parse().unwrap()).collect();
+        let mut hosts = TEST_HOSTS.lock().unwrap_or_else(|e| e.into_inner());
+        hosts.retain(|(h, _)| h != name);
+        hosts.push((name.to_string(), ips));
+    }
+
+    /// A real send checks what the name resolves to, as the test message does: a name that
+    /// leads to a metadata address (alone or among others) is refused for every kind of
+    /// channel, the summary service and the plugin address.
+    #[tokio::test]
+    async fn a_name_that_resolves_to_a_metadata_address_is_refused_by_every_real_send() {
+        host_resolves_to("hooks.rebind.test", &["169.254.169.254"]);
+        host_resolves_to("mixed.rebind.test", &["203.0.113.7", "169.254.169.254"]);
+        host_resolves_to("v6.rebind.test", &["fd00:ec2::254"]);
+        let blocked = |e: &anyhow::Error| channel_error(e).map(|c| (c.code, c.field));
+        for host in ["hooks.rebind.test", "mixed.rebind.test", "v6.rebind.test"] {
+            for channel in [
+                ch("webhook", &format!("http://{host}/hook"), "tok", ""),
+                ch("ntfy", &format!("https://{host}"), "tok", "alerts"),
+                ch("matrix", &format!("https://{host}"), "tok", "!room:example.org"),
+                ch("smtp", &format!("smtp://wang@example.org@{host}:587"), "pw", "lee@example.org"),
+            ] {
+                for message in [test_message(), msg()] {
+                    let e = send_channel(&Client::new(), &channel, &message).await.unwrap_err();
+                    assert_eq!(blocked(&e), Some(("blocked_address", "url")), "{} {host} {}", channel.kind, message.event);
+                }
+            }
+            let endpoint = crate::summary::Endpoint {
+                url: format!("https://{host}/v1/chat/completions"),
+                key: "secret-key".into(),
+                models: vec!["m".into()],
+            };
+            let e = crate::summary::chat_at(&Client::new(), &endpoint, "m", "system", "the call's text", 50).await.unwrap_err();
+            assert_eq!(blocked(&e), Some(("blocked_address", "url")), "summary {host}");
+            let e = crate::openclaw::handoff_task(&Client::new(), &format!("https://{host}/"), "tok", &json!({"id": "t1"})).await.err().unwrap();
+            assert_eq!(blocked(&e), Some(("blocked_address", "url")), "plugin {host}");
+        }
+    }
+
+    /// The same address gets the same answer from the test message and from a real message.
+    #[tokio::test]
+    async fn the_test_message_and_a_real_message_judge_an_address_the_same() {
+        host_resolves_to("lan-ntfy.test", &["127.0.0.1"]);
+        host_resolves_to("rebind2.test", &["169.254.169.254"]);
+        for url in [
+            "http://169.254.169.254/x",
+            "http://[::ffff:169.254.169.254]/x",
+            "http://100.100.100.200/x",
+            "http://metadata.google.internal/x",
+            "http://rebind2.test/x",
+            "http://127.0.0.1:1/x",
+            "http://localhost:1/x",
+            "http://lan-ntfy.test:1/x",
+            "http://[::1]:1/x",
+        ] {
+            let test = send_channel(&Client::new(), &ch("webhook", url, "", ""), &test_message()).await.unwrap_err();
+            let real = send_channel(&Client::new(), &ch("webhook", url, "", ""), &msg()).await.unwrap_err();
+            assert_eq!(code_and_field(&test), code_and_field(&real), "{url}");
+            let refused = refuse_url(url).await.is_err();
+            assert_eq!(code_and_field(&real) == Some(("blocked_address", "url")), refused, "{url}");
+        }
+    }
+
+    /// The request goes to the address that was checked: a name that no name server knows
+    /// still reaches the server it was checked to lead to.
+    #[tokio::test]
+    async fn a_real_send_connects_to_the_checked_address() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            if let Ok((mut s, _)) = listener.accept().await {
+                let mut buf = [0u8; 4096];
+                let _ = s.read(&mut buf).await;
+                let _ = s.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n").await;
+            }
+        });
+        host_resolves_to("pinned.example.invalid", &["127.0.0.1"]);
+        send_channel(&Client::new(), &ch("webhook", &format!("http://pinned.example.invalid:{port}/hook"), "", ""), &msg())
+            .await
+            .unwrap();
+    }
+
+    /// A local server that answers each request with what `reply` gives for its path, one
+    /// connection per request, and counts the requests.
+    fn local_server(
+        listener: tokio::net::TcpListener,
+        reply: impl Fn(&str) -> String + Send + Sync + 'static,
+    ) -> std::sync::Arc<std::sync::atomic::AtomicUsize> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (count, reply) = (hits.clone(), std::sync::Arc::new(reply));
+        tokio::spawn(async move {
+            while let Ok((mut s, _)) = listener.accept().await {
+                count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let reply = reply.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let n = s.read(&mut buf).await.unwrap_or(0);
+                    let head = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    let path = head.split_whitespace().nth(1).unwrap_or("/").to_string();
+                    let _ = s.write_all(reply(&path).as_bytes()).await;
+                });
+            }
+        });
+        hits
+    }
+
+    fn answer_ok() -> String {
+        "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n".to_string()
+    }
+
+    fn answer_moved(to: &str) -> String {
+        format!("HTTP/1.1 302 Found\r\nlocation: {to}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+    }
+
+    async fn local_listener() -> (tokio::net::TcpListener, u16) {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = l.local_addr().unwrap().port();
+        (l, port)
+    }
+
+    /// The checked addresses carry no port of their own: each request goes to the port in
+    /// its address, or its scheme's when it has none (so an http address that moves to
+    /// https goes to 443), never to the port of the address that was checked.
+    #[tokio::test]
+    async fn a_checked_address_keeps_no_port_of_its_own() {
+        use std::sync::atomic::Ordering::SeqCst;
+        let ((a, pa), (b, pb)) = (local_listener().await, local_listener().await);
+        let (hits_a, hits_b) = (local_server(a, |_| answer_ok()), local_server(b, |_| answer_ok()));
+        host_resolves_to("ports.pinned.test", &["127.0.0.1"]);
+        let client = guarded_client(&format!("http://ports.pinned.test:{pa}/")).await.unwrap();
+        let get = |url: String| client.get(url).timeout(std::time::Duration::from_secs(3)).send();
+        assert_eq!(get(format!("http://ports.pinned.test:{pa}/")).await.unwrap().status(), 200);
+        assert_eq!(get(format!("http://ports.pinned.test:{pb}/")).await.unwrap().status(), 200);
+        // No port in the address: the scheme's own (80), whatever answers there.
+        let _ = get("http://ports.pinned.test/".to_string()).await;
+        assert_eq!((hits_a.load(SeqCst), hits_b.load(SeqCst)), (1, 1));
+    }
+
+    /// A redirect is followed on the same host and port only: one to another host or to a
+    /// metadata address comes back as it is, and the other server gets nothing.
+    #[tokio::test]
+    async fn a_redirect_stays_on_the_checked_host() {
+        use std::sync::atomic::Ordering::SeqCst;
+        let ((a, pa), (b, pb)) = (local_listener().await, local_listener().await);
+        let hits_b = local_server(b, |_| answer_ok());
+        let hits_a = local_server(a, move |path| match path {
+            "/elsewhere" => answer_moved(&format!("http://127.0.0.1:{pb}/x")),
+            "/metadata" => answer_moved("http://169.254.169.254/latest/meta-data"),
+            "/same" => answer_moved("/done"),
+            _ => answer_ok(),
+        });
+        host_resolves_to("redirect.pinned.test", &["127.0.0.1"]);
+        let base = format!("http://redirect.pinned.test:{pa}");
+        let client = guarded_client(&base).await.unwrap();
+        let get = |path: &str| client.get(format!("{base}{path}")).timeout(std::time::Duration::from_secs(3)).send();
+        assert_eq!(get("/same").await.unwrap().status(), 200, "the same host is followed");
+        assert_eq!(get("/elsewhere").await.unwrap().status(), 302);
+        assert_eq!(get("/metadata").await.unwrap().status(), 302);
+        assert_eq!(hits_b.load(SeqCst), 0, "another host got the request");
+        assert_eq!(hits_a.load(SeqCst), 4);
     }
 
     #[test]

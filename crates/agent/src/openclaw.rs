@@ -61,8 +61,10 @@ fn extract_external_id(raw: &Value) -> Option<String> {
 }
 
 /// POST the task to OpenClaw and return the gateway's external id when present.
+/// The address is checked like a notification's
+/// ([`crate::notify::guarded_client`]): the request carries the token and the task.
 pub async fn handoff_task(
-    http: &Client,
+    _http: &Client,
     url: &str,
     token: &str,
     task_json: &Value,
@@ -75,7 +77,8 @@ pub async fn handoff_task(
 
     info!("openclaw handoff POST {endpoint}");
 
-    let mut req = http.post(&endpoint).json(&body);
+    let http = crate::notify::guarded_client(&endpoint).await?;
+    let mut req = http.post(&endpoint).json(&body).timeout(std::time::Duration::from_secs(120));
     if let Some(t) = non_empty(token) {
         req = req.bearer_auth(t);
     }
