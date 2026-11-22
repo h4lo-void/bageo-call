@@ -268,7 +268,10 @@ pub fn extract_zip<R: Read + Seek>(reader: R, dest: &Path) -> Result<(), String>
         let entry = archive.by_index(i).map_err(|e| e.to_string())?;
         match entry.enclosed_name() {
             Some(rel) if rel.starts_with("platform-tools") => targets.push(rel),
-            _ => return Err(format!("unexpected path in archive: {}", entry.name())),
+            _ => {
+                let name = entry.name().map(|n| n.into_owned()).unwrap_or_else(|e| e.to_string());
+                return Err(format!("unexpected path in archive: {name}"));
+            }
         }
     }
     for (i, rel) in targets.iter().enumerate() {
