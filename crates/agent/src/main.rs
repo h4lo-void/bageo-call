@@ -89,7 +89,6 @@ mod voice_preview;
 mod voice_packs;
 mod extras;
 mod voice_lines;
-mod wyoming;
 mod zh_convert;
 mod zh_tw;
 
@@ -134,7 +133,6 @@ use services::{chat, ensure_ollama_model, synthesize_piper, transcribe_pcm16, Ch
 use settings_store::{RuntimeSettings, SettingsStore};
 use tasks::{draft_from_voicemail, ReplyMethod, TaskIntent, TaskPatch, TaskStore};
 use tg_inbound::send_task_card;
-use trtc_bridge::TrtcBridge;
 use vad::{EnergyVad, RemoteVoiceGate};
 
 type ActiveCallSlot = Arc<Mutex<Option<ActiveCall>>>;
@@ -195,22 +193,16 @@ enum IvrPhase {
     PlayPrompt,
     /// Brief post-greeting gate before auto-AI arm (not a keypad menu).
     WaitDtmf,
-    /// Legacy hold-music phase (unused by product DTMF1; kept for enum/compat).
-    PlayHoldMusic,
     /// Voicemail intro + beep playing after DTMF 2 (recording starts after beep).
     VoicemailIntro,
     /// Recording the caller's message (ends on trailing silence / `#` / max length / hangup).
     VoicemailRecord,
-    /// Whisper transcribing the just-recorded message for phone/email read-back.
-    VoicemailContactProbe,
     /// Spoken contact read-back prompt; waiting for `1` confirm / `2` reject.
     VoicemailContactReadback,
     /// Callback-confirm prompt after recording; waiting for `1` / end key / timeout.
     VoicemailConfirm,
     /// Legacy local AI (OpenRouter); product AI talk uses TrtcAi instead.
     LiveAi,
-    /// Menu DTMF 1 → Tencent TRTC AI (preferred when configured). Soft scaffold until bridge.
-    TrtcAi,
     /// Goodbye / fail WAV then WS `hangup`.
     Goodbye,
     Done,
@@ -218,7 +210,6 @@ enum IvrPhase {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DeadlineKind {
-    IvrReprompt,
     /// No DTMF after the spoken-contact read-back prompt.
     VmContactReadback,
     /// No DTMF after the voicemail callback-confirm prompt.
@@ -985,19 +976,6 @@ struct TrtcTalkMetrics {
 }
 
 impl TrtcTalkMetrics {
-    fn record_reply(&self, serial: &str, latency_ms: u64) {
-        self.last_reply_latency_ms
-            .store(latency_ms, Ordering::Relaxed);
-        self.sum_reply_latency_ms
-            .fetch_add(latency_ms, Ordering::Relaxed);
-        self.reply_count.fetch_add(1, Ordering::Relaxed);
-        if let Ok(mut g) = self.last_serial.lock() {
-            *g = serial.to_string();
-        }
-        info!(
-            "TrtcAi reply_latency_ms={latency_ms} serial={serial} (caller stop → AI audio start)"
-        );
-    }
 
     fn avg_ms(&self) -> u64 {
         let n = self.reply_count.load(Ordering::Relaxed);
@@ -1008,13 +986,6 @@ impl TrtcTalkMetrics {
     }
 }
 
-fn now_unix_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
-
 /// Per-call turn tracker (shared between uplink WS loop and downlink pull).
 #[derive(Default)]
 struct TrtcTurnTracker {
@@ -1023,20 +994,6 @@ struct TrtcTurnTracker {
     silence_after_voice_ms: AtomicU64,
     /// Avoid double-counting the same turn end.
     latched_end_ms: AtomicU64,
-}
-
-/// PCM s16le mono RMS (for barge-in / turn metrics).
-fn pcm_rms_s16le(pcm: &[u8]) -> f32 {
-    let n = (pcm.len() / 2) as f32;
-    if n < 1.0 {
-        return 0.0;
-    }
-    let mut sum = 0.0f64;
-    for c in pcm.chunks_exact(2) {
-        let s = i16::from_le_bytes([c[0], c[1]]) as f64;
-        sum += s * s;
-    }
-    (sum / f64::from(n)).sqrt() as f32
 }
 
 impl AppState {
@@ -3979,7 +3936,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                     .unwrap_or_else(|e| e.into_inner());
                                 let was_ai_talk = matches!(
                                     phase_at_end,
-                                    IvrPhase::TrtcAi | IvrPhase::LiveAi
+                                    IvrPhase::LiveAi
                                 );
                                 // Detect hangup → cut Gemini Live API **immediately** (no extra token burn).
                                 if was_ai_talk {
@@ -4341,7 +4298,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         }
                                     }
                                 }
-                                IvrPhase::PlayHoldMusic | IvrPhase::TrtcAi | IvrPhase::LiveAi => {
+                                IvrPhase::LiveAi => {
                                     // Live: remote uplink only. Wait/AI inject must not look like DTMF 0/#
                                     // (seen live: wait clip mid-play → false digit=0 → goodbye clip).
                                     let room =
@@ -4360,9 +4317,6 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                     };
                                     // LiveAi: no DTMF end keys (0/#). Unwanted callers hang up the phone;
                                     // false 0 from wait/AI audio used to force a goodbye.
-                                    let rms = pcm_rms_s16le(&bin);
-                                    let thr = state.settings.vad_rms_threshold;
-                                    let caller_voice = !sidetone && rms >= thr;
                                     let skip_uplink_to_trtc = sidetone;
                                     // Gemini: only remote speech. Never feed wait/AI inject echo
                                     // (was activityStart on wait playout → empty AI turns).
@@ -4380,55 +4334,6 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         if let Ok(g) = gemini_uplink_tx.lock() {
                                             if let Some(tx) = g.as_ref() {
                                                 let _ = tx.send(frame);
-                                            }
-                                        }
-                                    }
-                                    if matches!(phase, IvrPhase::TrtcAi) && caller_voice {
-                                        if let Some(ref m) = trtc_turn {
-                                            let now = now_unix_ms();
-                                            m.last_user_voice_ms.store(now, Ordering::Relaxed);
-                                            // New speech cancels pending "turn end".
-                                            m.user_turn_end_ms.store(0, Ordering::Relaxed);
-                                            m.silence_after_voice_ms.store(0, Ordering::Relaxed);
-                                        }
-                                        if trtc_ai_heard_voice
-                                            .as_ref()
-                                            .map(|f| !f.load(Ordering::Relaxed))
-                                            .unwrap_or(false)
-                                        {
-                                            if remote_gate.feed(&bin) {
-                                                if let Some(flag) = trtc_ai_heard_voice.as_ref() {
-                                                    flag.store(true, Ordering::Relaxed);
-                                                }
-                                                info!(
-                                                    "TrtcAi remote voice detected serial={serial} rms={rms:.0} — continue AI talk"
-                                                );
-                                            }
-                                        }
-                                    } else if matches!(phase, IvrPhase::TrtcAi)
-                                        && !sidetone
-                                        && trtc_turn.is_some()
-                                    {
-                                        // Silence after caller speech → mark turn end for latency.
-                                        if let Some(ref m) = trtc_turn {
-                                            let last = m.last_user_voice_ms.load(Ordering::Relaxed);
-                                            if last > 0
-                                                && m.user_turn_end_ms.load(Ordering::Relaxed) == 0
-                                            {
-                                                // ~20 ms phone frames; accumulate quiet time.
-                                                let acc = m
-                                                    .silence_after_voice_ms
-                                                    .fetch_add(20, Ordering::Relaxed)
-                                                    + 20;
-                                                // End-of-utterance after ~220 ms quiet (low-latency turn).
-                                                if acc >= 220 {
-                                                    let end = now_unix_ms();
-                                                    m.user_turn_end_ms
-                                                        .store(end, Ordering::Relaxed);
-                                                    info!(
-                                                        "TrtcAi caller_turn_end serial={serial} silence_ms={acc} — waiting AI reply"
-                                                    );
-                                                }
                                             }
                                         }
                                     }
@@ -4554,7 +4459,6 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         );
                                     }
                                 }
-                                IvrPhase::VoicemailContactProbe => {}
                                 IvrPhase::VoicemailContactReadback => {
                                     if let Some(hit) = dtmf.feed(&bin) {
                                         let d = hit.digit.to_ascii_uppercase();
@@ -4719,20 +4623,6 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                 let kind = deadline.map(|(_, k)| k);
                 deadline = None;
                 match kind {
-                    Some(DeadlineKind::IvrReprompt) => {
-                        // Legacy deadline kind: product never re-menus — re-arm auto AI.
-                        let phase = *ivr_phase.lock().unwrap_or_else(|e| e.into_inner());
-                        if phase != IvrPhase::WaitDtmf
-                            || !state.settings.agent_mode.is_transfer()
-                            || hold_started
-                        {
-                            continue;
-                        }
-                        info!(
-                            "IVR WaitDtmf legacy timeout → auto-AI serial={serial}"
-                        );
-                        arm_auto_ai.store(true, Ordering::Relaxed);
-                    }
                     Some(DeadlineKind::VmContactReadback) => {
                         let phase = *ivr_phase.lock().unwrap_or_else(|e| e.into_inner());
                         if phase == IvrPhase::VoicemailContactReadback {
@@ -4790,7 +4680,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
     // WS drop / client gone — same as call_end: cancel Gemini Live ASAP.
     media_call_guard.invalidate().await;
     let phase_before_teardown = *ivr_phase.lock().unwrap_or_else(|e| e.into_inner());
-    if matches!(phase_before_teardown, IvrPhase::LiveAi | IvrPhase::TrtcAi) {
+    if matches!(phase_before_teardown, IvrPhase::LiveAi) {
         info!(
             "client disconnect → tear down Gemini/Live API serial={serial} phase={phase_before_teardown:?}"
         );
@@ -4802,7 +4692,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
     }
     deadline = None;
     let phase = phase_before_teardown;
-    let trtc_ai_ended = matches!(phase, IvrPhase::TrtcAi | IvrPhase::LiveAi);
+    let trtc_ai_ended = matches!(phase, IvrPhase::LiveAi);
     // Always tear down TRTC room/AI task on disconnect — menu may have opened a
     // sidecar session / StartAIConversation; skipping leave left a "task already exists" error
     // and stale room_media_live → silent ServerPush next call.
@@ -4813,8 +4703,6 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
             phase,
             IvrPhase::PlayPrompt
                 | IvrPhase::WaitDtmf
-                | IvrPhase::PlayHoldMusic
-                | IvrPhase::TrtcAi
                 | IvrPhase::LiveAi
         )
     {
@@ -4860,17 +4748,14 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
     if state.settings.agent_mode.is_transfer()
         && !matches!(
             phase,
-            IvrPhase::PlayHoldMusic
-                | IvrPhase::Goodbye
+            IvrPhase::Goodbye
                 | IvrPhase::Done
                 // Hanging up mid-message / mid-confirm is a normal voicemail end.
                 | IvrPhase::VoicemailRecord
-                | IvrPhase::VoicemailContactProbe
                 | IvrPhase::VoicemailContactReadback
                 | IvrPhase::VoicemailConfirm
                 // Caller hanging up mid-conversation is a normal live-AI end.
                 | IvrPhase::LiveAi
-                | IvrPhase::TrtcAi
         )
     {
         warn!(
@@ -6322,291 +6207,6 @@ async fn start_ivr_prompt(
     });
 }
 
-/// Early TRTC session for the choice menu via [`trtc_bridge`].
-///
-/// Returns `(true, Some(join))` when menu is spoken via `ServerPushText`
-/// (caller skips local WAV and pulls downlink). `(false, _)` → local
-/// `trtc_menu_local_fallback` until **this room** is media-live + cloud ready.
-fn arm_trtc_menu_session(
-    state: &AppState,
-    serial: &str,
-    menu_text: &str,
-) -> (bool, Option<trtc_bridge::TrtcJoinParams>) {
-    let trtc = state.settings.trtc();
-    let bridge = trtc_bridge::make_bridge(&trtc, state.http.clone());
-    match trtc_bridge::arm_and_queue_menu(bridge.as_ref(), &trtc, serial, menu_text) {
-        Ok((join, trtc_bridge::MenuPlayPath::ServerPushText)) => {
-            info!(
-                "TRTC menu session UserSig ok serial={serial} sdk_app_id={} room_id={} user_id={} — menu via ServerPushText (room_media_live=true cloud_api_ready=true)",
-                trtc.sdk_app_id,
-                join.room_id,
-                join.user_id
-            );
-            // Downlink uses bridge_* participant (sidecar media user).
-            let dl_join = trtc_bridge::TrtcJoinParams {
-                sdk_app_id: join.sdk_app_id,
-                room_id: join.room_id.clone(),
-                user_id: format!("bridge_{serial}"),
-                user_sig: join.user_sig.clone(),
-            };
-            (true, Some(dl_join))
-        }
-        Ok((join, trtc_bridge::MenuPlayPath::LocalFallback)) => {
-            info!(
-                "TRTC menu session UserSig ok serial={serial} sdk_app_id={} room_id={} user_id={} — menu audio queued; keep trtc_menu_local_fallback (room_media_live={} media_bridge_live={})",
-                trtc.sdk_app_id,
-                join.room_id,
-                join.user_id,
-                trtc_bridge::room_media_live(&join.room_id),
-                bridge.media_bridge_live()
-            );
-            (false, None)
-        }
-        Err(e) => {
-            warn!(
-                "TRTC menu session arm failed serial={serial} err={e:#}; soft local menu fallback"
-            );
-            (false, None)
-        }
-    }
-}
-
-/// Rough TTS duration for ServerPushText before starting silence timers.
-fn estimate_spoken_ms(text: &str) -> u64 {
-    let chars = text.chars().count() as u64;
-    (chars.saturating_mul(180).saturating_add(500)).clamp(800, 10_000)
-}
-
-/// Speak one AI line after DTMF1 (hello / silence nudge).
-///
-/// Preferred product path: TRTC AI realtime — `ControlAIConversation`
-/// `ServerPushText` (cloud LLM room + clone TTS) when `cloud_api_ready` and
-/// StartAI TaskId is live. Local `ivr_ai_hello` / `ivr_ai_nudge` WAV or Piper
-/// only as fallback (never double-play with ServerPush). Menu stays local WAV.
-async fn speak_trtc_ai_line(
-    sink: &WsSink,
-    state: &AppState,
-    serial: &str,
-    active_call: &ActiveCallSlot,
-    text: &str,
-    source: &str,
-    pre_recorded: Option<&[u8]>,
-) {
-    let text = text.trim();
-    if text.is_empty() && pre_recorded.map(|p| p.is_empty()).unwrap_or(true) {
-        return;
-    }
-    let mut play_source = source.to_string();
-    // Primary: TRTC clone TTS in the live AI conversation (same voice as talk).
-    if !text.is_empty() {
-        let trtc = state.settings.trtc();
-        if trtc.cloud_api_ready() {
-            if trtc_bridge::push_ai_line_await(&trtc, state.http.clone(), serial, text).await {
-                play_source = format!("{source}_server_push");
-                let settle = estimate_spoken_ms(text);
-                info!(
-                    "TrtcAi line ServerPushText serial={serial} source={play_source} settle_ms={settle} text={text:?}"
-                );
-                let _ = send_json(
-                    sink,
-                    json!({
-                        "type": "reply_text",
-                        "text": text,
-                        "source": play_source,
-                    }),
-                )
-                .await;
-                // Downlink pull loop already carries TTS→phone; settle timer for silence windows.
-                tokio::time::sleep(Duration::from_millis(settle)).await;
-                return;
-            }
-            info!(
-                "TrtcAi line ServerPushText miss serial={serial} source={source} — local WAV/Piper fallback"
-            );
-        }
-    }
-    let _ = send_json(
-        sink,
-        json!({
-            "type": "reply_text",
-            "text": text,
-            "source": play_source,
-        }),
-    )
-    .await;
-    if let Some(pcm) = pre_recorded {
-        if !pcm.is_empty() {
-            info!(
-                "TrtcAi line WAV serial={serial} source={source} pcm_bytes={}",
-                pcm.len()
-            );
-            let _ = send_tts_pcm(sink, state, pcm, active_call, source, None).await;
-            return;
-        }
-    }
-    // No Piper fallback — wait for TRTC/Gemini clone voice only.
-    if !text.is_empty() {
-        warn!(
-            "TrtcAi line no WAV/ServerPush serial={serial} source={source} — silence (no Piper) text={text:?}"
-        );
-    }
-}
-
-/// After DTMF1 arm: **do not** play a canned "hello / are you there" — realtime TRTC AI owns talk.
-///
-/// Soft fallback only when StartAI TaskId never appears (no cloud AI): optional
-/// local hello once, then hangup. When AI is live, only a long silence hangup
-/// safety net (TRTC MaxIdleTime also stops the cloud robot).
-fn spawn_trtc_ai_silence_supervisor(
-    sink: WsSink,
-    state: AppState,
-    serial: String,
-    phase: Arc<std::sync::Mutex<IvrPhase>>,
-    busy: Arc<Mutex<()>>,
-    cancel: Arc<AtomicBool>,
-    active_call: ActiveCallSlot,
-    rt: Arc<RuntimeSettings>,
-    heard: Arc<AtomicBool>,
-) {
-    let hello = state.settings.ivr_ai_hello_text.clone();
-    let before_nudge_ms = state.settings.ivr_ai_silence_before_nudge_ms as u64;
-    let after_nudge_ms = state.settings.ivr_ai_silence_after_nudge_ms as u64;
-    let goodbye = state.settings.ivr_goodbye_text.clone();
-    // Cloud MaxIdle floor 30s; keep phone hangup a bit longer so AI can greet + listen.
-    let ai_max_idle_ms = (state.settings.trtc_ai_max_idle_secs as u64)
-        .saturating_mul(1000)
-        .max(30_000);
-    tokio::spawn(async move {
-        if cancel.load(Ordering::Relaxed) {
-            return;
-        }
-        // Wait briefly for StartAI TaskId (armed in parallel during wait clip).
-        if state.settings.trtc().cloud_api_ready()
-            && trtc_bridge::peek_ai_task_id(&serial).is_none()
-        {
-            let wait_task = tokio::time::Instant::now() + Duration::from_secs(6);
-            while tokio::time::Instant::now() < wait_task {
-                if cancel.load(Ordering::Relaxed) || heard.load(Ordering::Relaxed) {
-                    return;
-                }
-                if trtc_bridge::peek_ai_task_id(&serial).is_some() {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(50)).await;
-            }
-        }
-
-        let ai_live = trtc_bridge::peek_ai_task_id(&serial).is_some();
-        if ai_live {
-            // Product path: no ServerPush/WAV hello or "are you there" lines — the LLM + TTS in TRTC
-            // greets and talks. SystemPrompt should instruct the first greeting.
-            info!(
-                "TrtcAi skip canned hello/nudge serial={serial} — realtime AI owns dialogue (task=1)"
-            );
-            let silence_ms = ai_max_idle_ms
-                .saturating_add(before_nudge_ms)
-                .saturating_add(after_nudge_ms)
-                .clamp(45_000, 180_000);
-            let deadline = tokio::time::Instant::now() + Duration::from_millis(silence_ms);
-            while tokio::time::Instant::now() < deadline {
-                if cancel.load(Ordering::Relaxed) || heard.load(Ordering::Relaxed) {
-                    info!(
-                        "TrtcAi silence supervisor exit serial={serial} heard={} cancel={}",
-                        heard.load(Ordering::Relaxed),
-                        cancel.load(Ordering::Relaxed)
-                    );
-                    return;
-                }
-                let phase_now = *phase.lock().unwrap_or_else(|e| e.into_inner());
-                if !matches!(phase_now, IvrPhase::TrtcAi) {
-                    return;
-                }
-                tokio::time::sleep(Duration::from_millis(200)).await;
-            }
-            if cancel.load(Ordering::Relaxed) || heard.load(Ordering::Relaxed) {
-                return;
-            }
-            let phase_now = *phase.lock().unwrap_or_else(|e| e.into_inner());
-            if !matches!(phase_now, IvrPhase::TrtcAi) {
-                return;
-            }
-            info!(
-                "TrtcAi silence hangup serial={serial} (no remote voice for ~{silence_ms}ms; AI was live)"
-            );
-            let mut hold_cancel = Some(cancel);
-            start_ivr_stub_hangup(
-                &sink,
-                &state,
-                &serial,
-                &phase,
-                &busy,
-                &mut hold_cancel,
-                &active_call,
-                goodbye,
-                "ai_silence_hangup",
-                false,
-                true,
-                &rt,
-            );
-            return;
-        }
-
-        // Soft path: StartAI never armed — one local fallback line then short hangup.
-        // Do not loop "are you there" nudges when cloud AI is the product path.
-        info!("TrtcAi soft fallback serial={serial} (no TaskId) — one local line then hangup gate");
-        if !hello.trim().is_empty() || state.ivr_ai_hello_pcm.is_some() {
-            speak_trtc_ai_line(
-                &sink,
-                &state,
-                &serial,
-                &active_call,
-                &hello,
-                "trtc_ai_hello_soft",
-                state.ivr_ai_hello_pcm.as_ref().map(|p| p.as_slice()),
-            )
-            .await;
-        }
-        if cancel.load(Ordering::Relaxed) || heard.load(Ordering::Relaxed) {
-            return;
-        }
-        let soft_ms = before_nudge_ms.saturating_add(after_nudge_ms).max(8_000);
-        let deadline = tokio::time::Instant::now() + Duration::from_millis(soft_ms);
-        while tokio::time::Instant::now() < deadline {
-            if cancel.load(Ordering::Relaxed) || heard.load(Ordering::Relaxed) {
-                return;
-            }
-            let phase_now = *phase.lock().unwrap_or_else(|e| e.into_inner());
-            if !matches!(phase_now, IvrPhase::TrtcAi) {
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-        if cancel.load(Ordering::Relaxed) || heard.load(Ordering::Relaxed) {
-            return;
-        }
-        let phase_now = *phase.lock().unwrap_or_else(|e| e.into_inner());
-        if !matches!(phase_now, IvrPhase::TrtcAi) {
-            return;
-        }
-        info!("TrtcAi silence hangup serial={serial} (soft path, no TaskId / no reply)");
-        let mut hold_cancel = Some(cancel);
-        start_ivr_stub_hangup(
-            &sink,
-            &state,
-            &serial,
-            &phase,
-            &busy,
-            &mut hold_cancel,
-            &active_call,
-            goodbye,
-            "ai_silence_hangup",
-            false,
-            true,
-            &rt,
-        );
-    });
-}
-
 /// Product AI entry: Gemini Live when ready; otherwise automatic voicemail.
 /// Must only be called after greeting fully finished (arm_auto_ai gate),
 /// except DTMF-1 fallback. Prefer UnmuteAfterGreet when ConnectAtAnswer already warmed.
@@ -6645,7 +6245,6 @@ fn enter_gemini_or_voicemail(
         if matches!(
             p,
             IvrPhase::LiveAi
-                | IvrPhase::TrtcAi
                 | IvrPhase::VoicemailIntro
                 | IvrPhase::VoicemailRecord
                 | IvrPhase::Goodbye
@@ -9226,331 +8825,6 @@ fn start_gemini_live_after_choice(
     });
 }
 
-/// DTMF 1 (AI call): TRTC when armed; else brief local goodbye + hangup (not hold music).
-/// Decision helper: [`trtc::TrtcSettings::arm_ai_after_dtmf1`].
-fn start_trtc_ai_after_choice(
-    sink: &WsSink,
-    state: &AppState,
-    serial: &str,
-    phase: &Arc<std::sync::Mutex<IvrPhase>>,
-    hold_started: &mut bool,
-    hold_cancel: &mut Option<Arc<AtomicBool>>,
-    active_call: &ActiveCallSlot,
-    busy: &Arc<Mutex<()>>,
-    rt: &Arc<RuntimeSettings>,
-    trtc_ai_heard_voice: &mut Option<Arc<AtomicBool>>,
-    trtc_turn: &mut Option<Arc<TrtcTurnTracker>>,
-) {
-    if *hold_started {
-        // Silent return made "press 1 again" look dead — always log.
-        warn!(
-            "IVR DTMF 1 ignored serial={serial} (hold_started already true — wait/AI arm already running)"
-        );
-        return;
-    }
-    stop_hold_loop(hold_cancel);
-    *hold_started = true;
-    // Only clear leftovers when a prior AI task is still latched (second call bug).
-    // Always-leave here was racing menu open_session and delaying wait inject.
-    if trtc_bridge::peek_ai_task_id(serial).is_some() {
-        warn!("IVR DTMF 1 prearm cleanup serial={serial} (stale TaskId present)");
-        let br = trtc_bridge::make_bridge(&state.settings.trtc(), state.http.clone());
-        br.leave(serial, "dtmf1_prearm_cleanup");
-    }
-    match state.settings.trtc().arm_ai_after_dtmf1(serial) {
-        trtc::TrtcAiArm::Scaffold { sdk_app_id } => {
-            *phase.lock().unwrap_or_else(|e| e.into_inner()) = IvrPhase::TrtcAi;
-            let heard = Arc::new(AtomicBool::new(false));
-            *trtc_ai_heard_voice = Some(heard.clone());
-            let turn = Arc::new(TrtcTurnTracker::default());
-            *trtc_turn = Some(turn.clone());
-            let wait_text = state.settings.ivr_dtmf1_wait_text.clone();
-            let sink = sink.clone();
-            let state = state.clone();
-            let serial = serial.to_string();
-            let active_call = active_call.clone();
-            let phase = phase.clone();
-            let busy = busy.clone();
-            let rt = rt.clone();
-            let talk_metrics = state.trtc_talk.clone();
-            // Product path: arm media+StartAI first, play short wait, then **must**
-            // ServerPush AI greeting so realtime talk is audible (STT alone stays silent
-            // if uplink is late / empty — live logs: joined but uplink/downlink bytes=0).
-            let cancel_for_parent = Arc::new(AtomicBool::new(false));
-            *hold_cancel = Some(cancel_for_parent.clone());
-            tokio::spawn(async move {
-                let bridge: Arc<dyn TrtcBridge> = Arc::from(trtc_bridge::make_bridge(
-                    &state.settings.trtc(),
-                    state.http.clone(),
-                ));
-                let trtc_cfg = state.settings.trtc();
-                info!(
-                    "TrtcAi runtime config serial={serial} llm_ready={} tts_ready={} max_idle_secs={} (secrets masked)",
-                    !trtc_cfg.llm_config.as_str().trim().is_empty(),
-                    !trtc_cfg.tts_config.as_str().trim().is_empty(),
-                    trtc_cfg.ai_max_idle_secs,
-                );
-
-                // Short local wait (max ~3.5s) so inject is heard; arm in parallel.
-                let arm_bridge = bridge.clone();
-                let arm_cfg = trtc_cfg.clone();
-                let arm_serial = serial.clone();
-                let arm_task = tokio::spawn(async move {
-                    tokio::task::block_in_place(|| arm_bridge.enter_ai_talk(&arm_cfg, &arm_serial))
-                });
-
-                if !wait_text.trim().is_empty() || state.ivr_dtmf1_wait_pcm.is_some() {
-                    let (source, pcm) = if let Some(p) = state.ivr_dtmf1_wait_pcm.clone() {
-                        ("ivr_dtmf1_wait_wav", p.as_ref().clone())
-                    } else {
-                        warn!("IVR DTMF 1 wait WAV missing serial={serial}; silence (no Piper)");
-                        ("ivr_dtmf1_wait_missing", Vec::new())
-                    };
-                    let wait_ms = if pcm.is_empty() {
-                        2000
-                    } else {
-                        ((pcm.len() as u64) * 1000)
-                            / ((state.settings.sample_rate as u64).saturating_mul(2).max(1))
-                    }
-                    .clamp(800, 12_000);
-                    info!(
-                        "IVR DTMF 1 wait local-only serial={serial} source={source} wait_ms={wait_ms} text={wait_text:?}"
-                    );
-                    let _ = send_json(
-                        &sink,
-                        json!({
-                            "type": "reply_text",
-                            "text": wait_text,
-                            "source": source,
-                        }),
-                    )
-                    .await;
-                    let _ = send_json(
-                        &sink,
-                        json!({
-                            "type": "tts_start",
-                            "sample_rate": state.settings.sample_rate,
-                            "source": "gemini_wait",
-                            "pcm_bytes": pcm.len(),
-                            "local_wait": true,
-                        }),
-                    )
-                    .await;
-                    let deadline = tokio::time::Instant::now() + Duration::from_millis(wait_ms);
-                    while tokio::time::Instant::now() < deadline {
-                        if cancel_for_parent.load(Ordering::Relaxed) {
-                            break;
-                        }
-                        tokio::time::sleep(Duration::from_millis(40)).await;
-                    }
-                    let _ = send_json(
-                        &sink,
-                        json!({
-                            "type": "tts_end",
-                            "source": "gemini_wait",
-                            "local_wait": true,
-                        }),
-                    )
-                    .await;
-                }
-                if cancel_for_parent.load(Ordering::Relaxed) {
-                    return;
-                }
-                // After wait → capture AI dialog uplink until hangup (input for the summary).
-                if let Some(c) = active_call.lock().await.as_mut() {
-                    c.set_ai_segment_active(true);
-                }
-                info!("TrtcAi AI segment capture ON serial={serial} (after wait → hangup)");
-
-                let enter = match arm_task.await {
-                    Ok(r) => r,
-                    Err(e) => {
-                        warn!(
-                            "IVR DTMF 1 arm task join failed serial={serial} err={e:#}; retry enter_ai_talk"
-                        );
-                        bridge.enter_ai_talk(&trtc_cfg, &serial)
-                    }
-                };
-                let enter_ok = enter.is_ok();
-                let join_opt = match enter {
-                    Ok(join) => {
-                        info!(
-                            "IVR DTMF 1 → TrtcAi (UserSig ok) serial={serial} sdk_app_id={sdk_app_id} room_id={} user_id={}",
-                            join.room_id, join.user_id
-                        );
-                        Some(join)
-                    }
-                    Err(e) => {
-                        warn!(
-                            "IVR DTMF 1 → TrtcAi enter_ai_talk failed serial={serial} sdk_app_id={sdk_app_id} err={e:#}"
-                        );
-                        None
-                    }
-                };
-
-                let room_id = join_opt
-                    .as_ref()
-                    .map(|j| j.room_id.clone())
-                    .unwrap_or_else(|| trtc_bridge::SoftTrtcBridge::room_id_for(&serial));
-
-                // Start downlink ASAP so TRTC TTS can reach the phone.
-                if let Some(ref join) = join_opt {
-                    spawn_trtc_downlink_pull_loop(
-                        sink.clone(),
-                        state.clone(),
-                        bridge.clone(),
-                        join.clone(),
-                        active_call.clone(),
-                        cancel_for_parent.clone(),
-                        Some(turn.clone()),
-                        talk_metrics.clone(),
-                        serial.clone(),
-                    );
-                }
-
-                // Wait for TaskId (StartAI is async).
-                let task_deadline = tokio::time::Instant::now() + Duration::from_secs(12);
-                while tokio::time::Instant::now() < task_deadline {
-                    if cancel_for_parent.load(Ordering::Relaxed) {
-                        return;
-                    }
-                    if trtc_bridge::peek_ai_task_id(&serial).is_some() {
-                        break;
-                    }
-                    tokio::time::sleep(Duration::from_millis(50)).await;
-                }
-                let live_final = trtc_bridge::room_media_live(&room_id);
-                let task_final = trtc_bridge::peek_ai_task_id(&serial).is_some();
-                info!(
-                    "IVR DTMF 1 talk gate serial={serial} media_live={live_final} task={task_final} enter_ok={enter_ok}"
-                );
-
-                // CRITICAL: force TRTC clone-TTS greeting. Without this, AI sits silent
-                // waiting for STT while uplink may still be empty → "no realtime AI".
-                if task_final {
-                    let greet = state.settings.ivr_ai_hello_text.clone();
-                    if !greet.trim().is_empty() {
-                        let pushed = trtc_bridge::push_ai_line_await(
-                            &trtc_cfg,
-                            state.http.clone(),
-                            &serial,
-                            &greet,
-                        )
-                        .await;
-                        info!(
-                            "TrtcAi ServerPush greeting serial={serial} ok={pushed} text={greet:?}"
-                        );
-                        if !pushed {
-                            // Local fallback so caller still hears a prompt.
-                            if let Some(p) = state.ivr_ai_hello_pcm.as_ref() {
-                                let _ = send_tts_pcm(
-                                    &sink,
-                                    &state,
-                                    p.as_ref(),
-                                    &active_call,
-                                    "trtc_ai_hello_local",
-                                    Some(&cancel_for_parent),
-                                )
-                                .await;
-                            }
-                        } else {
-                            // Let ServerPush TTS settle into downlink → phone.
-                            let settle = estimate_spoken_ms(&greet);
-                            tokio::time::sleep(Duration::from_millis(settle.min(4000))).await;
-                        }
-                    }
-                } else {
-                    warn!("TrtcAi no TaskId serial={serial} — realtime AI unavailable this call");
-                    if let Some(p) = state.ivr_ai_hello_pcm.as_ref() {
-                        let _ = send_tts_pcm(
-                            &sink,
-                            &state,
-                            p.as_ref(),
-                            &active_call,
-                            "trtc_ai_hello_no_task",
-                            Some(&cancel_for_parent),
-                        )
-                        .await;
-                    }
-                }
-
-                if cancel_for_parent.load(Ordering::Relaxed) {
-                    return;
-                }
-                // Silence hangup safety only (greeting already done via ServerPush/local).
-                spawn_trtc_ai_silence_supervisor(
-                    sink,
-                    state,
-                    serial,
-                    phase,
-                    busy,
-                    cancel_for_parent,
-                    active_call,
-                    rt,
-                    heard,
-                );
-            });
-        }
-        trtc::TrtcAiArm::Degrade {
-            reason,
-            detail,
-            sdk_app_id,
-            ai_enabled,
-        } => {
-            if reason == "trtc_usersig_fail" {
-                warn!(
-                    "IVR DTMF 1 → TRTC UserSig failed serial={serial} sdk_app_id={sdk_app_id} err={} — brief goodbye + hangup (not hold music)",
-                    detail.as_deref().unwrap_or("?")
-                );
-            } else {
-                warn!(
-                    "IVR DTMF 1 → TRTC not ready serial={serial} sdk_app_id={sdk_app_id} ai_enabled={ai_enabled} — brief goodbye + hangup (not hold music)"
-                );
-            }
-            start_trtc_degrade_hangup(
-                sink,
-                state,
-                serial,
-                phase,
-                busy,
-                hold_cancel,
-                active_call,
-                reason,
-                rt,
-            );
-        }
-    }
-}
-
-/// TRTC DTMF-1 failure: fail/unavailable WAV + hangup — not the "have a nice day" goodbye
-/// (that misled callers into thinking the menu ended normally after press-1).
-fn start_trtc_degrade_hangup(
-    sink: &WsSink,
-    state: &AppState,
-    serial: &str,
-    phase: &Arc<std::sync::Mutex<IvrPhase>>,
-    busy: &Arc<Mutex<()>>,
-    hold_cancel: &mut Option<Arc<AtomicBool>>,
-    active_call: &ActiveCallSlot,
-    reason: &'static str,
-    rt: &Arc<RuntimeSettings>,
-) {
-    start_ivr_stub_hangup(
-        sink,
-        state,
-        serial,
-        phase,
-        busy,
-        hold_cancel,
-        active_call,
-        "AI通話暫時無法接通，請稍後再撥或按2留言。".into(),
-        reason,
-        true,  // prefer fail/unavailable WAV
-        false, // not the "have a nice day" goodbye
-        rt,
-    );
-}
-
 fn start_ivr_stub_hangup(
     sink: &WsSink,
     state: &AppState,
@@ -9571,7 +8845,7 @@ fn start_ivr_stub_hangup(
         // terminal or hold-music phases to avoid double hangup.
         if matches!(
             *p,
-            IvrPhase::Goodbye | IvrPhase::Done | IvrPhase::PlayHoldMusic
+            IvrPhase::Goodbye | IvrPhase::Done
         ) {
             return;
         }
@@ -9960,63 +9234,6 @@ fn finish_voicemail(
     });
 }
 
-/// Piper read-back of a phone/email heard in the voicemail message.
-async fn play_vm_contact_readback(
-    sink: &WsSink,
-    state: &AppState,
-    serial: &str,
-    phase: &Arc<std::sync::Mutex<IvrPhase>>,
-    active_call: &ActiveCallSlot,
-    arm_vm_contact_readback: &Arc<AtomicBool>,
-    prompt_cancel: &Arc<AtomicBool>,
-    contact: &SpokenContact,
-) {
-    {
-        let mut p = phase.lock().unwrap_or_else(|e| e.into_inner());
-        if *p != IvrPhase::VoicemailContactProbe {
-            return;
-        }
-        *p = IvrPhase::VoicemailContactReadback;
-    }
-    let text = if contact.method == "email" {
-        format!("您留的電子信箱是 {}，正確請按1，錯誤請按2", contact.display)
-    } else {
-        format!("您留的號碼是 {}，正確請按1，錯誤請按2", contact.display)
-    };
-    info!(
-        "VM contact readback serial={serial} method={} contact={}",
-        contact.method, contact.contact
-    );
-    let pcm = synthesize_piper(&state.http, &state.settings, &text).await;
-    let _ = send_json(
-        sink,
-        json!({
-            "type": "reply_text",
-            "text": "vm_contact_readback",
-            "method": contact.method,
-            "contact": contact.contact,
-        }),
-    )
-    .await;
-    if !pcm.is_empty() {
-        let _ = send_tts_pcm(
-            sink,
-            state,
-            &pcm,
-            active_call,
-            "piper_vm_contact_readback",
-            Some(prompt_cancel),
-        )
-        .await;
-    }
-    {
-        let p = *phase.lock().unwrap_or_else(|e| e.into_inner());
-        if p == IvrPhase::VoicemailContactReadback {
-            arm_vm_contact_readback.store(true, Ordering::Relaxed);
-        }
-    }
-}
-
 async fn play_vm_caller_id_confirm(
     sink: &WsSink,
     state: &AppState,
@@ -10030,7 +9247,7 @@ async fn play_vm_caller_id_confirm(
         let mut p = phase.lock().unwrap_or_else(|e| e.into_inner());
         if !matches!(
             *p,
-            IvrPhase::VoicemailContactProbe | IvrPhase::VoicemailContactReadback
+            IvrPhase::VoicemailContactReadback
         ) {
             return;
         }
@@ -10231,68 +9448,6 @@ async fn play_shaming_if_enabled(
     if let Some(c) = active_call.lock().await.as_mut() {
         c.push_event("shaming_played");
     }
-}
-
-/// Legacy LiveAi intro (OpenRouter + Piper). **Not armed from DTMF 1** — product
-/// path is TRTC via `start_trtc_ai_after_choice` (Scaffold / Degrade). Kept for
-/// residual `IvrPhase::LiveAi` handling if an old session is mid-call.
-#[allow(dead_code)]
-fn start_live_ai_intro(
-    sink: &WsSink,
-    state: &AppState,
-    serial: &str,
-    phase: &Arc<std::sync::Mutex<IvrPhase>>,
-    busy: &Arc<Mutex<()>>,
-    active_call: &ActiveCallSlot,
-) {
-    {
-        let mut p = phase.lock().unwrap_or_else(|e| e.into_inner());
-        if !matches!(*p, IvrPhase::WaitDtmf | IvrPhase::PlayPrompt) {
-            return;
-        }
-        *p = IvrPhase::LiveAi;
-    }
-    let sink = sink.clone();
-    let state = state.clone();
-    let serial = serial.to_string();
-    let phase = phase.clone();
-    let busy = busy.clone();
-    let active_call = active_call.clone();
-    tokio::spawn(async move {
-        // Wait for the cancelled menu prompt task to release `busy`.
-        let _guard = busy.lock().await;
-        {
-            let p = *phase.lock().unwrap_or_else(|e| e.into_inner());
-            if p != IvrPhase::LiveAi {
-                return;
-            }
-        }
-        if let Some(c) = active_call.lock().await.as_mut() {
-            c.push_event("live_ai_start");
-        }
-        // Clean splice after menu barge-in.
-        let _ = stream_silence_gap(&sink, &state, 240, &active_call).await;
-        let text = "已為您接通 AI 助理，請說話。";
-        let pcm = synthesize_piper(&state.http, &state.settings, text).await;
-        info!("LiveAi intro serial={serial} pcm_bytes={}", pcm.len());
-        let _ = send_json(
-            &sink,
-            json!({"type":"reply_text","text": text, "source": "piper_live_ai_intro"}),
-        )
-        .await;
-        if !pcm.is_empty() {
-            let _ = send_tts_pcm(
-                &sink,
-                &state,
-                &pcm,
-                &active_call,
-                "piper_live_ai_intro",
-                None,
-            )
-            .await;
-        }
-        info!("LiveAi listening serial={serial} (VAD → Whisper → OpenRouter)");
-    });
 }
 
 /// One-shot voicemail notification (guarded by `notified`).
@@ -11351,142 +10506,6 @@ fn stop_hold_loop(hold_cancel: &mut Option<Arc<AtomicBool>>) {
     }
 }
 
-/// Sidecar TRTC downlink → phone playout, recorded on the system lane.
-///
-/// For every non-empty `pull_downlink_pcm` chunk:
-/// 1. [`ActiveCall::write_tts`] → `_tts.wav` (+ full mix)
-/// 2. binary WS frame → cellular uplink inject
-///
-/// Soft bridge returns empty pulls (no-op). Cancel via `hold_cancel` (DTMF2 / hangup / reset).
-fn spawn_trtc_downlink_pull_loop(
-    sink: WsSink,
-    state: AppState,
-    bridge: Arc<dyn TrtcBridge>,
-    join: trtc_bridge::TrtcJoinParams,
-    active_call: ActiveCallSlot,
-    cancel: Arc<AtomicBool>,
-    turn: Option<Arc<TrtcTurnTracker>>,
-    talk_metrics: Arc<TrtcTalkMetrics>,
-    serial: String,
-) {
-    tokio::spawn(async move {
-        // 10 ms poll — WS buffer is non-blocking; HTTP fallback is short-timeout.
-        let max_bytes = trtc_bridge::PCM_FRAME_BYTES.saturating_mul(4); // ~80 ms
-        let mut interval = tokio::time::interval(Duration::from_millis(10));
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let mut started = false;
-        let mut outbound_armed = false;
-        let mut total: u64 = 0;
-        // Clear tts_outbound quickly after AI audio stops so sidetone filter
-        // does not linger. Caller speech is still forwarded (non-sidetone only).
-        let mut idle_empty_ticks: u32 = 0;
-        const CLEAR_OUTBOUND_AFTER_EMPTY_TICKS: u32 = 8; // ~80 ms @ 10 ms tick
-        let trtc_settings = state.settings.trtc();
-        let http = state.http.clone();
-        let room_id = join.room_id.clone();
-        loop {
-            if cancel.load(Ordering::Relaxed) {
-                break;
-            }
-            interval.tick().await;
-            if cancel.load(Ordering::Relaxed) {
-                break;
-            }
-            // Prefer async HTTP pull (no block_in_place on the WS task).
-            let chunk =
-                match trtc_bridge::pull_downlink_http(&trtc_settings, &http, &room_id, max_bytes)
-                    .await
-                {
-                    Ok(c) => c,
-                    Err(e) => {
-                        warn!("TRTC pull_downlink_http failed room_id={room_id} err={e:#}");
-                        // Fallback to trait path if HTTP helper fails open.
-                        match bridge.pull_downlink_pcm(&join, max_bytes) {
-                            Ok(c) => c,
-                            Err(_) => continue,
-                        }
-                    }
-                };
-            if chunk.is_empty() {
-                idle_empty_ticks = idle_empty_ticks.saturating_add(1);
-                if outbound_armed && idle_empty_ticks >= CLEAR_OUTBOUND_AFTER_EMPTY_TICKS {
-                    if let Some(c) = active_call.lock().await.as_mut() {
-                        c.set_tts_outbound_active(false);
-                    }
-                    outbound_armed = false;
-                    if started {
-                        let _ =
-                            send_json(&sink, json!({"type": "tts_end", "source": "trtc_downlink"}))
-                                .await;
-                        started = false;
-                    }
-                }
-                continue;
-            }
-            idle_empty_ticks = 0;
-            if !started {
-                started = true;
-                // Latency: caller_turn_end → first AI audio frame.
-                if let Some(ref t) = turn {
-                    let end = t.user_turn_end_ms.load(Ordering::Relaxed);
-                    let latched = t.latched_end_ms.load(Ordering::Relaxed);
-                    if end > 0 && end != latched {
-                        let now = now_unix_ms();
-                        let latency = now.saturating_sub(end);
-                        // Ignore absurd / clock-skew values.
-                        if latency > 0 && latency < 120_000 {
-                            talk_metrics.record_reply(&serial, latency);
-                            t.latched_end_ms.store(end, Ordering::Relaxed);
-                        }
-                    }
-                }
-                let _ = send_json(
-                    &sink,
-                    json!({
-                        "type": "tts_start",
-                        "sample_rate": state.settings.sample_rate,
-                        "source": "trtc_downlink",
-                    }),
-                )
-                .await;
-                info!(
-                    "TRTC downlink playout start room_id={room_id} serial={serial} source=trtc_downlink (write_tts → _tts.wav / 僅系統／TRTC)"
-                );
-            }
-            if !outbound_armed {
-                if let Some(c) = active_call.lock().await.as_mut() {
-                    c.set_tts_outbound_active(true);
-                }
-                outbound_armed = true;
-            }
-            // Recording contract: same write_tts lane as local Piper/menu/hold.
-            if let Some(c) = active_call.lock().await.as_mut() {
-                c.write_tts(&chunk);
-            }
-            total = total.saturating_add(chunk.len() as u64);
-            {
-                let mut s = sink.lock().await;
-                if s.send(Message::Binary(chunk.into())).await.is_err() {
-                    break;
-                }
-            }
-        }
-        if outbound_armed {
-            if let Some(c) = active_call.lock().await.as_mut() {
-                c.set_tts_outbound_active(false);
-            }
-        }
-        if started {
-            let _ = send_json(&sink, json!({"type": "tts_end", "source": "trtc_downlink"})).await;
-        }
-        if total > 0 {
-            info!(
-                "TRTC downlink playout end room_id={room_id} bytes={total} (recorded via write_tts)"
-            );
-        }
-    });
-}
-
 /// ~`gap_ms` of zero PCM at realtime pace (barge-in splice clean-up).
 async fn stream_silence_gap(
     sink: &WsSink,
@@ -11538,96 +10557,6 @@ async fn stream_silence_gap(
     Ok(())
 }
 
-/// One `tts_start`, play the track once at ~realtime, then `tts_end`.
-/// CONSTANT-GAIN playback: the asset is pre-normalized offline and the load
-/// path applies one whole-buffer RMS normalize + static soft ceiling. No
-/// per-frame gain riding here — a runtime AGC stacked on the asset compressor
-/// and carrier VoLTE AGC caused audible pumping (measured: the
-/// leveler rode 0.71–1.40 ≈ 6 dB adding ±2.9 dB envelope swing at 35–130 ms).
-/// Short join blend only smooths frame-boundary clicks near peaks.
-///
-/// **Not on the product AI path.** DTMF1 never calls this (no
-/// `play_transfer_hold` / `start_transfer_hold`); TrtcAi uses silence scaffold
-/// via `start_trtc_ai_after_choice`. Kept as the reference for
-/// the constant-gain / no-runtime-AGC policy on the playback loop body.
-#[allow(dead_code)]
-async fn stream_hold_music_once(
-    sink: &Arc<Mutex<futures_util::stream::SplitSink<WebSocket, Message>>>,
-    state: &AppState,
-    pcm: &[u8],
-    cancel: Arc<AtomicBool>,
-    active_call: &ActiveCallSlot,
-) -> Result<()> {
-    if pcm.is_empty() {
-        anyhow::bail!("empty hold PCM");
-    }
-    send_json(
-        sink,
-        json!({"type":"tts_start","sample_rate": state.settings.sample_rate, "source": "hold_music"}),
-    )
-    .await?;
-
-    if let Some(c) = active_call.lock().await.as_mut() {
-        c.set_tts_outbound_active(true);
-    }
-
-    // 20 ms frames: smoother VoLTE inject pacing than 40 ms (same realtime budget).
-    let frame = (state.settings.sample_rate as usize * 20 / 1000) * 2;
-    let frame = frame.max(2);
-    let mut interval = tokio::time::interval(Duration::from_millis(20));
-    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    interval.tick().await;
-
-    let mut prev_last = 0i16;
-    let mut first = true;
-    let mut cancelled = false;
-    for chunk in pcm.chunks(frame) {
-        if cancel.load(Ordering::Relaxed) {
-            cancelled = true;
-            let mut faded = chunk.to_vec();
-            blend_hold_join(prev_last, &mut faded);
-            fade_out_s16le(&mut faded);
-            interval.tick().await;
-            if let Some(c) = active_call.lock().await.as_mut() {
-                c.write_tts(&faded);
-            }
-            let mut s = sink.lock().await;
-            let _ = s.send(Message::Binary(faded.into())).await;
-            break;
-        }
-        let mut out = chunk.to_vec();
-        if first {
-            fade_in_s16le(&mut out);
-            first = false;
-        } else {
-            blend_hold_join(prev_last, &mut out);
-        }
-        if let Some(last) = last_s16le_sample(&out) {
-            prev_last = last;
-        }
-        interval.tick().await;
-        if let Some(c) = active_call.lock().await.as_mut() {
-            c.write_tts(&out);
-        }
-        let mut s = sink.lock().await;
-        if s.send(Message::Binary(out.into())).await.is_err() {
-            cancel.store(true, Ordering::Relaxed);
-            cancelled = true;
-            break;
-        }
-    }
-
-    if let Some(c) = active_call.lock().await.as_mut() {
-        c.set_tts_outbound_active(false);
-    }
-    let _ = send_json(sink, json!({"type":"tts_end","source":"hold_music"})).await;
-    info!(
-        "hold music finished once pcm_bytes={} cancelled={cancelled}",
-        pcm.len(),
-    );
-    Ok(())
-}
-
 /// Linear fade-out of one s16le mono frame (reduces barge-in click).
 fn fade_out_s16le(pcm: &mut [u8]) {
     let n = pcm.len() / 2;
@@ -11643,31 +10572,6 @@ fn fade_out_s16le(pcm: &mut [u8]) {
         pcm[o] = b[0];
         pcm[o + 1] = b[1];
     }
-}
-
-/// Short fade-in at the start of a PCM frame (hold-music loop / barge cleanup).
-fn fade_in_s16le(pcm: &mut [u8]) {
-    let n = pcm.len() / 2;
-    if n == 0 {
-        return;
-    }
-    for i in 0..n {
-        let o = i * 2;
-        let s = i16::from_le_bytes([pcm[o], pcm[o + 1]]) as f64;
-        let g = (i as f64 + 1.0) / n as f64;
-        let out = (s * g).round().clamp(i16::MIN as f64, i16::MAX as f64) as i16;
-        let b = out.to_le_bytes();
-        pcm[o] = b[0];
-        pcm[o + 1] = b[1];
-    }
-}
-
-fn last_s16le_sample(pcm: &[u8]) -> Option<i16> {
-    if pcm.len() < 2 {
-        return None;
-    }
-    let o = pcm.len() - 2;
-    Some(i16::from_le_bytes([pcm[o], pcm[o + 1]]))
 }
 
 /// RMS of one s16le mono frame (voicemail silence detection).
@@ -11703,30 +10607,6 @@ fn make_beep_pcm(sample_rate: u32, hz: f64, ms: u32, amp: f64) -> Vec<u8> {
         out.extend_from_slice(&v.to_le_bytes());
     }
     out
-}
-
-/// Blend ~2 ms at frame head when the boundary jump would click on loud/high notes.
-fn blend_hold_join(prev_last: i16, pcm: &mut [u8]) {
-    let n = pcm.len() / 2;
-    if n < 4 {
-        return;
-    }
-    let first = i16::from_le_bytes([pcm[0], pcm[1]]);
-    let jump = (first as i32 - prev_last as i32).abs();
-    if jump < 2500 {
-        return;
-    }
-    let blend = n.min(32); // ≤2 ms @ 16 kHz
-    for i in 0..blend {
-        let o = i * 2;
-        let s = i16::from_le_bytes([pcm[o], pcm[o + 1]]) as f64;
-        let g = (i as f64 + 1.0) / blend as f64;
-        let mixed = prev_last as f64 * (1.0 - g) + s * g;
-        let out = mixed.round().clamp(i16::MIN as f64, i16::MAX as f64) as i16;
-        let b = out.to_le_bytes();
-        pcm[o] = b[0];
-        pcm[o + 1] = b[1];
-    }
 }
 
 /// Stream PCM at ~realtime (40 ms frames). Blasting faster overflows the phone

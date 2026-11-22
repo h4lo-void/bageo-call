@@ -332,11 +332,6 @@ pub struct RuntimeSettings {
     /// and the phones on Wi-Fi are dropped.
     #[serde(default = "default_true")]
     pub phone_wifi: bool,
-    /// Download extra languages and region art that match settings or the
-    /// browser on login when missing (`crate::extras`). Defaults to `false`
-    /// so Bageo never connects to GitHub automatically in the background.
-    #[serde(default)]
-    pub extras_auto: bool,
     /// When a call fixes a date (delivery, appointment, callback time), add an
     /// "add to calendar" link to the summary. One more request to the summary
     /// model per call.
@@ -1228,7 +1223,6 @@ impl RuntimeSettings {
             public_url: env_or("PUBLIC_URL", ""),
             mdns_name: base.mdns_name.clone(),
             phone_wifi: env_bool("PHONE_WIFI", true),
-            extras_auto: env_bool("EXTRAS_AUTO", false),
             calendar_suggest: env_bool("CALENDAR_SUGGEST", true),
             calendar_app: String::new(),
             appointment_mode: sanitize_appointment_mode(&env_or("APPOINTMENT_MODE", "off")),
@@ -1672,7 +1666,6 @@ impl RuntimeSettings {
             gemini_persona_mode,
             answer_unknown_callers,
             phone_wifi,
-            extras_auto,
             persona_stall_spam,
             scam_review_without_keywords,
             whitelist_urgent_call,
@@ -2179,8 +2172,6 @@ struct Overrides {
     mdns_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     phone_wifi: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    extras_auto: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     calendar_suggest: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -3038,7 +3029,6 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     }
     p_string(patch, "mdns_name", &mut ov.mdns_name);
     p_bool(patch, "phone_wifi", &mut ov.phone_wifi);
-    p_bool(patch, "extras_auto", &mut ov.extras_auto);
     if let Some(v) = ov.mdns_name.take() {
         ov.mdns_name = Some(crate::mdns::parse_name_setting(&v));
     }
@@ -4264,7 +4254,6 @@ mod tests {
         assert_eq!(rt.language, "en");
         let rt = store.apply_patch(&json!({ "language": "ar", "notify_language": "ar" })).unwrap();
         assert_eq!((rt.lang(), rt.notify_lang()), (ext("ar"), ext("ar")));
-        assert!(!rt.extras_auto);
         // The settings API lists core languages + downloaded + active in settings.
         let shown = store.masked_json();
         let langs = shown["languages"].as_array().unwrap();
@@ -4272,10 +4261,6 @@ mod tests {
         assert!(langs.iter().any(|l| l["code"] == "it" && l["stage"] == "notify" && l["reviewed"] == false));
         assert!(!langs.iter().any(|l| l["code"] == "th"));
         assert!(!langs.iter().any(|l| l["code"] == "ru"));
-        let rt = store.apply_patch(&json!({ "extras_auto": true })).unwrap();
-        assert!(rt.extras_auto);
-        let rt = store.apply_patch(&json!({ "extras_auto": false })).unwrap();
-        assert!(!rt.extras_auto);
         // The translations go back to ones without these languages: English,
         // the stored codes untouched, before and after a restart.
         crate::locales_store::testing::use_empty();
@@ -4285,7 +4270,6 @@ mod tests {
         let again = SettingsStore::load(base).snapshot();
         assert_eq!((again.language.as_str(), again.notify_language.as_str()), ("ar", "ar"));
         assert_eq!(again.sim_languages.get("eg").map(String::as_str), Some("ar"));
-        assert!(!again.extras_auto);
         assert_eq!(store.masked_json()["languages"].as_array().unwrap().len(), 9);
         let _ = std::fs::remove_dir_all(&dir);
     }

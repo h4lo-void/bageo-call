@@ -813,11 +813,6 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
     <button type="button" class="btn sm" id="vpCardGet" data-i18n="vp_get"></button>
     <button type="button" class="btn sm ghost" id="vpCardLater" data-i18n="vp_not_now"></button>
   </div>
-  <div class="banner info" id="exAutoUndo" hidden role="status">
-    <span class="grow" id="exAutoUndoText"></span>
-    <button type="button" class="btn sm ghost" id="exAutoUndoBtn" data-i18n="undo"></button>
-    <button type="button" class="btn sm ghost" id="exAutoUndoClose" data-i18n="close"></button>
-  </div>
 
   <!-- ======================= Calls ======================= -->
   <section id="view-calls" data-view="calls">
@@ -1804,7 +1799,6 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
                 </select>
                 <div class="help" data-i18n="f_er_identity_h"></div></div>
             </div>
-            <div class="field" hidden><label class="sw"><input type="checkbox" data-k="extras_auto" data-t="bool" /><span><b data-i18n="f_extras_auto"></b><small data-i18n="f_extras_auto_h"></small></span></label></div>
             <div class="field" id="simLangField"><div class="lbl" id="lbl-simlang" data-i18n="f_simlang"></div>
               <div class="rows" id="simLangRows" data-k="sim_languages" data-t="simlangs" role="group" aria-labelledby="lbl-simlang"></div>
               <div class="pv" style="margin-top:0">
@@ -6170,48 +6164,6 @@ function exOpen(sel) {
 }
 $("exLangSearch").addEventListener("input", exRender);
 $("exLangClose").addEventListener("click", () => $("exLangDlg").close());
-async function exAutoCheck(settingsResp) {
-  if (!S || !S.extras_auto) return;
-  const navLangs = Array.from(navigator.languages || [navigator.language || ""]).filter(Boolean);
-  if (!navLangs.length) return;
-  const firstVisit = settingsResp && settingsResp.language_chosen === false && !qs.get("lang") && !store.get("pca.lang");
-  const primaryCore = matchLang(navLangs[0]);
-  try {
-    const res = await api("/extras/auto", jsonBody("POST", { browser: navLangs }));
-    if (!res || !Array.isArray(res.started) || !res.started.length) return;
-    for (let i = 0; i < 30; i++) {
-      await new Promise((r) => setTimeout(r, 1200));
-      const info = await api("/extras");
-      if (!info.running) break;
-    }
-    await exSyncMenus();
-    let artStarted = false;
-    for (const x of res.started) {
-      if (x && x.kind === "art" && x.region) {
-        delete TS_EXT_MISS[x.region];
-        artStarted = true;
-      }
-    }
-    if (artStarted) tsRender(false);
-    if (firstVisit && !primaryCore) {
-      const picked = res.started.find((x) => x.kind === "lang" && x.code);
-      if (picked && offeredLangs("console").some((x) => x.code === picked.code)) {
-        const prev = lang;
-        if (await chooseLang(picked.code, true)) {
-          const info = LANG_INFO[picked.code];
-          $("exAutoUndoText").textContent = t("ex_switched", { lang: (info && info.native) || picked.code });
-          $("exAutoUndo").hidden = false;
-          $("exAutoUndoBtn").onclick = async () => {
-            await chooseLang(prev, true);
-            store.set("pca.lang", prev);
-            $("exAutoUndo").hidden = true;
-          };
-          $("exAutoUndoClose").onclick = () => { $("exAutoUndo").hidden = true; };
-        }
-      }
-    }
-  } catch (_) {}
-}
 const regionOfCountry = (cc) => (cc && packRegions && packRegions.find((r) => Array.isArray(r.countries) && r.countries.includes(cc))) || null;
 const regionNamers = {};
 // A country's name in one language ("" when the browser has none for it).

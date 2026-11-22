@@ -3312,11 +3312,6 @@ fn parse_ai_answer(body: &str) -> Result<Vec<Draft>> {
     }
 }
 
-/// Have Gemini ([`AI_MODEL`]) list the contacts in a file.
-pub async fn ai_extract(http: &reqwest::Client, api_key: &str, input: &AiInput) -> Result<Vec<Draft>> {
-    ai_extract_at(http, GEMINI_BASE, api_key, input).await
-}
-
 async fn ai_extract_at(http: &reqwest::Client, base: &str, key: &str, input: &AiInput) -> Result<Vec<Draft>> {
     let url = format!("{}/v1beta/models/{AI_MODEL}:generateContent", base.trim_end_matches('/'));
     let mut strict = true;

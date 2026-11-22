@@ -30,7 +30,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use bageo_packs::extras::{
-    art_file_name, check_art, lang_file_name, parse_extras_index, ExtrasArtRef, ExtrasIndex, EXTRAS_INDEX_FILE, MAX_ART_BYTES,
+    art_file_name, check_art, parse_extras_index, ExtrasArtRef, ExtrasIndex, EXTRAS_INDEX_FILE, MAX_ART_BYTES,
     MAX_INDEX_BYTES,
 };
 use bageo_packs::locales::lrule;
@@ -41,9 +41,8 @@ use serde_json::{json, Value};
 use crate::calls_http::{api_error, asset_response, token_ok_parts, unauthorized, CallsState, TokenQuery};
 use crate::console_i18n;
 use crate::locale::Ext;
-use crate::locales_store::{self, REVIEWED};
+use crate::locales_store;
 use crate::pack_update::{self, Fail, Source, Staged};
-use crate::packs_store;
 use crate::settings_store::RuntimeSettings;
 
 pub(crate) const INDEX_NAME: &str = EXTRAS_INDEX_FILE;
@@ -61,11 +60,6 @@ fn valid_code(s: &str) -> bool {
 /// Regions whose mascot art is shipped built into `calls.html`.
 pub(crate) const BUILTIN_ART_REGIONS: [&str; 9] = ["tw", "jp", "kr", "us", "de", "fr", "tr", "br", "gulf"];
 
-const AUTO_MAX_ITEMS: usize = 3;
-const AUTO_BROWSER_LIMIT: usize = 16;
-const ITEM_COOLDOWN: Duration = Duration::from_secs(6 * 3600);
-const INDEX_COOLDOWN: Duration = Duration::from_secs(10 * 60);
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum Target {
     Lang(Ext),
@@ -73,12 +67,6 @@ pub(crate) enum Target {
 }
 
 impl Target {
-    fn id_json(&self) -> Value {
-        match self {
-            Target::Lang(e) => json!({ "kind": "lang", "code": e.code() }),
-            Target::Art(r) => json!({ "kind": "art", "region": r }),
-        }
-    }
 
     fn label(&self) -> String {
         match self {
@@ -563,7 +551,6 @@ pub(crate) fn list_json_with(root: &Path, rt: &RuntimeSettings, out: Option<Outc
     let mut body = json!({
         "ok": true,
         "version": ix.as_ref().map_or(0, |x| x.version),
-        "extras_auto": rt.extras_auto,
         "running": RUNNING.load(Ordering::SeqCst),
         "langs": langs,
         "art": art,
@@ -680,204 +667,11 @@ struct AutoCooldowns {
     items: HashMap<Target, Instant>,
 }
 
-impl AutoCooldowns {
-    fn index_ready(&self, now: Instant) -> bool {
-        self.last_index_fetch.is_none_or(|t| now.saturating_duration_since(t) >= INDEX_COOLDOWN)
-    }
-
-    fn item_ready(&self, target: &Target, now: Instant) -> bool {
-        self.items.get(target).is_none_or(|t| now.saturating_duration_since(*t) >= ITEM_COOLDOWN)
-    }
-
-    fn record(&mut self, targets: &[Target], now: Instant) {
-        self.last_index_fetch = Some(now);
-        for t in targets {
-            self.items.insert(t.clone(), now);
-        }
-    }
-}
-
 static COOLDOWNS: LazyLock<Mutex<AutoCooldowns>> = LazyLock::new(|| Mutex::new(AutoCooldowns::default()));
 
 /// Clears the 10-minute index fetch cooldown when the user explicitly clicks "Check for updates".
 pub(crate) fn clear_index_cooldown() {
     COOLDOWNS.lock().unwrap_or_else(|e| e.into_inner()).last_index_fetch = None;
-}
-
-fn browser_to_ext(tag: &str) -> Option<Ext> {
-    let low = tag.trim().to_ascii_lowercase();
-    let base = low.split(['-', '_']).next().unwrap_or("");
-    if base.is_empty() {
-        return None;
-    }
-    if let Some(ext) = Ext::from_code(base) {
-        return Some(ext);
-    }
-    let norm = match base {
-        "iw" => "he",
-        "in" => "id",
-        "ji" => "yi",
-        "no" => "nb",
-        _ => return None,
-    };
-    Ext::from_code(norm)
-}
-
-fn plan_auto(
-    rt: &RuntimeSettings,
-    pack: &packs_store::Table,
-    root: &Path,
-    browser: &[String],
-    lang_have: &dyn Fn(Ext) -> bool,
-    cooldowns: &AutoCooldowns,
-    now: Instant,
-) -> Vec<Target> {
-    if !rt.extras_auto || !cooldowns.index_ready(now) {
-        return Vec::new();
-    }
-    let mut out = Vec::new();
-    let mut push = |t: Target| {
-        if out.len() < AUTO_MAX_ITEMS && !out.contains(&t) && cooldowns.item_ready(&t, now) {
-            out.push(t);
-        }
-    };
-
-    // 1. Non-core languages configured in settings, ordered: call -> notify -> SIMs.
-    let mut sim_langs: Vec<&str> = rt.sim_languages.values().map(String::as_str).collect();
-    sim_langs.sort_unstable();
-    for raw in std::iter::once(rt.language.as_str())
-        .chain(std::iter::once(rt.notify_language.as_str()))
-        .chain(sim_langs)
-    {
-        if let Some(ext) = Ext::from_code(&raw.trim().to_ascii_lowercase()) {
-            if !lang_have(ext) {
-                push(Target::Lang(ext));
-            }
-        }
-    }
-
-    // 2. First matching browser tag in Ext not yet downloaded.
-    if let Some(ext) = browser
-        .iter()
-        .take(AUTO_BROWSER_LIMIT)
-        .filter_map(|tag| browser_to_ext(tag))
-        .find(|&ext| !lang_have(ext))
-    {
-        push(Target::Lang(ext));
-    }
-
-    // 3. Home country's region art if locally reviewed and not built into the page.
-    let home = rt.home_country.trim().to_ascii_lowercase();
-    if !home.is_empty() {
-        if let Some(r) = pack.region_of_country(&home) {
-            if r.status == REVIEWED
-                && r.code != "default"
-                && !BUILTIN_ART_REGIONS.contains(&r.code.as_str())
-                && read_installed_art(root, &r.code).is_none()
-            {
-                push(Target::Art(r.code.clone()));
-            }
-        }
-    }
-
-    out
-}
-
-async fn run_auto_batch<F, H>(
-    client: reqwest::Client,
-    src: Source,
-    root: PathBuf,
-    targets: Vec<Target>,
-    hold: H,
-    mut apply_lang: F,
-) where
-    H: Send + 'static,
-    F: FnMut(&Path, Ext, u64) -> Result<(), Vec<Issue>> + Send + 'static,
-{
-    let _hold = hold;
-    let Ok((text, ix, hops)) = fetch_index_step(&client, &src).await else {
-        return;
-    };
-    let mut any_ok = false;
-    for target in &targets {
-        let res = match download_entry(&client, &src, &hops, &ix, &root, target).await {
-            Ok((staged, meta)) => {
-                let dir = root.clone();
-                let res = match meta {
-                    StagedTarget::Lang { ext, version, bytes } => apply_lang(staged.path(), ext, version).map(|_| bytes).map_err(|i| map_lang_issues(&i)),
-                    StagedTarget::Art { region, version, .. } => install_art_file(&dir, staged.path(), &region, version),
-                };
-                drop(staged);
-                res
-            }
-            Err(Stop::Fail(f)) => Err(f),
-            Err(Stop::NotListed) => continue,
-        };
-        match res {
-            Ok(n) => {
-                any_ok = true;
-                tracing::info!("auto extra {}: installed ({n} bytes)", target.label());
-            }
-            Err(Fail::Restart) => {
-                tracing::info!("auto extra stopped: restart limit reached");
-                break;
-            }
-            Err(Fail::UpToDate) => {}
-            Err(f) => {
-                tracing::warn!("auto extra {}: {}", target.label(), f.detail());
-            }
-        }
-    }
-    if any_ok {
-        save_index(&root, &text, &ix);
-    }
-}
-
-#[derive(Deserialize)]
-struct AutoRequest {
-    #[serde(default)]
-    browser: Vec<String>,
-}
-
-/// `POST /api/extras/auto {"browser": [...]}`: queues up to 3 missing extras in the background.
-async fn auto(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, body: Bytes) -> Response {
-    if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
-        return unauthorized();
-    }
-    if !pack_update::json_request(&headers) {
-        return pack_update::json_required();
-    }
-    let Ok(req) = serde_json::from_slice::<AutoRequest>(&body) else {
-        return api_error(StatusCode::BAD_REQUEST, "bad_request", "expected {\"browser\": [...]}");
-    };
-    let rt = state.settings_store.snapshot();
-    let root = extras_root();
-    let pack = packs_store::current();
-    let now = Instant::now();
-    {
-        let mut guard = COOLDOWNS.lock().unwrap_or_else(|e| e.into_inner());
-        let lang_have = |ext: Ext| locales_store::single_extra_version(&root, ext) > 0;
-        let list = plan_auto(&rt, pack, &root, &req.browser, &lang_have, &guard, now);
-        if !list.is_empty() {
-            let Some(running) = Running::take() else {
-                return Json(json!({ "ok": true, "started": [] })).into_response();
-            };
-            guard.record(&list, now);
-            let started: Vec<Value> = list.iter().map(Target::id_json).collect();
-            if let Ok(client) = pack_update::client_with(TOTAL_TIMEOUT) {
-                let store = state.settings_store.clone();
-                tokio::spawn(async move {
-                    run_auto_batch(client, Source::official(), root, list, running, |staged, ext, ver| {
-                        locales_store::install_extra_lang(staged, ext, Some(ver)).map(|_| ())
-                    })
-                    .await;
-                    store.snapshot().apply_globals();
-                });
-            }
-            return Json(json!({ "ok": true, "started": started })).into_response();
-        }
-    }
-    Json(json!({ "ok": true, "started": [] })).into_response()
 }
 
 // ---- public read-only static endpoints --------------------------------------------------------
@@ -917,7 +711,6 @@ pub fn router() -> Router<CallsState> {
         .route("/api/extras", get(list))
         .route("/api/extras/download", post(download))
         .route("/api/extras/delete", post(delete))
-        .route("/api/extras/auto", post(auto))
         .route("/extras/art/{file}", get(serve_art))
         .route("/i18n/desktop/{file}", get(i18n_desktop_file))
 }
@@ -925,6 +718,7 @@ pub fn router() -> Router<CallsState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bageo_packs::extras::lang_file_name;
     use crate::pack_update::tests::{tmp, Reply, Server};
     use flate2::write::GzEncoder;
     use flate2::Compression;
@@ -1240,80 +1034,6 @@ mod tests {
         let (tbl2, removed) = locales_store::remove_extra_lang_counted(&count, &packs, th).unwrap();
         assert!(removed);
         assert_eq!(tbl2.stage(th), locales_store::Stage::Call);
-    }
-
-    #[tokio::test]
-    async fn auto_plans_three_items_respects_cooldown_and_downloads() {
-        let d = tmp();
-        let packs_dir = d.0.join("packs");
-        let root = locales_store::extras_dir(&packs_dir);
-        let state = crate::calls_http::tests::quick_state(&d.0);
-        let rt = state
-            .settings_store
-            .apply_patch(&json!({
-                "language": "th",
-                "notify_language": "it",
-                "home_country": "vn",
-                "extras_auto": true
-            }))
-            .unwrap();
-        let pack = packs_store::builtin();
-        let mut cd = AutoCooldowns::default();
-        let t0 = Instant::now();
-        let browser = vec!["vi-VN".to_string(), "en-US".to_string()];
-        let planned = plan_auto(&rt, pack, &root, &browser, &|_| false, &cd, t0);
-        assert_eq!(
-            planned,
-            vec![
-                Target::Lang(Ext::from_code("th").unwrap()),
-                Target::Lang(Ext::from_code("it").unwrap()),
-                Target::Lang(Ext::from_code("vi").unwrap()),
-            ],
-            "capped at 3 highest-priority items"
-        );
-        cd.record(&planned, t0);
-        assert!(plan_auto(&rt, pack, &root, &browser, &|_| false, &cd, t0 + Duration::from_secs(60)).is_empty(), "10m index cooldown");
-        // After index cooldown expires, previously tried items still wait 6h, so 4th candidate (home_country art) runs if locally reviewed.
-        let planned2 = plan_auto(&rt, pack, &root, &browser, &|_| false, &cd, t0 + INDEX_COOLDOWN + Duration::from_secs(1));
-        if pack.region_of_country("vn").is_some_and(|r| r.status == REVIEWED && !BUILTIN_ART_REGIONS.contains(&r.code.as_str())) {
-            assert_eq!(planned2, vec![Target::Art("vn".into())]);
-        }
-
-        // Run actual batch install with local server.
-        let th_gz = sample_lang_gz("th", 2026112101, true, false);
-        let it_gz = sample_lang_gz("it", 2026112101, true, false);
-        let vi_gz = sample_lang_gz("vi", 2026112101, false, false);
-        let ix = index_for(
-            2026112101,
-            &[
-                ("th", 2026112101, &th_gz, "console"),
-                ("it", 2026112101, &it_gz, "console"),
-                ("vi", 2026112101, &vi_gz, "notify"),
-            ],
-            &[],
-        );
-        let srv = release(
-            ix,
-            vec![
-                (lang_file_name("th"), th_gz),
-                (lang_file_name("it"), it_gz),
-                (lang_file_name("vi"), vi_gz),
-            ],
-        );
-        let c = Arc::new(AtomicUsize::new(0));
-        let pd = packs_dir.clone();
-        run_auto_batch(
-            pack_update::client_with(TOTAL_TIMEOUT).unwrap(),
-            srv.source(),
-            root.clone(),
-            planned,
-            (),
-            move |staged, ext, ver| locales_store::install_extra_lang_counted(&c, &pd, staged, ext, Some(ver)).map(|_| ()),
-        )
-        .await;
-        assert_eq!(locales_store::single_extra_version(&root, Ext::from_code("th").unwrap()), 2026112101);
-        assert_eq!(locales_store::single_extra_version(&root, Ext::from_code("it").unwrap()), 2026112101);
-        assert_eq!(locales_store::single_extra_version(&root, Ext::from_code("vi").unwrap()), 2026112101);
     }
 
     #[tokio::test]

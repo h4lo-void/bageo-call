@@ -86,76 +86,6 @@ pub fn peek_ai_task_id(serial: &str) -> Option<String> {
     peek_task(serial)
 }
 
-/// Best-effort `ControlAIConversation` / `ServerPushText` for an armed AI task.
-pub fn spawn_server_push_text(
-    settings: &TrtcSettings,
-    http: reqwest::Client,
-    serial: &str,
-    text: &str,
-) {
-    let text = text.trim();
-    if text.is_empty() {
-        return;
-    }
-    if !settings.cloud_api_ready() || settings.api_client(http.clone()).is_none() {
-        return;
-    }
-    let serial = serial.to_string();
-    let text = text.to_string();
-    let settings = settings.clone();
-    tokio::spawn(async move {
-        let _ = push_ai_line_await(&settings, http, &serial, &text).await;
-    });
-}
-
-/// Await StartAI TaskId then speak via TRTC clone TTS (`ServerPushText`).
-///
-/// Used for DTMF1 hello / silence-nudge when AI conversation is live.
-/// Returns `true` only if Cloud API accepted the push (caller must **not**
-/// double-play local WAV/Piper on success — downlink carries TTS).
-pub async fn push_ai_line_await(
-    settings: &TrtcSettings,
-    http: reqwest::Client,
-    serial: &str,
-    text: &str,
-) -> bool {
-    let text = text.trim();
-    if text.is_empty() {
-        return false;
-    }
-    let Some(client) = settings.api_client(http) else {
-        return false;
-    };
-    if !settings.cloud_api_ready() {
-        return false;
-    }
-    // Wait for StartAIConversation (spawned on enter_ai_talk) to publish TaskId.
-    // Faster poll (50ms) + up to ~12s — TaskId often lands during DTMF1 wait.
-    for _ in 0..240 {
-        if peek_task(serial).is_some() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    let Some(task_id) = peek_task(serial) else {
-        warn!("TRTC ServerPushText skipped serial={serial} (no TaskId yet)");
-        return false;
-    };
-    match client.control_server_push_text(&task_id, text, true).await {
-        Ok(()) => {
-            info!(
-                "TRTC ServerPushText ok serial={serial} text_chars={} task_ready=1",
-                text.chars().count()
-            );
-            true
-        }
-        Err(e) => {
-            warn!("TRTC ServerPushText failed serial={serial} err={e:#}");
-            false
-        }
-    }
-}
-
 fn remember_task(serial: &str, task_id: String) {
     if let Ok(mut g) = ai_task_map().lock() {
         g.insert(serial.to_string(), task_id);
@@ -187,27 +117,6 @@ pub fn list_joined_room_ids() -> Vec<String> {
         .lock()
         .map(|g| g.iter().cloned().collect())
         .unwrap_or_default()
-}
-
-/// Stop AI + close sidecar for every known serial (ai TaskId map + joined rooms).
-/// Used by `/calls/api/sim/force_leave` to stop leftover billed voice minutes.
-pub fn force_leave_known(
-    settings: &TrtcSettings,
-    http: reqwest::Client,
-    reason: &str,
-) -> Vec<String> {
-    let mut serials: HashSet<String> = list_ai_task_serials().into_iter().collect();
-    for room in list_joined_room_ids() {
-        if let Some(s) = room.strip_prefix("call_") {
-            serials.insert(s.to_string());
-        }
-    }
-    let mut out: Vec<String> = serials.into_iter().collect();
-    out.sort();
-    for s in &out {
-        make_bridge(settings, http.clone()).leave(s, reason);
-    }
-    out
 }
 
 /// Rooms where sidecar reported `joined=true` (process-wide; survives `make_bridge`).
@@ -388,42 +297,6 @@ pub fn push_uplink_ws(room_id: &str, pcm: &[u8]) -> bool {
         return false;
     }
     link.uplink_tx.send(pcm.to_vec()).is_ok()
-}
-
-/// Prefer WS downlink buffer; empty if none.
-pub fn pull_downlink_ws(room_id: &str, max_bytes: usize) -> Vec<u8> {
-    if max_bytes == 0 {
-        return Vec::new();
-    }
-    let Ok(g) = pcm_ws_map().lock() else {
-        return Vec::new();
-    };
-    let Some(link) = g.get(room_id) else {
-        return Vec::new();
-    };
-    let Ok(mut q) = link.downlink.lock() else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    while out.len() < max_bytes {
-        let Some(head) = q.front() else {
-            break;
-        };
-        let need = max_bytes - out.len();
-        if head.len() <= need {
-            let chunk = q.pop_front().unwrap();
-            out.extend_from_slice(&chunk);
-        } else {
-            out.extend_from_slice(&head[..need]);
-            let rest = head[need..].to_vec();
-            q.pop_front();
-            if !rest.is_empty() {
-                q.push_front(rest);
-            }
-            break;
-        }
-    }
-    out
 }
 
 /// Ensure PCM WS when settings + room are known (call after open_session joined=true).
@@ -1351,53 +1224,6 @@ pub fn make_bridge(settings: &TrtcSettings, http: reqwest::Client) -> Box<dyn Tr
     }
 }
 
-/// Async PCM downlink pull for `write_tts` / phone WS.
-/// Prefer WS buffer (push from sidecar); HTTP only as fallback.
-pub async fn pull_downlink_http(
-    settings: &TrtcSettings,
-    http: &reqwest::Client,
-    room_id: &str,
-    max_bytes: usize,
-) -> Result<Vec<u8>> {
-    if !room_media_live(room_id) {
-        return Ok(Vec::new());
-    }
-    let ws = pull_downlink_ws(room_id, max_bytes);
-    if !ws.is_empty() {
-        return Ok(ws);
-    }
-    // Keep WS armed while room is live.
-    ensure_pcm_ws_from_settings(settings, room_id);
-    let ws2 = pull_downlink_ws(room_id, max_bytes);
-    if !ws2.is_empty() {
-        return Ok(ws2);
-    }
-    let Some(base) = settings.bridge_base_url() else {
-        return Ok(Vec::new());
-    };
-    let url = format!(
-        "{base}/pcm/downlink?room_id={}&max={max_bytes}",
-        urlencoding_room(room_id)
-    );
-    match http
-        .get(&url)
-        .timeout(Duration::from_millis(80))
-        .send()
-        .await
-    {
-        Ok(resp) if resp.status().is_success() => {
-            Ok(resp.bytes().await.map(|b| b.to_vec()).unwrap_or_default())
-        }
-        Ok(_) => Ok(Vec::new()),
-        Err(e) => {
-            if !e.is_timeout() {
-                warn!("TRTC pcm downlink failed err={e:#}");
-            }
-            Ok(Vec::new())
-        }
-    }
-}
-
 /// Sidecar `/health` booleans for agent `/health` (never secrets / UserSig).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BridgeHealthProbe {
@@ -1454,11 +1280,6 @@ pub async fn probe_bridge_health(
             media_live: any_room_joined(),
         },
     }
-}
-
-/// Probe sidecar `/health` reachable (boolean only — never secrets).
-pub async fn probe_bridge_ready(settings: &TrtcSettings, http: &reqwest::Client) -> bool {
-    probe_bridge_health(settings, http).await.ready
 }
 
 #[cfg(test)]

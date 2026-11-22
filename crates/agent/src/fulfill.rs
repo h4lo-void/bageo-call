@@ -564,7 +564,7 @@ pub async fn voicemail_callback_for_call(
                     errand: false,
                 });
             }
-            Some(CallbackPhase::Queued | CallbackPhase::Dialing | CallbackPhase::Ringing) => {}
+            Some(CallbackPhase::Queued | CallbackPhase::Dialing) => {}
             // Failed, over, or gone: not this call, and not any later one.
             _ => {
                 take_call_back(&task_id);
@@ -590,7 +590,7 @@ pub async fn voicemail_callback_dialing(control: &ControlRegistry, serial: &str,
     };
     matches!(
         control.callback_session_for(&task_id, "").await.map(|s| s.phase),
-        Some(CallbackPhase::Queued | CallbackPhase::Dialing | CallbackPhase::Ringing | CallbackPhase::Connected)
+        Some(CallbackPhase::Queued | CallbackPhase::Dialing | CallbackPhase::Connected)
     )
 }
 
