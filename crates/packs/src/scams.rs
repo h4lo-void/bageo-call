@@ -62,7 +62,7 @@ struct SrcKeywords {
     own_matter: Vec<Value>,
 }
 
-fn valid_version(v: u64, now_day: i64) -> bool {
+pub(crate) fn valid_version(v: u64, now_day: i64) -> bool {
     if !(2_020_010_100..10_000_000_000).contains(&v) {
         return false;
     }

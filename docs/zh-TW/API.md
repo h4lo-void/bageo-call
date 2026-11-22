@@ -706,11 +706,13 @@ Content-Type: application/json
 
 三個路由用來查看和更新 AI 參考的各國生活習慣資料，以及核心九種語言以外的翻譯，對應控制台設定「更多選項」裡的「當地資料」。只有呼叫 `POST …/packs/update` 時 Bageo 才會連線，不會自己檢查；連線時直接從 GitHub 公開資料庫 `h4lo-void/bageo-packs` 最新的 Release 下載清單、資料檔，有較新的翻譯時再下載翻譯檔（`bageo-locales.json.gz`），不會送出其他資料。每個檔各自檢查，壞掉的那個被拒收，不影響另一個。它們遵循控制台的密碼規則，兩個 `POST` 也要遵循上面的 `Content-Type: application/json` 規則。
 
+同一次檢查在 Release 有較新的提示詞時，也會下載提示詞檔（`bageo-prompts.json.gz`，最多 512 KiB）：裡面只有跟 Bageo 內建不同的提示詞，下一通電話起使用。每段提示詞各自跟內建同一個 key 的文字比對（`{佔位符}` 相同、頭尾的空白與換行相同、長度最多是原本的兩倍或多 400 字、不能有控制字元、方向控制字元或看不見的字元）；不合的那段沿用內建文字，其他段照常使用。鎖定的提示詞是 Bageo 一定要守的規則，只有新版 Bageo 才會改。
+
 | 方法與路徑 | 內容 |
 |---|---|
-| `GET /calls/api/packs/update` | 目前使用的資料：`{version, date, builtin, regions, locales: {version, date, builtin, languages}, voice_list_kept, running, last_check}`。`last_check` 另有 `pack_result` 和 `locales_result`。 |
+| `GET /calls/api/packs/update` | 目前使用的資料：`{version, date, builtin, regions, locales: {version, date, builtin, languages}, prompts: {version, date, builtin, texts}, voice_list_kept, running, last_check}`。`prompts.texts` 是目前跟內建不同的提示詞段數。`last_check` 另有 `pack_result`、`locales_result`、`prompts_result` 和 `prompts_version`。 |
 | `POST /calls/api/packs/update` | Body `{}`。馬上檢查有沒有新版，有就安裝：欄位同 `GET`，另加 `result`（任一個檔更新了就是 `updated`）。 |
-| `POST /calls/api/packs/restore` | Body `{}`。刪掉下載的資料與翻譯，以及下載的語音清單（`voice_list_kept`）和擴充包清單（`extras_index_kept`），改回 Bageo 內建的版本：欄位同上，`result` 是 `restored`（正在檢查時是 `busy`；有檔案刪不掉時是 `io`，刪不掉的那個繼續使用）。 |
+| `POST /calls/api/packs/restore` | Body `{}`。刪掉下載的資料、翻譯與提示詞，以及下載的語音清單（`voice_list_kept`）和擴充包清單（`extras_index_kept`），改回 Bageo 內建的版本：欄位同上，`result` 是 `restored`（正在檢查時是 `busy`；有檔案刪不掉時是 `io`，刪不掉的那個繼續使用）。 |
 | `GET /calls/api/extras` | 全部 70 種擴充語言與已知地區插圖清單：`{ok, version, running, langs, art}`。 |
 | `POST /calls/api/extras/download` | Body `{"lang": "<code>"}` 或 `{"art": "<region>"}`。直接從 GitHub 下載並安裝一個語言擴充包或地區插圖檔，回 `{..., result}`。 |
 | `POST /calls/api/extras/delete` | Body `{"lang": "<code>"}` 或 `{"art": "<region>"}`。刪除已下載的擴充檔（設定仍在使用時回 `in_use`，其餘為 `removed`、`not_listed`、`restart`）。 |

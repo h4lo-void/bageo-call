@@ -706,11 +706,13 @@ Content-Type: application/json
 
 三个路由用来查看和更新 AI 参考的各国生活习惯数据，以及核心九种语言以外的翻译，对应控制台设置“更多选项”里的“当地数据”。只有调用 `POST …/packs/update` 时 Bageo 才会联网，不会自己检查；联网时直接从 GitHub 公开数据库 `h4lo-void/bageo-packs` 最新的 Release 下载清单、数据文件，有更新的翻译时再下载翻译文件（`bageo-locales.json.gz`），不会发送其他数据。每个文件各自检查，坏掉的那个被拒收，不影响另一个。它们遵循控制台的密码规则，两个 `POST` 也要遵循上面的 `Content-Type: application/json` 规则。
 
+同一次检查在 Release 有更新的提示词时，也会下载提示词文件（`bageo-prompts.json.gz`，最多 512 KiB）：里面只有跟 Bageo 内置不同的提示词，下一通电话起使用。每段提示词各自跟内置同一个 key 的文字比对（`{占位符}` 相同、首尾的空白与换行相同、长度最多是原来的两倍或多 400 字、不能有控制字符、方向控制字符或看不见的字符）；不合的那段沿用内置文字，其他段照常使用。锁定的提示词是 Bageo 一定要守的规则，只有新版 Bageo 才会改。
+
 | 方法与路径 | 内容 |
 |---|---|
-| `GET /calls/api/packs/update` | 当前使用的数据：`{version, date, builtin, regions, locales: {version, date, builtin, languages}, voice_list_kept, running, last_check}`。`last_check` 另有 `pack_result` 和 `locales_result`。 |
+| `GET /calls/api/packs/update` | 当前使用的数据：`{version, date, builtin, regions, locales: {version, date, builtin, languages}, prompts: {version, date, builtin, texts}, voice_list_kept, running, last_check}`。`prompts.texts` 是当前跟内置不同的提示词段数。`last_check` 另有 `pack_result`、`locales_result`、`prompts_result` 和 `prompts_version`。 |
 | `POST /calls/api/packs/update` | Body `{}`。马上检查有没有新版，有就安装：字段同 `GET`，另加 `result`（任一个文件更新了就是 `updated`）。 |
-| `POST /calls/api/packs/restore` | Body `{}`。删掉下载的数据和翻译，以及下载的语音列表（`voice_list_kept`）和扩展包列表（`extras_index_kept`），改回 Bageo 内置的版本：字段同上，`result` 是 `restored`（正在检查时是 `busy`；有文件删不掉时是 `io`，删不掉的那个继续使用）。 |
+| `POST /calls/api/packs/restore` | Body `{}`。删掉下载的数据、翻译和提示词，以及下载的语音列表（`voice_list_kept`）和扩展包列表（`extras_index_kept`），改回 Bageo 内置的版本：字段同上，`result` 是 `restored`（正在检查时是 `busy`；有文件删不掉时是 `io`，删不掉的那个继续使用）。 |
 | `GET /calls/api/extras` | 全部 70 种扩展语言与已知地区插图列表：`{ok, version, running, langs, art}`。 |
 | `POST /calls/api/extras/download` | Body `{"lang": "<code>"}` 或 `{"art": "<region>"}`。直接从 GitHub 下载并安装一个语言扩展包或地区插图文件，返回 `{..., result}`。 |
 | `POST /calls/api/extras/delete` | Body `{"lang": "<code>"}` 或 `{"art": "<region>"}`。删除已下载的扩展文件（设置仍在使用时返回 `in_use`，其余为 `removed`、`not_listed`、`restart`）。 |

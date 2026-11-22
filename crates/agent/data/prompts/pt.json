@@ -1,6 +1,7 @@
 {
   "format": 1,
   "lang": "pt",
+  "locked": ["short_text_hold"],
   "texts": {
     "short_text_language": "Fale em português coloquial, como se fala ao telefone.",
     "short_text_hold": "Dinheiro, transferências, contratos, senhas, códigos, dados pessoais, encontros ou horários: não aceite nada; desvie com leveza.",

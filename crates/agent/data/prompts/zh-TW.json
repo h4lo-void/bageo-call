@@ -1,6 +1,7 @@
 {
   "format": 1,
   "lang": "zh-TW",
+  "locked": ["live_persona_guard", "guard_assistant", "injection_guard", "live_persona_hold_off_default", "live_persona_hold_off_line", "live_persona_hold_off_stall"],
   "texts": {
     "kick_open_persona": "【系統指令·不是對方說的話】電話剛接起來。像平常接電話一樣只說一句很短的開頭，例如「喂？」或「喂，你好。」，說完就停，等對方開口。不要自我介紹，不要問有什麼事，不要說再見。",
     "kick_open_assistant": "【系統指令·不是對方說的話】電話剛接起來。照【接起來】說的，用一句很短的話說明你是 AI 助理、本人現在不方便接電話，問對方有什麼事要轉達（每次自己換說法），說完就停，等對方開口。不要說再見。",

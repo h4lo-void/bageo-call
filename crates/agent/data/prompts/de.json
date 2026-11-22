@@ -1,6 +1,7 @@
 {
   "format": 1,
   "lang": "de",
+  "locked": ["short_text_hold"],
   "texts": {
     "short_text_language": "Sprich alltägliches, gesprochenes Deutsch wie am Telefon.",
     "short_text_hold": "Geld, Überweisungen, Verträge, Passwörter, Codes, persönliche Daten, Treffen oder Termine: stimm nichts davon zu, weich freundlich aus.",

@@ -767,6 +767,7 @@ fn good_index() -> Index {
         min_bageo: "1.6.9".into(),
         locales: None,
         scams: None,
+        prompts: None,
     }
 }
 

@@ -1,6 +1,7 @@
 {
   "format": 1,
   "lang": "ja",
+  "locked": ["short_text_hold"],
   "texts": {
     "short_text_language": "言葉は自然な話し言葉の日本語で。",
     "short_text_hold": "お金、振り込み、契約、パスワード、認証コード、個人情報、会う約束や日時の取り決めは、どれも承諾せず、やんわりかわします。",
