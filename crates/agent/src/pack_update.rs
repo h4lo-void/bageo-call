@@ -33,6 +33,10 @@
 //!   in use is not downloaded. Either file failing costs only that file.
 //! - "Restore the built-in version" puts both back; it fails when either
 //!   installed file cannot be deleted.
+//! - The same check fetches the changed prompt texts (bageo-prompts.json.gz)
+//!   the index's prompts entry names, by the same rules (at most 512 KiB,
+//!   [crate::prompt_book]); each text in it is checked on its own and a
+//!   locked one is never replaced. "Restore" puts the built-in texts back.
 //!
 //! The voice packs ([crate::voice_packs]) come from the same releases through
 //! the same pieces: [Source], [open], [fetch_index], [download_checked] and
@@ -50,7 +54,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use bageo_packs::locales::{check_locales_ref, LOCALES_FORMAT};
-use bageo_packs::{check_scams_ref, parse_index, Issue, LocalesRef, FORMAT, MAX_BUNDLE_BYTES, SCAMS_FORMAT};
+use bageo_packs::{check_prompts_ref, check_scams_ref, parse_index, Issue, LocalesRef, FORMAT, MAX_BUNDLE_BYTES, PROMPTS_FORMAT, SCAMS_FORMAT};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use url::{Host, Url};
@@ -567,6 +571,34 @@ where
     apply(&staged.path, r.version).map_err(|i| bad(first_issue(&i)))
 }
 
+/// The prompt texts the index's prompts entry names, when they are newer
+/// than in_use. No entry: nothing to do.
+async fn prompts_step<F>(client: &reqwest::Client, src: &Source, f: &Fetched, packs: &Path, in_use: u64, apply: F) -> Result<u64, Fail>
+where
+    F: FnOnce(&Path, u64) -> Result<u64, Vec<Issue>>,
+{
+    let Some(entry) = f.value.get("prompts").filter(|v| !v.is_null()) else { return Err(Fail::UpToDate) };
+    if let Some(n) = entry.get("format").and_then(Value::as_u64) {
+        if n > u64::from(PROMPTS_FORMAT) {
+            return Err(Fail::UpdateBageo(format!("prompts format {n} is newer than this Bageo reads ({PROMPTS_FORMAT})")));
+        }
+    }
+    let r: LocalesRef = serde_json::from_value(entry.clone()).map_err(|e| bad(format!("the prompts entry: {e}")))?;
+    if r.version <= in_use {
+        return Err(Fail::UpToDate);
+    }
+    if !bageo_at_least(&r.min_bageo) {
+        return Err(Fail::UpdateBageo(format!("the prompt texts need Bageo {} or newer", r.min_bageo)));
+    }
+    let issues = check_prompts_ref(&r);
+    if !issues.is_empty() {
+        return Err(bad(first_issue(&issues)));
+    }
+    let url = src.pack_url(&f.hops, &r.file).ok_or_else(|| bad("the index names a path, not a file"))?;
+    let staged = download(client, src, url, r.bytes, &r.sha256, packs, crate::prompt_book::incoming_path(packs)).await?;
+    apply(&staged.path, r.version).map_err(|i| bad(first_issue(&i)))
+}
+
 /// Downloads url into a new temporary file: exactly bytes long with this
 /// SHA-256, counted and hashed as it comes in.
 async fn download(client: &reqwest::Client, src: &Source, url: Url, bytes: u64, sha256: &str, packs: &Path, path: PathBuf) -> Result<Staged, Fail> {
@@ -613,12 +645,12 @@ pub(crate) async fn check_now() -> Outcome {
     let Some(running) = Running::take() else { return Outcome::Busy };
     let task = tokio::spawn(async move {
         let _running = running;
-        let (region, loc, scams) = check_official().await;
+        let (region, loc, scams, prompts) = check_official().await;
         let version = match region {
             Outcome::Updated(v) => v,
             _ => packs_store::current().version,
         };
-        let outcome = combine(combine(region, loc), scams);
+        let outcome = combine(combine(combine(region, loc), scams), prompts);
         *LAST.lock().unwrap_or_else(|e| e.into_inner()) = Some(json!({
             "at": chrono::Utc::now().to_rfc3339(),
             "result": outcome.code(),
@@ -628,32 +660,36 @@ pub(crate) async fn check_now() -> Outcome {
             "locales_version": locales_store::current().version,
             "scams_result": scams.code(),
             "scams_version": crate::scam_db::current_version(),
+            "prompts_result": prompts.code(),
+            "prompts_version": crate::prompt_book::current_version(),
         }));
         outcome
     });
     task.await.unwrap_or(Outcome::Offline)
 }
 
-async fn check_official() -> (Outcome, Outcome, Outcome) {
+async fn check_official() -> (Outcome, Outcome, Outcome, Outcome) {
     let client = match client() {
         Ok(c) => c,
         Err(e) => {
             tracing::warn!("local data pack update: no HTTP client ({e})");
-            return (Outcome::Offline, Outcome::Offline, Outcome::Offline);
+            return (Outcome::Offline, Outcome::Offline, Outcome::Offline, Outcome::Offline);
         }
     };
     let apply: Option<Apply> = (packs_store::installs_left() > 0).then_some(&packs_store::install_file as Apply);
     let loc_apply: Option<Apply> = locales_store::can_install().then_some(&locales_store::install_file as Apply);
     let scam_apply: Option<Apply> = (crate::scam_db::installs_left() > 0).then_some(&crate::scam_db::install_file as Apply);
+    let prompts_apply: Option<Apply> = (crate::prompt_book::installs_left() > 0).then_some(&crate::prompt_book::install_file as Apply);
     let packs = packs_store::installed_dir();
     let in_use = packs_store::current().version;
     let loc_in_use = locales_store::current().version;
     let scam_in_use = crate::scam_db::current_version();
+    let prompts_in_use = crate::prompt_book::current_version();
     let src = Source::official();
     let work = async {
         let f = match fetch_pack_index(&client, &src).await {
             Ok(f) => f,
-            Err(e) => return (Err(e.clone()), Err(e.clone()), Err(e)),
+            Err(e) => return (Err(e.clone()), Err(e.clone()), Err(e.clone()), Err(e)),
         };
         let region = match apply {
             Some(a) => region_step(&client, &src, &f, &packs, in_use, |p, v| a(p, v)).await,
@@ -667,19 +703,24 @@ async fn check_official() -> (Outcome, Outcome, Outcome) {
             Some(a) => scams_step(&client, &src, &f, &packs, scam_in_use, |p, v| a(p, v)).await,
             None => Err(Fail::Restart),
         };
-        (region, loc, sc)
+        let pr = match prompts_apply {
+            Some(a) => prompts_step(&client, &src, &f, &packs, prompts_in_use, |p, v| a(p, v)).await,
+            None => Err(Fail::Restart),
+        };
+        (region, loc, sc, pr)
     };
-    let (region, loc, sc) = match tokio::time::timeout(TOTAL_TIMEOUT, work).await {
+    let (region, loc, sc, pr) = match tokio::time::timeout(TOTAL_TIMEOUT, work).await {
         Ok(r) => r,
         Err(_) => {
             let f = Fail::Offline(format!("no answer within {} s", TOTAL_TIMEOUT.as_secs()));
-            (Err(f.clone()), Err(f.clone()), Err(f))
+            (Err(f.clone()), Err(f.clone()), Err(f.clone()), Err(f))
         }
     };
     (
         report("local data pack", in_use, region),
         report("translations", loc_in_use, loc),
         report("scam database", scam_in_use, sc),
+        report("prompt texts", prompts_in_use, pr),
     )
 }
 
@@ -706,16 +747,17 @@ pub(crate) fn restore_all(voices: &Path) -> &'static str {
         tracing::warn!("extras list: cannot delete the downloaded one ({e}); still in use");
         return Outcome::Io.code();
     }
-    tracing::info!("local data pack, translations, voice list and extras list: back to the built-in ones");
+    tracing::info!("local data pack, translations, scam database, prompt texts, voice list and extras list: back to the built-in ones");
     "restored"
 }
 
-/// Restores pack, translations and scam database; all are tried.
+/// Restores pack, translations, scam database and prompt texts; all are tried.
 fn restore_both() -> std::io::Result<()> {
     let pack = packs_store::restore_builtin();
     let loc = locales_store::restore_builtin();
     let sc = crate::scam_db::restore_builtin();
-    pack.and(loc).and(sc)
+    let pr = crate::prompt_book::restore_builtin();
+    pack.and(loc).and(sc).and(pr)
 }
 
 /// YYYYMMDDNN as YYYY-MM-DD ("" for the empty table).
@@ -748,6 +790,12 @@ fn status_json() -> Value {
             "date": version_date(crate::scam_db::current_version()),
             "builtin": crate::scam_db::builtin_in_use(),
             "countries": crate::scam_db::db().countries.len(),
+        },
+        "prompts": {
+            "version": crate::prompt_book::current_version(),
+            "date": version_date(crate::prompt_book::current_version()),
+            "builtin": crate::prompt_book::builtin_in_use(),
+            "texts": crate::prompt_book::changed_texts(),
         },
         // A downloaded voice list is kept: "Restore" puts the built-in one back too.
         "voice_list_kept": crate::voice_packs::kept_index(&crate::voice_packs::voices_root()),
@@ -1578,6 +1626,126 @@ pub(crate) mod tests {
         std::fs::remove_dir(&file).unwrap();
         restore_both().unwrap();
         assert!(packs_store::builtin_in_use() && locales_store::builtin_in_use());
+        let _ = std::fs::remove_dir_all(packs.parent().unwrap());
+    }
+
+    // ---- the prompt texts, downloaded with the pack ----
+
+    const PROMPTS: &str = "bageo-prompts.json.gz";
+
+    fn pv0() -> u64 {
+        crate::prompt_book::BUILTIN_VERSION
+    }
+
+    /// Changed texts in several languages.
+    const CHANGED: [(&str, &str, &str); 3] = [
+        ("ja", "short_text_language", "言葉はふだんの話し言葉の日本語で。"),
+        ("de", "short_text_language", "Sprich ganz normales, gesprochenes Deutsch wie am Telefon."),
+        ("en", "read_line", "Read this line exactly: \"{line}\""),
+    ];
+
+    fn prompts_entry(body: &[u8], version: u64) -> Value {
+        json!({"file": PROMPTS, "bytes": body.len(), "sha256": format!("{:x}", Sha256::digest(body)), "format": 1, "version": version, "min_bageo": "1.0.0"})
+    }
+
+    /// A release whose index names the prompt texts (and a pack not needed here).
+    fn prompts_release(entry: Option<Value>, prompts: Vec<u8>) -> Server {
+        let body = pack(v0(), |_| {});
+        let mut ix = index_for(&body, v0());
+        if let Some(e) = entry {
+            ix["prompts"] = e;
+        }
+        let index = serde_json::to_vec(&ix).unwrap();
+        Server::start(move |path| {
+            if path == LATEST {
+                Reply::Redirect(format!("{TAGGED}{INDEX_NAME}"))
+            } else if path == format!("{TAGGED}{INDEX_NAME}") {
+                Reply::Body(index.clone())
+            } else if path == format!("{TAGGED}{PROMPTS}") {
+                Reply::Body(prompts.clone())
+            } else {
+                Reply::NotFound
+            }
+        })
+    }
+
+    /// The prompts step the way the console's button runs it (this test's own data folder).
+    async fn run_prompts(src: &Source) -> Outcome {
+        let client = client().unwrap();
+        let in_use = crate::prompt_book::current_version();
+        let res = match fetch_pack_index(&client, src).await {
+            Ok(f) => prompts_step(&client, src, &f, &packs_store::installed_dir(), in_use, crate::prompt_book::install_file).await,
+            Err(e) => Err(e),
+        };
+        report("prompt texts", in_use, res)
+    }
+
+    #[tokio::test]
+    async fn prompt_texts_come_with_the_index_and_the_next_call_uses_them() {
+        let v = pv0() + 1;
+        let gz = crate::prompt_book::testing::gz(v, &CHANGED);
+        let s = prompts_release(Some(prompts_entry(&gz, v)), gz.clone());
+        assert!(crate::prompt_book::builtin_in_use());
+        assert_eq!(run_prompts(&s.source()).await, Outcome::Updated(v));
+        assert_eq!(s.asked(&format!("{TAGGED}{PROMPTS}")), 1, "from the index's release");
+        for (lang, key, text) in CHANGED {
+            assert_eq!(crate::prompt_book::testing::handle(&format!("{lang}/{key}")).get(), text, "the next call reads {lang}/{key}");
+        }
+        let st = status_json();
+        assert_eq!(st["prompts"]["version"].as_u64(), Some(v));
+        assert_eq!(st["prompts"]["builtin"].as_bool(), Some(false));
+        assert_eq!(st["prompts"]["texts"].as_u64(), Some(CHANGED.len() as u64));
+        let packs = packs_store::installed_dir();
+        assert_eq!(std::fs::read(packs.join(crate::prompt_book::FILE_NAME)).unwrap(), gz);
+        // The same release again: nothing to download.
+        assert_eq!(run_prompts(&s.source()).await, Outcome::UpToDate);
+        assert_eq!(s.asked(&format!("{TAGGED}{PROMPTS}")), 1);
+        // Back to the built-in texts.
+        restore_both().unwrap();
+        assert!(crate::prompt_book::builtin_in_use());
+        assert_eq!(status_json()["prompts"]["texts"].as_u64(), Some(0));
+        for (lang, key, text) in CHANGED {
+            assert_ne!(crate::prompt_book::testing::handle(&format!("{lang}/{key}")).get(), text);
+        }
+        assert!(!packs.join(crate::prompt_book::FILE_NAME).exists());
+        let _ = std::fs::remove_dir_all(packs.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn prompt_texts_that_are_missing_broken_or_too_new_change_nothing() {
+        let v = pv0() + 1;
+        let gz = crate::prompt_book::testing::gz(v, &CHANGED);
+        // No entry: up to date, as an older release.
+        let s = prompts_release(None, gz.clone());
+        assert_eq!(run_prompts(&s.source()).await, Outcome::UpToDate);
+        assert_eq!(s.asked(PROMPTS), 0);
+        // One changed byte: refused, the texts in use stay.
+        let mut changed = gz.clone();
+        let mid = changed.len() / 2;
+        changed[mid] ^= 0x01;
+        let s = prompts_release(Some(prompts_entry(&gz, v)), changed);
+        assert_eq!(run_prompts(&s.source()).await, Outcome::BadPack);
+        assert!(crate::prompt_book::builtin_in_use());
+        let packs = packs_store::installed_dir();
+        assert!(!packs.join(crate::prompt_book::FILE_NAME).exists());
+        assert!(std::fs::read_dir(&packs).map(|d| d.count() == 0).unwrap_or(true), "no download left behind");
+        // A newer format or Bageo: update Bageo first, nothing downloaded.
+        for (field, value) in [("format", json!(2)), ("min_bageo", json!("99.0.0"))] {
+            let mut e = prompts_entry(&gz, v);
+            e[field] = value;
+            let s = prompts_release(Some(e), gz.clone());
+            assert_eq!(run_prompts(&s.source()).await, Outcome::UpdateBageo, "{field}");
+            assert_eq!(s.asked(PROMPTS), 0, "{field}");
+        }
+        // Over its limit, or not newer: not downloaded.
+        let mut e = prompts_entry(&gz, v);
+        e["bytes"] = json!(bageo_packs::MAX_PROMPTS_PACKED + 1);
+        let s = prompts_release(Some(e), gz.clone());
+        assert_eq!(run_prompts(&s.source()).await, Outcome::BadPack);
+        let s = prompts_release(Some(prompts_entry(&gz, pv0())), gz.clone());
+        assert_eq!(run_prompts(&s.source()).await, Outcome::UpToDate);
+        assert_eq!(s.asked(PROMPTS), 0);
+        assert!(crate::prompt_book::builtin_in_use());
         let _ = std::fs::remove_dir_all(packs.parent().unwrap());
     }
 }

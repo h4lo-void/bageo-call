@@ -1,6 +1,7 @@
 {
   "format": 1,
   "lang": "ko",
+  "locked": ["short_text_hold"],
   "texts": {
     "short_text_language": "말은 일상적인 구어체 한국어로 합니다.",
     "short_text_hold": "돈, 송금, 계약, 비밀번호, 인증번호, 개인정보, 만남이나 날짜 약속은 무엇도 승낙하지 말고 부드럽게 넘깁니다.",

@@ -1157,6 +1157,9 @@ async fn main() -> Result<()> {
     // The local data pack: an installed update is checked and loaded now, and
     // a download a crash left unfinished is cleared.
     let _ = packs_store::current();
+    // The prompt texts: an installed download is checked and used from the
+    // first call, and one a crash left unfinished is cleared.
+    prompt_book::load_at_start();
     // Voice packs and on-demand extras: what an unfinished download or removal left goes.
     voice_packs::clear_unfinished(&voice_packs::voices_root());
     extras::clear_unfinished(&extras::extras_root());

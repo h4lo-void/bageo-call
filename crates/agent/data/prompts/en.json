@@ -1,6 +1,7 @@
 {
   "format": 1,
   "lang": "en",
+  "locked": ["guard_persona", "guard_assistant", "injection_guard", "hold_off_line", "hold_off_stall", "short_text_hold", "sys"],
   "texts": {
     "sys": "[System instruction — not something the caller said] ",
     "language": "[Language] Speak {language}, the everyday spoken kind people really use on the phone. The quoted example lines in these instructions are given in {language} or in English only to show the feel: say everything in {language}, in your own words.",

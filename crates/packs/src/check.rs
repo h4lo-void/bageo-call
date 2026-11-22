@@ -726,6 +726,7 @@ pub fn check_index(ix: &Index) -> Vec<Issue> {
     }
     out.extend(sound_locales(ix).1);
     out.extend(crate::scams::sound_scams(ix).1);
+    out.extend(crate::prompts::sound_prompts(ix).1);
     out
 }
 
@@ -746,9 +747,11 @@ pub fn parse_index_noting(json: &str) -> Result<(Index, Option<Issue>), Vec<Issu
     ix.locales = locales;
     let (scams, scam_note) = crate::scams::sound_scams(&ix);
     ix.scams = scams;
+    let (prompts, prompts_note) = crate::prompts::sound_prompts(&ix);
+    ix.prompts = prompts;
     let issues = check_index(&ix);
     if issues.is_empty() {
-        Ok((ix, note.or(scam_note)))
+        Ok((ix, note.or(scam_note).or(prompts_note)))
     } else {
         Err(issues)
     }

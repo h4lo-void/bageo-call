@@ -9,6 +9,8 @@
 //!             [--call-only]
 //! packs build-extras <source folder> --version <YYYYMMDDNN> --commit <text> --out <folder>
 //!             [--built-at <time>] [--min-bageo <x.y.z>]
+//! packs build-prompts <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-prompts.json.gz>
+//!             [--index <bageo-pack-index.json>] [--built-at <time>] [--min-bageo <x.y.z>]
 //! packs sync-source --bageo-call <checkout> --out <packs folder> [--commit <text>]
 //! packs export-app --packs <packs folder> --android <res folder> --desktop <i18n.ext.json> [--commit <text>] [--check]
 
@@ -23,10 +25,11 @@ use bageo_packs::extras::EXTRAS_INDEX_FILE;
 use bageo_packs::sync::{keep_same_ok, sync_source};
 use bageo_packs::util::{now_rfc3339, valid_rfc3339_utc};
 use bageo_packs::{
-    build, build_extras, build_locales_at, build_locales_call_at, build_scams_at, check_index, check_locales, check_locales_ref,
-    check_scams_ref, check_sources, load_art, load_locales, load_sources, pack_bundle, pack_locales, pack_scams,
-    parse_bundle_bytes, parse_index, parse_locales, parse_scams, sanitize_locales, scam_counts, sha256_hex, sound_locales, sound_scams,
-    unpack_locales, Index, Issue, LocalesRef, FORMAT, LOCALES_FORMAT, MAX_LOCALES_BYTES, SCAMS_FORMAT,
+    build, build_extras, build_locales_at, build_locales_call_at, build_prompts_at, build_scams_at, check_index, check_locales,
+    check_locales_ref, check_prompts_ref, check_scams_ref, check_sources, load_art, load_locales, load_prompt_changes, load_sources,
+    pack_bundle, pack_locales, pack_prompts, pack_scams, parse_bundle_bytes, parse_index, parse_locales, parse_prompts, parse_scams,
+    sanitize_locales, scam_counts, sha256_hex, sound_locales, sound_prompts, sound_scams, unpack_locales, Index, Issue, LocalesRef,
+    FORMAT, LOCALES_FORMAT, MAX_LOCALES_BYTES, PROMPTS_FORMAT, SCAMS_FORMAT,
 };
 
 const USAGE: &str = "usage:
@@ -35,6 +38,7 @@ const USAGE: &str = "usage:
   packs build-locales <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-locales.json.gz> [--index <bageo-pack-index.json>] [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>] [--check] [--call-only]
   packs build-scams <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-scams.json.gz> [--index <bageo-pack-index.json>] [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>]
   packs build-extras <source folder> --version <YYYYMMDDNN> --commit <text> --out <folder> [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>]
+  packs build-prompts <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-prompts.json.gz> [--index <bageo-pack-index.json>] [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>]
   packs sync-source --bageo-call <checkout> --out <packs folder> [--commit <text>]
   packs export-app --packs <packs folder> --android <res folder> --desktop <i18n.ext.json> [--commit <text>] [--check]";
 
@@ -58,6 +62,7 @@ fn main() -> ExitCode {
         Some("build-locales") => cmd_build_locales(&args[1..]),
         Some("build-scams") => cmd_build_scams(&args[1..]),
         Some("build-extras") => cmd_build_extras(&args[1..]),
+        Some("build-prompts") => cmd_build_prompts(&args[1..]),
         Some("sync-source") => cmd_sync_source(&args[1..]),
         Some("export-app") => cmd_export_app(&args[1..]),
         _ => usage(),
@@ -124,6 +129,12 @@ fn cmd_check(args: &[String]) -> ExitCode {
             Err(more) => issues.extend(more),
         }
     }
+    let mut prompts_info = None;
+    match load_prompt_changes(Path::new(dir)) {
+        Ok(Some(changes)) => prompts_info = Some((changes.values().map(BTreeMap::len).sum::<usize>(), changes.len())),
+        Ok(None) => {}
+        Err(more) => issues.extend(more),
+    }
     if issues.is_empty() {
         println!("ok: {} region(s), {} language layer(s)", sources.regions.len(), sources.layers.len());
         if !sources.multilang.is_empty() || !sources.bubbles.is_empty() || !sources.place_habits.is_empty() {
@@ -139,6 +150,9 @@ fn cmd_check(args: &[String]) -> ExitCode {
         }
         if let Some((typ, kw, cc)) = scams_info {
             println!("ok: {typ} scam typologies, {kw} keyword group(s), {cc} country scam file(s)");
+        }
+        if let Some((texts, langs)) = prompts_info {
+            println!("ok: {texts} changed prompt text(s) in {langs} language(s)");
         }
         ExitCode::SUCCESS
     } else {
@@ -243,7 +257,14 @@ fn cmd_build(args: &[String]) -> ExitCode {
             }
             kept
         });
-        let ix = Index { format: FORMAT, version, file, bytes: out_bytes.len() as u64, sha256, min_bageo, locales, scams };
+        let prompts = prev.as_ref().and_then(|ix| {
+            let (kept, note) = sound_prompts(ix);
+            if let Some(n) = note {
+                println!("note: {n}");
+            }
+            kept
+        });
+        let ix = Index { format: FORMAT, version, file, bytes: out_bytes.len() as u64, sha256, min_bageo, locales, scams, prompts };
         let issues = check_index(&ix);
         if !issues.is_empty() {
             report(&issues);
@@ -447,7 +468,10 @@ fn sub_index_body(path: &str, key: &str, r: &LocalesRef) -> Result<String, Strin
     obj.insert(key.to_string(), serde_json::to_value(r).map_err(|e| e.to_string())?);
     let body = serde_json::to_string(&v).map_err(|e| e.to_string())?;
     match parse_index(&body) {
-        Ok(ix) if (key == "locales" && ix.locales.as_ref() == Some(r)) || (key == "scams" && ix.scams.as_ref() == Some(r)) => {}
+        Ok(ix)
+            if (key == "locales" && ix.locales.as_ref() == Some(r))
+                || (key == "scams" && ix.scams.as_ref() == Some(r))
+                || (key == "prompts" && ix.prompts.as_ref() == Some(r)) => {}
         Ok(_) => return Err(format!("{path}: the {key} entry does not read back")),
         Err(issues) => return Err(issues.iter().map(|i| i.to_string()).collect::<Vec<_>>().join("\n")),
     }
@@ -511,6 +535,83 @@ fn cmd_build_scams(args: &[String]) -> ExitCode {
     }
     let (typ, kw, cc) = scam_counts(&built);
     println!("built {out}: {typ} typologies, {kw} langs, {cc} countries, version {version}, {} bytes, sha256 {}", gz.len(), &sha256[..8]);
+    if let Some((path, body)) = index {
+        if let Err(e) = fs::write(path, body.as_bytes()) {
+            return fail(format!("cannot write {path}: {e}"));
+        }
+        println!("wrote {path}");
+    }
+    ExitCode::SUCCESS
+}
+
+/// The changed prompt texts of prompts/<language>.json as bageo-prompts.json.gz.
+/// No prompts folder: nothing is written, the index is left alone.
+fn cmd_build_prompts(args: &[String]) -> ExitCode {
+    let Some(a) = parse_args(args, &["--version", "--commit", "--out", "--index", "--built-at", "--min-bageo"], &[]) else {
+        return usage();
+    };
+    let ([dir], Some(version), Some(commit), Some(out)) =
+        (a.pos.as_slice(), a.opts.get("--version"), a.opts.get("--commit"), a.opts.get("--out"))
+    else {
+        return usage();
+    };
+    let Ok(version) = version.parse::<u64>() else { return usage() };
+    let built_at = a.opts.get("--built-at").cloned().unwrap_or_else(now_rfc3339);
+    if !valid_rfc3339_utc(&built_at) {
+        return usage();
+    }
+    let min_bageo = a.opts.get("--min-bageo").cloned().unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+
+    let built = match build_prompts_at(Path::new(dir), version, commit, &built_at) {
+        Ok(Some(b)) => b,
+        Ok(None) => {
+            println!("no prompts folder in {dir}; nothing built");
+            return ExitCode::SUCCESS;
+        }
+        Err(issues) => {
+            report(&issues);
+            return ExitCode::from(1);
+        }
+    };
+    let gz = match pack_prompts(&built) {
+        Ok(g) => g,
+        Err(e) => return fail(format!("cannot pack the prompt texts: {e}")),
+    };
+    match parse_prompts(&gz) {
+        Ok(back) if back == built => {}
+        Ok(_) => return fail("the built prompts file does not read back the same"),
+        Err(issues) => {
+            report(&issues);
+            return ExitCode::from(1);
+        }
+    }
+    let sha256 = sha256_hex(&gz);
+    let index = match a.opts.get("--index") {
+        None => None,
+        Some(path) => {
+            let file = Path::new(out).file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+            let r = LocalesRef { file, bytes: gz.len() as u64, sha256: sha256.clone(), format: PROMPTS_FORMAT, version, min_bageo };
+            let issues = check_prompts_ref(&r);
+            if !issues.is_empty() {
+                report(&issues);
+                return ExitCode::from(1);
+            }
+            match sub_index_body(path, "prompts", &r) {
+                Ok(body) => Some((path, body)),
+                Err(e) => return fail(e),
+            }
+        }
+    };
+    if let Err(e) = fs::write(out, &gz) {
+        return fail(format!("cannot write {out}: {e}"));
+    }
+    println!(
+        "built {out}: {} changed text(s) in {} language(s), version {version}, {} bytes, sha256 {}",
+        built.count(),
+        built.langs.len(),
+        gz.len(),
+        &sha256[..8]
+    );
     if let Some((path, body)) = index {
         if let Err(e) = fs::write(path, body.as_bytes()) {
             return fail(format!("cannot write {path}: {e}"));

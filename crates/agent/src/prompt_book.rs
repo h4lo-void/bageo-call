@@ -5,16 +5,26 @@
 //! in the code that uses them.
 //!
 //! - The words are in `data/prompts/<language>.json` (one file per language
-//!   the words are written in), compiled into the program. A text is a
-//!   string, or a list of lines for a text of several paragraphs: one
-//!   paragraph a line reads and diffs well.
+//!   the words are written in), compiled into the program and read through
+//!   [bageo_packs::prompts], which holds the file format and the rules.
+//!   A text is a string, or a list of lines for a text of several
+//!   paragraphs: one paragraph a line reads and diffs well.
 //! - The code holds a [Text] for each one it uses (see [prompt_texts], once a
-//!   module): a name, looked up in the book the first time it is used and
-//!   remembered, so every use after that costs one pointer read.
+//!   module): a name, looked up the first time it is used and remembered as
+//!   its place in the book. Every use after that reads the book in use and
+//!   that place: two atomic loads, no lock, nothing allocated.
 //! - Changing the words, or adding a language file, changes no code. A new
 //!   text is one entry in the file and one line where its handle is declared.
 //! - The checks below keep the two in step: every handle has its text, and
 //!   no text is left in a file without a handle.
+//! - "Check for updates" ([crate::pack_update]) may bring changed texts
+//!   (bageo-prompts.json.gz). The book in use is then the built-in one with
+//!   those laid over it, text by text: a key this Bageo does not have, a
+//!   locked text (a rule of the product) or a text that fails
+//!   [bageo_packs::check_text] keeps the built-in words. The next call reads
+//!   the new book; "Restore" goes back to the built-in one. Each book stays
+//!   in memory for the life of the program, so installs per run are capped
+//!   ([MAX_INSTALLS]).
 //!
 //! How texts are put together into a prompt stays in the code that does it
 //! ([crate::prompts] and the modules of each kind of call): the book holds
@@ -23,47 +33,77 @@
 
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::OnceLock;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
-use serde_json::Value;
+use bageo_packs::prompts::{self as rules, PromptsPack};
+use bageo_packs::{rule, Issue};
+use tracing::{info, warn};
 
 /// The format of the files this program reads.
-pub const FORMAT: u64 = 1;
+pub const FORMAT: u64 = rules::BOOK_FORMAT;
 
-/// The files of the book, by the language their words are written in.
-const FILES: &[(&str, &str)] = &[
-    ("de", include_str!("../data/prompts/de.json")),
-    ("en", include_str!("../data/prompts/en.json")),
-    ("es", include_str!("../data/prompts/es.json")),
-    ("fr", include_str!("../data/prompts/fr.json")),
-    ("ja", include_str!("../data/prompts/ja.json")),
-    ("ko", include_str!("../data/prompts/ko.json")),
-    ("pt", include_str!("../data/prompts/pt.json")),
-    ("zh-TW", include_str!("../data/prompts/zh-TW.json")),
-];
+/// The version of the built-in texts (YYYYMMDDNN). A download is used only
+/// when it is newer. Raise it whenever a file in data/prompts changes (the
+/// test `the_builtin_texts_match_their_version` says so).
+pub const BUILTIN_VERSION: u64 = 2026112201;
+
+/// The installed download, in the packs folder.
+pub const FILE_NAME: &str = rules::PROMPTS_FILE;
+
+/// Installs per run: every book stays in memory until Bageo restarts.
+pub const MAX_INSTALLS: usize = 8;
+
+const INCOMING_PREFIX: &str = ".incoming-prompts-";
+const INCOMING_SUFFIX: &str = ".json.gz";
+
+/// A handle not looked up yet.
+const UNSEEN: usize = usize::MAX;
+/// A handle whose name the book does not have.
+const MISSING: usize = usize::MAX - 1;
 
 /// One text of the book, by name (`<language>/<key>`). Reads as a `&str`
 /// ([Text::get]) and writes itself in `format!`.
 pub struct Text {
     name: &'static str,
-    found: OnceLock<&'static str>,
+    /// Its place in every book, once looked up.
+    place: AtomicUsize,
 }
 
 impl Text {
     pub const fn new(name: &'static str) -> Self {
-        Self { name, found: OnceLock::new() }
+        Self { name, place: AtomicUsize::new(UNSEEN) }
     }
 
-    /// The text. Looked up once, then remembered. A name the book does not
-    /// have reads as nothing and is logged (the checks keep that from shipping).
+    /// The text in the book in use. A name the book does not have reads as
+    /// nothing and is logged (the checks keep that from shipping).
     pub fn get(&self) -> &'static str {
-        self.found.get_or_init(|| match book().get(self.name) {
-            Some(t) => t,
+        let mut at = self.place.load(Ordering::Relaxed);
+        if at >= MISSING {
+            at = self.look_up();
+            if at == MISSING {
+                return "";
+            }
+        }
+        current().texts.get(at).copied().unwrap_or("")
+    }
+
+    #[cold]
+    fn look_up(&self) -> usize {
+        let at = self.place.load(Ordering::Relaxed);
+        if at != UNSEEN {
+            return at;
+        }
+        let at = match shelf().places.get(self.name) {
+            Some(&at) => at,
             None => {
                 tracing::error!("prompt book: no text named {}", self.name);
-                ""
+                MISSING
             }
-        })
+        };
+        self.place.store(at, Ordering::Relaxed);
+        at
     }
 
     /// Its name in the book.
@@ -97,73 +137,323 @@ macro_rules! prompt_texts {
 }
 pub(crate) use prompt_texts;
 
-/// The texts of every file, by name.
-struct Book {
-    texts: HashMap<&'static str, &'static str>,
+/// Every text, by place: the built-in book or one with downloaded texts
+/// laid over it. Kept for the life of the program once in use.
+pub(crate) struct Book {
+    version: u64,
+    texts: Box<[&'static str]>,
+    /// Texts that differ from the built-in ones.
+    changed: usize,
 }
 
-impl Book {
-    fn get(&self, name: &str) -> Option<&'static str> {
-        self.texts.get(name).copied()
-    }
+/// One place of the book.
+struct Entry {
+    lang: &'static str,
+    key: &'static str,
+    locked: bool,
 }
 
-fn book() -> &'static Book {
-    static BOOK: OnceLock<Book> = OnceLock::new();
-    BOOK.get_or_init(|| {
-        let mut texts = HashMap::new();
-        for (lang, json) in FILES {
-            match parse_file(lang, json) {
-                Ok(list) => {
-                    for (key, text) in list {
-                        // Kept for the life of the program: the files are part of it.
-                        let name: &'static str = Box::leak(format!("{lang}/{key}").into_boxed_str());
-                        texts.insert(name, &*Box::leak(text.into_boxed_str()));
-                    }
-                }
-                Err(e) => tracing::error!("prompt book: {lang}.json: {e}"),
+/// Where each text is, and the built-in book.
+struct Shelf {
+    places: HashMap<&'static str, usize>,
+    entries: Vec<Entry>,
+    builtin: &'static Book,
+}
+
+fn shelf() -> &'static Shelf {
+    static SHELF: OnceLock<Shelf> = OnceLock::new();
+    SHELF.get_or_init(|| {
+        let files = rules::builtin_book();
+        for e in &files.errors {
+            tracing::error!("prompt book: {e}");
+        }
+        let mut places = HashMap::new();
+        let mut entries = Vec::new();
+        let mut texts = Vec::new();
+        for (lang, file) in &files.langs {
+            for (key, text) in &file.texts {
+                // Kept for the life of the program: the files are part of it.
+                let name: &'static str = Box::leak(format!("{lang}/{key}").into_boxed_str());
+                places.insert(name, entries.len());
+                entries.push(Entry { lang: &name[..lang.len()], key: &name[lang.len() + 1..], locked: file.locked.contains(key) });
+                texts.push(text.as_str());
             }
         }
-        Book { texts }
+        let builtin: &'static Book = Box::leak(Box::new(Book { version: BUILTIN_VERSION, texts: texts.into_boxed_slice(), changed: 0 }));
+        Shelf { places, entries, builtin }
     })
 }
 
-/// The texts of one file: `{"format": 1, "lang": "<language>", "texts": {"<key>": <text>}}`,
-/// a text being a string or a list of lines (joined with a line break).
-fn parse_file(lang: &str, json: &str) -> Result<Vec<(String, String)>, String> {
-    let v: Value = serde_json::from_str(json).map_err(|e| format!("not JSON: {e}"))?;
-    match v.get("format").and_then(Value::as_u64) {
-        Some(FORMAT) => {}
-        other => return Err(format!("format {other:?}, this program reads {FORMAT}")),
-    }
-    if v.get("lang").and_then(Value::as_str) != Some(lang) {
-        return Err(format!("\"lang\" is not {lang}"));
-    }
-    let texts = v.get("texts").and_then(Value::as_object).ok_or("no \"texts\"")?;
-    let mut out = Vec::with_capacity(texts.len());
-    for (key, t) in texts {
-        let ok = !key.is_empty() && key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
-        if !ok {
-            return Err(format!("key {key:?}: lower-case letters, digits and _ only"));
+fn builtin() -> &'static Book {
+    shelf().builtin
+}
+
+/// The book in use; null until the first text is read.
+static CURRENT: AtomicPtr<Book> = AtomicPtr::new(std::ptr::null_mut());
+/// Held to change the book in use or the installed file.
+static LOCK: Mutex<()> = Mutex::new(());
+static INSTALLS: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(test)]
+thread_local! {
+    /// Tests change the book of their own thread only.
+    static TEST_CURRENT: std::cell::Cell<Option<&'static Book>> = const { std::cell::Cell::new(None) };
+}
+
+fn lock() -> MutexGuard<'static, ()> {
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The book calls read now.
+fn current() -> &'static Book {
+    #[cfg(test)]
+    {
+        if let Some(b) = TEST_CURRENT.with(|c| c.get()) {
+            return b;
         }
-        let text = match t {
-            Value::String(s) => s.clone(),
-            Value::Array(lines) => {
-                let mut parts = Vec::with_capacity(lines.len());
-                for l in lines {
-                    parts.push(l.as_str().ok_or_else(|| format!("{key}: a line that is not a string"))?);
-                }
-                parts.join("\n")
-            }
-            _ => return Err(format!("{key}: neither a string nor a list of lines")),
-        };
-        out.push((key.clone(), text));
     }
-    Ok(out)
+    let p = CURRENT.load(Ordering::Acquire);
+    if p.is_null() {
+        return first_book();
+    }
+    // SAFETY: CURRENT only ever holds books leaked for the life of the program.
+    unsafe { &*p }
+}
+
+#[cold]
+fn first_book() -> &'static Book {
+    let held = lock();
+    in_use(&held)
+}
+
+/// The book in use, with [LOCK] held: on the first read, an installed download
+/// that is newer than the built-in texts and reads, else the built-in book.
+/// Unit tests start from the built-in book.
+fn in_use(_held: &MutexGuard<'static, ()>) -> &'static Book {
+    #[cfg(test)]
+    {
+        if let Some(b) = TEST_CURRENT.with(|c| c.get()) {
+            return b;
+        }
+    }
+    let p = CURRENT.load(Ordering::Acquire);
+    if !p.is_null() {
+        // SAFETY: as in [current].
+        return unsafe { &*p };
+    }
+    let b = if cfg!(test) { builtin() } else { load_installed(&crate::packs_store::installed_dir(), BUILTIN_VERSION).unwrap_or_else(builtin) };
+    CURRENT.store(b as *const Book as *mut Book, Ordering::Release);
+    b
+}
+
+fn set_current(b: &'static Book) {
+    #[cfg(test)]
+    {
+        TEST_CURRENT.with(|c| c.set(Some(b)));
+    }
+    #[cfg(not(test))]
+    {
+        CURRENT.store(b as *const Book as *mut Book, Ordering::Release);
+    }
+}
+
+/// The version of the texts in use.
+pub fn current_version() -> u64 {
+    current().version
+}
+
+/// Calls use the built-in texts.
+pub(crate) fn builtin_in_use() -> bool {
+    std::ptr::eq(current(), builtin())
+}
+
+/// Texts in use that differ from the built-in ones.
+pub(crate) fn changed_texts() -> usize {
+    current().changed
+}
+
+/// Downloads that can still be installed before Bageo has to be restarted.
+pub(crate) fn installs_left() -> usize {
+    MAX_INSTALLS.saturating_sub(INSTALLS.load(Ordering::SeqCst))
+}
+
+/// Loads an installed download now (start-up), so the first call has it.
+pub(crate) fn load_at_start() {
+    let v = current_version();
+    if v != BUILTIN_VERSION {
+        info!("prompt texts {v} in use");
+    }
+}
+
+/// A new name for a download in the packs folder; start-up clears the ones
+/// Bageo did not finish.
+pub(crate) fn incoming_path(packs: &Path) -> PathBuf {
+    packs.join(format!("{INCOMING_PREFIX}{}-{}{INCOMING_SUFFIX}", std::process::id(), uuid::Uuid::new_v4().simple()))
+}
+
+fn issue(r: &'static str, d: impl Into<String>) -> Vec<Issue> {
+    vec![Issue::new(FILE_NAME, "", r, d)]
+}
+
+/// A downloaded file, refused before it is read when it is larger than a
+/// download may be.
+fn read_capped(path: &Path) -> Result<Vec<u8>, Vec<Issue>> {
+    let len = std::fs::metadata(path).map_err(|e| issue(rule::FORMAT, format!("cannot read: {e}")))?.len();
+    if len > rules::MAX_PROMPTS_PACKED as u64 {
+        return Err(issue(rule::LENGTH, format!("{len} bytes packed, the limit is {}", rules::MAX_PROMPTS_PACKED)));
+    }
+    std::fs::read(path).map_err(|e| issue(rule::FORMAT, format!("cannot read: {e}")))
+}
+
+/// The built-in book with the texts of pack laid over it, text by text.
+fn overlay(pack: &PromptsPack) -> Book {
+    let sh = shelf();
+    let base = builtin();
+    let mut texts = base.texts.to_vec();
+    let (mut changed, mut skipped, mut unknown) = (0, 0, 0);
+    for (lang, keys) in &pack.langs {
+        for (key, text) in keys {
+            // A text this Bageo does not use: for a newer one.
+            let Some(&at) = sh.places.get(format!("{lang}/{key}").as_str()) else {
+                unknown += 1;
+                continue;
+            };
+            let e = &sh.entries[at];
+            if e.locked {
+                warn!("prompt texts {}: {}/{} is locked; the built-in text stays", pack.version, e.lang, e.key);
+                skipped += 1;
+                continue;
+            }
+            let new = text.joined();
+            if new == base.texts[at] {
+                continue;
+            }
+            if let Err(why) = rules::check_text(base.texts[at], &new) {
+                warn!("prompt texts {}: {}/{} not used ({why}); the built-in text stays", pack.version, e.lang, e.key);
+                skipped += 1;
+                continue;
+            }
+            texts[at] = Box::leak(new.into_boxed_str());
+            changed += 1;
+        }
+    }
+    info!("prompt texts {}: {changed} replaced, {skipped} skipped, {unknown} for a newer Bageo", pack.version);
+    Book { version: pack.version, texts: texts.into_boxed_slice(), changed }
+}
+
+/// The download installed in packs when it reads and is newer than version;
+/// unfinished downloads there are cleared.
+fn load_installed(packs: &Path, version: u64) -> Option<&'static Book> {
+    if let Ok(entries) = std::fs::read_dir(packs) {
+        for e in entries.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with(INCOMING_PREFIX) && name.ends_with(INCOMING_SUFFIX) {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    let path = packs.join(FILE_NAME);
+    if !path.is_file() {
+        return None;
+    }
+    let pack = match read_capped(&path).and_then(|b| rules::parse_prompts(&b)) {
+        Ok(p) => p,
+        Err(issues) => {
+            warn!("installed prompt texts rejected ({}); using the built-in ones", issues.first().map(|i| i.to_string()).unwrap_or_default());
+            return None;
+        }
+    };
+    if pack.version <= version {
+        info!("installed prompt texts {} are not newer than the built-in {version}; using the built-in ones", pack.version);
+        return None;
+    }
+    Some(Box::leak(Box::new(overlay(&pack))))
+}
+
+/// Installs a checked download (staged in the packs folder) of version want:
+/// read in full again, newer than the texts in use, renamed into place in one
+/// step; the next call reads it. The staged file never stays behind.
+pub(crate) fn install_file(staged: &Path, want: u64) -> Result<u64, Vec<Issue>> {
+    install_counted(&INSTALLS, &crate::packs_store::installed_dir(), staged, want)
+}
+
+pub(crate) fn install_counted(count: &AtomicUsize, packs: &Path, staged: &Path, want: u64) -> Result<u64, Vec<Issue>> {
+    let held = lock();
+    let res = (|| {
+        if count.load(Ordering::SeqCst) >= MAX_INSTALLS {
+            return Err(issue(rule::STATUS, format!("{MAX_INSTALLS} updates installed since Bageo started; restart Bageo first")));
+        }
+        let pack = rules::parse_prompts(&read_capped(staged)?)?;
+        if pack.version != want {
+            return Err(issue(rule::STATUS, format!("version {} is not {want}", pack.version)));
+        }
+        let in_use = in_use(&held).version;
+        if pack.version <= in_use {
+            return Err(issue(rule::STATUS, format!("version {} is not newer than {in_use}", pack.version)));
+        }
+        let book = overlay(&pack);
+        std::fs::rename(staged, packs.join(FILE_NAME)).map_err(|e| issue(rule::FORMAT, format!("cannot install: {e}")))?;
+        count.fetch_add(1, Ordering::SeqCst);
+        let book: &'static Book = Box::leak(Box::new(book));
+        set_current(book);
+        Ok(book.version)
+    })();
+    if res.is_err() {
+        let _ = std::fs::remove_file(staged);
+    }
+    res
+}
+
+/// Deletes the installed download; calls go back to the built-in texts. When
+/// it cannot be deleted it stays in use.
+pub fn restore_builtin() -> std::io::Result<()> {
+    restore_at(&crate::packs_store::installed_dir())
+}
+
+fn restore_at(packs: &Path) -> std::io::Result<()> {
+    let _held = lock();
+    match std::fs::remove_file(packs.join(FILE_NAME)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+        _ => {}
+    }
+    set_current(builtin());
+    Ok(())
+}
+
+/// Pieces other modules' tests use.
+#[cfg(test)]
+pub(crate) mod testing {
+    use super::*;
+    use bageo_packs::prompts::{pack_prompts, PromptText, PROMPTS_FORMAT};
+
+    /// The handle of a text, by name.
+    pub(crate) fn handle(name: &str) -> &'static Text {
+        tests::handles().into_iter().find(|t| t.name() == name).unwrap_or_else(|| panic!("no handle for {name}"))
+    }
+
+    /// A download of version carrying texts (language, key, text).
+    pub(crate) fn pack(version: u64, texts: &[(&str, &str, &str)]) -> PromptsPack {
+        let mut p = PromptsPack {
+            format: PROMPTS_FORMAT,
+            version,
+            built_at: "2026-11-22T00:00:00Z".into(),
+            source_commit: "0123456789abcdef0123456789abcdef01234567".into(),
+            langs: Default::default(),
+        };
+        for (lang, key, text) in texts {
+            p.langs.entry(lang.to_string()).or_default().insert(key.to_string(), PromptText::One(text.to_string()));
+        }
+        p
+    }
+
+    pub(crate) fn gz(version: u64, texts: &[(&str, &str, &str)]) -> Vec<u8> {
+        pack_prompts(&pack(version, texts)).unwrap()
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::testing::{gz, handle, pack};
     use super::*;
 
     /// The handles of every module that declares some ([prompt_texts]).
@@ -188,18 +478,28 @@ mod tests {
         ]
     }
 
-    fn handles() -> Vec<&'static Text> {
+    pub(super) fn handles() -> Vec<&'static Text> {
         modules().into_iter().flat_map(|m| m.iter().copied()).collect()
+    }
+
+    /// The built-in text of a name.
+    fn lookup(name: &str) -> Option<&'static str> {
+        shelf().places.get(name).map(|&at| builtin().texts[at])
+    }
+
+    fn parse_file(lang: &str, json: &str) -> Result<Vec<(String, String)>, String> {
+        rules::parse_book_file(lang, json).map(|f| f.texts.into_iter().collect())
     }
 
     #[test]
     fn every_file_of_the_book_reads() {
-        for (lang, json) in FILES {
+        assert!(rules::builtin_book().errors.is_empty(), "{:?}", rules::builtin_book().errors);
+        for (lang, json) in rules::BUILTIN_FILES {
             let list = parse_file(lang, json).unwrap_or_else(|e| panic!("{lang}.json: {e}"));
             assert!(!list.is_empty(), "{lang}");
             for (key, text) in &list {
                 assert!(!text.is_empty(), "{lang}/{key} is empty");
-                assert_eq!(book().get(&format!("{lang}/{key}")), Some(text.as_str()), "{lang}/{key}");
+                assert_eq!(lookup(&format!("{lang}/{key}")), Some(text.as_str()), "{lang}/{key}");
             }
         }
     }
@@ -212,11 +512,11 @@ mod tests {
         let handles = handles();
         let mut seen = std::collections::BTreeSet::new();
         for t in handles {
-            assert!(book().get(t.name()).is_some(), "no text named {}", t.name());
+            assert!(lookup(t.name()).is_some(), "no text named {}", t.name());
             assert!(!t.get().is_empty(), "{}", t.name());
             assert!(seen.insert(t.name()), "two handles for {}", t.name());
         }
-        for (lang, json) in FILES {
+        for (lang, json) in rules::BUILTIN_FILES {
             for (key, _) in parse_file(lang, json).unwrap() {
                 let name = format!("{lang}/{key}");
                 assert!(seen.contains(name.as_str()), "{name} is in the book and no handle reads it");
@@ -251,11 +551,154 @@ mod tests {
             (r#"{"format": 1, "lang": "xx", "texts": {"Bad-Key": "b"}}"#, "key"),
             (r#"{"format": 1, "lang": "xx", "texts": {"a": 3}}"#, "neither"),
             (r#"{"format": 1, "lang": "xx", "texts": {"a": ["b", 3]}}"#, "line"),
+            (r#"{"format": 1, "lang": "xx", "locked": ["c"], "texts": {"a": "b"}}"#, "locked"),
             ("not json", "JSON"),
         ] {
             let err = parse_file("xx", file).unwrap_err();
             assert!(err.contains(why), "{file}: {err}");
         }
     }
-}
 
+    /// The SHA-256 of the built-in texts when BUILTIN_VERSION was last raised.
+    const BUILTIN_DIGEST: &str = "ee18e6602142d6038acbe398822e801481b0e7b55d4979c5439d0cce3ccdb7a2";
+
+    /// A download is used only when it is newer than the built-in texts, so a
+    /// change to them must come with a new version.
+    #[test]
+    fn the_builtin_texts_match_their_version() {
+        let digest = rules::builtin_book().digest();
+        assert_eq!(
+            digest, BUILTIN_DIGEST,
+            "the built-in texts changed: set BUILTIN_VERSION to today (YYYYMMDD01) and BUILTIN_DIGEST to {digest}"
+        );
+    }
+
+    /// Texts in eight languages, each a little different from the built-in one.
+    const NEW: [(&str, &str, &str); 8] = [
+        ("ja", "short_text_language", "言葉はふだんの話し言葉の日本語で。"),
+        ("ko", "short_text_language", "말은 평소에 쓰는 구어체 한국어로 합니다."),
+        ("de", "short_text_language", "Sprich ganz normales, gesprochenes Deutsch wie am Telefon."),
+        ("es", "short_text_language", "Habla un español coloquial, como se habla por teléfono."),
+        ("fr", "short_text_language", "Parle un français de tous les jours, celui du téléphone."),
+        ("pt", "short_text_language", "Fale um português coloquial, como ao telefone."),
+        ("en", "read_line", "Read this line exactly: \"{line}\""),
+        ("zh-TW", "kick_open_abroad", "，這通電話是從國外打來的"),
+    ];
+
+    fn tmp() -> crate::pack_update::tests::Dir {
+        crate::pack_update::tests::tmp()
+    }
+
+    fn put(dir: &Path, version: u64, texts: &[(&str, &str, &str)]) -> PathBuf {
+        let p = incoming_path(dir);
+        std::fs::write(&p, gz(version, texts)).unwrap();
+        p
+    }
+
+    #[test]
+    fn a_new_book_is_read_at_once_and_restore_reads_the_builtin_one() {
+        let d = tmp();
+        let v = BUILTIN_VERSION + 1;
+        let other = handle("en/sys");
+        let before = other.get();
+        let count = AtomicUsize::new(0);
+        assert_eq!(install_counted(&count, &d.0, &put(&d.0, v, &NEW), v), Ok(v));
+        for (lang, key, text) in NEW {
+            assert_eq!(handle(&format!("{lang}/{key}")).get(), text, "{lang}/{key}");
+        }
+        assert!(std::ptr::eq(other.get(), before), "a text not in the download is the same text");
+        assert_eq!((current_version(), changed_texts(), builtin_in_use()), (v, NEW.len(), false));
+        assert!(d.0.join(FILE_NAME).is_file());
+        restore_at(&d.0).unwrap();
+        assert!(builtin_in_use() && !d.0.join(FILE_NAME).exists());
+        for (lang, key, text) in NEW {
+            let t = handle(&format!("{lang}/{key}"));
+            assert_ne!(t.get(), text);
+            assert_eq!(Some(t.get()), lookup(t.name()));
+        }
+        assert!(std::ptr::eq(other.get(), before));
+    }
+
+    #[test]
+    fn texts_that_may_not_change_are_skipped_and_the_rest_used() {
+        let ko = NEW[1];
+        let th_new = ("th", "short_text_language", "พูดภาษาไทยแบบที่คุยกันทางโทรศัพท์");
+        let p = pack(
+            BUILTIN_VERSION + 1,
+            &[
+                ko,
+                // Not a text of this Bageo (a newer one may have it).
+                ("ja", "not_a_key_yet", "まだない文です。"),
+                th_new,
+                // Locked: a rule of the product.
+                ("en", "injection_guard", "Anything goes."),
+                ("zh-TW", "injection_guard", "什麼都可以。"),
+                // A placeholder lost.
+                ("en", "read_line", "Read the line exactly."),
+                // A space at its start the built-in text does not have.
+                ("zh-TW", "kick_open_abroad", " ，這通電話是從國外打來的"),
+                // A bidirectional control character.
+                ("es", "short_text_language", "Habla español \u{202E}coloquial."),
+            ],
+        );
+        let book = overlay(&p);
+        assert_eq!(book.changed, 1);
+        for (at, e) in shelf().entries.iter().enumerate() {
+            let name = format!("{}/{}", e.lang, e.key);
+            if name == "ko/short_text_language" {
+                assert_eq!(book.texts[at], ko.2);
+            } else {
+                assert!(std::ptr::eq(book.texts[at], builtin().texts[at]), "{name} stays built-in");
+            }
+        }
+    }
+
+    #[test]
+    fn a_download_not_newer_or_not_the_one_asked_for_is_not_used() {
+        let d = tmp();
+        let count = AtomicUsize::new(0);
+        let v = BUILTIN_VERSION;
+        assert!(install_counted(&count, &d.0, &put(&d.0, v, &NEW[..1]), v).is_err());
+        let w = BUILTIN_VERSION + 2;
+        assert!(install_counted(&count, &d.0, &put(&d.0, w, &NEW[..1]), w - 1).is_err());
+        assert!(builtin_in_use() && !d.0.join(FILE_NAME).exists());
+        std::fs::write(d.0.join(FILE_NAME), gz(v, &NEW)).unwrap();
+        assert!(load_installed(&d.0, BUILTIN_VERSION).is_none());
+        assert_eq!(std::fs::read_dir(&d.0).unwrap().count(), 1, "no download left behind");
+    }
+
+    #[test]
+    fn installs_stop_at_their_cap_until_bageo_restarts() {
+        let d = tmp();
+        let count = AtomicUsize::new(MAX_INSTALLS - 1);
+        let v = BUILTIN_VERSION + 1;
+        assert_eq!(install_counted(&count, &d.0, &put(&d.0, v, &NEW[..2]), v), Ok(v));
+        let staged = put(&d.0, v + 1, &NEW[..3]);
+        let err = install_counted(&count, &d.0, &staged, v + 1).unwrap_err();
+        assert!(err[0].detail.contains("restart Bageo"), "{err:?}");
+        assert!(!staged.exists());
+        assert_eq!(current_version(), v);
+        restore_at(&d.0).unwrap();
+    }
+
+    #[test]
+    fn a_broken_or_oversized_file_is_not_used_at_start() {
+        let d = tmp();
+        let v = BUILTIN_VERSION + 1;
+        let left = incoming_path(&d.0);
+        std::fs::write(&left, b"half").unwrap();
+        std::fs::write(d.0.join(FILE_NAME), gz(v, &NEW)).unwrap();
+        let book = load_installed(&d.0, BUILTIN_VERSION).expect("a newer download is used");
+        assert_eq!((book.version, book.changed), (v, NEW.len()));
+        assert!(!left.exists(), "an unfinished download is cleared");
+        let mut cut = gz(v, &NEW);
+        cut.truncate(cut.len() / 2);
+        std::fs::write(d.0.join(FILE_NAME), cut).unwrap();
+        assert!(load_installed(&d.0, BUILTIN_VERSION).is_none());
+        std::fs::write(d.0.join(FILE_NAME), vec![0u8; rules::MAX_PROMPTS_PACKED + 1]).unwrap();
+        assert!(load_installed(&d.0, BUILTIN_VERSION).is_none());
+        std::fs::write(d.0.join(FILE_NAME), b"{\"format\": 1}").unwrap();
+        assert!(load_installed(&d.0, BUILTIN_VERSION).is_none());
+        assert!(builtin_in_use());
+    }
+}

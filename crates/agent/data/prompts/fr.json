@@ -1,6 +1,7 @@
 {
   "format": 1,
   "lang": "fr",
+  "locked": ["short_text_hold"],
   "texts": {
     "short_text_language": "Parle un français courant, celui du téléphone.",
     "short_text_hold": "Argent, virements, contrats, mots de passe, codes, données personnelles, rendez-vous ou date : n'accepte rien, esquive avec légèreté.",

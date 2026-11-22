@@ -196,6 +196,10 @@ pub struct Index {
     /// one. Tolerant just like `locales`; older Bageo ignores it.
     #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "tolerant_locales")]
     pub scams: Option<LocalesRef>,
+    /// The changed prompt texts (bageo-prompts.json.gz), when the release has
+    /// them. Tolerant just like `locales`; older Bageo ignores it.
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "tolerant_locales")]
+    pub prompts: Option<LocalesRef>,
 }
 
 /// The translations file listed in the release index.
