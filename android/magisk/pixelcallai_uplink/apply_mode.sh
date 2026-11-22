@@ -42,7 +42,7 @@ if ! mkdir "$LOCK" 2>/dev/null; then
   # Still held only when that pid is alive and really is this script (after a reboot
   # or a SIGKILL the pid may belong to something else; service.sh also clears the
   # lock at boot).
-  if [ -n "$OLD" ] && kill -0 "$OLD" 2>/dev/null && grep -q apply_mode "/proc/$OLD/cmdline" 2>/dev/null; then
+  if [ -n "$OLD" ] && kill -0 "$OLD" 2>/dev/null && grep -qE 'apply_mode|heal_mode' "/proc/$OLD/cmdline" 2>/dev/null; then
     exit 4
   fi
   rm -rf "$LOCK"
@@ -69,6 +69,7 @@ T_DIALER=0
 T_GOOGLE=0
 T_DND=0
 T_VOL=0
+OLD_ZEN=
 OLD_VOL_RING=
 OLD_VOL_NOTIFICATION=
 PREV_MODE=$(tr -d "$STRIP" < "$DIR/mode" 2>/dev/null || echo ai)
@@ -273,8 +274,11 @@ revert_to_normal() {
     q pm enable "$GD/com.android.incallui.LegacyInCallActivity"
   fi
   if [ "$T_DND" -eq 1 ]; then
-    q cmd notification set_dnd off
-    q settings put global zen_mode 0
+    case "$OLD_ZEN" in
+      # The owner's own Do Not Disturb was on before the switch: leave it as it was.
+      1|2|3) q settings put global zen_mode "$OLD_ZEN" ;;
+      *) q cmd notification set_dnd off; q settings put global zen_mode 0 ;;
+    esac
   fi
   if [ "$T_VOL" -eq 1 ]; then
     case "$OLD_VOL_RING" in ''|*[!0-9]*|0) ;; *) q settings put system volume_ring "$OLD_VOL_RING" ;; esac
@@ -292,7 +296,9 @@ revert_to_normal() {
       until_ok other_ready || good=0
     fi
   fi
-  if [ "$T_DND" -eq 1 ]; then until_ok dnd_off || good=0; fi
+  if [ "$T_DND" -eq 1 ]; then
+    case "$OLD_ZEN" in 1|2|3) ;; *) until_ok dnd_off || good=0 ;; esac
+  fi
   echo normal > "$DIR/mode"
   if [ "$good" -eq 1 ]; then
     rm -f "$DIR/pending"
@@ -330,6 +336,7 @@ apply_ai() {
   # 3. Do Not Disturb on, ringer and notification volume settings zero (the app's
   #    audio guard zeroes the live volumes when its service arms).
   T_DND=1
+  OLD_ZEN=$(zen)
   q settings put global zen_mode 2
   q cmd notification set_dnd on
   until_ok dnd_on || fail dnd dnd_failed

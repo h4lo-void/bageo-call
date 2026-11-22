@@ -14,8 +14,12 @@ PKG=com.pixelcallai.streamer
 GD=com.google.android.dialer
 STRIP=' \t\r\n\v\f\357\273\277'
 
-# A switch from the app is running: it ends in a consistent state itself.
-[ -d "$DIR/apply.lock" ] && exit 0
+# Hold the same lock as apply_mode.sh, so a switch from the app never runs at the same
+# time (the app sees the run and waits). A switch already running ends in a consistent
+# state itself.
+mkdir "$DIR/apply.lock" 2>/dev/null || exit 0
+echo $$ > "$DIR/apply.lock/pid"
+trap 'rm -rf "$DIR/apply.lock"' EXIT
 
 if command -v timeout >/dev/null 2>&1; then T="timeout 15"; else T=""; fi
 q() { $T "$@" >/dev/null 2>&1; }

@@ -209,6 +209,18 @@ run_apply ai t6
 eq "exit" "$RC" 1; eq "mode file" "$(mode_file)" ai; eq "pending" "$(pending)" yes
 eq "Google Phone off" "$(rd gd_enabled)" 0
 
+# The owner's own Do Not Disturb was on, and the switch breaks at the very end (the mode
+# file cannot be saved): the way back leaves Do Not Disturb as the owner had it.
+# (A read-only file only stops a user other than root.)
+if [ "$(id -u)" != 0 ]; then
+  setup ai_owner_dnd_kept; normal_phone; echo 1 > "$ST/zen"; chmod 444 "$ST/data/mode"
+  run_apply ai t10
+  eq "exit" "$RC" 1; eq "error" "$(last error)" save_failed
+  eq "owner's Do Not Disturb kept" "$(rd zen)" 1; eq "Google Phone on" "$(rd gd_enabled)" 1
+  eq "phone app" "$(rd dialer)" "$GD"
+  chmod 644 "$ST/data/mode"
+fi
+
 # ---------------------------------------------------------------- switch to normal
 setup normal_ok; ai_phone
 run_apply normal t7 4 3 4 5 5 5
@@ -245,6 +257,12 @@ eq "exit" "$RC" 0; eq "Google Phone off" "$(rd gd_enabled)" 0
 setup heal_switch_running; ai_phone; echo normal > "$ST/data/mode"; mkdir "$ST/data/apply.lock"
 run_heal
 eq "exit" "$RC" 0; eq "Google Phone off" "$(rd gd_enabled)" 0
+
+# heal_mode.sh holds the switch lock while it works and lets it go when done.
+setup heal_lock_released; ai_phone; echo normal > "$ST/data/mode"
+run_heal
+eq "exit" "$RC" 0; eq "Google Phone on" "$(rd gd_enabled)" 1
+eq "lock let go" "$([ -e "$ST/data/apply.lock" ] && echo held || echo free)" free
 
 setup heal_no_google; ai_phone; echo normal > "$ST/data/mode"; touch "$ST/no_google"
 run_heal
