@@ -135,6 +135,7 @@
     "h_reject_list": "número bloqueado: o aviso de indisponibilidade foi reproduzido e a chamada encerrada (a IA não atendeu)",
     "h_urgent_merged": "a pessoa disse que era urgente: o telefone ligou para o dono, que atendeu e foi conectado direto com quem ligou, e a IA saiu; esta chamada não foi tratada como chamada de vendas ou golpe para enrolar",
     "h_urgent_failed": "a pessoa disse que era urgente: o telefone ligou para o dono, mas não completou, e a IA disse a quem ligou que o dono retornaria em breve; esta chamada não foi tratada como chamada de vendas ou golpe para enrolar; em \"A fazer\" escreva retornar a ligação o mais rápido possível",
+    "h_urgent_scam_words": "a pessoa disse que era urgente, mas também disse coisas que só golpistas dizem (como pedir um código ou uma transferência), então o telefone não ligou para o dono; o número pode ser falso; em \"A fazer\" escreva ligar para o número que o dono tem salvo para confirmar, sem passar código nem enviar dinheiro",
     "h_urgent_transfer": "a pessoa disse que era urgente e o dono foi avisado na hora; esta chamada não foi tratada como chamada de vendas ou golpe para enrolar; em \"A fazer\" escreva retornar a ligação o mais rápido possível",
     "h_stall_released": "o sistema primeiro achou que era uma ligação de vendas / golpe; uma segunda checagem viu que era uma ligação comum e a IA voltou a conversar normalmente",
     "h_stall_spam": "o sistema julgou que era uma ligação de vendas / golpe ({t}); por isso a IA prendeu a pessoa na linha de propósito para fazê-la perder tempo",

@@ -975,6 +975,7 @@
     "urg_why_bad_number": "你的號碼不正確",
     "urg_why_merge": "沒能把你接上對方",
     "urg_why_phone": "手機撥不出去",
+    "urg_why_scam_words": "對方說了像詐騙的話，所以沒打給你",
     "er_err_empty_text": "請寫要說的話。",
     "er_err_text_too_long": "太長了，請縮短。",
     "er_err_question_closed": "這個問題已經回答過，或已逾時。",

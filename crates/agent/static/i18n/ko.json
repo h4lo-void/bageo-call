@@ -975,6 +975,7 @@
     "urg_why_bad_number": "내 번호가 올바르지 않음",
     "urg_why_merge": "나를 상대방과 연결하지 못함",
     "urg_why_phone": "휴대폰이 전화를 걸지 못함",
+    "urg_why_scam_words": "상대가 사기 같은 말을 해서 걸지 않음",
     "er_err_empty_text": "전할 말을 적어 주세요.",
     "er_err_text_too_long": "너무 깁니다. 줄여 주세요.",
     "er_err_question_closed": "이 질문은 이미 답변되었거나 시간이 지났습니다.",

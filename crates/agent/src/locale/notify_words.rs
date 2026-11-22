@@ -216,6 +216,8 @@ pub struct Words {
     pub h_reject_list: String,
     pub h_urgent_merged: String,
     pub h_urgent_failed: String,
+    /// The urgent caller also said words only scammers say: the owner was not called.
+    pub h_urgent_scam_words: String,
     pub h_urgent_transfer: String,
     pub h_stall_released: String,
     /// `{t}` = the kind of call.
@@ -297,18 +299,19 @@ mod tests {
 
     /// SHA-256 (of the text with LF line ends) and key count of every file.
     /// The first 124 keys were written from the old `Phrases` constants, the
-    /// last 22 from the lines of the code that were Chinese and English only;
-    /// change a value on purpose and update the line here in the same commit.
+    /// next 22 from the lines of the code that were Chinese and English only,
+    /// and `h_urgent_scam_words` came after them; change a value on purpose
+    /// and update the line here in the same commit.
     const GOLDEN: [(&str, &str, usize); 9] = [
-        ("en", "756062389fe02c332f835bee5b5baa1fb46e031e5c0d9900288ac17c080d7c83", 146),
-        ("zh-TW", "327f9222b62213a684a041ea5917d629bad85be26d1f30254ffdf4429205e6a4", 146),
-        ("zh-CN", "8da4c2be62687387a60d85fe418354b0354ec4871d8bcc4ff4f06def894ee53f", 146),
-        ("ja", "e4dd74c46e1fb431119aeacc054b94b3f345cb9badf974dcda074674c7d72260", 146),
-        ("ko", "a9427f1134525f3c30a91fb7bbfa58341934a137e94d0cd285ecf4462a52057d", 146),
-        ("es", "1df8e3c73e3ecc49060b7f152b05c1d34d4c25acc517def3af1795c2f91084ab", 146),
-        ("fr", "a442e20b8f6091d2952e2e74dcf5edb55622da6a2bc3022ff5c63d0abf3bd4d5", 146),
-        ("de", "b6a1f8e93744ba3c4a3996b373e227f29fbdf34817e39b2482108f891b842191", 146),
-        ("pt", "e2dfbdc72c33d9fc8f85511f0b7484179854a21b1e83adf9f17c49ed7d832fec", 146),
+        ("en", "ae71ba1767c4fc89508e192d8c516a499505521310e97ffb8f7ef2cff5cdb260", 147),
+        ("zh-TW", "fa31430a772a9d4947365a043381dadc88cdde854f26e2f15646a1e8ee403ef6", 147),
+        ("zh-CN", "cbb40fb8f5bae1a422ae06f17b4768e61b192c8c7b67c84ec3ad45196c4b3168", 147),
+        ("ja", "2d5369ef38d7f194df6c483b942d9ca28584a3c7f352ce74ce7252d2c086ccc4", 147),
+        ("ko", "5f385556a0c10e74bd2a642824c65a6d50c19b2ac76a969d916c77b59d1d76a3", 147),
+        ("es", "96619969e6f7516d583c51e5ec8769e5c9006cd5bc32e2c2b09a00de0ede8d2d", 147),
+        ("fr", "80d2c66037c34757284e4b779a3f7e16faf360ddb1a44a94d5ec3c0488342c7a", 147),
+        ("de", "26594eb6fd3963c4e03b05a4971a2997a15a64ba3898bc671a63a44008804afa", 147),
+        ("pt", "be1d99d4fcaa3bf7a0634b42dbab47df79e3befa6384126c055d1731dd77cf43", 147),
     ];
 
     const META: &str = include_str!("../../data/i18n/notify/_meta.json");
@@ -484,7 +487,7 @@ mod tests {
     #[test]
     fn urgent_lines_name_the_to_do_label_of_their_own_language() {
         for l in CORE.into_iter().filter(|l| *l != Lang::En) {
-            for key in ["h_urgent_failed", "h_urgent_transfer"] {
+            for key in ["h_urgent_failed", "h_urgent_scam_words", "h_urgent_transfer"] {
                 assert!(word(l, key).contains(words(l).s_todo.as_str()), "{l:?} {key}");
             }
         }

@@ -118,6 +118,18 @@ pub fn urgent_blocked_by_scam(stall_engaged: bool, judged: Option<&crate::calls:
     stall_engaged || judged.is_some_and(crate::calls::ScamJudgement::stands)
 }
 
+/// Why a call to the owner was not made, or was called off before the merge:
+/// the caller said words only scammers say ([`scam_words_stop_dial`]).
+pub const SCAM_WORDS: &str = "scam_words";
+
+/// The caller has said words only scammers say (a code, a transfer…) anywhere in
+/// the call so far (`transcript`: the Live session's raw transcript): the owner is
+/// not dialed, and a call to the owner not merged yet is called off. A saved or
+/// safe-marked number can be spoofed, and the second look may not have answered yet.
+pub fn scam_words_stop_dial(transcript: &str) -> bool {
+    crate::gemini_live::caller_said_scam_words(transcript)
+}
+
 /// A number not in the contacts gets the owner dialed at most once in this
 /// long; hidden numbers share one allowance. Contacts have no such limit.
 pub const STRANGER_DIAL_EVERY: Duration = Duration::from_secs(30 * 60);
@@ -749,6 +761,61 @@ mod tests {
         rt.whitelist_mode = mode.to_string();
         rt.whitelist_forward_number = number.to_string();
         rt
+    }
+
+    /// A saved number tells of an emergency (the owner would be dialed). Asked
+    /// for a code or a transfer anywhere in the call, the owner is not dialed;
+    /// without that, or when only the AI said such words, the call goes ahead.
+    #[test]
+    fn an_urgent_caller_who_asked_for_a_code_does_not_get_the_owner_dialed() {
+        // (urgent matter, what a scammer then asks for, the AI's own words)
+        let cases = [
+            (
+                "Mom collapsed at home and the ambulance is taking her to the ER right now.",
+                "To pay the hospital deposit, read me the verification code on your phone.",
+                "I would never give out a verification code.",
+            ),
+            (
+                "実は海外でパスポートと財布を盗られちゃって。今どうしようもなくて困ってるんだよ。",
+                "確認のため、届いた認証コードを教えてください。",
+                "認証コードはお伝えできません。",
+            ),
+            (
+                "Mi madre se desmayó en casa y la llevan en ambulancia a urgencias, que venga ya.",
+                "Para el ingreso, dígame el código de verificación que le llegó.",
+                "No doy ningún código de verificación.",
+            ),
+            (
+                "In der Küche ist Feuer ausgebrochen, die Feuerwehr ist da!",
+                "Für die Versicherung nennen Sie mir bitte sofort den Bestätigungscode.",
+                "Einen Bestätigungscode gebe ich nicht heraus.",
+            ),
+            (
+                "我上週才去醫院拿藥。結果我爸剛剛又昏倒，送急診了！",
+                "醫院要先繳保證金，你先把手機收到的驗證碼唸給我。",
+                "驗證碼我不會給喔。",
+            ),
+            (
+                "Mia mamma è svenuta in casa e l'ambulanza la sta portando al pronto soccorso adesso!",
+                "Per il ricovero mi dica subito il codice di verifica che le è arrivato.",
+                "Il codice di verifica non lo do a nessuno.",
+            ),
+            (
+                "Ibu saya baru saja pingsan di rumah dan ambulans sedang membawanya ke rumah sakit sekarang!",
+                "Untuk biaya rumah sakit, tolong sebutkan kode OTP yang masuk ke HP Anda.",
+                "Saya tidak pernah memberi kode OTP.",
+            ),
+        ];
+        for (urgent, scam, ai_own) in cases {
+            assert!(crate::urgency::is_urgent(urgent), "the matter is urgent: {urgent}");
+            let asked = format!("對方：{urgent}\n接聽：好，我馬上找他。\n對方：{scam}");
+            assert!(scam_words_stop_dial(&asked), "no call to the owner: {scam}");
+            // Asked first, the emergency after: the same.
+            let asked_first = format!("對方：{scam}\n接聽：嗯？\n對方：{urgent}");
+            assert!(scam_words_stop_dial(&asked_first), "{scam}");
+            let plain = format!("對方：{urgent}\n接聽：{ai_own}\n對方：Please hurry.");
+            assert!(!scam_words_stop_dial(&plain), "the owner is dialed as before: {urgent}");
+        }
     }
 
     #[test]

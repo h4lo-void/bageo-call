@@ -6361,6 +6361,11 @@
     "who": "the owner",
     "placeholders": []
   },
+  "urg_why_scam_words": {
+    "where": "a label or sentence in the console. English: the caller sounded like a scam, so you were not called",
+    "who": "the owner",
+    "placeholders": []
+  },
   "usb_error": {
     "where": "a label or sentence in the console. English: USB problem",
     "who": "the owner",

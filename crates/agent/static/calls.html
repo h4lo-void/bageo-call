@@ -2883,7 +2883,7 @@ function callKind(c) {
   return { k: "", icon: "phone", tag: "", label: "k_ended" };
 }
 // Why the AI could not bring the owner into a call (whitelist_urgent_call_failed:<reason>).
-const URGENT_WHY = { call_ended: "caller_left", leg_ended: "ended", bad_number: "bad_number", merge_failed: "merge", merge_timeout: "merge", unhold_failed: "merge", no_result: "merge", no_answer: "no_answer" };
+const URGENT_WHY = { call_ended: "caller_left", leg_ended: "ended", bad_number: "bad_number", merge_failed: "merge", merge_timeout: "merge", unhold_failed: "merge", no_result: "merge", no_answer: "no_answer", scam_words: "scam_words" };
 function urgentWhy(reason) {
   const code = String(reason || "").trim().toLowerCase();
   return t("urg_why_" + (/^noanswer/.test(code) ? "no_answer" : URGENT_WHY[code] || "phone"));
