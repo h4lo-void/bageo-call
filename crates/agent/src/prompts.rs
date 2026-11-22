@@ -913,14 +913,14 @@ pub const ABOUT_WORK_MAX: usize = 120;
 /// Longest phrase kept in `about_say` and `about_avoid`.
 pub const ABOUT_PHRASE_MAX: usize = 24;
 /// Most phrases kept in `about_say` and in `about_avoid`.
-pub const ABOUT_PHRASES_MAX: usize = 3;
+pub const ABOUT_PHRASES_MAX: usize = 10;
 /// Longest parcel text kept (setting `about_parcel`).
 pub const ABOUT_PARCEL_MAX: usize = 80;
 /// Longest extra text kept (setting `about_extra`).
 pub const ABOUT_EXTRA_MAX: usize = 300;
 /// Most characters the about block ([about_block]) adds to a prompt. It is not
 /// part of the region budget ([CALL_PROMPT_BUDGET]) and has its own limit.
-pub const ABOUT_BLOCK_MAX: usize = 350;
+pub const ABOUT_BLOCK_MAX: usize = 450;
 /// What a message can ask (setting `about_message_asks`), in the order they are said.
 pub const ABOUT_ASKS: [&str; 4] = ["name", "callback", "reason", "urgency"];
 
@@ -2759,7 +2759,10 @@ mod tests {
             }
         }
         assert_eq!(clean_about_text("a\nb\t{c}[d]【e】\u{0}f", 50), "a b cde f");
-        assert_eq!(clean_about_list(&strs(&["\"Cool\"", "cool", "「好」", "好", "1", "2", "3"])), strs(&["Cool", "好", "1"]));
+        assert_eq!(
+            clean_about_list(&strs(&["\"Cool\"", "cool", "「好」", "好", "1", "2", "3", "4", "5", "6", "7", "8", "9"])),
+            strs(&["Cool", "好", "1", "2", "3", "4", "5", "6", "7", "8"])
+        );
         assert_eq!(clean_about_asks(&strs(&["urgency", "bogus", "NAME", "name"])), strs(&["name", "urgency"]));
         assert_eq!(clean_about_callers(" Family "), "family");
         assert_eq!(clean_about_callers("everyone"), "");

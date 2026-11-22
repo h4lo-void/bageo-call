@@ -156,7 +156,7 @@ A few short answers so the AI sounds like you, all optional. Bageo turns them in
 |---|---|---|
 | Who calls this phone most? | none | Family and friends, people from work, or both (`about_callers`). Picking one moves *Talk style* to step 2, 4 or 3 while you have not moved the slider yourself. |
 | Your work or day, in one line | empty | Up to 120 characters (`about_work`). |
-| Things you often say / never say | empty | *As me* only: up to 3 each, 24 characters each (`about_say`, `about_avoid`). |
+| Things you often say / never say | empty | *As me* only: up to 10 each, 24 characters each (`about_say`, `about_avoid`). |
 | What to ask for in a message | all four | *AI assistant* only: the caller's name, a callback number, what it is about, how urgent (`about_message_asks`). |
 | Where should parcels and deliveries go? | empty | Up to 80 characters (`about_parcel`). The hint shows your region's usual way. |
 | Anything else the AI should know | empty | Up to 300 characters (`about_extra`). |

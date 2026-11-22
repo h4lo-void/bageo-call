@@ -1261,7 +1261,7 @@
     "ab_say_ph": "ex.: Tranquilo",
     "ab_avoid": "O que você nunca diz",
     "ab_avoid_ph": "ex.: Prezado cliente",
-    "ab_say_h": "Até 3 de cada. A IA usa suas expressões de vez em quando e evita as outras.",
+    "ab_say_h": "Aperte Enter ou use vírgula após cada frase. A IA usa suas expressões de vez em quando e evita as outras.",
     "ab_asks": "O que perguntar num recado",
     "ab_ask_name": "Nome",
     "ab_ask_callback": "Número para retorno",

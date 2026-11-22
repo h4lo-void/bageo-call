@@ -1261,7 +1261,7 @@
     "ab_say_ph": "例如：没问题",
     "ab_avoid": "你不会说的话",
     "ab_avoid_ph": "例如：尊敬的客户",
-    "ab_say_h": "各最多 3 个。AI 偶尔用你的口头禅，避开你不说的。",
+    "ab_say_h": "按 Enter 或逗号添加。AI 偶尔用你的口头禅，避开你不说的。",
     "ab_asks": "留言要问清楚哪些",
     "ab_ask_name": "对方姓名",
     "ab_ask_callback": "回电号码",

@@ -129,7 +129,7 @@
     "placeholders": []
   },
   "ab_say_h": {
-    "where": "the About you section. English: Up to 3 each. The AI uses your phrases now and then and avoids the others.",
+    "where": "the About you section. English: Press Enter or add a comma after each phrase. The AI uses your phrases now and then and avoids the others.",
     "who": "the owner",
     "placeholders": []
   },

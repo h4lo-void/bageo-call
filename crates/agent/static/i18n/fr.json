@@ -1261,7 +1261,7 @@
     "ab_say_ph": "ex. Pas de souci",
     "ab_avoid": "Ce que vous ne dites jamais",
     "ab_avoid_ph": "ex. Cher client",
-    "ab_say_h": "3 au plus pour chaque. L'IA reprend parfois vos expressions et évite les autres.",
+    "ab_say_h": "Appuyez sur Entrée ou mettez une virgule après chaque expression. L'IA reprend parfois vos expressions et évite les autres.",
     "ab_asks": "Ce qu'il faut demander dans un message",
     "ab_ask_name": "Nom",
     "ab_ask_callback": "Numéro de rappel",

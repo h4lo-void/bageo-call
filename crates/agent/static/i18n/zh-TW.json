@@ -1261,7 +1261,7 @@
     "ab_say_ph": "例如：沒問題啦",
     "ab_avoid": "你不會說的話",
     "ab_avoid_ph": "例如：親愛的貴賓",
-    "ab_say_h": "各最多 3 個。AI 偶爾用你的口頭禪，避開你不說的。",
+    "ab_say_h": "按 Enter 或逗號新增。AI 偶爾用你的口頭禪，避開你不說的。",
     "ab_asks": "留言要問清楚哪些",
     "ab_ask_name": "對方姓名",
     "ab_ask_callback": "回電號碼",

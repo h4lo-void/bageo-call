@@ -1261,7 +1261,7 @@
     "ab_say_ph": "e.g. No worries",
     "ab_avoid": "Things you never say",
     "ab_avoid_ph": "e.g. Dear valued customer",
-    "ab_say_h": "Up to 3 each. The AI uses your phrases now and then and avoids the others.",
+    "ab_say_h": "Press Enter or add a comma after each phrase. The AI uses your phrases now and then and avoids the others.",
     "ab_asks": "What to ask for in a message",
     "ab_ask_name": "Caller's name",
     "ab_ask_callback": "Callback number",

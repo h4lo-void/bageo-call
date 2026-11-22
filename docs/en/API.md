@@ -255,7 +255,7 @@ Fields worth knowing (all of them are in `RuntimeSettings` in
 | `talk_style_level` | Talk style, 1 (casual) to 5 (businesslike); default 3. |
 | `about_callers` | Who calls most: `""`, `"family"`, `"work"` or `"both"`. |
 | `about_work` / `about_parcel` / `about_extra` | Your work or day (up to 120 characters), where parcels go (80), anything else (300). |
-| `about_say` / `about_avoid` | Phrases you often say / never say: up to 3 each, 24 characters each. |
+| `about_say` / `about_avoid` | Phrases you often say / never say: up to 10 each, 24 characters each. |
 | `about_message_asks` | What the AI assistant asks for in a message: any of `"name"`, `"callback"`, `"reason"`, `"urgency"` (default all four). |
 | `answer_style` | `assistant` / `persona` (the AI answers as you). |
 | `gemini_assistant_prompt` / `gemini_persona_prompt` | Your custom prompt for `assistant` / `persona` (empty = built-in). |

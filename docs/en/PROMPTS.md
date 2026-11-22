@@ -91,7 +91,7 @@ prompt.
   AI follows, such as where parcels go. Empty: from the phone's SIM.
 - **About you** (*Settings → About you*), all optional: who calls this phone
   most, your work or day in one line, phrases you often say and never say (up
-  to three each), where parcels and deliveries go, and anything else (up to 300
+  to ten each), where parcels and deliveries go, and anything else (up to 300
   characters). With *AI assistant*, the phrases question becomes *What to ask
   for in a message*: the caller's name, a callback number, what it is about and
   how urgent.
