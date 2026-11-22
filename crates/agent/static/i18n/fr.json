@@ -975,6 +975,7 @@
     "urg_why_bad_number": "votre numéro n'est pas valide",
     "urg_why_merge": "impossible de vous passer l'appelant",
     "urg_why_phone": "le téléphone n'a pas pu passer l'appel",
+    "urg_why_scam_words": "l'appelant ressemblait à un escroc, vous n'avez donc pas été appelé",
     "er_err_empty_text": "Écrivez ce que vous voulez dire.",
     "er_err_text_too_long": "C'est trop long. Raccourcissez-le.",
     "er_err_question_closed": "Cette question a déjà reçu une réponse ou a expiré.",

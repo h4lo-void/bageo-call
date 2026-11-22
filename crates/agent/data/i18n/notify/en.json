@@ -135,6 +135,7 @@
     "h_reject_list": "blocked number: the unavailable announcement was played, then hung up (the AI did not answer)",
     "h_urgent_merged": "the caller said it was urgent: the phone called the owner, who picked up and was put through to the caller, and the AI left; this call was not treated as a sales or scam call to stall",
     "h_urgent_failed": "the caller said it was urgent: the phone called the owner but did not get through, and the AI told the caller the owner would call back soon; this call was not treated as a sales or scam call to stall, so the to-do is to call them back as soon as possible",
+    "h_urgent_scam_words": "the caller said it was urgent but also said things only scammers say (such as asking for a code or a money transfer), so the phone did not call the owner; the number may be faked, so the to-do is to call them back on the number the owner has saved to check, and never to give a code or send money",
     "h_urgent_transfer": "the caller said it was urgent and the owner was alerted at once; this call was not treated as a sales or scam call to stall, so the to-do is to call them back as soon as possible",
     "h_stall_released": "the system first took it for a sales / scam call; a second check found an ordinary call and the AI went back to talking normally",
     "h_stall_spam": "the system judged it a sales / scam call ({t}), so the AI deliberately kept the caller talking to waste their time",

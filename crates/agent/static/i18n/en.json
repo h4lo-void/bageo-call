@@ -975,6 +975,7 @@
     "urg_why_bad_number": "your number is not valid",
     "urg_why_merge": "Could not put you through",
     "urg_why_phone": "the phone could not place the call",
+    "urg_why_scam_words": "the caller sounded like a scam, so you were not called",
     "er_err_empty_text": "Write what you want to say.",
     "er_err_text_too_long": "That's too long. Please shorten it.",
     "er_err_question_closed": "That question was already answered or has timed out.",

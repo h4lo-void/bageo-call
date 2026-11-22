@@ -10422,6 +10422,8 @@ fn summary_end_hint(events: &[String], scam: Option<&calls::ScamJudgement>) -> S
         w.h_reject_list.clone()
     } else if has("whitelist_urgent_call_merged") {
         w.h_urgent_merged.clone()
+    } else if has(&format!("whitelist_urgent_call_failed:{}", urgent_call::SCAM_WORDS)) {
+        w.h_urgent_scam_words.clone()
     } else if events.iter().any(|e| e.starts_with("whitelist_urgent_call_failed") || e == "whitelist_urgent_call_ai_ended") {
         w.h_urgent_failed.clone()
     } else if has("whitelist_urgent_transfer") {
@@ -12078,6 +12080,9 @@ mod unknown_caller_tests {
         let urgent = |evs: &[&str]| summary_end_hint(&evs.iter().map(|e| e.to_string()).collect::<Vec<_>>(), None);
         let missed = urgent(&["whitelist_urgent_transfer", "whitelist_urgent_call_failed", "whitelist_urgent_call_failed:no_answer"]);
         assert!(missed.contains("沒接通") && missed.contains("盡快回電") && !missed.contains("陪他聊"), "{missed}");
+        // Not dialed for words only scammers say: never written up as the owner not answering.
+        let scam = urgent(&["whitelist_urgent_transfer", "whitelist_urgent_call_failed", "whitelist_urgent_call_failed:scam_words"]);
+        assert!(scam.contains("詐騙") && scam.contains("沒有打給主人") && !scam.contains("沒接通"), "{scam}");
         assert!(urgent(&["whitelist_urgent_transfer", "whitelist_urgent_call_merged"]).contains("直接跟來電者通話"));
         assert!(urgent(&["whitelist_urgent_transfer"]).contains("盡快回電"));
     }

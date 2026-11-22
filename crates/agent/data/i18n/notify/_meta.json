@@ -133,6 +133,7 @@
   "h_reject_list": {"where": "how the call ended: blocked number answered with an announcement, one line for the summary model", "who": "the summary model and the owner", "placeholders": []},
   "h_urgent_merged": {"where": "how the call ended: urgent caller put through to the owner, one line for the summary model", "who": "the summary model and the owner", "placeholders": []},
   "h_urgent_failed": {"where": "how the call ended: urgent caller, the owner could not be reached; names the to-do label of the summary", "who": "the summary model and the owner", "placeholders": []},
+  "h_urgent_scam_words": {"where": "how the call ended: urgent caller who also said words only scammers say, so the owner was not called; names the to-do label of the summary", "who": "the summary model and the owner", "placeholders": []},
   "h_urgent_transfer": {"where": "how the call ended: urgent caller, the owner alerted; names the to-do label of the summary", "who": "the summary model and the owner", "placeholders": []},
   "h_stall_released": {"where": "how the call ended: first judged a sales or scam call, then an ordinary call, one line for the summary model", "who": "the summary model and the owner", "placeholders": []},
   "h_stall_spam": {"where": "how the call ended: judged a sales or scam call and stalled; {t} = the kind of call", "who": "the summary model and the owner", "placeholders": ["{t}"]},

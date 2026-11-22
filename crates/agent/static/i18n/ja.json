@@ -975,6 +975,7 @@
     "urg_why_bad_number": "あなたの番号が正しくない",
     "urg_why_merge": "あなたを相手につなげなかった",
     "urg_why_phone": "スマホが電話をかけられなかった",
+    "urg_why_scam_words": "相手が詐欺のようなことを言ったので、かけなかった",
     "er_err_empty_text": "伝えたい内容を書いてください。",
     "er_err_text_too_long": "長すぎます。短くしてください。",
     "er_err_question_closed": "この質問はすでに回答済みか、時間切れです。",

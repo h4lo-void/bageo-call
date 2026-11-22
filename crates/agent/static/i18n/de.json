@@ -975,6 +975,7 @@
     "urg_why_bad_number": "deine Nummer ist ungültig",
     "urg_why_merge": "du konntest nicht zum Anrufer durchgestellt werden",
     "urg_why_phone": "das Telefon konnte den Anruf nicht aufbauen",
+    "urg_why_scam_words": "der Anrufer klang nach Betrug, deshalb wurdest du nicht angerufen",
     "er_err_empty_text": "Schreib, was du sagen möchtest.",
     "er_err_text_too_long": "Das ist zu lang. Bitte kürzen.",
     "er_err_question_closed": "Diese Frage wurde schon beantwortet oder ist abgelaufen.",
