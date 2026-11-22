@@ -54,9 +54,27 @@ fn the_builtin_files_read_and_their_locked_keys_exist() {
                 "live_persona_hold_off_default",
                 "live_persona_hold_off_line",
                 "live_persona_hold_off_stall",
+                "contacts_caller_block_self",
+                "contacts_caller_block_assistant",
+                "contacts_caller_block_self_cn",
+                "contacts_caller_block_assistant_cn",
             ][..],
         ),
-        ("en", &["guard_persona", "guard_assistant", "injection_guard", "hold_off_line", "hold_off_stall", "short_text_hold", "sys"][..]),
+        (
+            "en",
+            &[
+                "guard_persona",
+                "guard_assistant",
+                "injection_guard",
+                "hold_off_line",
+                "hold_off_stall",
+                "short_text_hold",
+                "sys",
+                "errands_ai_disclosure",
+                "contacts_caller_block_self",
+                "contacts_caller_block_assistant",
+            ][..],
+        ),
         ("ja", &hold[..]),
         ("ko", &hold[..]),
         ("es", &hold[..]),
@@ -199,19 +217,26 @@ fn characters_nobody_sees_are_refused_unless_the_built_in_text_has_them() {
 }
 
 /// The hard lines (what is never agreed to, who the AI says it is, whose words
-/// count as instructions) only change with a new Bageo, in every language.
+/// count as instructions, a saved contact's note included) only change with a
+/// new Bageo, in every language.
 #[test]
 fn the_hard_lines_of_every_language_are_locked() {
     let mut seen = 0;
     for (lang, file) in &builtin_book().langs {
         for (key, _) in &file.texts {
-            if key.contains("guard") || key.contains("hold_off") || key == "short_text_hold" || key == "sys" {
+            if key.contains("guard")
+                || key.contains("hold_off")
+                || key.contains("ai_disclosure")
+                || key.starts_with("contacts_caller_block")
+                || key == "short_text_hold"
+                || key == "sys"
+            {
                 seen += 1;
                 assert!(file.locked.contains(key), "{lang}/{key} is a hard line and must be locked");
             }
         }
     }
-    assert_eq!(seen, 19);
+    assert_eq!(seen, 26);
 }
 
 // ---- the download ------------------------------------------------------------------------------

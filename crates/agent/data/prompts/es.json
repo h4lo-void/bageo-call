@@ -34,6 +34,18 @@
       "{END}"
     ],
     "errands_errand_prompt_with_1": "No tienen mesa a las 7; ¿a las 7:30 está bien?",
-    "errands_errand_prompt_with_2": "¿Entonces hoy a las 4:30 de la tarde, verdad?"
+    "errands_errand_prompt_with_2": "¿Entonces hoy a las 4:30 de la tarde, verdad?",
+    "errands_check_assistant": "Déjame consultarlo con {owner}, un momento por favor",
+    "errands_intro_assistant": "Hola, llamo de parte de {owner}",
+    "errands_intro_owner": "Hola, soy {owner}",
+    "appointments_read_back_example": "\"¿Entonces el {weekday} {day} de {month} a las {hour12}:{minute} {part}, verdad?\"",
+    "scenario_cue_mark": "[Nota] ",
+    "scenario_cue_delivery": "Envío: como se suele; contra reembolso: importe, remitente; si agradece, despídete.",
+    "scenario_cue_bank_verify": "Banco revisando un cargo: anota importe, comercio, hora; ni sí ni no; sin bloqueo; llamas tú.",
+    "scenario_cue_important_notice": "Aviso importante: escucha todo, pide lo que falte (área, plazo, número) y repite las cifras.",
+    "scenario_cue_schedule_invite": "Cita: acéptala con gusto; di que lo confirmas luego; sin fijar hora.",
+    "scenario_cue_schedule_invite_booking": "Cita: acéptala con gusto, anota fecha y hora con la reserva y repítelas.",
+    "scenario_cue_casual_chat": "Familia o amigos: charla relajada, como siempre, sin interrogar.",
+    "scenario_cue_wrong_number": "Número equivocado: dilo en breve, sin el nombre ni datos del titular."
   }
 }

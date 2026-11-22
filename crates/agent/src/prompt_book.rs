@@ -28,8 +28,9 @@
 //!
 //! How texts are put together into a prompt stays in the code that does it
 //! ([crate::prompts] and the modules of each kind of call): the book holds
-//! the words, not the rules. A sentence with values filled in by `format!`
-//! is such a rule and stays in the code.
+//! the words, not the rules. A sentence with values in it is a text with
+//! `{name}` placeholders, filled in where it is used ([Text::fill]); which
+//! sentence is used when, and what the values are, stays in the code.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -47,7 +48,7 @@ pub const FORMAT: u64 = rules::BOOK_FORMAT;
 /// The version of the built-in texts (YYYYMMDDNN). A download is used only
 /// when it is newer. Raise it whenever a file in data/prompts changes (the
 /// test `the_builtin_texts_match_their_version` says so).
-pub const BUILTIN_VERSION: u64 = 2026112201;
+pub const BUILTIN_VERSION: u64 = 2026112301;
 
 /// The installed download, in the packs folder.
 pub const FILE_NAME: &str = rules::PROMPTS_FILE;
@@ -110,6 +111,48 @@ impl Text {
     pub fn name(&self) -> &'static str {
         self.name
     }
+
+    /// The text with each `{name}` replaced by its value ([fill_in]).
+    pub fn fill(&self, values: &[Fill<'_>]) -> String {
+        fill_in(self.get(), values)
+    }
+}
+
+/// One value for [Text::fill]: the name between the braces, and what is
+/// written in its place.
+pub type Fill<'a> = (&'a str, &'a dyn fmt::Display);
+
+/// `text` with each `{name}` replaced by the value of that name, in one
+/// pass: what a value says is written as it is and never read for
+/// placeholders again. A `{name}` with no value here, and any other brace,
+/// stays as written. A name is letters, digits and `_`, the same as
+/// [bageo_packs::prompts::placeholders] reads them.
+pub fn fill_in(text: &str, values: &[Fill<'_>]) -> String {
+    use fmt::Write as _;
+    let mut out = String::with_capacity(text.len() + 32 * values.len());
+    let mut rest = text;
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        let name_len: usize = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').map(char::len_utf8).sum();
+        let value = if name_len > 0 && after[name_len..].starts_with('}') {
+            values.iter().find(|(name, _)| *name == &after[..name_len])
+        } else {
+            None
+        };
+        match value {
+            Some((_, value)) => {
+                let _ = write!(out, "{value}");
+                rest = &after[name_len + 1..];
+            }
+            None => {
+                out.push('{');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 impl fmt::Display for Text {
@@ -464,6 +507,9 @@ mod tests {
             crate::errands::ALL_TEXTS,
             crate::appointments::ALL_TEXTS,
             crate::contacts::ALL_TEXTS,
+            crate::calendar::ALL_TEXTS,
+            crate::scam_db::ALL_TEXTS,
+            crate::scenario::ALL_TEXTS,
             crate::urgent_call::ALL_TEXTS,
             crate::summary::ALL_TEXTS,
             crate::stall_review::ALL_TEXTS,
@@ -489,6 +535,43 @@ mod tests {
 
     fn parse_file(lang: &str, json: &str) -> Result<Vec<(String, String)>, String> {
         rules::parse_book_file(lang, json).map(|f| f.texts.into_iter().collect())
+    }
+
+    #[test]
+    fn fill_in_writes_each_value_once_in_many_languages() {
+        let n = 3;
+        let cases: [(&str, &[Fill<'_>], &str); 9] = [
+            ("{owner}現在不方便接電話，{n} 分鐘後回電。", &[("owner", &"王小明"), ("n", &n)], "王小明現在不方便接電話，3 分鐘後回電。"),
+            ("{owner} can't take the call; back in {n} minutes.", &[("owner", &"Alex"), ("n", &n)], "Alex can't take the call; back in 3 minutes."),
+            ("{owner}さんは今電話に出られません。{n}分後にかけ直します。", &[("owner", &"田中"), ("n", &n)], "田中さんは今電話に出られません。3分後にかけ直します。"),
+            ("{owner} 님은 지금 전화를 받을 수 없습니다. {n}분 후에 다시 걸겠습니다.", &[("owner", &"김민수"), ("n", &n)], "김민수 님은 지금 전화를 받을 수 없습니다. 3분 후에 다시 걸겠습니다."),
+            ("{owner} no puede atender; llama en {n} minutos.", &[("owner", &"María"), ("n", &n)], "María no puede atender; llama en 3 minutos."),
+            ("{owner} ne peut pas répondre ; rappel dans {n} minutes.", &[("owner", &"Chloé"), ("n", &n)], "Chloé ne peut pas répondre ; rappel dans 3 minutes."),
+            ("{owner} kann gerade nicht; Rückruf in {n} Minuten.", &[("owner", &"Jürgen"), ("n", &n)], "Jürgen kann gerade nicht; Rückruf in 3 Minuten."),
+            ("{owner} não pode atender; retorna em {n} minutos.", &[("owner", &"João"), ("n", &n)], "João não pode atender; retorna em 3 minutos."),
+            ("{owner} لا يستطيع الرد الآن؛ سيعاود الاتصال خلال {n} دقائق.", &[("owner", &"أحمد"), ("n", &n)], "أحمد لا يستطيع الرد الآن؛ سيعاود الاتصال خلال 3 دقائق."),
+        ];
+        for (text, values, want) in cases {
+            assert_eq!(fill_in(text, values), want, "{text}");
+        }
+    }
+
+    #[test]
+    fn fill_in_leaves_everything_else_as_written() {
+        // A value is never read for placeholders again.
+        assert_eq!(fill_in("{a} {b}", &[("a", &"{b}"), ("b", &"{a}")]), "{b} {a}");
+        // A name with no value, JSON braces, empty and broken braces stay.
+        assert_eq!(fill_in("{x} and {y}", &[("x", &1)]), "1 and {y}");
+        assert_eq!(fill_in(r#"answer {"date": "{date}"} only"#, &[("date", &"2026-01-02")]), r#"answer {"date": "2026-01-02"} only"#);
+        assert_eq!(fill_in("{} {a b} {a", &[("a", &"no")]), "{} {a b} {a");
+        assert_eq!(fill_in("{{a}}", &[("a", &"值")]), "{值}");
+        assert_eq!(fill_in("{名前}さん、{a}", &[("名前", &"佐藤"), ("a", &"どうも")]), "佐藤さん、どうも");
+        assert_eq!(fill_in("", &[("a", &"x")]), "");
+        assert_eq!(fill_in("no braces", &[]), "no braces");
+        // The same name twice, and the names the packs checker reads.
+        let text = "{who}, {who}! {p_bye}";
+        assert_eq!(fill_in(text, &[("who", &"Sam"), ("p_bye", &"bye")]), "Sam, Sam! bye");
+        assert_eq!(rules::placeholders(text).into_iter().collect::<Vec<_>>(), ["p_bye", "who"]);
     }
 
     #[test]
@@ -560,7 +643,7 @@ mod tests {
     }
 
     /// The SHA-256 of the built-in texts when BUILTIN_VERSION was last raised.
-    const BUILTIN_DIGEST: &str = "ee18e6602142d6038acbe398822e801481b0e7b55d4979c5439d0cce3ccdb7a2";
+    const BUILTIN_DIGEST: &str = "e71c69177c2726711089588c0065065ace8255e961a041bc4df005d2e9027653";
 
     /// A download is used only when it is newer than the built-in texts, so a
     /// change to them must come with a new version.

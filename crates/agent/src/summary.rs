@@ -37,6 +37,8 @@ crate::prompt_book::prompt_texts! {
     /// The same job for every language without its own prompt: English
     /// instructions, the four labels in the language the owner reads.
     SUMMARY_SYSTEM_PROMPT_EN = "en/summary_summary_system_prompt_en";
+    /// What the model translating a call transcript is told (`{name}`: the language, in English).
+    EN_TRANSLATE_SYSTEM_PROMPT = "en/summary_translate_system_prompt";
 }
 
 /// The summary model's instructions in the language the owner reads.
@@ -1066,15 +1068,7 @@ pub fn lines_to_translate(dialogue: &str, owner: Lang) -> Vec<(usize, String)> {
 
 fn translate_system_prompt(owner: Lang) -> String {
     let name = locale::phrases(owner).name_en;
-    format!(
-        "You translate lines of a phone call transcript into {name}.\n\
-         The user message is a JSON array of objects {{\"i\": number, \"t\": text}}, one per line.\n\
-         Reply with only a JSON array of objects {{\"i\": the same number, \"t\": the translation}}, \
-         one for every line, in the same order. No other text.\n\
-         Translate each line on its own, faithfully and naturally, as words spoken on the phone. \
-         Keep names, numbers, amounts and times as they are. Do not add notes; do not merge, split \
-         or leave out lines."
-    )
+    EN_TRANSLATE_SYSTEM_PROMPT.fill(&[("name", &name)])
 }
 
 fn translate_request(asked: &[(usize, String)]) -> String {

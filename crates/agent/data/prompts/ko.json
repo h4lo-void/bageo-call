@@ -41,6 +41,21 @@
       "missing: only codes the chosen type needs there, the most important first, at most 3; empty when nothing is missing, and always empty for contact.",
       "note: the local note of the chosen type, for the person, in one or two short sentences; empty when that type has no local note there. The local notes are in Chinese: always write the note in the language named in the request, translated, never copied.",
       "Answer with JSON only."
-    ]
+    ],
+    "errands_check_assistant": "{owner}님께 확인해 볼게요. 잠시만요",
+    "errands_check_owner": "확인해 볼게요. 잠시만 기다려 주세요",
+    "errands_example_question": "7시는 자리가 없고 7시 반은 괜찮으신가요?",
+    "errands_readback": "오늘 오후 4시 30분 맞으신가요?",
+    "errands_intro_assistant": "안녕하세요, {owner}님 측입니다",
+    "errands_intro_owner": "안녕하세요, {owner}입니다",
+    "appointments_read_back_example": "\"{month}월 {day}일 {weekday}요일 {part} {hour12}시{mins}, 맞으신가요?\"",
+    "scenario_cue_mark": "[메모] ",
+    "scenario_cue_delivery": "택배: 평소처럼 두게 하고, 착불이면 금액·보낸 사람 확인, 감사 인사엔 인사로 답하기.",
+    "scenario_cue_bank_verify": "카드사 확인 같아요: 금액·가맹점·시간을 듣고, 본인 사용 여부도 기억 안 난다고도 말하지 말고 정지 동의 없이 나중에 직접 고객센터에 확인한다고 하기.",
+    "scenario_cue_important_notice": "중요한 연락: 끝까지 듣고 빠진 것(부서·기한·회신 번호)을 하나씩 묻고 숫자는 복창.",
+    "scenario_cue_schedule_invite": "일정 약속: 반갑게 받고 나중에 연락하겠다고 하며 시간은 아직 정하지 않기.",
+    "scenario_cue_schedule_invite_booking": "일정 약속: 반갑게 받고 예약 절차대로 날짜와 시간을 기록하고 복창.",
+    "scenario_cue_casual_chat": "가족·친구와 수다: 평소처럼 편하게, 캐묻거나 상담원 말투 없이.",
+    "scenario_cue_wrong_number": "잘못 걸린 전화: 짧게 알려 주고 주인 이름이나 신원은 말하지 않기."
   }
 }
