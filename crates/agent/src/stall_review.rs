@@ -1565,16 +1565,40 @@ mod tests {
 
     #[tokio::test]
     async fn a_quick_server_error_is_asked_once_more() {
-        let busy = r#"{"error":{"code":503,"status":"UNAVAILABLE"}}"#;
-        let (base, server) = serve(vec![(503, busy, Duration::ZERO), (200, NORMAL, Duration::ZERO)]).await;
-        let v = review_at(&Client::new(), &base, "test-key", "對方：媽，我下午匯款給你", &hits(), "").await;
-        assert_eq!(v, Verdict::Normal);
-        assert_eq!(server.await.unwrap().len(), 2);
+        const BUSY: &str = r#"{"error":{"code":503,"status":"UNAVAILABLE"}}"#;
+        type Replies = Vec<(u16, &'static str, Duration)>;
+        /// One call against `replies`: the verdict and how many requests the
+        /// server got. "Quick" is by the clock ([RETRY_5XX_BEFORE]): with the
+        /// whole suite running beside it the first answer can come later than
+        /// that, and then there is rightly no second try. Such a round shows
+        /// nothing: None.
+        async fn round(replies: Replies, said: &str) -> Option<(Verdict, usize)> {
+            let (base, server) = serve(replies).await;
+            let http = Client::new();
+            let started = Instant::now();
+            let v = review_at(&http, &base, "test-key", said, &hits(), "").await;
+            if started.elapsed() >= RETRY_5XX_BEFORE {
+                server.abort();
+                return None;
+            }
+            // The server ends once every reply went out; one that is still
+            // waiting (a try that never came) counts as 0.
+            let asked = tokio::time::timeout(Duration::from_secs(5), server).await.map_or(0, |r| r.unwrap().len());
+            Some((v, asked))
+        }
+        async fn quick_round(replies: Replies, said: &str) -> (Verdict, usize) {
+            for _ in 0..8 {
+                if let Some(r) = round(replies.clone(), said).await {
+                    return r;
+                }
+            }
+            panic!("no round was answered inside {RETRY_5XX_BEFORE:?}");
+        }
+        let again = vec![(503, BUSY, Duration::ZERO), (200, NORMAL, Duration::ZERO)];
+        assert_eq!(quick_round(again, "對方：媽，我下午匯款給你").await, (Verdict::Normal, 2));
         // Twice busy: no third try.
-        let (base, server) = serve(vec![(503, busy, Duration::ZERO), (503, busy, Duration::ZERO)]).await;
-        let v = review_at(&Client::new(), &base, "test-key", "對方：保證獲利", &hits(), "").await;
-        assert_eq!(v, Verdict::Unavailable);
-        assert_eq!(server.await.unwrap().len(), 2);
+        let busy_twice = vec![(503, BUSY, Duration::ZERO), (503, BUSY, Duration::ZERO)];
+        assert_eq!(quick_round(busy_twice, "對方：保證獲利").await, (Verdict::Unavailable, 2));
     }
 
     /// No answer in time is no verdict: what it means for the call is the call

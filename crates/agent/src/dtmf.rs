@@ -35,12 +35,6 @@ pub struct DtmfHit {
 }
 
 impl DtmfHit {
-    pub fn is_menu_key(&self) -> bool {
-        matches!(
-            self.digit.to_ascii_uppercase(),
-            '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '*' | '#'
-        )
-    }
 
     /// Keys we act on for the product IVR.
     pub fn is_product_key(&self) -> bool {

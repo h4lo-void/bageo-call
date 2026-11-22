@@ -638,10 +638,6 @@ enum Target {
 }
 
 impl Book {
-    /// The appointment proposed last.
-    fn latest(&self) -> Option<&Slot> {
-        self.slots.iter().max_by_key(|s| s.born)
-    }
 
     /// Where proposal `seq` goes. `replaces` (the model's `replaces_previous`):
     /// it changes the appointment proposed last before it — by arrival, not by
@@ -3255,12 +3251,6 @@ pub async fn create_tasks(store: &TaskStore, call: &CallRecord, appt: &Appointme
         }
     }
     out
-}
-
-/// [`create_tasks`], answering with the first task only (every appointment of
-/// the call still gets its task).
-pub async fn create_task(store: &TaskStore, call: &CallRecord, appt: &Appointment) -> Option<TaskRecord> {
-    create_tasks(store, call, appt).await.into_iter().next()
 }
 
 async fn create_one(store: &TaskStore, call: &CallRecord, appt: &Appointment) -> Option<TaskRecord> {

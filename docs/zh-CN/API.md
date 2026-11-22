@@ -88,7 +88,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - `POST /calls/api/backup/run`、`…/export`、`…/file-ticket`、`…/restore`、`…/delete`、`…/unlock`、`…/apply`、`…/discard`、`…/open-folder`（`POST /calls/api/backup/import` 则改成要带 `X-Filename` 标头）。
 - `POST /calls/api/packs/update` 和 `POST /calls/api/packs/restore`。
 - `POST /calls/api/voices/download` 和 `POST /calls/api/voices/delete`（`POST /calls/api/voices/import` 改为用 `application/zip` 发送 zip 文件）；
-- `POST /calls/api/extras/download`、`POST /calls/api/extras/delete` 和 `POST /calls/api/extras/auto`。
+- `POST /calls/api/extras/download` 和 `POST /calls/api/extras/delete`。
 
 允许空请求体的路由，空请求体视为 `{}`。这是第二道防线；第一道是控制台对局域网开放时一定要设置密码（`CALLS_UI_TOKEN`）。
 
@@ -245,7 +245,6 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 | `ui_password` | 外部访问网页控制台与 API 的密码（读取时掩码；`"ui_password_clear": true` 可清空）。 |
 | `country_code` | 只有数字（`86`、`1`）。控制台不显示；这里有值时优先于 `COUNTRY_CODE`。 |
 | `gemini_thinking_level` | `low`（默认）／`medium`／`high`，只对 thinking 模型有效。 |
-| `extras_auto` | `true`（默认）／`false`：登录控制台时自动从 GitHub 下载设置或浏览器用到且缺少的语言包，以及所在国家的地区插图（`POST /calls/api/extras/auto`）。 |
 
 `PUT` 的规则：
 
@@ -712,10 +711,9 @@ Content-Type: application/json
 | `GET /calls/api/packs/update` | 当前使用的数据：`{version, date, builtin, regions, locales: {version, date, builtin, languages}, voice_list_kept, running, last_check}`。`last_check` 另有 `pack_result` 和 `locales_result`。 |
 | `POST /calls/api/packs/update` | Body `{}`。马上检查有没有新版，有就安装：字段同 `GET`，另加 `result`（任一个文件更新了就是 `updated`）。 |
 | `POST /calls/api/packs/restore` | Body `{}`。删掉下载的数据和翻译，以及下载的语音列表（`voice_list_kept`）和扩展包列表（`extras_index_kept`），改回 Bageo 内置的版本：字段同上，`result` 是 `restored`（正在检查时是 `busy`；有文件删不掉时是 `io`，删不掉的那个继续使用）。 |
-| `GET /calls/api/extras` | 全部 70 种扩展语言与已知地区插图列表：`{ok, version, extras_auto, running, langs, art}`。 |
+| `GET /calls/api/extras` | 全部 70 种扩展语言与已知地区插图列表：`{ok, version, running, langs, art}`。 |
 | `POST /calls/api/extras/download` | Body `{"lang": "<code>"}` 或 `{"art": "<region>"}`。直接从 GitHub 下载并安装一个语言扩展包或地区插图文件，返回 `{..., result}`。 |
 | `POST /calls/api/extras/delete` | Body `{"lang": "<code>"}` 或 `{"art": "<region>"}`。删除已下载的扩展文件（设置仍在使用时返回 `in_use`，其余为 `removed`、`not_listed`、`restart`）。 |
-| `POST /calls/api/extras/auto` | Body `{"browser": ["..."]}`。`extras_auto` 为 `true` 时，在后台排队下载最多 3 个缺少项（设置使用的语言、第一个匹配的浏览器语言、已校对的所在国家插图）：`{ok: true, started}`。 |
 | `GET /calls/extras/art/{file}` | 公开静态路由，仅返回这台电脑已下载并校验通过的 `art-<region>.json`（不会触发下载；附 `no-cache`、`nosniff`）。 |
 | `GET /calls/i18n/desktop/{file}` | 公开静态路由，返回已下载语言的桌面状态小程序文本（`<code>.json`），缺少的键自动回退英文。 |
 

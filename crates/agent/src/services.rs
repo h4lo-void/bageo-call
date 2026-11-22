@@ -164,48 +164,6 @@ pub async fn synthesize_piper(_client: &Client, _settings: &Settings, text: &str
     Vec::new()
 }
 
-fn decode_tts_bytes(bytes: &[u8], dst_rate: u32) -> Option<Vec<u8>> {
-    if bytes.len() >= 12 && &bytes[..4] == b"RIFF" {
-        return parse_wav_pcm(bytes, dst_rate);
-    }
-    Some(bytes.to_vec())
-}
-
-fn parse_wav_pcm(bytes: &[u8], dst_rate: u32) -> Option<Vec<u8>> {
-    // Minimal PCM WAV parser
-    if bytes.len() < 44 || &bytes[8..12] != b"WAVE" {
-        return None;
-    }
-    let mut pos = 12usize;
-    let mut rate = 22050u32;
-    let mut channels = 1u16;
-    let mut bits = 16u16;
-    let mut data: Option<&[u8]> = None;
-    while pos + 8 <= bytes.len() {
-        let id = &bytes[pos..pos + 4];
-        let size = u32::from_le_bytes(bytes[pos + 4..pos + 8].try_into().ok()?) as usize;
-        let start = pos + 8;
-        let end = start.saturating_add(size);
-        if end > bytes.len() {
-            break;
-        }
-        if id == b"fmt " && size >= 16 {
-            channels = u16::from_le_bytes(bytes[start + 2..start + 4].try_into().ok()?);
-            rate = u32::from_le_bytes(bytes[start + 4..start + 8].try_into().ok()?);
-            bits = u16::from_le_bytes(bytes[start + 14..start + 16].try_into().ok()?);
-        } else if id == b"data" {
-            data = Some(&bytes[start..end]);
-        }
-        pos = end + (size % 2); // word align
-    }
-    let pcm = data?;
-    if bits != 16 {
-        warn!("WAV bits={bits} not supported");
-        return None;
-    }
-    Some(resample_pcm16(pcm, rate, dst_rate, channels))
-}
-
 pub fn resample_pcm16(pcm: &[u8], src_rate: u32, dst_rate: u32, channels: u16) -> Vec<u8> {
     if pcm.is_empty() || src_rate == 0 {
         return Vec::new();

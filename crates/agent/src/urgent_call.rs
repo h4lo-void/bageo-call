@@ -517,11 +517,6 @@ impl CallCtl {
         self.say.lock().ok().and_then(|mut g| g.take())
     }
 
-    /// The AI's output held the hold-on line (first time counts).
-    pub fn note_hold_line(&self) {
-        self.note_hold_line_from(0);
-    }
-
     /// Record when the hold-on line was spoken along with `base_bytes` of
     /// `delivered_bytes` at the start of the turn (first time counts).
     pub fn note_hold_line_from(&self, base_bytes: u64) {

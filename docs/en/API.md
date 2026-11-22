@@ -115,7 +115,7 @@ Bageo never answers preflights. This covers:
 - `POST /calls/api/backup/run`, `…/export`, `…/file-ticket`, `…/restore`, `…/delete`, `…/unlock`, `…/apply`, `…/discard`, `…/open-folder` (`POST /calls/api/backup/import` needs an `X-Filename` header instead).
 - `POST /calls/api/packs/update` and `POST /calls/api/packs/restore`.
 - `POST /calls/api/voices/download` and `POST /calls/api/voices/delete` (`POST /calls/api/voices/import` takes the zip as `application/zip` instead);
-- `POST /calls/api/extras/download`, `POST /calls/api/extras/delete` and `POST /calls/api/extras/auto`.
+- `POST /calls/api/extras/download` and `POST /calls/api/extras/delete`.
 
 Where a route allows an empty body, it counts as `{}`. This is the second line
 of defence. The first is setting a password (`CALLS_UI_TOKEN`) whenever your
@@ -273,7 +273,6 @@ Fields worth knowing (all of them are in `RuntimeSettings` in
 | `ui_password` | Password for external console/API access (masked on read; `"ui_password_clear": true` clears it). |
 | `country_code` | Digits only (`886`, `1`). Not shown in the console; a value here wins over `COUNTRY_CODE`. |
 | `gemini_thinking_level` | `low` (default) / `medium` / `high`, for thinking models only. |
-| `extras_auto` | `true` (default) / `false`: when the console opens, download missing extra language packs matching settings or the browser and the home country's mascot art from GitHub (`POST /calls/api/extras/auto`). |
 
 Rules for `PUT`:
 
@@ -763,10 +762,9 @@ Three routes show and update the local data the AI uses for each country's habit
 | `GET /calls/api/packs/update` | The data in use: `{version, date, builtin, regions, locales: {version, date, builtin, languages}, voice_list_kept, running, last_check}`. `last_check` also has `pack_result` and `locales_result`. |
 | `POST /calls/api/packs/update` | Body `{}`. Checks for newer files now and installs them: the same fields as `GET`, plus `result` (`updated` when either file was). |
 | `POST /calls/api/packs/restore` | Body `{}`. Deletes the downloaded data and translations, and a downloaded voice list (`voice_list_kept`) and extras index (`extras_index_kept`), and goes back to the ones built into Bageo: the same fields, with `result` `restored` (`busy` while a check runs; `io` when a file cannot be deleted, and then that one stays in use). |
-| `GET /calls/api/extras` | All 70 extra languages and known region art: `{ok, version, extras_auto, running, langs, art}`. |
+| `GET /calls/api/extras` | All 70 extra languages and known region art: `{ok, version, running, langs, art}`. |
 | `POST /calls/api/extras/download` | Body `{"lang": "<code>"}` or `{"art": "<region>"}`. Downloads and installs one extra language pack or region mascot art file straight from GitHub; returns `{..., result}`. |
 | `POST /calls/api/extras/delete` | Body `{"lang": "<code>"}` or `{"art": "<region>"}`. Deletes a downloaded extra file (`in_use` if the language is still set in settings, `removed`, `not_listed`, `restart`). |
-| `POST /calls/api/extras/auto` | Body `{"browser": ["..."]}`. When `extras_auto` is `true`, queues up to 3 missing items (settings languages, first browser tag, `local_reviewed` home region art) in the background: `{ok: true, started}`. |
 | `GET /calls/extras/art/{file}` | Public static route serving an already-downloaded and verified `art-<region>.json` file (never triggers a download; `no-cache`, `nosniff`). |
 | `GET /calls/i18n/desktop/{file}` | Public static route serving a downloaded extra language's desktop widget strings (`<code>.json`) with English fallback per missing key. |
 

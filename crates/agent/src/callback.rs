@@ -36,27 +36,12 @@ pub enum CallbackPhase {
     Queued,
     /// `place_call` sent; waiting for phone dial / OFFHOOK.
     Dialing,
-    /// Remote party ringing (optional telemetry from phone).
-    Ringing,
     /// OFFHOOK + uplink path ready (`outbound_ready` from phone).
     Connected,
     /// Dial or bridge failed.
     Failed,
     /// Call ended normally.
     Done,
-}
-
-impl CallbackPhase {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Queued => "queued",
-            Self::Dialing => "dialing",
-            Self::Ringing => "ringing",
-            Self::Connected => "connected",
-            Self::Failed => "failed",
-            Self::Done => "done",
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

@@ -323,10 +323,6 @@ impl ActiveCall {
         self.scam = Some(judged);
     }
 
-    pub fn scam(&self) -> Option<&ScamJudgement> {
-        self.scam.as_ref()
-    }
-
     /// The SIM the call came in on (unknown parts stay as they were).
     pub fn set_sim(&mut self, country: Option<String>, sub_id: Option<i64>) {
         if country.is_some() {
@@ -450,30 +446,6 @@ impl ActiveCall {
         if buf.len() < target {
             buf.resize(target, 0);
         }
-    }
-
-    /// Mix s16le samples into `buf` at wall-clock offset for this chunk.
-    ///
-    /// Kept as the wall-clock index reference (`elapsed` end-aligned). Single-stream
-    /// capture uses [`place_stream`] (copy/append) so WS bursts are not mix-added
-    /// onto themselves.
-    #[allow(dead_code)]
-    fn mix_at_now(buf: &mut Vec<u8>, pcm: &[u8], sample_rate: u32, started: Instant, cap: usize) {
-        if pcm.is_empty() {
-            return;
-        }
-        let ms = started.elapsed().as_millis() as u64;
-        let end =
-            ((ms.saturating_mul(u64::from(sample_rate)).saturating_mul(2) / 1000) & !1) as usize;
-        let start = end.saturating_sub(pcm.len() & !1);
-        let end = start.saturating_add(pcm.len() & !1).min(cap);
-        if start >= cap || start >= end {
-            return;
-        }
-        Self::ensure_len(buf, end, cap);
-        let dst = &mut buf[start..end];
-        let src = &pcm[..dst.len()];
-        mix_s16le_add(dst, src);
     }
 
     /// Place one capture stream at wall-clock without saturating-add.
@@ -1355,10 +1327,6 @@ impl CallStore {
             Ok(Err(e)) => warn!("save index: {e:#}"),
             Err(e) => warn!("save index task: {e}"),
         }
-    }
-
-    pub fn enabled(&self) -> bool {
-        self.record_enabled
     }
 
     pub fn root(&self) -> &Path {
