@@ -5,7 +5,7 @@ phone into a two-way audio stream for the agent, and why it has to run as a
 privileged system app. Build, install, permissions and the full message list
 are in [README.md](README.md); the agent side is in
 [docs/en/ARCHITECTURE.md](../docs/en/ARCHITECTURE.md). This page describes app
-`1.6.9` (versionCode 33) in module `v1.6.9` (versionCode 25).
+`1.7.0` (versionCode 34) in module `v1.7.0` (versionCode 26).
 
 ## Overview
 

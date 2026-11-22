@@ -14,9 +14,9 @@ Bageo agent on your computer and plays the AI's reply back into the call.
 The phone does no AI work itself. The package name and module id keep the project's
 earlier working name, so phones already running the module update in place.
 
-**Version 1.6.9:** app `versionName` `1.6.9`, `versionCode` 33; module `version`
-`v1.6.9`, `versionCode` 25 (`module.prop`); release file
-`bageo-phone-module-1.6.9.zip`. A SIM is always picked by its subscription id (`sub_id`).
+**Version 1.7.0:** app `versionName` `1.7.0`, `versionCode` 34; module `version`
+`v1.7.0`, `versionCode` 26 (`module.prop`); release file
+`bageo-phone-module-1.7.0.zip`. A SIM is always picked by its subscription id (`sub_id`).
 
 > **Use a dedicated phone.** The module takes over the phone app, disables Google
 > Dialer, turns on Do Not Disturb and sets the ringer volume to zero. The phone is not
