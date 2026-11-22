@@ -18,6 +18,13 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
+// The words are in the prompt book (data/prompts/<language>.json); these are their handles.
+crate::prompt_book::prompt_texts! {
+    EN_PLACE_HABITS_CALL_BLOCK_1 = "en/place_habits_call_block_1";
+    EN_PLACE_HABITS_CALL_BLOCK_2 = "en/place_habits_call_block_2";
+    EN_PLACE_HABITS_CALL_BLOCK_3 = "en/place_habits_call_block_3";
+}
+
 /// The kinds of business call the data describes.
 pub const TYPES: [&str; 17] = [
     "restaurant", "clinic", "beauty", "repair", "takeout", "shop_order", "change", "inquiry", "hotel", "activity", "home_service", "pet",
@@ -484,10 +491,10 @@ pub fn call_block(r: &Region, kind: &str) -> String {
                 .take(HANDLED_MAX)
                 .collect()
         };
-        push_within(&mut out, "Do not give these; say the person you call for will provide them", &handled("owner_only"), room);
+        push_within(&mut out, EN_PLACE_HABITS_CALL_BLOCK_1.get(), &handled("owner_only"), room);
         push_within(&mut out, "Politely decline", &handled("decline"), room);
-        push_within(&mut out, "Check through ask_owner before you agree to", &handled("ask_owner"), room);
-        push_within(&mut out, "You may settle these yourself within the matter", &handled("ai_can_answer"), room);
+        push_within(&mut out, EN_PLACE_HABITS_CALL_BLOCK_2.get(), &handled("ask_owner"), room);
+        push_within(&mut out, EN_PLACE_HABITS_CALL_BLOCK_3.get(), &handled("ai_can_answer"), room);
     }
     if !language.is_empty() {
         push_list(&mut out, LANGUAGE, &[language]);

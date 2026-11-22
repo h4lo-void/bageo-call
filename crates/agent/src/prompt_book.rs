@@ -5,19 +5,21 @@
 //! in the code that uses them.
 //!
 //! - The words are in `data/prompts/<language>.json` (one file per language
-//!   the instructions are written in), compiled into the program. A text is a
+//!   the words are written in), compiled into the program. A text is a
 //!   string, or a list of lines for a text of several paragraphs: one
 //!   paragraph a line reads and diffs well.
-//! - The code holds a [Text] for each one it uses (see [prompt_texts]): a
-//!   name, looked up in the book the first time it is used and remembered, so
-//!   every use after that costs one pointer read.
+//! - The code holds a [Text] for each one it uses (see [prompt_texts], once a
+//!   module): a name, looked up in the book the first time it is used and
+//!   remembered, so every use after that costs one pointer read.
 //! - Changing the words, or adding a language file, changes no code. A new
 //!   text is one entry in the file and one line where its handle is declared.
 //! - The checks below keep the two in step: every handle has its text, and
 //!   no text is left in a file without a handle.
 //!
-//! How texts are put together into a call's prompt stays where it was
-//! ([crate::prompts]): the book holds the words, not the rules.
+//! How texts are put together into a prompt stays in the code that does it
+//! ([crate::prompts] and the modules of each kind of call): the book holds
+//! the words, not the rules. A sentence with values filled in by `format!`
+//! is such a rule and stays in the code.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -28,9 +30,17 @@ use serde_json::Value;
 /// The format of the files this program reads.
 pub const FORMAT: u64 = 1;
 
-/// The files of the book, by the language their instructions are written in.
-const FILES: &[(&str, &str)] =
-    &[("zh-TW", include_str!("../data/prompts/zh-TW.json")), ("en", include_str!("../data/prompts/en.json"))];
+/// The files of the book, by the language their words are written in.
+const FILES: &[(&str, &str)] = &[
+    ("de", include_str!("../data/prompts/de.json")),
+    ("en", include_str!("../data/prompts/en.json")),
+    ("es", include_str!("../data/prompts/es.json")),
+    ("fr", include_str!("../data/prompts/fr.json")),
+    ("ja", include_str!("../data/prompts/ja.json")),
+    ("ko", include_str!("../data/prompts/ko.json")),
+    ("pt", include_str!("../data/prompts/pt.json")),
+    ("zh-TW", include_str!("../data/prompts/zh-TW.json")),
+];
 
 /// One text of the book, by name (`<language>/<key>`). Reads as a `&str`
 /// ([Text::get]) and writes itself in `format!`.
@@ -156,6 +166,32 @@ fn parse_file(lang: &str, json: &str) -> Result<Vec<(String, String)>, String> {
 mod tests {
     use super::*;
 
+    /// The handles of every module that declares some ([prompt_texts]).
+    fn modules() -> Vec<&'static [&'static Text]> {
+        vec![
+            crate::prompts::ALL_TEXTS,
+            crate::gemini_live::ALL_TEXTS,
+            crate::errands::ALL_TEXTS,
+            crate::appointments::ALL_TEXTS,
+            crate::contacts::ALL_TEXTS,
+            crate::urgent_call::ALL_TEXTS,
+            crate::summary::ALL_TEXTS,
+            crate::stall_review::ALL_TEXTS,
+            crate::stall_script::ALL_TEXTS,
+            crate::preflight::ALL_TEXTS,
+            crate::control::nlu::ALL_TEXTS,
+            crate::extract::ALL_TEXTS,
+            crate::mcp::ALL_TEXTS,
+            crate::end_call::ALL_TEXTS,
+            crate::place_habits::ALL_TEXTS,
+            crate::voice_preview::ALL_TEXTS,
+        ]
+    }
+
+    fn handles() -> Vec<&'static Text> {
+        modules().into_iter().flat_map(|m| m.iter().copied()).collect()
+    }
+
     #[test]
     fn every_file_of_the_book_reads() {
         for (lang, json) in FILES {
@@ -173,7 +209,7 @@ mod tests {
     /// not on a call.
     #[test]
     fn handles_and_texts_match_one_to_one() {
-        let handles = crate::prompts::ALL_TEXTS;
+        let handles = handles();
         let mut seen = std::collections::BTreeSet::new();
         for t in handles {
             assert!(book().get(t.name()).is_some(), "no text named {}", t.name());
@@ -190,7 +226,7 @@ mod tests {
 
     #[test]
     fn a_text_is_looked_up_once_and_reads_the_same_ever_after() {
-        let t = crate::prompts::ALL_TEXTS[0];
+        let t = handles()[0];
         let first = t.get();
         assert!(std::ptr::eq(first, t.get()));
         assert_eq!(t.to_string(), first);

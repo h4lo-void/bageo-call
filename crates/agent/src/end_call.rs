@@ -27,6 +27,15 @@
 use serde_json::{json, Value};
 use std::time::Duration;
 
+// The words are in the prompt book (data/prompts/<language>.json); these are their handles.
+crate::prompt_book::prompt_texts! {
+    EN_END_CALL_DECLARATION_1 = "en/end_call_declaration_1";
+    EN_END_CALL_DECLARATION_2 = "en/end_call_declaration_2";
+    EN_END_CALL_NEXT_1 = "en/end_call_next_1";
+    EN_END_CALL_NEXT_2 = "en/end_call_next_2";
+    EN_END_CALL_NEXT_3 = "en/end_call_next_3";
+}
+
 /// The function's name in the Live setup.
 pub const NAME: &str = "end_call";
 /// No end_call this soon after the call was answered (the AI's first words).
@@ -49,13 +58,13 @@ pub const REASONS: &[&str] = &["matter_done", "caller_finishing", "other"];
 pub fn declaration(non_blocking: bool) -> Value {
     let mut d = json!({
         "name": NAME,
-        "description": "End the call. Call it once the business is done and the caller is ready to finish (they need not have said goodbye), right after your own natural closing line. Do not call it while the caller is still talking or asking something, or before you have answered them. Answers {\"status\": \"ending\"} (the line closes once your words have played and the caller stays quiet; if they speak again, carry on with them) or {\"status\": \"not_ended\"} (the call goes on: do what next says).",
+        "description": EN_END_CALL_DECLARATION_1.get(),
         "parameters": {
             "type": "OBJECT",
             "properties": {
                 "reason": {
                     "type": "STRING",
-                    "description": "One of: matter_done (everything is settled), caller_finishing (the caller is wrapping up), other."
+                    "description": EN_END_CALL_DECLARATION_2.get()
                 }
             },
             "required": ["reason"]
@@ -119,9 +128,9 @@ impl Refusal {
     /// What the model is told to do instead (it reads the answer, the caller does not).
     fn next(self) -> &'static str {
         match self {
-            Refusal::Stalling => "The call is not over. Keep the caller talking as your instructions say; do not close.",
-            Refusal::TooEarly => "The call has only just begun. Carry on the conversation with the caller.",
-            Refusal::UnansweredQuestion => "The caller asked you something you have not answered. Answer it first and see whether they have anything else; call end_call only once they are ready to finish.",
+            Refusal::Stalling => EN_END_CALL_NEXT_1.get(),
+            Refusal::TooEarly => EN_END_CALL_NEXT_2.get(),
+            Refusal::UnansweredQuestion => EN_END_CALL_NEXT_3.get(),
         }
     }
 }

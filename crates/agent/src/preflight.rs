@@ -22,6 +22,11 @@ use serde_json::{json, Value};
 
 use crate::locale::Lang;
 
+// The words are in the prompt book (data/prompts/<language>.json); these are their handles.
+crate::prompt_book::prompt_texts! {
+    SYSTEM_PROMPT = "ko/preflight_system_prompt";
+}
+
 pub const GEMINI_BASE: &str = "https://generativelanguage.googleapis.com";
 pub const MODEL: &str = "gemini-flash-lite-latest";
 /// The most the model may take: the owner never waits longer to dial.
@@ -1530,14 +1535,6 @@ pub struct Answer {
     pub note: String,
 }
 
-const SYSTEM_PROMPT: &str = "A person asks an AI assistant to phone a business (or someone they know) for them. The request may be in any language and any wording. Decide the type of call and which details the business will need that the request does not give yet.\n\
-type: restaurant, clinic, beauty, repair, takeout, shop_order, change (move or cancel a booking), inquiry (only a question), hotel, activity, home_service, pet, tracking, customer_service, transport, property, government_school; or contact (someone they know, or a call that needs nothing). A call about a booking that already exists (a question about it, an early check-in, moving or cancelling it) is change or inquiry, not a new booking.\n\
-Detail codes: time (day and time), party (how many people), name (name to give or book under), phone (callback number), for_whom (who it is for and their name), visit_type (first or return visit), item (the service, symptom, problem or thing), spec (what and how many), pickup (pickup or delivery time), orig_time (the original booking's time), question (what to ask), checkin_out (check-in and check-out dates), guests (how many guests), address (where), pet_detail (the pet's kind, breed and size), pickup_place (where to be picked up), dropoff_place (where to go), reference_no (order, booking or tracking number), room_type (kind of room), duration (how long).\n\
-A detail is given when the request mentions it at all, in any wording or language, even briefly or loosely: \"7個大人\", \"2大1小\", \"兩大一小\", \"party of 7\", \"7 adults\", \"7 adultos\", \"大人7名\" and \"어른 7명\" all give party; \"from the airport to the hotel\" gives pickup_place and dropoff_place; \"トリミング\" gives item; \"ask if they are open today\" gives question. It is also given when the request asks the other side to tell it, or when Bageo already knows it.\n\
-missing: only codes the chosen type needs there, the most important first, at most 3; empty when nothing is missing, and always empty for contact.\n\
-note: the local note of the chosen type, for the person, in one or two short sentences; empty when that type has no local note there. The local notes are in Chinese: always write the note in the language named in the request, translated, never copied.\n\
-Answer with JSON only.";
-
 pub fn request_body(task: &str, l: &Local, known: &Known, lang: Lang) -> Value {
     let task: String = task.trim().chars().take(TASK_FOR_MODEL_CHARS).collect();
     let place = match known.region {
@@ -1559,7 +1556,7 @@ pub fn request_body(task: &str, l: &Local, known: &Known, lang: Lang) -> Value {
     let mut types: Vec<&str> = crate::place_habits::TYPES.to_vec();
     types.push("contact");
     json!({
-        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT.get()}]},
         "contents": [{"role": "user", "parts": [{"text": user}]}],
         "generationConfig": {
             "temperature": 0,

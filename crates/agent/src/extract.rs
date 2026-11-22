@@ -30,6 +30,16 @@ use crate::config::Settings;
 use crate::locale::{self, Lang};
 use crate::services::{resample_pcm16, transcribe_pcm16};
 
+// The words are in the prompt book (data/prompts/<language>.json); these are their handles.
+crate::prompt_book::prompt_texts! {
+    /// Strict JSON-only system prompt for OpenRouter intent extraction, Traditional
+    /// Chinese; [`intent_system_prompt`] picks the one for the agent's language.
+    pub INTENT_SYSTEM_PROMPT = "zh-TW/extract_intent_system_prompt";
+    /// The same instructions for every language other than Chinese; `{language}`
+    /// is the language the summary is written in.
+    INTENT_SYSTEM_PROMPT_EN = "en/extract_intent_system_prompt_en";
+}
+
 /// Traditional-Chinese spam / telemarketing phrases (keyword path; no OpenRouter required).
 pub const SPAM_KEYWORDS_ZH: &[&str] = &[
     "貸款",
@@ -109,43 +119,15 @@ pub struct ExtractedIntent {
     pub raw_json: Value,
 }
 
-/// Strict JSON-only system prompt for OpenRouter intent extraction, Traditional
-/// Chinese; [`intent_system_prompt`] picks the one for the agent's language.
-pub const INTENT_SYSTEM_PROMPT: &str = r#"你是電話留言意圖分析器。分析來電者留言，只輸出單一 JSON 物件（不要 markdown、不要解釋）。
-
-欄位：
-- intent: Message | Callback | Schedule | Question | Spam | Other
-- summary: 一句話繁體中文摘要
-- datetime_hint: 提到的日期時間（ISO 或自然語言），沒有則 null
-- reply_method: phone | email | none
-- reply_contact: 對方留下的電話或 email；沒有則 null
-- confidence: 0.0 到 1.0 的浮點數
-
-reply_method=phone 且未留聯絡方式時，可將 reply_contact 設為提供的 caller_id。"#;
-
-/// The same instructions for every language other than Chinese; `{language}`
-/// is the language the summary is written in.
-const INTENT_SYSTEM_PROMPT_EN: &str = r#"You analyse a voicemail a caller left. Output exactly one JSON object (no markdown, no explanation).
-
-Fields:
-- intent: Message | Callback | Schedule | Question | Spam | Other
-- summary: a one-sentence summary written in {language}
-- datetime_hint: the date or time mentioned (ISO or plain words), or null
-- reply_method: phone | email | none
-- reply_contact: the phone number or email the caller left, or null
-- confidence: a number from 0.0 to 1.0
-
-If reply_method is phone and the caller left no contact, reply_contact may be the given caller_id."#;
-
 /// The intent prompt with the summary asked for in `lang`: Traditional Chinese
 /// for zh-TW, Simplified for zh-CN, otherwise the language named in English.
 pub fn intent_system_prompt(lang: Lang) -> String {
     match lang {
-        Lang::ZhTw => INTENT_SYSTEM_PROMPT.to_string(),
+        Lang::ZhTw => INTENT_SYSTEM_PROMPT.get().to_string(),
         Lang::ZhCn => crate::zh_convert::to_cn(
-            &INTENT_SYSTEM_PROMPT.replace("一句話繁體中文摘要", "一句話簡體中文摘要"),
+            &INTENT_SYSTEM_PROMPT.get().replace("一句話繁體中文摘要", "一句話簡體中文摘要"),
         ),
-        other => INTENT_SYSTEM_PROMPT_EN.replace("{language}", locale::phrases(other).name_en),
+        other => INTENT_SYSTEM_PROMPT_EN.get().replace("{language}", locale::phrases(other).name_en),
     }
 }
 

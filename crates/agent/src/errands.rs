@@ -48,6 +48,31 @@ use crate::locale::{self, Lang};
 use crate::settings_store::RuntimeSettings;
 use crate::tasks::TaskStore;
 
+// The words are in the prompt book (data/prompts/<language>.json); these are their handles.
+crate::prompt_book::prompt_texts! {
+    /// Ends every note and answer the AI gets during an errand call: they are
+    /// written in English for the model, and once it answered a Chinese callee in
+    /// English after one.
+    CALL_LANGUAGE = "en/errands_call_language";
+    EN_ERRANDS_ERRAND_PROMPT_WITH_1 = "en/errands_errand_prompt_with_1";
+    EN_ERRANDS_ERRAND_PROMPT_WITH_2 = "en/errands_errand_prompt_with_2";
+    EN_ERRANDS_ERRAND_PROMPT_WITH_3 = "en/errands_errand_prompt_with_3";
+    ES_ERRANDS_ERRAND_PROMPT_WITH_1 = "es/errands_errand_prompt_with_1";
+    FR_ERRANDS_ERRAND_PROMPT_WITH = "fr/errands_errand_prompt_with";
+    DE_ERRANDS_ERRAND_PROMPT_WITH_1 = "de/errands_errand_prompt_with_1";
+    ES_ERRANDS_ERRAND_PROMPT_WITH_2 = "es/errands_errand_prompt_with_2";
+    DE_ERRANDS_ERRAND_PROMPT_WITH_2 = "de/errands_errand_prompt_with_2";
+    EN_ERRANDS_ERRAND_PROMPT_WITH_4 = "en/errands_errand_prompt_with_4";
+    EN_ERRANDS_ERRAND_PROMPT_WITH_5 = "en/errands_errand_prompt_with_5";
+    EN_ERRANDS_TOOL_DECLARATIONS_1 = "en/errands_tool_declarations_1";
+    EN_ERRANDS_TOOL_DECLARATIONS_2 = "en/errands_tool_declarations_2";
+    EN_ERRANDS_TOOL_DECLARATIONS_3 = "en/errands_tool_declarations_3";
+    EN_ERRANDS_ASK_WITHIN = "en/errands_ask_within";
+    EN_ERRANDS_KICK_CLIENT_CONTENT = "en/errands_kick_client_content";
+    EN_ERRANDS_RESULT_INPUT_1 = "en/errands_result_input_1";
+    EN_ERRANDS_RESULT_INPUT_2 = "en/errands_result_input_2";
+}
+
 // ---------------------------------------------------------------- constants
 
 /// Waits for a phone (busy, or another call to the same number under way).
@@ -107,10 +132,6 @@ pub const REDIAL_WAIT: &str = "redial_wait";
 const LINE_QUIET: Duration = Duration::from_millis(1200);
 /// Lines of the earlier call a follow-up's script carries.
 const FOLLOW_UP_LINES: usize = 20;
-/// Ends every note and answer the AI gets during an errand call: they are
-/// written in English for the model, and once it answered a Chinese callee in
-/// English after one.
-const CALL_LANGUAGE: &str = "Whatever you say to them, say it in the language of this call (the one you have been speaking with them), not in the language of this note.";
 /// Premium-rate numbers (national number prefixes, after the trunk 0) an
 /// errand never dials. Toll-free numbers are fine: the owner may want a
 /// company's service line.
@@ -1976,7 +1997,7 @@ impl CallHooks {
         let owner = crate::prompts::owner_label(locale::current(), &locale::active().owner);
         let question = one_line(args.get("question").and_then(Value::as_str).unwrap_or(""), QUESTION_MAX_CHARS);
         if question.is_empty() {
-            return json!({"error": "question is empty: say what you want to ask"});
+            return json!({"error": EN_ERRANDS_ASK_WITHIN.get()});
         }
         let options: Vec<String> = args
             .get("options")
@@ -2100,12 +2121,12 @@ pub fn tool_declarations() -> Value {
     json!([{
         "functionDeclarations": [{
             "name": ASK_OWNER,
-            "description": "Ask the person you are calling for something your instructions do not settle at all. Never for a choice within the room your instructions leave (a time inside the range they give, an alternative they allow): accept that yourself. Before you call it, tell the other side in one short sentence, in the language you speak with them, that you will check. Until it answers, decide nothing about it. Answers {\"answer\": \"…\"} with their decision, or {\"answer\": null, \"instruction\": \"…\"} when they cannot answer now: then do what the instruction says, in the language of the call.",
+            "description": EN_ERRANDS_TOOL_DECLARATIONS_1.get(),
             "parameters": {
                 "type": "OBJECT",
                 "properties": {
-                    "question": { "type": "STRING", "description": "The question, short, with what the other side said, written in the owner's language (your instructions name it): the owner reads it." },
-                    "options": { "type": "ARRAY", "items": { "type": "STRING" }, "description": "Two to four short answers to choose from, when there are clear ones, in the owner's language." }
+                    "question": { "type": "STRING", "description": EN_ERRANDS_TOOL_DECLARATIONS_2.get() },
+                    "options": { "type": "ARRAY", "items": { "type": "STRING" }, "description": EN_ERRANDS_TOOL_DECLARATIONS_3.get() }
                 },
                 "required": ["question"]
             }
@@ -2132,7 +2153,7 @@ pub fn ask_response(id: &str, response: Value, blocking: bool) -> Value {
 /// The other side picked up and spoke, and the AI has not started.
 pub fn kick_client_content() -> String {
     crate::prompts::client_turn(
-        "[System note, not said by the other person] Someone has picked up and spoken. If it is a person, start as your instructions say: greet them, say who is calling and why. If it is a recording, a voice menu or music, stay silent.",
+        EN_ERRANDS_KICK_CLIENT_CONTENT.get(),
     )
 }
 
@@ -2153,7 +2174,7 @@ pub fn late_answer_client_content(response: &Value) -> String {
         Some(a) => format!("The answer to the question you asked: «{}». {instruction}", one_line(a, SAY_MAX_CHARS).replace(['«', '»'], "\"")),
         None => instruction.to_string(),
     };
-    let text = if text.contains(CALL_LANGUAGE) { text } else { format!("{text} {CALL_LANGUAGE}") };
+    let text = if text.contains(CALL_LANGUAGE.get()) { text } else { format!("{text} {CALL_LANGUAGE}") };
     crate::prompts::client_turn(&format!("[System note, not said by the other person] {}", text.trim()))
 }
 
@@ -2613,13 +2634,13 @@ pub fn errand_prompt_with(s: &Script, redial: bool) -> String {
         (Lang::Ko, true) => format!("{owner}님께 확인해 볼게요. 잠시만요"),
         (Lang::Ko, false) => "확인해 볼게요. 잠시만 기다려 주세요".to_string(),
         (Lang::Es, true) => format!("Déjame consultarlo con {owner}, un momento por favor"),
-        (Lang::Es, false) => "Déjame confirmarlo, un momento por favor".to_string(),
+        (Lang::Es, false) => EN_ERRANDS_ERRAND_PROMPT_WITH_1.get().to_string(),
         (Lang::Fr, true) => format!("Je vérifie avec {owner}, un instant s'il vous plaît"),
-        (Lang::Fr, false) => "Je vérifie ça, un instant s'il vous plaît".to_string(),
+        (Lang::Fr, false) => EN_ERRANDS_ERRAND_PROMPT_WITH_2.get().to_string(),
         (Lang::De, true) => format!("Ich frage kurz bei {owner} nach, einen Moment bitte"),
         (Lang::De, false) => "Ich prüfe das kurz, einen Moment bitte".to_string(),
         (Lang::Pt, true) => format!("Vou confirmar com {owner}, um momento por favor"),
-        (Lang::Pt, false) => "Vou confirmar isso, um momento por favor".to_string(),
+        (Lang::Pt, false) => EN_ERRANDS_ERRAND_PROMPT_WITH_3.get().to_string(),
         (Lang::En | Lang::Ext(_), true) => format!("let me check with {owner}, one moment please"),
         (Lang::En | Lang::Ext(_), false) => "let me check, one moment please".to_string(),
     };
@@ -2628,9 +2649,9 @@ pub fn errand_prompt_with(s: &Script, redial: bool) -> String {
         Lang::ZhCn => "店家说 7 点没位子，7 点半可以吗？",
         Lang::Ja => "7時は満席ですが、7時半でもよろしいですか？",
         Lang::Ko => "7시는 자리가 없고 7시 반은 괜찮으신가요?",
-        Lang::Es => "No tienen mesa a las 7; ¿a las 7:30 está bien?",
-        Lang::Fr => "Il n'y a plus de table à 19 h ; est-ce que 19 h 30 convient ?",
-        Lang::De => "Um 19 Uhr ist kein Tisch frei; passt 19:30 Uhr?",
+        Lang::Es => ES_ERRANDS_ERRAND_PROMPT_WITH_1.get(),
+        Lang::Fr => FR_ERRANDS_ERRAND_PROMPT_WITH.get(),
+        Lang::De => DE_ERRANDS_ERRAND_PROMPT_WITH_1.get(),
         Lang::Pt => "Não há mesa às 7; às 7:30 tudo bem?",
         Lang::En | Lang::Ext(_) => "They have no table at 7; is 7:30 fine?",
     };
@@ -2642,11 +2663,11 @@ pub fn errand_prompt_with(s: &Script, redial: bool) -> String {
         Lang::ZhCn => "是今天下午四点三十分，对吗？",
         Lang::Ja => "今日の午後4時30分でお間違いないですか？",
         Lang::Ko => "오늘 오후 4시 30분 맞으신가요?",
-        Lang::Es => "¿Entonces hoy a las 4:30 de la tarde, verdad?",
+        Lang::Es => ES_ERRANDS_ERRAND_PROMPT_WITH_2.get(),
         Lang::Fr => "C'est donc bien aujourd'hui à 16 h 30 ?",
-        Lang::De => "Also heute Nachmittag um 16:30 Uhr, richtig?",
+        Lang::De => DE_ERRANDS_ERRAND_PROMPT_WITH_2.get(),
         Lang::Pt => "Então fica para hoje às 16:30, certo?",
-        Lang::En | Lang::Ext(_) => "So that's today at 4:30 in the afternoon, right?",
+        Lang::En | Lang::Ext(_) => EN_ERRANDS_ERRAND_PROMPT_WITH_4.get(),
     };
     // How the AI says who calls: always the owner, never a name from the matter.
     let intro = match (s.lang, assistant) {
@@ -2669,7 +2690,7 @@ pub fn errand_prompt_with(s: &Script, redial: bool) -> String {
     };
     let whose = if assistant { "whose assistant you are" } else { "who you are" };
     let voicemail = if redial {
-        "leave no message and say nothing at all: the call is hung up and tried again later.".to_string()
+        EN_ERRANDS_ERRAND_PROMPT_WITH_5.get().to_string()
     } else {
         format!("leave a message of two sentences (who is calling, what it is about, that {owner} will get back to them), then say goodbye.")
     };
@@ -2836,7 +2857,7 @@ fn result_input(e: &Errand, dialogue: &str, home: &str) -> String {
         }
     }
     if !e.questions.is_empty() {
-        s.push_str("\nQuestions the AI asked the owner during the call:\n");
+        s.push_str(EN_ERRANDS_RESULT_INPUT_1.get());
         for q in &e.questions {
             let a = match &q.answer {
                 Some(a) if q.answered_by.as_deref() == Some("owner") => a.clone(),
@@ -2847,7 +2868,7 @@ fn result_input(e: &Errand, dialogue: &str, home: &str) -> String {
     }
     if !unanswered(e).is_empty() {
         s.push_str(
-            "The owner did NOT answer the questions marked so. Whatever the AI agreed to or decided on them is not the owner's consent: then outcome is never \"done\". Use \"need_owner\", and say plainly in summary and follow_up what the AI agreed to on its own (\"the AI said yes to 7:30\"), that the owner should confirm it, and call back to change it if it does not suit.\n",
+            EN_ERRANDS_RESULT_INPUT_2.get(),
         );
     }
     let lines: Vec<String> = dialogue
@@ -5068,7 +5089,7 @@ mod tests {
         assert!(away["instruction"].as_str().unwrap().contains("which options would work"), "{away}");
         assert!(away["instruction"].as_str().unwrap().contains("Do not accept, book or choose anything about «可以改 8 點嗎？»"), "{away}");
         // In the call's language, whatever language the answer is written in.
-        assert!(away["instruction"].as_str().unwrap().ends_with(CALL_LANGUAGE), "{away}");
+        assert!(away["instruction"].as_str().unwrap().ends_with(CALL_LANGUAGE.get()), "{away}");
         assert_eq!(rig.store.get("e-ask-2").unwrap().questions[0].answered_by.as_deref(), Some("absent"));
         rig.store.live_view("e-ask-2", 0).unwrap();
         let late = hooks.ask_within(&json!({"question": "要包廂嗎？"}), Duration::from_millis(80)).await;
@@ -5455,9 +5476,9 @@ mod tests {
         assert_eq!(r.outcome, "not_done");
         // The model dropped its call: told it still waits, then the answer as a note.
         assert!(still_asking_client_content().contains("Do not agree to, decide or confirm"));
-        assert!(still_asking_client_content().contains(CALL_LANGUAGE) && wrap_up_client_content().contains(CALL_LANGUAGE));
+        assert!(still_asking_client_content().contains(CALL_LANGUAGE.get()) && wrap_up_client_content().contains(CALL_LANGUAGE.get()));
         let note = late_answer_client_content(&json!({"answer": "7點半可以", "instruction": "Pass it on."}));
-        assert!(note.contains("clientContent") && note.contains("«7點半可以»") && note.contains("Pass it on.") && note.contains(CALL_LANGUAGE), "{note}");
+        assert!(note.contains("clientContent") && note.contains("«7點半可以»") && note.contains("Pass it on.") && note.contains(CALL_LANGUAGE.get()), "{note}");
     }
 
     /// The phone's next call after one hung up at its start (wrong SIM, or

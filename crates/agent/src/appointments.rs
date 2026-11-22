@@ -44,6 +44,32 @@ use crate::locale::{self, Lang, Words};
 use crate::settings_store::RuntimeSettings;
 use crate::tasks::{ReplyMethod, TaskIntent, TaskPatch, TaskRecord, TaskStatus, TaskStore};
 
+// The words are in the prompt book (data/prompts/<language>.json); these are their handles.
+crate::prompt_book::prompt_texts! {
+    /// The `period` parameter of both functions.
+    PERIOD_HELP = "en/appointments_period_help";
+    /// The `confirmed_by_caller` parameter of propose_appointment.
+    READ_BACK_HELP = "en/appointments_read_back_help";
+    JA_APPOINTMENTS_PROMPT_BLOCK = "ja/appointments_prompt_block";
+    EN_APPOINTMENTS_PROMPT_BLOCK_1 = "en/appointments_prompt_block_1";
+    EN_APPOINTMENTS_PROMPT_BLOCK_2 = "en/appointments_prompt_block_2";
+    EN_APPOINTMENTS_PROMPT_BLOCK_3 = "en/appointments_prompt_block_3";
+    EN_APPOINTMENTS_PROMPT_BLOCK_4 = "en/appointments_prompt_block_4";
+    EN_APPOINTMENTS_PROMPT_BLOCK_5 = "en/appointments_prompt_block_5";
+    EN_APPOINTMENTS_PROMPT_BLOCK_6 = "en/appointments_prompt_block_6";
+    EN_APPOINTMENTS_PROMPT_BLOCK_7 = "en/appointments_prompt_block_7";
+    EN_APPOINTMENTS_CALLBACK_PROMPT_IN = "en/appointments_callback_prompt_in";
+    EN_APPOINTMENTS_TOOL_DECLARATIONS_1 = "en/appointments_tool_declarations_1";
+    EN_APPOINTMENTS_TOOL_DECLARATIONS_2 = "en/appointments_tool_declarations_2";
+    EN_APPOINTMENTS_TOOL_DECLARATIONS_3 = "en/appointments_tool_declarations_3";
+    EN_APPOINTMENTS_TOOL_DECLARATIONS_4 = "en/appointments_tool_declarations_4";
+    EN_APPOINTMENTS_TOOL_DECLARATIONS_5 = "en/appointments_tool_declarations_5";
+    EN_APPOINTMENTS_TOOL_DECLARATIONS_6 = "en/appointments_tool_declarations_6";
+    EN_APPOINTMENTS_TOOL_DECLARATIONS_7 = "en/appointments_tool_declarations_7";
+    EN_APPOINTMENTS_TOOL_DECLARATIONS_8 = "en/appointments_tool_declarations_8";
+    EN_APPOINTMENTS_PROMPT_NOTE = "en/appointments_prompt_note";
+}
+
 /// Setting `appointment_mode`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -950,32 +976,32 @@ pub fn tool_declarations(non_blocking: bool) -> Value {
         "functionDeclarations": [
             {
                 "name": CHECK,
-                "description": "Whether the person you speak for is free at a local date and time. Answers {\"free\": null}: the schedule cannot be seen on this call.",
+                "description": EN_APPOINTMENTS_TOOL_DECLARATIONS_1.get(),
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
                         "start": { "type": "STRING", "description": "Local start time, YYYY-MM-DDTHH:MM." },
-                        "weekday": { "type": "STRING", "description": "The weekday of start in English (Monday … Sunday), the day the caller means." },
-                        "end": { "type": "STRING", "description": "Local end time, YYYY-MM-DDTHH:MM. Leave out for one hour." },
-                        "period": { "type": "STRING", "description": PERIOD_HELP }
+                        "weekday": { "type": "STRING", "description": EN_APPOINTMENTS_TOOL_DECLARATIONS_2.get() },
+                        "end": { "type": "STRING", "description": EN_APPOINTMENTS_TOOL_DECLARATIONS_3.get() },
+                        "period": { "type": "STRING", "description": PERIOD_HELP.get() }
                     },
                     "required": ["start"]
                 }
             },
             {
                 "name": PROPOSE,
-                "description": "Record an appointment agreed with the caller, only after you asked its date and time back to them as a question and they said yes. Answers {\"status\": \"pending_owner_confirmation\"} (not settled yet; tell_caller says what the caller is told), {\"status\": \"superseded\"} (a later call of yours already changed it; say nothing) or {\"error\": \"confirm_first\"} (not recorded: ask the time back first, as ask_caller says). Call it again with replaces_previous true only when the two of you change the time agreed last; with replaces_previous false for another, separate appointment (both stand). A back-up time the caller mentions is not a change.",
+                "description": EN_APPOINTMENTS_TOOL_DECLARATIONS_4.get(),
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
                         "start": { "type": "STRING", "description": "Local start time, YYYY-MM-DDTHH:MM." },
-                        "weekday": { "type": "STRING", "description": "The weekday of start in English (Monday … Sunday), the day the caller means." },
-                        "end": { "type": "STRING", "description": "Local end time, YYYY-MM-DDTHH:MM. Leave out for one hour." },
-                        "period": { "type": "STRING", "description": PERIOD_HELP },
+                        "weekday": { "type": "STRING", "description": EN_APPOINTMENTS_TOOL_DECLARATIONS_5.get() },
+                        "end": { "type": "STRING", "description": EN_APPOINTMENTS_TOOL_DECLARATIONS_6.get() },
+                        "period": { "type": "STRING", "description": PERIOD_HELP.get() },
                         "title": { "type": "STRING", "description": "What it is about, a few words." },
-                        "caller_name": { "type": "STRING", "description": "The caller's name, only when they said it. Leave it out otherwise: never a word like \"friend\" or \"caller\"." },
-                        "replaces_previous": { "type": "BOOLEAN", "description": "true: this changes the time of the appointment agreed last in this call (it replaces it). false: another, separate appointment (another matter or day; both stand). Left out: true." },
-                        "confirmed_by_caller": { "type": "BOOLEAN", "description": READ_BACK_HELP }
+                        "caller_name": { "type": "STRING", "description": EN_APPOINTMENTS_TOOL_DECLARATIONS_7.get() },
+                        "replaces_previous": { "type": "BOOLEAN", "description": EN_APPOINTMENTS_TOOL_DECLARATIONS_8.get() },
+                        "confirmed_by_caller": { "type": "BOOLEAN", "description": READ_BACK_HELP.get() }
                     },
                     "required": ["start", "title", "confirmed_by_caller"]
                 }
@@ -1461,12 +1487,6 @@ fn clean_text(v: Option<&Value>, max: usize) -> String {
         .to_string()
 }
 
-/// The `period` parameter of both functions.
-const PERIOD_HELP: &str = "The part of the day the caller named, when they named one: morning, afternoon, evening or night. Checked against the hour of start.";
-
-/// The `confirmed_by_caller` parameter of propose_appointment.
-const READ_BACK_HELP: &str = "true only when you asked this date and time back to the caller as a question, in full (month, day and weekday, morning or afternoon, hour and minutes), and they clearly said yes to it. Otherwise false: the time is not recorded and the answer is {\"error\": \"confirm_first\"}.";
-
 /// A part of the day the caller named ("tonight", 早上, 午後…), sent as
 /// `period` so a time on the wrong side of the clock is caught: "eight
 /// tonight" sent as 08:00, "three this afternoon" as 03:00.
@@ -1649,14 +1669,14 @@ pub fn prompt_block(
     s.push_str(&format!(
         "When the caller asks whether {owner} is free at some time, or wants to set a time (a meeting, a visit, coming by, a call at a set time):\n"
     ));
-    s.push_str("- Never make the caller wait on the line and never say you are looking something up right now, in any language (nothing like \"one moment\", \"hold on\", \"let me look\", \"ちょっと待って\", \"確認するから待って\", \"等一下\"): call the function silently and carry on with the conversation. Saying that you will check it after the call and get back to them is something else: that is exactly what you say below.\n");
+    s.push_str(JA_APPOINTMENTS_PROMPT_BLOCK.get());
     s.push_str(&format!(
         "- You cannot see {owner}'s schedule on this call, so do not call check_availability, and you do not know whether {owner} is free: do not say it is free, that it should work or that it is settled. Once there is a day and a time, first ask it back as a question, in full — month, day and weekday, morning or afternoon, hour and minutes (a half hour as half past or thirty, never rounded) — for example {example}, and wait for the caller's answer. Only after a clear yes, say {said} — in {language}, with the same meaning — then call propose_appointment with confirmed_by_caller = true. If they correct it, ask the corrected time back the same way. A short yes is enough (\"yes\", \"right\", \"對\", \"嗯\"): go on and do not ask again. If you did not catch the time itself (they spoke too fast, the line broke up, the words made no sense), ask them to say it again; never guess. Ask a time back once: do not ask again about a time they already confirmed. Only a vague time? Ask which day and what time first.\n"
     ));
     match reply {
         Reply::Sms => {}
-        Reply::Call => s.push_str("- The answer reaches this caller by a call-back: never promise a text message.\n"),
-        Reply::None => s.push_str("- Neither a text message nor a call-back can reach this caller: never promise to text or call them; only say that you will get back to them.\n"),
+        Reply::Call => s.push_str(EN_APPOINTMENTS_PROMPT_BLOCK_1.get()),
+        Reply::None => s.push_str(EN_APPOINTMENTS_PROMPT_BLOCK_2.get()),
     }
     s.push_str(&format!(
         "- propose_appointment: start (and end) as agreed, weekday, period, title = what it is about in a few words in {language}, caller_name only if they said their name (otherwise leave it out). Call it once for each appointment you agree on. If the two of you really change the time of the appointment agreed last, call it again with replaces_previous = true (the new time replaces it). If the caller sets up another, separate appointment (another matter or another day, and both stand), call it with replaces_previous = false. A back-up time the caller offers (\"if not, the afternoon works too\") or another time named in passing is not a change: do not call it for that.\n"
@@ -1664,11 +1684,11 @@ pub fn prompt_block(
     s.push_str(&format!(
         "- Its answer \"pending_owner_confirmation\" means it is not settled yet: if you have not said it already, say {said}; never say it is booked.\n"
     ));
-    s.push_str("- {\"error\": \"weekday_mismatch\"}: the date you sent is another weekday (\"date_is\" says which). Take the right date from the list above and call again; say nothing about it to the caller.\n");
-    s.push_str("- {\"error\": \"period_mismatch\"}: the hour you sent is not in the part of the day the caller named (\"hint\" says what to fix, e.g. 20:00 for eight in the evening). Correct start and call again; say nothing about it to the caller.\n");
-    s.push_str("- {\"error\": \"confirm_first\"}: you called before the caller said yes to the time asked back. If you have not asked it back yet, ask it now (\"ask_caller\" has the wording) and call again with confirmed_by_caller = true after their yes; if you did and they said yes, call again at once with confirmed_by_caller = true and say nothing more about it.\n");
-    s.push_str("- After calling propose_appointment do not repeat what you have just told the caller: if you already said it, simply go on with the conversation.\n");
-    s.push_str("- Never make an appointment with a sales, insurance, loan, investment or scam caller.");
+    s.push_str(EN_APPOINTMENTS_PROMPT_BLOCK_3.get());
+    s.push_str(EN_APPOINTMENTS_PROMPT_BLOCK_4.get());
+    s.push_str(EN_APPOINTMENTS_PROMPT_BLOCK_5.get());
+    s.push_str(EN_APPOINTMENTS_PROMPT_BLOCK_6.get());
+    s.push_str(EN_APPOINTMENTS_PROMPT_BLOCK_7.get());
     s
 }
 
@@ -1707,7 +1727,7 @@ pub fn prompt_note(reply: Reply, active: &locale::Active, now: NaiveDateTime, ut
     let reply_line = match reply {
         Reply::Sms => "",
         Reply::Call => " Never promise a text message.",
-        Reply::None => " Never promise to text or call them back.",
+        Reply::None => EN_APPOINTMENTS_PROMPT_NOTE.get(),
     };
     format!(
         "[Appointments — over anything above about not agreeing to plans for {owner}] Now {} ({}), UTC{utc_offset}. today = {}, tomorrow = {}, the day after tomorrow = {}. This week: {}. Next week: {}. Look days up here, never count (下禮拜三／来週の水曜日 = next week's Wed). \
@@ -3180,7 +3200,7 @@ pub fn callback_prompt_in(active: &locale::Active, lang: Option<Lang>, appt: &Ap
         format!("{owner} cannot make it at {when}{about} after all. Apologize politely and say they are welcome to call again to find another time.")
     };
     let ai_disclosure = if active.assistant {
-        "\nIf they seriously ask whether they are talking to a real person, say that you are an AI assistant."
+        EN_APPOINTMENTS_CALLBACK_PROMPT_IN.get()
     } else {
         ""
     };
