@@ -7565,7 +7565,16 @@ async fn run_urgent_call(
     on_callback: String,
     cancel: Arc<AtomicBool>,
     urgent_coord: UrgentCallCoord,
+    transcript: Arc<std::sync::Mutex<String>>,
 ) {
+    // Words only scammers say anywhere in the call (a spoofed saved number asking
+    // for a code): no call to the owner, or the one ringing is called off.
+    let scam_words = || {
+        transcript
+            .lock()
+            .map(|g| urgent_call::scam_words_stop_dial(&g))
+            .unwrap_or(false)
+    };
     // Wait until the AI has said its hold-on line (whenever in the call that happens),
     // and that line has finished playing out on the phone.
     loop {
@@ -7602,6 +7611,15 @@ async fn run_urgent_call(
             );
             break;
         }
+    }
+    if scam_words() {
+        warn!("Whitelist urgent call: the caller said words only scammers say serial={serial} — no call to the owner");
+        ctl.block_dial();
+        urgent_coord.set(UrgentCallOutcome::Failed);
+        push_call_events(&active_call, &media_call_guard, &urgent_call_failed_events(urgent_call::SCAM_WORDS)).await;
+        // The AI said its hold-on line and is waiting for the next instruction.
+        ctl.resume_with(on_callback);
+        return;
     }
     let sim = call_sim_country(&serial);
     // SIM unknown: a number without a country code reads as the owner's country's.
@@ -7649,6 +7667,11 @@ async fn run_urgent_call(
                 if !media_call_guard.is_current() {
                     break urgent_call::Step::Failed("call_ended".to_string());
                 }
+                // Not merged yet: words only scammers say call it off.
+                if scam_words() {
+                    warn!("Whitelist urgent call: the caller said words only scammers say id={id} serial={serial} — calling it off");
+                    break urgent_call::Step::Failed(urgent_call::SCAM_WORDS.to_string());
+                }
                 let now = tokio::time::Instant::now();
                 if !heard && now >= start + urgent_call::DIAL_ACK_WAIT {
                     warn!(
@@ -7679,7 +7702,7 @@ async fn run_urgent_call(
     // No final result: the phone ends its second call and takes this one off hold
     // (merged already: it says so).
     let unsettled = matches!(&step, urgent_call::Step::Failed(r)
-        if matches!(r.as_str(), "no_dial_ack" | "no_result" | "merge_timeout" | "phone_no_reply"));
+        if matches!(r.as_str(), "no_dial_ack" | "no_result" | "merge_timeout" | "phone_no_reply") || r == urgent_call::SCAM_WORDS);
     if unsettled && media_call_guard.is_current() {
         if let Err(e) = send_gemini_media_json(&sink, urgent_call::abort_payload(&id), "add_call_abort", &media_call_guard).await {
             warn!("Whitelist urgent call: add_call_abort not sent id={id}: {e:#}");
@@ -8010,6 +8033,7 @@ async fn run_gemini_session_to_end(
                                         on_callback,
                                         cancel.clone(),
                                         urgent_coord_w.clone(),
+                                        transcript_w.clone(),
                                     ));
                                 }
                                 Some(_) => {
