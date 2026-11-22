@@ -561,6 +561,9 @@ fn clear_made(cache: &Path, entry: &Entry) {
         for v in &entry.voices {
             for p in PARTS {
                 let _ = std::fs::remove_file(dir.join(format!("{v}_{p}.pcm")));
+                // Made in English while the language had no words of its own yet
+                // (voice_preview: the `en_` files).
+                let _ = std::fs::remove_file(dir.join(format!("en_{v}_{p}.pcm")));
             }
         }
     }

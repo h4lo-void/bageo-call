@@ -113,13 +113,15 @@ impl CallLanguage {
     /// setting read as that language when the translations carry it to the
     /// call stage ([crate::urgency::read_other]); in a call held in such a
     /// language, words in the same script count as it (Arabic letters do not
-    /// tell Arabic, Persian and Urdu apart).
+    /// tell Arabic, Persian and Urdu apart) unless their own words tell another
+    /// language ([crate::urgency::other_told_apart]: Italian to Indonesian,
+    /// Ukrainian to Russian).
     fn clear(&self, said: &str) -> Option<Spoken> {
         if crate::urgency::unlisted_language(said) {
             if let Some(r) = crate::urgency::read_other(said) {
                 if let Spoken::Lang(Lang::Ext(now)) = self.now {
                     if now.script() == r.script {
-                        return Some(self.now);
+                        return Some(crate::urgency::other_told_apart(said, now).map_or(self.now, Spoken::Lang));
                     }
                 }
                 if let Some(l) = r.lang {
@@ -549,6 +551,86 @@ mod close_latin_languages {
         assert_eq!(c.caller_turn("すみません、宅配便です。今ご自宅にいらっしゃいますか？"), None);
         assert_eq!(c.caller_turn(TH_SAID), None);
         assert_eq!(c.lang(), Some(ext("th")));
+    }
+
+    /// A call in `from` that hears `turns` after its opening line `first`;
+    /// returns what each turn changed and where the call ends up.
+    fn run(from: &str, first: &str, turns: &[&str]) -> (Vec<Option<Spoken>>, Option<Lang>) {
+        let mut c = CallLanguage::new(ext(from), ext(from));
+        assert_eq!(c.caller_turn(first), None, "{first}");
+        let changes = turns.iter().map(|t| c.caller_turn(t)).collect();
+        (changes, c.lang())
+    }
+
+    #[test]
+    fn a_translated_call_follows_another_language_of_its_script_told_by_its_words() {
+        crate::locales_store::testing::use_builtin();
+        let to = |code: &str| Some(Spoken::Lang(ext(code)));
+        // Italian to Indonesian and to Vietnamese, Polish to Turkish (Latin
+        // letters), Ukrainian to Russian and back (Cyrillic): two clear turns.
+        for (from, first, turns, code) in [
+            (
+                "it",
+                IT_SAID,
+                [
+                    "Maaf, saya tidak bisa datang hari ini, nanti saya telepon lagi ya.",
+                    "Iya, paketnya titip di rumah tetangga saja, terima kasih.",
+                ],
+                "id",
+            ),
+            (
+                "it",
+                IT_SAID,
+                ["Dạ, tôi không có ở nhà, anh gọi lại sau nhé.", "Vâng, anh cứ để hàng ở cửa giúp tôi, cảm ơn anh."],
+                "vi",
+            ),
+            (
+                "pl",
+                "Dzień dobry, jestem kurierem, czy pani jest teraz w domu?",
+                ["Merhaba, kargo için arıyorum, şimdi evde misiniz?", "Evet, tamam, teşekkür ederim, yarın tekrar ararım."],
+                "tr",
+            ),
+            (
+                "uk",
+                "Добрий день, це кур'єр, ви сьогодні вдома?",
+                ["Здравствуйте, это курьер, вы сейчас дома?", "Хорошо, тогда я оставлю посылку у соседей, если можно."],
+                "ru",
+            ),
+            (
+                "ru",
+                "Здравствуйте, это курьер, вы сейчас дома?",
+                ["Вибачте, я не розумію, можна українською, будь ласка?", "Добре, залиште посилку біля дверей, я її потім заберу."],
+                "uk",
+            ),
+        ] {
+            let (changes, lang) = run(from, first, &turns);
+            assert_eq!(changes, vec![None, to(code)], "{from} -> {code}");
+            assert_eq!(lang, Some(ext(code)), "{from} -> {code}");
+        }
+        // One such turn between turns of the call's language changes nothing.
+        let (_, lang) = run("it", IT_SAID, &["Maaf, saya tidak bisa datang hari ini, nanti saya telepon lagi ya.", IT_SAID]);
+        assert_eq!(lang, Some(ext("it")));
+    }
+
+    #[test]
+    fn a_translated_call_holds_on_words_that_do_not_tell_another_language() {
+        crate::locales_store::testing::use_builtin();
+        for (from, first, turns) in [
+            // Arabic letters: Persian and Urdu keep an Arabic call.
+            ("ar", AR_SAID, [FA_SAID, "السلام علیکم، میں کورئیر کمپنی سے بات کر رہا ہوں، آپ گھر پر ہیں؟"]),
+            ("ar", AR_SAID, [FA_SAID, FA_SAID]),
+            // An English word, a name, a short reply in an Italian call.
+            ("it", IT_SAID, ["Sì, perfetto, mi mandi tutto per email, grazie, okay?", "Pronto, sono Budi Santoso, il corriere, ho un pacco per lei."]),
+            ("it", IT_SAID, ["Iya, terima kasih.", "Iya, terima kasih."]),
+            ("it", IT_SAID, ["Sì, grazie.", "Va bene, a domani."]),
+            // Belarusian and Bulgarian are not Russian in a Ukrainian call.
+            ("uk", "Добрий день, це кур'єр, ви сьогодні вдома?", ["Добры дзень, я кур'ер, вы сёння дома?", "Здравейте, аз съм куриерът, вкъщи ли сте днес?"]),
+            ("uk", "Добрий день, це кур'єр, ви сьогодні вдома?", ["Так, дякую.", "Добре, дякую, до побачення."]),
+        ] {
+            let (changes, lang) = run(from, first, &turns);
+            assert_eq!(changes, vec![None, None], "{from}: {turns:?}");
+            assert_eq!(lang, Some(ext(from)), "{from}: {turns:?}");
+        }
     }
 
     #[test]

@@ -643,7 +643,7 @@ async fn check_official() -> (Outcome, Outcome, Outcome) {
         }
     };
     let apply: Option<Apply> = (packs_store::installs_left() > 0).then_some(&packs_store::install_file as Apply);
-    let loc_apply: Option<Apply> = (locales_store::installs_left() > 0).then_some(&locales_store::install_file as Apply);
+    let loc_apply: Option<Apply> = locales_store::can_install().then_some(&locales_store::install_file as Apply);
     let scam_apply: Option<Apply> = (crate::scam_db::installs_left() > 0).then_some(&crate::scam_db::install_file as Apply);
     let packs = packs_store::installed_dir();
     let in_use = packs_store::current().version;

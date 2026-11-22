@@ -22,12 +22,15 @@
 //!
 //! Like the local data pack, a table in use is never freed (Box::leak): a call
 //! keeps its &'static phrases and prompts for its whole length, the next call
-//! reads the new table. Installs per run are capped ([MAX_INSTALLS]).
+//! reads the new table. Languages, closing words and tables are kept by what
+//! they were built from ([Built]): a rebuild after an install or a removal
+//! reuses every one that did not change, so a run keeps one copy of each
+//! translation it saw. What a run adds is capped ([MAX_NEW_BYTES]).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, OnceLock, RwLock};
+use std::sync::{Mutex, MutexGuard, OnceLock, RwLock};
 
 use bageo_packs::extras::{lang_file_name, parse_lang_file, ExtraLang, MAX_EXTRA_LANG_BYTES};
 use bageo_packs::locales::{
@@ -36,6 +39,7 @@ use bageo_packs::locales::{
 };
 use bageo_packs::Issue;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 use crate::closing::ExtraWords;
 use crate::locale::{Ext, Lang, Phrases, Words};
@@ -78,9 +82,17 @@ pub(crate) fn help_url(code: &str) -> String {
 /// The installed file's name, in {CALLS_DATA_DIR}/packs/.
 pub const FILE_NAME: &str = "bageo-locales.json.gz";
 
-/// Most updates of the translations installed in one run; after that Bageo
-/// has to be restarted. Counted apart from the local data pack's.
-pub const MAX_INSTALLS: usize = 8;
+/// Most translation text (bytes of what the languages and tables were built
+/// from) a run may add to what it keeps; after that Bageo has to be
+/// restarted. A language or table already kept is reused and adds nothing,
+/// so installing and removing the same packs again costs nothing. 64 MiB
+/// holds all 70 languages at the 600 KiB file limit (42 MiB) with room for
+/// updates of the translations file; a usual language pack is 100-250 KB.
+/// Counted apart from the local data pack's.
+pub const MAX_NEW_BYTES: usize = 64 * 1024 * 1024;
+
+/// The error once [MAX_NEW_BYTES] is reached.
+const RESTART: &str = "too many translation updates installed since Bageo started; restart Bageo first";
 
 const ISSUE_FILE: &str = "bageo-locales.json.gz";
 const INCOMING_PREFIX: &str = ".incoming-locales-";
@@ -136,8 +148,12 @@ pub struct ExtLocale {
     /// Desktop widget texts that passed. Missing keys read English.
     desktop: Option<BTreeMap<String, String>>,
     /// The call prompts, built for the first call in this language and kept
-    /// with this table: a newer table builds its own.
+    /// with this translation: a changed translation builds its own.
     prompt: OnceLock<Pack>,
+    /// The farewells of its closing that passed, for the AI's own goodbye.
+    ai_farewells: Option<&'static [&'static str]>,
+    /// Its closing, when a native speaker checked it and it is verified.
+    verified: Option<Closing>,
 }
 
 impl ExtLocale {
@@ -151,9 +167,9 @@ impl ExtLocale {
 pub struct LocaleTable {
     /// YYYYMMDDNN; 0 for the empty table used when the built-in one is broken.
     pub version: u64,
-    langs: BTreeMap<Ext, ExtLocale>,
+    langs: BTreeMap<Ext, &'static ExtLocale>,
     /// Closing words that passed every check, for [crate::closing].
-    closing: ExtraWords,
+    closing: &'static ExtraWords,
     /// Each language's farewells that passed their examples, for telling the
     /// AI's own goodbye ([crate::closing::ai_says_translated_farewell]).
     ai_farewells: Vec<(&'static str, &'static [&'static str])>,
@@ -165,37 +181,41 @@ impl LocaleTable {
     }
 
     pub fn get(&self, e: Ext) -> Option<&ExtLocale> {
-        self.langs.get(&e)
+        self.lang(e)
+    }
+
+    fn lang(&self, e: Ext) -> Option<&'static ExtLocale> {
+        self.langs.get(&e).copied()
     }
 
     pub fn langs(&self) -> impl Iterator<Item = (Ext, &ExtLocale)> {
-        self.langs.iter().map(|(e, l)| (*e, l))
+        self.langs.iter().map(|(e, l)| (*e, *l))
     }
 
     /// The call phrases of a language at Call or further.
     pub fn phrases(&'static self, e: Ext) -> Option<&'static Phrases> {
-        self.langs.get(&e)?.phrases.as_ref()
+        self.lang(e)?.phrases.as_ref()
     }
 
     /// The words the owner reads, for a language at Notify.
     pub fn words(&'static self, e: Ext) -> Option<&'static Words> {
-        self.langs.get(&e)?.words.as_ref()
+        self.lang(e)?.words.as_ref()
     }
 
     /// The language's name in Chinese instructions.
     pub fn zh_name(&'static self, e: Ext, simplified: bool) -> Option<&'static str> {
-        let l = self.langs.get(&e)?;
+        let l = self.lang(e)?;
         Some(if simplified { l.zh_cn } else { l.zh_tw })
     }
 
-    /// The call prompts of a language at Call or further, built once per table.
+    /// The call prompts of a language at Call or further, built once per translation.
     pub(crate) fn prompt_pack(&'static self, e: Ext, build: impl FnOnce() -> Pack) -> Option<&'static Pack> {
-        let l = self.langs.get(&e).filter(|l| l.stage >= Stage::Call)?;
+        let l = self.lang(e).filter(|l| l.stage >= Stage::Call)?;
         Some(l.prompt.get_or_init(build))
     }
 
     pub(crate) fn closing_words(&'static self) -> &'static ExtraWords {
-        &self.closing
+        self.closing
     }
 
     pub(crate) fn ai_farewells(&'static self) -> &'static [(&'static str, &'static [&'static str])] {
@@ -203,112 +223,216 @@ impl LocaleTable {
     }
 
     fn new(loc: Locales, issues: &[Issue]) -> Self {
-        Self::from_base_and_extras(loc, issues, BTreeMap::new())
+        Self::from_base_and_extras(loc, issues, BTreeMap::new(), &AtomicUsize::new(0))
     }
 
-    fn from_base_and_extras(loc: Locales, issues: &[Issue], mut extras: BTreeMap<Ext, (ExtraLang, usize)>) -> Self {
-        let en_keys = english().files.get(&Kind::Notify).map_or(0, |s| s.text.keys().count());
+    /// What languages and closing words it builds anew is added to spent.
+    fn from_base_and_extras(loc: Locales, issues: &[Issue], mut extras: BTreeMap<Ext, (ExtraLang, usize)>, spent: &AtomicUsize) -> Self {
         let mut langs = BTreeMap::new();
         let mut verified = Vec::new();
         let mut ai_farewells = Vec::new();
-        let extract_strings = |opt: Option<&LocFile>| -> Option<BTreeMap<String, String>> {
-            opt.and_then(|f| {
-                let m: BTreeMap<String, String> = f
-                    .strings
-                    .iter()
-                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                    .collect();
-                if m.is_empty() { None } else { Some(m) }
-            })
-        };
-        let build_words = |notify: Option<&LocFile>, has_phrases: bool| -> Option<Words> {
-            match notify {
-                Some(f) if has_phrases && en_keys > 0 && f.keys().count() * 100 >= en_keys * READY_PERCENT => {
-                    Some(crate::locale::words_over_english(&serde_json::to_string(f).unwrap_or_default()))
-                }
-                _ => None,
-            }
-        };
         for (code, lang) in loc.langs {
             let Some(e) = Ext::from_code(&code) else { continue };
             let at = format!("langs.{code}");
             // One per field, however many rules it broke.
-            let mut dropped = issues
+            let dropped = issues
                 .iter()
                 .filter(|i| i.field == at || i.field.starts_with(&format!("{at}.")))
                 .map(|i| i.field.as_str())
                 .collect::<std::collections::BTreeSet<_>>()
                 .len();
-            let LocaleLang { mut names, mut status, speech, mut notify, mut console, .. } = lang;
-            let mut downloaded = false;
-            let mut extra_version = 0;
-            let mut desktop_file: Option<LocFile> = None;
-            if let Some((ex, ex_dropped)) = extras.remove(&e) {
-                names = ex.names;
-                status = ex.status;
-                notify = ex.notify;
-                console = ex.console;
-                desktop_file = ex.desktop;
-                dropped += ex_dropped;
-                downloaded = true;
-                extra_version = ex.version;
+            let l = ext_locale(e, lang, extras.remove(&e), dropped, spent);
+            if let Some(words) = l.ai_farewells {
+                ai_farewells.push((e.code(), words));
             }
-            let mut phrases = speech.as_ref().and_then(|s| call_phrases(e, s));
-            let words = build_words(notify.as_ref(), phrases.is_some());
-            let console_text = extract_strings(console.as_ref());
-            let desktop_text = extract_strings(desktop_file.as_ref());
-            let mut stage = match (&phrases, &words) {
-                (Some(_), Some(_)) => Stage::Notify,
-                (Some(_), None) => Stage::Call,
-                _ => Stage::None,
-            };
-            if stage >= Stage::Notify && console_text.is_some() && console_offered(e.code()) {
-                stage = Stage::Console;
+            if let Some(c) = &l.verified {
+                verified.push((e.code(), c.clone()));
             }
-            let closing = speech.as_ref().and_then(|s| s.closing.as_ref());
-            if let (Some(p), Some(c)) = (phrases.as_mut(), closing) {
-                if let Some(words) = ExtraWords::ai_farewells(e.code(), c) {
-                    p.farewells = words;
-                    ai_farewells.push((e.code(), words));
-                }
-            }
-            if stage >= Stage::Call && status == REVIEWED {
-                if let Some(c) = closing.filter(|c| c.verified) {
-                    verified.push((e.code(), c.clone()));
-                }
-            }
-            let zh_tw = leak(names.zh.clone());
-            let zh_cn = leak(crate::zh_convert::to_cn(&names.zh));
-            langs.insert(
-                e,
-                ExtLocale {
-                    names,
-                    status,
-                    stage,
-                    dropped,
-                    downloaded,
-                    extra_version,
-                    zh_tw,
-                    zh_cn,
-                    phrases,
-                    words,
-                    console: console_text,
-                    desktop: desktop_text,
-                    prompt: OnceLock::new(),
-                },
-            );
+            langs.insert(e, l);
         }
-        let closing = ExtraWords::from_verified(&verified);
+        let closing = closing_words_of(&verified, spent);
         LocaleTable { version: loc.version, langs, closing, ai_farewells }
     }
 
     fn empty() -> Self {
-        LocaleTable { version: 0, langs: BTreeMap::new(), closing: ExtraWords::default(), ai_farewells: Vec::new() }
+        LocaleTable { version: 0, langs: BTreeMap::new(), closing: closing_words_of(&[], &AtomicUsize::new(0)), ai_farewells: Vec::new() }
     }
 }
 
 fn leak(s: String) -> &'static str {
     Box::leak(s.into_boxed_str())
+}
+
+/// Hash of what something was built from.
+type Key = [u8; 32];
+
+fn digest(bytes: &[u8]) -> Key {
+    let mut k = [0u8; 32];
+    k.copy_from_slice(&Sha256::digest(bytes));
+    k
+}
+
+/// What this run built and keeps (never freed), by what it was built from: a
+/// rebuild after an install, a removal or a restore reuses each language,
+/// closing words and table that did not change instead of leaking them again.
+struct Built {
+    langs: BTreeMap<Key, &'static ExtLocale>,
+    closings: BTreeMap<Key, &'static ExtraWords>,
+    /// By version and the languages' addresses (each kept language is unique).
+    tables: BTreeMap<(u64, Vec<usize>), &'static LocaleTable>,
+    /// The last files read and checked ([KEEP_PARSED]): checking a file again
+    /// would keep its closing words again ([crate::closing::judge]).
+    parsed: Vec<(Key, i64, (Locales, Vec<Issue>))>,
+}
+
+static BUILT: Mutex<Built> = Mutex::new(Built { langs: BTreeMap::new(), closings: BTreeMap::new(), tables: BTreeMap::new(), parsed: Vec::new() });
+
+/// The built-in file and the installed one.
+const KEEP_PARSED: usize = 2;
+
+/// Held only to look up or add: building never runs under it.
+fn built() -> MutexGuard<'static, Built> {
+    BUILT.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// One language of a table (its file entry, its downloaded pack if any): the
+/// one built before from the same text, else built now and kept, its size
+/// added to spent.
+fn ext_locale(e: Ext, lang: LocaleLang, extra: Option<(ExtraLang, usize)>, dropped: usize, spent: &AtomicUsize) -> &'static ExtLocale {
+    let LocaleLang { mut names, mut status, speech, mut notify, mut console, .. } = lang;
+    let mut dropped = dropped;
+    let mut downloaded = false;
+    let mut extra_version = 0;
+    let mut desktop_file: Option<LocFile> = None;
+    if let Some((ex, ex_dropped)) = extra {
+        names = ex.names;
+        status = ex.status;
+        notify = ex.notify;
+        console = ex.console;
+        desktop_file = ex.desktop;
+        dropped += ex_dropped;
+        downloaded = true;
+        extra_version = ex.version;
+    }
+    let input =
+        serde_json::to_vec(&(e.code(), &names, &status, &speech, &notify, &console, &desktop_file, dropped, downloaded, extra_version)).ok();
+    let key = input.as_deref().map(digest);
+    if let Some(l) = key.and_then(|k| built().langs.get(&k).copied()) {
+        return l;
+    }
+    let extract_strings = |opt: Option<&LocFile>| -> Option<BTreeMap<String, String>> {
+        opt.and_then(|f| {
+            let m: BTreeMap<String, String> =
+                f.strings.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect();
+            if m.is_empty() { None } else { Some(m) }
+        })
+    };
+    let en_keys = english().files.get(&Kind::Notify).map_or(0, |s| s.text.keys().count());
+    let mut phrases = speech.as_ref().and_then(|s| call_phrases(e, s));
+    let words = match notify.as_ref() {
+        Some(f) if phrases.is_some() && en_keys > 0 && f.keys().count() * 100 >= en_keys * READY_PERCENT => {
+            Some(crate::locale::words_over_english(&serde_json::to_string(f).unwrap_or_default()))
+        }
+        _ => None,
+    };
+    let console_text = extract_strings(console.as_ref());
+    let desktop_text = extract_strings(desktop_file.as_ref());
+    let mut stage = match (&phrases, &words) {
+        (Some(_), Some(_)) => Stage::Notify,
+        (Some(_), None) => Stage::Call,
+        _ => Stage::None,
+    };
+    if stage >= Stage::Notify && console_text.is_some() && console_offered(e.code()) {
+        stage = Stage::Console;
+    }
+    let closing = speech.as_ref().and_then(|s| s.closing.as_ref());
+    let mut ai_farewells = None;
+    if let (Some(p), Some(c)) = (phrases.as_mut(), closing) {
+        if let Some(words) = ExtraWords::ai_farewells(e.code(), c) {
+            p.farewells = words;
+            ai_farewells = Some(words);
+        }
+    }
+    let verified = if stage >= Stage::Call && status == REVIEWED { closing.filter(|c| c.verified).cloned() } else { None };
+    let zh_tw = leak(names.zh.clone());
+    let zh_cn = leak(crate::zh_convert::to_cn(&names.zh));
+    let l: &'static ExtLocale = Box::leak(Box::new(ExtLocale {
+        names,
+        status,
+        stage,
+        dropped,
+        downloaded,
+        extra_version,
+        zh_tw,
+        zh_cn,
+        phrases,
+        words,
+        console: console_text,
+        desktop: desktop_text,
+        prompt: OnceLock::new(),
+        ai_farewells,
+        verified,
+    }));
+    spent.fetch_add(input.as_ref().map_or(0, Vec::len) + std::mem::size_of::<ExtLocale>(), Ordering::SeqCst);
+    match key {
+        Some(k) => *built().langs.entry(k).or_insert(l),
+        None => l,
+    }
+}
+
+/// A table's closing words: the ones built before from the same verified
+/// closings, else built now and kept, their size added to spent.
+fn closing_words_of(verified: &[(&'static str, Closing)], spent: &AtomicUsize) -> &'static ExtraWords {
+    let input = serde_json::to_vec(verified).ok();
+    let key = input.as_deref().map(digest);
+    if let Some(w) = key.and_then(|k| built().closings.get(&k).copied()) {
+        return w;
+    }
+    let w: &'static ExtraWords = Box::leak(Box::new(ExtraWords::from_verified(verified)));
+    spent.fetch_add(input.as_ref().map_or(0, Vec::len), Ordering::SeqCst);
+    match key {
+        Some(k) => *built().closings.entry(k).or_insert(w),
+        None => w,
+    }
+}
+
+/// The table built before from the same languages, else this one, kept for
+/// the rest of the run; its size (about: the index, not the languages) is
+/// added to spent.
+fn keep(t: LocaleTable, spent: &AtomicUsize) -> &'static LocaleTable {
+    let key = (t.version, t.langs.values().map(|l| *l as *const ExtLocale as usize).collect::<Vec<_>>());
+    if let Some(found) = built().tables.get(&key).copied() {
+        return found;
+    }
+    let size = std::mem::size_of::<LocaleTable>()
+        + t.langs.len() * (2 * std::mem::size_of::<(Ext, &ExtLocale)>() + std::mem::size_of::<usize>())
+        + t.ai_farewells.len() * std::mem::size_of::<(&str, &[&str])>();
+    let t: &'static LocaleTable = Box::leak(Box::new(t));
+    spent.fetch_add(size, Ordering::SeqCst);
+    *built().tables.entry(key).or_insert(t)
+}
+
+/// [parse_from], from the last files read when this one is among them.
+fn parse_cached(gz: &[u8], origin: Origin, today: i64) -> Result<(Locales, Vec<Issue>), Vec<Issue>> {
+    let day = if origin == Origin::Builtin { NO_DATE_LIMIT } else { today };
+    let key = digest(gz);
+    {
+        let mut b = built();
+        if let Some(i) = b.parsed.iter().position(|(k, d, _)| *k == key && *d == day) {
+            let hit = b.parsed.remove(i);
+            let out = hit.2.clone();
+            b.parsed.push(hit);
+            return Ok(out);
+        }
+    }
+    let read = parse_from(gz, origin, today)?;
+    let mut b = built();
+    b.parsed.retain(|(k, d, _)| !(*k == key && *d == day));
+    if b.parsed.len() >= KEEP_PARSED {
+        b.parsed.remove(0);
+    }
+    b.parsed.push((key, day, read.clone()));
+    Ok(read)
 }
 
 /// The call phrases of a language whose speech passed: its hello is required
@@ -414,11 +538,6 @@ fn table(gz: &[u8]) -> Result<LocaleTable, Vec<Issue>> {
     Ok(LocaleTable::new(loc, &dropped))
 }
 
-fn table_from(gz: &[u8], origin: Origin, today: i64) -> Result<LocaleTable, Vec<Issue>> {
-    let (loc, dropped) = parse_from(gz, origin, today)?;
-    Ok(LocaleTable::new(loc, &dropped))
-}
-
 fn issue(rule: &'static str, detail: impl Into<String>) -> Vec<Issue> {
     vec![Issue::new(ISSUE_FILE, "", rule, detail)]
 }
@@ -427,8 +546,8 @@ fn issue(rule: &'static str, detail: impl Into<String>) -> Vec<Issue> {
 /// tests) leaves an empty table: only the core languages are offered.
 pub fn builtin() -> &'static LocaleTable {
     static T: OnceLock<&'static LocaleTable> = OnceLock::new();
-    T.get_or_init(|| match table_from(BUILTIN, Origin::Builtin, 0) {
-        Ok(t) => Box::leak(Box::new(t)),
+    T.get_or_init(|| match parse_cached(BUILTIN, Origin::Builtin, 0) {
+        Ok((loc, dropped)) => keep(LocaleTable::new(loc, &dropped), &AtomicUsize::new(0)),
         Err(issues) => {
             tracing::error!("built-in translations rejected: {}", issues.first().map(|i| i.to_string()).unwrap_or_default());
             Box::leak(Box::new(LocaleTable::empty()))
@@ -437,7 +556,8 @@ pub fn builtin() -> &'static LocaleTable {
 }
 
 static CURRENT: RwLock<Option<&'static LocaleTable>> = RwLock::new(None);
-static INSTALLS: AtomicUsize = AtomicUsize::new(0);
+/// Bytes this run added to what it keeps ([MAX_NEW_BYTES]).
+static NEW_BYTES: AtomicUsize = AtomicUsize::new(0);
 static INSTALL_LOCK: Mutex<()> = Mutex::new(());
 
 // A test's own table: installing in one test never changes what the others read.
@@ -488,9 +608,9 @@ pub(crate) fn has_incoming(packs: &Path) -> bool {
     std::fs::read_dir(packs).is_ok_and(|d| d.flatten().any(|e| is_incoming(&e.file_name().to_string_lossy())))
 }
 
-/// Updates that can still be installed before Bageo has to be restarted.
-pub(crate) fn installs_left() -> usize {
-    MAX_INSTALLS.saturating_sub(INSTALLS.load(Ordering::SeqCst))
+/// Updates can still be installed before Bageo has to be restarted.
+pub(crate) fn can_install() -> bool {
+    NEW_BYTES.load(Ordering::SeqCst) < MAX_NEW_BYTES
 }
 
 /// Calls use the built-in translations.
@@ -633,7 +753,7 @@ fn base_source_for(packs: &Path, builtin_ver: u64) -> Option<(Locales, Vec<Issue
         return None;
     }
     let gz = std::fs::read(&path).ok()?;
-    match parse(&gz) {
+    match parse_cached(&gz, Origin::Downloaded, bageo_packs::util::now_days()) {
         Ok((loc, dropped)) if loc.version > builtin_ver => {
             tracing::info!("translations {} in use ({} languages)", loc.version, loc.langs.len());
             Some((loc, dropped))
@@ -654,8 +774,14 @@ fn base_source_for(packs: &Path, builtin_ver: u64) -> Option<(Locales, Vec<Issue
 }
 
 /// The installed table (installed base + downloaded extras) when newer or
-/// carrying extras, else None (use `builtin()`).
+/// carrying extras, else None (use `builtin()`). What a run starts with is
+/// not counted toward [MAX_NEW_BYTES].
 fn load_installed(packs: &Path, version: u64) -> Option<&'static LocaleTable> {
+    load_installed_counted(packs, version, &AtomicUsize::new(0))
+}
+
+/// Same, adding what it builds anew to spent.
+fn load_installed_counted(packs: &Path, version: u64, spent: &AtomicUsize) -> Option<&'static LocaleTable> {
     let base = base_source_for(packs, version);
     let extras = load_extra_langs(&extras_dir(packs));
     if base.is_none() && extras.is_empty() {
@@ -663,19 +789,19 @@ fn load_installed(packs: &Path, version: u64) -> Option<&'static LocaleTable> {
     }
     let (loc, dropped) = match base {
         Some(pair) => pair,
-        None => parse_from(BUILTIN, Origin::Builtin, 0).ok()?,
+        None => parse_cached(BUILTIN, Origin::Builtin, 0).ok()?,
     };
-    Some(Box::leak(Box::new(LocaleTable::from_base_and_extras(loc, &dropped, extras))))
+    Some(keep(LocaleTable::from_base_and_extras(loc, &dropped, extras, spent), spent))
 }
 
 /// Checks and installs a downloaded file, already written to staged in the
 /// packs folder ([incoming_path]): it must read back, be the version the
 /// release index named (want) and be newer than the table in use. It is then
 /// renamed over the installed one in one step; the next call uses it. The
-/// staged file never stays behind. At most [MAX_INSTALLS] per run.
+/// staged file never stays behind. Refused once the run reached [MAX_NEW_BYTES].
 pub(crate) fn install_file(staged: &Path, want: u64) -> Result<u64, Vec<Issue>> {
     let _guard = INSTALL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let t = install_file_counted(&INSTALLS, &installed_dir(), staged, current().version, Some(want))?;
+    let t = install_file_counted(&NEW_BYTES, &installed_dir(), staged, current().version, Some(want))?;
     set_current(t);
     Ok(t.version)
 }
@@ -683,7 +809,6 @@ pub(crate) fn install_file(staged: &Path, want: u64) -> Result<u64, Vec<Issue>> 
 pub(crate) fn install_file_counted(count: &AtomicUsize, packs: &Path, staged: &Path, in_use: u64, want: Option<u64>) -> Result<&'static LocaleTable, Vec<Issue>> {
     let result = check_staged(count, packs, staged, in_use, want).and_then(|t| {
         std::fs::rename(staged, packs.join(FILE_NAME)).map_err(|e| issue(lrule::FORMAT, format!("cannot install the translations: {e}")))?;
-        count.fetch_add(1, Ordering::SeqCst);
         Ok(t)
     });
     if result.is_err() {
@@ -693,8 +818,8 @@ pub(crate) fn install_file_counted(count: &AtomicUsize, packs: &Path, staged: &P
 }
 
 fn check_staged(count: &AtomicUsize, packs: &Path, staged: &Path, in_use: u64, want: Option<u64>) -> Result<&'static LocaleTable, Vec<Issue>> {
-    if count.load(Ordering::SeqCst) >= MAX_INSTALLS {
-        return Err(issue(lrule::FORMAT, format!("{MAX_INSTALLS} updates installed since Bageo started; restart Bageo first")));
+    if count.load(Ordering::SeqCst) >= MAX_NEW_BYTES {
+        return Err(issue(lrule::FORMAT, RESTART));
     }
     let io = |e: std::io::Error| issue(lrule::FORMAT, format!("cannot read the translations: {e}"));
     let len = std::fs::metadata(staged).map_err(io)?.len();
@@ -702,7 +827,7 @@ fn check_staged(count: &AtomicUsize, packs: &Path, staged: &Path, in_use: u64, w
         return Err(issue(lrule::SIZE, format!("{len} bytes, the limit is {MAX_LOCALES_BYTES}")));
     }
     let gz = std::fs::read(staged).map_err(io)?;
-    let (loc, dropped) = parse(&gz)?;
+    let (loc, dropped) = parse_cached(&gz, Origin::Downloaded, bageo_packs::util::now_days())?;
     if want.is_some_and(|w| w != loc.version) {
         return Err(issue(lrule::FORMAT, format!("version {} is not the one the index names", loc.version)));
     }
@@ -710,7 +835,7 @@ fn check_staged(count: &AtomicUsize, packs: &Path, staged: &Path, in_use: u64, w
         return Err(issue(lrule::FORMAT, format!("version {} is not newer than the one in use ({in_use})", loc.version)));
     }
     let extras = load_extra_langs(&extras_dir(packs));
-    Ok(Box::leak(Box::new(LocaleTable::from_base_and_extras(loc, &dropped, extras))))
+    Ok(keep(LocaleTable::from_base_and_extras(loc, &dropped, extras, count), count))
 }
 
 /// Checks and installs one downloaded extra language pack (`lang-<code>.json.gz`),
@@ -718,7 +843,7 @@ fn check_staged(count: &AtomicUsize, packs: &Path, staged: &Path, in_use: u64, w
 pub(crate) fn install_extra_lang(staged: &Path, e: Ext, want: Option<u64>) -> Result<u64, Vec<Issue>> {
     let _guard = INSTALL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let packs = installed_dir();
-    let t = install_extra_lang_counted(&INSTALLS, &packs, staged, e, want)?;
+    let t = install_extra_lang_counted(&NEW_BYTES, &packs, staged, e, want)?;
     let ver = t.get(e).map_or(0, |l| l.extra_version);
     set_current(t);
     Ok(ver)
@@ -733,8 +858,8 @@ pub(crate) fn install_extra_lang_counted(
 ) -> Result<&'static LocaleTable, Vec<Issue>> {
     let extras = extras_dir(packs);
     let res = (|| -> Result<&'static LocaleTable, Vec<Issue>> {
-        if count.load(Ordering::SeqCst) >= MAX_INSTALLS {
-            return Err(issue(lrule::FORMAT, format!("{MAX_INSTALLS} updates installed since Bageo started; restart Bageo first")));
+        if count.load(Ordering::SeqCst) >= MAX_NEW_BYTES {
+            return Err(issue(lrule::FORMAT, RESTART));
         }
         let io = |err: std::io::Error| issue(lrule::FORMAT, format!("cannot read the language pack: {err}"));
         let len = std::fs::metadata(staged).map_err(io)?.len();
@@ -753,8 +878,7 @@ pub(crate) fn install_extra_lang_counted(
         std::fs::create_dir_all(&extras).map_err(|err| issue(lrule::FORMAT, format!("cannot create extras folder: {err}")))?;
         let target = extras.join(lang_file_name(e.code()));
         std::fs::rename(staged, &target).map_err(|err| issue(lrule::FORMAT, format!("cannot install the language pack: {err}")))?;
-        count.fetch_add(1, Ordering::SeqCst);
-        let tbl = load_installed(packs, builtin().version).unwrap_or_else(builtin);
+        let tbl = load_installed_counted(packs, builtin().version, count).unwrap_or_else(builtin);
         Ok(tbl)
     })();
     if res.is_err() {
@@ -767,7 +891,7 @@ pub(crate) fn install_extra_lang_counted(
 pub(crate) fn remove_extra_lang(e: Ext) -> Result<bool, std::io::Error> {
     let _guard = INSTALL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let packs = installed_dir();
-    let (tbl, removed) = remove_extra_lang_counted(&INSTALLS, &packs, e)?;
+    let (tbl, removed) = remove_extra_lang_counted(&NEW_BYTES, &packs, e)?;
     if removed {
         set_current(tbl);
     }
@@ -783,15 +907,14 @@ pub(crate) fn remove_extra_lang_counted(
     if !target.exists() {
         return Ok((current(), false));
     }
-    if count.load(Ordering::SeqCst) >= MAX_INSTALLS {
-        return Err(std::io::Error::other(format!("{MAX_INSTALLS} updates installed since Bageo started; restart Bageo first")));
+    if count.load(Ordering::SeqCst) >= MAX_NEW_BYTES {
+        return Err(std::io::Error::other(RESTART));
     }
     match std::fs::remove_file(&target) {
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok((current(), false)),
         Err(err) => Err(err),
         Ok(()) => {
-            count.fetch_add(1, Ordering::SeqCst);
-            let tbl = load_installed(packs, builtin().version).unwrap_or_else(builtin);
+            let tbl = load_installed_counted(packs, builtin().version, count).unwrap_or_else(builtin);
             Ok((tbl, true))
         }
     }
@@ -799,17 +922,19 @@ pub(crate) fn remove_extra_lang_counted(
 
 /// Goes back to the built-in translations: the installed file is deleted
 /// (downloaded per-language extras stay untouched). When it cannot be deleted
-/// nothing changes and the error is returned.
+/// nothing changes and the error is returned. Never refused for
+/// [MAX_NEW_BYTES]; a table it builds counts toward it, and restoring again
+/// reuses that table.
 pub fn restore_builtin() -> std::io::Result<()> {
     let _guard = INSTALL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    restore_in(&installed_dir())
+    restore_in(&NEW_BYTES, &installed_dir())
 }
 
-fn restore_in(packs: &Path) -> std::io::Result<()> {
+fn restore_in(spent: &AtomicUsize, packs: &Path) -> std::io::Result<()> {
     match std::fs::remove_file(packs.join(FILE_NAME)) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
         _ => {
-            let tbl = load_installed(packs, builtin().version).unwrap_or_else(builtin);
+            let tbl = load_installed_counted(packs, builtin().version, spent).unwrap_or_else(builtin);
             set_current(tbl);
             Ok(())
         }
@@ -1271,7 +1396,7 @@ mod tests {
         std::fs::write(&staged, pack_extra(2026112102, true)).unwrap();
         let t = install_extra_lang_counted(&count, &dir, &staged, ext("it"), Some(2026112102)).unwrap();
         set_current(t);
-        assert_eq!(count.load(Ordering::SeqCst), 1);
+        assert!(count.load(Ordering::SeqCst) > 0, "what it keeps counts toward the cap");
         let it_loc = t.get(ext("it")).unwrap();
         assert_eq!(it_loc.stage, Stage::Console);
         assert!(it_loc.downloaded && it_loc.extra_version == 2026112102);
@@ -1301,17 +1426,20 @@ mod tests {
         std::fs::write(&staged_bomb, bomb_gz).unwrap();
         assert!(install_extra_lang_counted(&count, &dir, &staged_bomb, ext("it"), None).is_err());
 
-        // Remove counts toward MAX_INSTALLS too and drops Italian back to Stage::Call.
+        // Removing the only pack goes back to the built-in table (nothing new
+        // kept) and drops Italian back to Stage::Call.
+        let before = count.load(Ordering::SeqCst);
         let (t2, removed) = remove_extra_lang_counted(&count, &dir, ext("it")).unwrap();
         assert!(removed);
-        assert_eq!(count.load(Ordering::SeqCst), 2);
+        assert_eq!(count.load(Ordering::SeqCst), before);
+        assert!(std::ptr::eq(t2, builtin()));
         set_current(t2);
         assert_eq!(t2.stage(ext("it")), Stage::Call);
         assert!(!t2.get(ext("it")).unwrap().downloaded);
         assert!(desktop_file("it").is_none());
 
         // Cap enforcement on both install and remove.
-        let full = AtomicUsize::new(MAX_INSTALLS);
+        let full = AtomicUsize::new(MAX_NEW_BYTES);
         let staged_cap = extra_incoming_path(&extras);
         std::fs::write(&staged_cap, pack_extra(2026112103, true)).unwrap();
         assert!(install_extra_lang_counted(&full, &dir, &staged_cap, ext("it"), None).is_err());
@@ -1448,7 +1576,7 @@ mod tests {
         std::fs::write(dir.join(FILE_NAME), b"not gzip").unwrap();
         assert!(load_installed(&dir, v0).is_none());
         // The cap.
-        let full = AtomicUsize::new(MAX_INSTALLS);
+        let full = AtomicUsize::new(MAX_NEW_BYTES);
         let Err(e) = install(&full, &dir, &gz(v0 + 3, |_| {}), v0) else { panic!("installed past the cap") };
         assert!(e[0].detail.contains("restart Bageo"), "{}", e[0]);
         assert!(!has_incoming(&dir));
@@ -1464,12 +1592,146 @@ mod tests {
         let file = dir.join(FILE_NAME);
         std::fs::remove_file(&file).unwrap();
         std::fs::create_dir(&file).unwrap();
-        assert!(restore_in(&dir).is_err());
+        assert!(restore_in(&count, &dir).is_err());
         assert_eq!(current().version, v0 + 1, "still the installed one");
         std::fs::remove_dir(&file).unwrap();
-        restore_in(&dir).unwrap();
+        restore_in(&count, &dir).unwrap();
         assert!(builtin_in_use());
-        restore_in(&dir).unwrap();
+        restore_in(&count, &dir).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A language pack (lang-<code>.json.gz) at version: every notification
+    /// key one word of the language, the desktop's "h_ok" too (no console
+    /// text, to keep the many installs below quick).
+    fn lang_pack(code: &str, version: u64, word: &str) -> Vec<u8> {
+        use flate2::{write::GzEncoder, Compression};
+        use std::io::Write as _;
+        let names = serde_json::to_value(&builtin().get(ext(code)).unwrap().names).unwrap();
+        let obj = json!({
+            "format": bageo_packs::extras::EXTRAS_FORMAT,
+            "code": code,
+            "version": version,
+            "built_at": "2026-11-21T08:00:00Z",
+            "source_commit": "test",
+            "names": names,
+            "status": "ai_checked",
+            "notify": testing::notify(word, &[]),
+            "desktop": { "strings": { "h_ok": word } },
+        });
+        let mut enc = GzEncoder::new(Vec::new(), Compression::fast());
+        enc.write_all(&serde_json::to_vec(&obj).unwrap()).unwrap();
+        enc.finish().unwrap()
+    }
+
+    /// More packs than the old cap of 8 per run install and remove one after
+    /// another; each step keeps about one language at most, and doing it all
+    /// again keeps nothing new.
+    #[test]
+    fn a_dozen_language_packs_install_and_remove_in_one_run_and_again_keep_nothing_new() {
+        const LANGS: [(&str, &str); 12] = [
+            ("it", "Tutto bene"),
+            ("th", "เรียบร้อยดี"),
+            ("vi", "Ổn cả rồi"),
+            ("ar", "كل شيء بخير"),
+            ("hi", "सब ठीक है"),
+            ("ru", "Всё в порядке"),
+            ("tr", "Tamam"),
+            ("pl", "Dobrze"),
+            ("id", "Beres"),
+            ("he", "הכל בסדר"),
+            ("fa", "خوب است"),
+            ("uk", "Усе гаразд"),
+        ];
+        let dir = tmp();
+        let extras = extras_dir(&dir);
+        std::fs::create_dir_all(&extras).unwrap();
+        let run = |count: &AtomicUsize| -> Vec<usize> {
+            let mut steps = Vec::new();
+            for (i, (code, word)) in LANGS.iter().enumerate() {
+                let e = ext(code);
+                let staged = extra_incoming_path(&extras);
+                std::fs::write(&staged, lang_pack(code, 2026112201, word)).unwrap();
+                let before = count.load(Ordering::SeqCst);
+                let t = install_extra_lang_counted(count, &dir, &staged, e, Some(2026112201)).unwrap();
+                steps.push(count.load(Ordering::SeqCst) - before);
+                set_current(t);
+                let l = t.get(e).unwrap();
+                assert!(l.downloaded && l.extra_version == 2026112201, "{code}");
+                assert!(t.stage(e) >= Stage::Notify, "{code}: {:?}", t.stage(e));
+                assert_eq!(t.phrases(e).map(|p| p.hello), builtin().phrases(e).map(|p| p.hello), "{code}: built-in call speech stays");
+                let df: Value = serde_json::from_str(&desktop_file(code).unwrap()).unwrap();
+                assert_eq!(df["strings"]["h_ok"], *word);
+                assert_eq!(df["strings"]["quit"], "Quit", "{code}: missing keys read English");
+                assert!(LANGS[..i].iter().all(|(c, _)| t.get(ext(c)).unwrap().downloaded), "{code}: the ones before stay");
+            }
+            for (code, _) in LANGS {
+                let e = ext(code);
+                let before = count.load(Ordering::SeqCst);
+                let (t, removed) = remove_extra_lang_counted(count, &dir, e).unwrap();
+                assert!(removed, "{code}");
+                steps.push(count.load(Ordering::SeqCst) - before);
+                set_current(t);
+                assert!(!t.get(e).unwrap().downloaded, "{code}");
+                assert_eq!(t.stage(e), builtin().stage(e), "{code}");
+                assert!(t.words(e).is_none(), "{code}: notifications read English again");
+                assert!(desktop_file(code).is_none(), "{code}");
+            }
+            assert!(builtin_in_use(), "all removed: the built-in table itself");
+            steps
+        };
+        let first = AtomicUsize::new(0);
+        let steps = run(&first);
+        let (installs, removals) = steps.split_at(LANGS.len());
+        let least = *installs.iter().min().unwrap();
+        let most = *installs.iter().max().unwrap();
+        // One language each, not every language installed so far again.
+        assert!(least > 0 && most < least * 4, "{installs:?}");
+        assert!(removals.iter().all(|s| *s < least), "a removal keeps an index only: {removals:?}");
+        let again = AtomicUsize::new(0);
+        run(&again);
+        assert_eq!(again.load(Ordering::SeqCst), 0, "the same packs again reuse what was kept");
+        testing::use_builtin();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restoring_again_and_again_reuses_the_table_it_built() {
+        let v0 = builtin().version;
+        let dir = tmp();
+        let extras = extras_dir(&dir);
+        std::fs::create_dir_all(&extras).unwrap();
+        let count = AtomicUsize::new(0);
+        set_current(install(&count, &dir, &gz(v0 + 1, |_| {}), v0).unwrap());
+        for (code, word) in [("it", "Va bene così"), ("th", "ตกลงครับ"), ("ar", "حسناً")] {
+            let staged = extra_incoming_path(&extras);
+            std::fs::write(&staged, lang_pack(code, 2026112202, word)).unwrap();
+            set_current(install_extra_lang_counted(&count, &dir, &staged, ext(code), None).unwrap());
+        }
+        assert_eq!(current().version, v0 + 1);
+        let spent = AtomicUsize::new(0);
+        restore_in(&spent, &dir).unwrap();
+        let back = current();
+        assert_eq!(back.version, v0);
+        for (code, word) in [("it", "Va bene così"), ("th", "ตกลงครับ"), ("ar", "حسناً")] {
+            let e = ext(code);
+            assert!(back.get(e).unwrap().downloaded, "{code}: the pack stays");
+            assert_eq!(back.phrases(e).map(|p| p.hello), builtin().phrases(e).map(|p| p.hello), "{code}: built-in call speech");
+            let df: Value = serde_json::from_str(&desktop_file(code).unwrap()).unwrap();
+            assert_eq!(df["strings"]["h_ok"], word);
+        }
+        let kept = spent.load(Ordering::SeqCst);
+        for _ in 0..5 {
+            restore_in(&spent, &dir).unwrap();
+            assert!(std::ptr::eq(current(), back), "the same table again");
+        }
+        assert_eq!(spent.load(Ordering::SeqCst), kept, "restoring again keeps nothing new");
+        for code in ["it", "th", "ar"] {
+            set_current(remove_extra_lang_counted(&spent, &dir, ext(code)).unwrap().0);
+        }
+        restore_in(&spent, &dir).unwrap();
+        assert!(builtin_in_use());
+        testing::use_builtin();
         let _ = std::fs::remove_dir_all(&dir);
     }
 

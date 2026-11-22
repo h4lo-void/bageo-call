@@ -720,7 +720,7 @@ Content-Type: application/json
 细节：
 
 - `version` 是 `YYYYMMDDNN`，`date` 是同一个日期写成 `YYYY-MM-DD`；`builtin` 为 `true` 表示正在用 Bageo 内置的版本；`regions` 是地区数；`running` 表示正在检查；`last_check` 是 `null`，或 Bageo 这次启动以来最后一次检查的 `{at, result, version}`。
-- `result`：`up_to_date`、`updated`（之后的电话都用新的；正在进行的通话照用旧的）、`offline`（没有网络、超时或 GitHub 没响应，请稍后再试）、`bad_pack`（下载的文件被拒收，什么都没改）、`update_bageo`（这份数据需要更新版的 Bageo）、`restart`（这次启动已经装了 8 次更新，请先重新打开 Bageo）、`io`（无法保存）或 `busy`（已经有检查在跑）。
+- `result`：`up_to_date`、`updated`（之后的电话都用新的；正在进行的通话照用旧的）、`offline`（没有网络、超时或 GitHub 没响应，请稍后再试）、`bad_pack`（下载的文件被拒收，什么都没改）、`update_bageo`（这份数据需要更新版的 Bageo）、`restart`（这次启动已经装了太多次更新，请先重新打开 Bageo）、`io`（无法保存）或 `busy`（已经有检查在跑）。
 - Bageo 怎么检查：从 `https://github.com/h4lo-void/bageo-packs/releases/latest/download/` 读 `bageo-pack-index.json`（最多 16 KiB），再下载同一个 Release 里它指定的文件（只能是纯文件名，最多 4 MiB）。每个网址，包括最多 5 次跳转的每一跳，都必须是 `https`、标准端口、不带用户名，主机只能是 `github.com`（限该数据库的 Release）、`objects.githubusercontent.com` 或 `release-assets.githubusercontent.com`。大小和 SHA-256 要跟 index 一致，index 的 `format` 与 `min_bageo` 要符合这版 Bageo，版本要比现在用的新。接着跟内置版本一样做完整检查，再一次改名到位。下载来源不能用设置修改。
 - 下载的版本保存在数据文件夹的 `packs/bageo-pack.json`，Bageo 每次启动都会再检查一次；没下载完的临时文件会删掉。
 - 按需下载的语言扩展包（`lang-<code>.json.gz`，压缩和解压后各最多 600 KiB；通话用的 70 种语言全部已内置）与地区插图（`art-<region>.json`，最多 64 KiB，仅允许白名单 SVG 元素与属性）来自同一个 GitHub 仓库的 `bageo-extras-index.json`（最多 256 KiB），存放在 `packs/extras/`，不列入备份。

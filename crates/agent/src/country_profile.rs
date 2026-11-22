@@ -222,7 +222,10 @@ pub fn delivery_key(region: Region, lang: Lang) -> Option<&'static str> {
 /// The regional identity and speaking-style sentence placed right at the front
 /// of a call's prompt (`【你是誰】` / `[Who you are] `): tells the model where
 /// it is from and to use that place's speaking style and accent. Empty for the
-/// generic fallback region (`default`).
+/// generic fallback region (`default`). Where callers may speak a Chinese
+/// dialect Gemini Live does not speak ([chinese_dialects_heard]), the Chinese
+/// sentence says in the same breath that the speaking is Mandarin: the local
+/// accent is wanted, the dialect is not, and the two must not pull apart.
 pub fn identity_line(region: Region, lang: Lang) -> String {
     if region.0.code == "default" {
         return String::new();
@@ -239,10 +242,11 @@ pub fn identity_line(region: Region, lang: Lang) -> String {
             || place.contains('與')
             || place.ends_with('區')
             || place.ends_with('家');
+        let mandarin = if chinese_dialects_heard(region) { "，講普通話、不講方言" } else { "" };
         let tw = if multi {
-            format!("你是{place}當地人，請多用當地人說話方式跟腔調。")
+            format!("你是{place}當地人，請多用當地人說話方式跟腔調{mandarin}。")
         } else {
-            format!("你是{place}人，請多用{place}人說話方式跟腔調。")
+            format!("你是{place}人，請多用{place}人說話方式跟腔調{mandarin}。")
         };
         if lang == Lang::ZhCn {
             crate::zh_convert::to_cn(&tw)

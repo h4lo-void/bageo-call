@@ -2993,14 +2993,43 @@ mod tests {
             Lang::ZhTw,
             Scope { region: Some(r("tw")), owner: "Alex", ..Default::default() },
         );
-        assert!(tw.starts_with("【你是誰】你是台灣人，請多用台灣人說話方式跟腔調。你就是Alex本人"), "{tw}");
+        // Taiwan hears Taiwanese and Hakka: the accent is wanted, the dialect is not,
+        // and the sentence says both at once.
+        assert!(tw.starts_with("【你是誰】你是台灣人，請多用台灣人說話方式跟腔調，講普通話、不講方言。你就是Alex本人"), "{tw}");
         assert!(tw.contains("別跟對方說「沒辦法查／不清楚行程」") && tw.contains("我晚點看一下再跟你說"), "{tw}");
         let cn = scope_to_region(
             &build(&ctx(Lang::ZhCn, false, StallPrompt::Off)),
             Lang::ZhCn,
             Scope { region: Some(r("cn")), owner: "Alex", ..Default::default() },
         );
-        assert!(cn.starts_with("【你是谁】你是中国大陆人，请多用中国大陆人说话方式跟腔调。你就是Alex本人"), "{cn}");
+        assert!(cn.starts_with("【你是谁】你是中国大陆人，请多用中国大陆人说话方式跟腔调"), "{cn}");
+        assert_eq!(
+            cn.contains("说话方式跟腔调，讲普通话、不讲方言。你就是Alex本人"),
+            crate::country_profile::chinese_dialects_heard(r("cn")),
+            "{cn}"
+        );
+        // Hong Kong and Macau hear Cantonese: the same, whatever the place is called.
+        let hk = scope_to_region(
+            &build(&ctx(Lang::ZhTw, false, StallPrompt::Off)),
+            Lang::ZhTw,
+            Scope { region: Some(r("hk-mo")), owner: "Alex", ..Default::default() },
+        );
+        assert!(hk.contains("說話方式跟腔調，講普通話、不講方言。你就是Alex本人"), "{hk}");
+        // A place without such dialects keeps the plain sentence, in every language.
+        let jp = scope_to_region(
+            &build(&ctx(Lang::ZhTw, false, StallPrompt::Off)),
+            Lang::ZhTw,
+            Scope { region: Some(r("jp")), owner: "Alex", ..Default::default() },
+        );
+        assert!(jp.contains("說話方式跟腔調。你就是Alex本人") && !jp.contains("不講方言。你就是"), "{jp}");
+        for (lang, region) in [(Lang::Ja, "jp"), (Lang::Ko, "kr"), (Lang::Es, "mx"), (Lang::Fr, "fr"), (Lang::De, "de"), (Lang::Pt, "br"), (Lang::En, "hk-mo")] {
+            let p = scope_to_region(
+                &build(&ctx(lang, false, StallPrompt::Off)),
+                lang,
+                Scope { region: Some(r(region)), owner: "Alex", ..Default::default() },
+            );
+            assert!(p.contains("use the local speaking style and accent. ") && !p.contains("不講方言"), "{lang:?} {region}: {p}");
+        }
         let us = scope_to_region(
             &build(&ctx(Lang::En, false, StallPrompt::Off)),
             Lang::En,

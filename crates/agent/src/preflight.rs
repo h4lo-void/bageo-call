@@ -439,8 +439,9 @@ fn clocks_of(c: &[char], kind: Kind) -> Vec<(u32, u32)> {
                     found = Some((d1 * 10 + d2, end, suffix));
                 }
             }
-        } else if ascii && len <= 2 && (1..=24).contains(&h) && marker_after(c, after).is_some() {
-            // 10 in the morning, 8 de la noche, 3 petang
+        } else if ascii && len <= 2 && (1..=24).contains(&h) && marker_after(c, after).is_some() && !(kind == Kind::Restaurant && party_led_number(c, i)) {
+            // 10 in the morning, 8 de la noche, 3 petang. Not "table for 4 tonight": at a
+            // restaurant that 4 is people ("a haircut for 8 tonight" is still eight o'clock).
             found = Some((0, after, None));
         } else if ascii && len <= 2 && (1..=12).contains(&h) {
             let (suffix, end) = ampm_after(c, after);
@@ -697,25 +698,50 @@ fn has_party_words(c: &[char]) -> bool {
         if next.is_some_and(|n| PARTY_WORDS.contains(&n)) || (next == Some("of") && words.get(k + 2).map(String::as_str) == Some("us")) {
             return true;
         }
-        let led = PARTY_LEADS.iter().any(|lead| {
-            k >= lead.len()
-                && lead.iter().enumerate().all(|(j, l)| words[k - lead.len() + j] == *l)
-                // "2-for-1" is a deal, and "Set B for 2" is food for two.
-                && c[spans[k - 1].1..start].iter().all(|x| *x == ' ')
-                && !words[k.saturating_sub(lead.len() + 2)..k - lead.len()].iter().any(|w| FOR_TWO_THINGS.contains(&w.as_str()))
-        })
-            || (k > 0 && words[k - 1] == "me" && c[spans[k - 1].1..start].contains(&'+'));
-        if led {
-            let breaks = match spans.get(k + 1) {
-                None => true,
-                Some((s, _)) => c[end..*s].iter().any(|x| ",;.!?()（）、，".contains(*x)),
-            };
-            if breaks || next.is_some_and(|n| AFTER_LEAD.contains(&n)) {
-                return true;
-            }
+        if led_as_people(c, &spans, &words, k) {
+            return true;
         }
     }
     false
+}
+
+/// Whether the word `k` comes right after a word that makes it the number of
+/// people ([PARTY_LEADS], "me + 3").
+fn party_led(c: &[char], spans: &[(usize, usize)], words: &[String], k: usize) -> bool {
+    let start = spans[k].0;
+    PARTY_LEADS.iter().any(|lead| {
+        k >= lead.len()
+            && lead.iter().enumerate().all(|(j, l)| words[k - lead.len() + j] == *l)
+            // "2-for-1" is a deal, and "Set B for 2" is food for two.
+            && c[spans[k - 1].1..start].iter().all(|x| *x == ' ')
+            && !words[k.saturating_sub(lead.len() + 2)..k - lead.len()].iter().any(|w| FOR_TWO_THINGS.contains(&w.as_str()))
+    })
+        || (k > 0 && words[k - 1] == "me" && c[spans[k - 1].1..start].contains(&'+'))
+}
+
+/// Whether the number at word `k` is read as the number of people because of
+/// the word before it: a party lead ([party_led]), then the end of the phrase
+/// or a word that may follow a party ([AFTER_LEAD]).
+fn led_as_people(c: &[char], spans: &[(usize, usize)], words: &[String], k: usize) -> bool {
+    if !party_led(c, spans, words, k) {
+        return false;
+    }
+    let end = spans[k].1;
+    let breaks = match spans.get(k + 1) {
+        None => true,
+        Some((s, _)) => c[end..*s].iter().any(|x| ",;.!?()（）、，".contains(*x)),
+    };
+    breaks || words.get(k + 1).is_some_and(|n| AFTER_LEAD.contains(&n.as_str()))
+}
+
+/// The number starting at `i` is read as the number of people ([led_as_people]):
+/// "table for 4 tonight" asks for four people, not for four o'clock. "For 10 in
+/// the morning" is no party (nothing of [AFTER_LEAD] follows) and stays a time.
+/// Only restaurants have a party: [clocks_of] asks this for them alone.
+fn party_led_number(c: &[char], i: usize) -> bool {
+    let spans = word_spans(c);
+    let words: Vec<String> = spans.iter().map(|(s, e)| c[*s..*e].iter().collect()).collect();
+    spans.iter().position(|(s, _)| *s == i).is_some_and(|k| led_as_people(c, &spans, &words, k))
 }
 
 /// "a1c": the rest of "2A1C", two adults and a child ("2a2k" with kids).
@@ -890,7 +916,13 @@ fn worded_clock(low: &str) -> bool {
 /// "7 pm", "noon", "half seven", "세 시", "今から30分後"). A day alone
 /// ("明天", "samedi") is no time of day ([has_date]).
 fn clock_in(low: &str, c: &[char]) -> bool {
-    if !clocks_of(c, Kind::Contact).is_empty() || worded_clock(low) || has_any_word(low, NOON_WORDS) {
+    clock_in_for(low, c, Kind::Contact)
+}
+
+/// [clock_in] for a request of one kind: at a restaurant "for 4 tonight" names
+/// the party, not a time ([clocks_of]).
+fn clock_in_for(low: &str, c: &[char], kind: Kind) -> bool {
+    if !clocks_of(c, kind).is_empty() || worded_clock(low) || has_any_word(low, NOON_WORDS) {
         return true;
     }
     // 세 시, 세시: not 세 시간.
@@ -1366,7 +1398,7 @@ pub fn local_with(task: &str, known: &Known) -> Local {
     let clocks = clocks_of(&c, kind);
     let asks_time = contains_any(&low, ASKS_TIME_WORDS);
     // A time needs a time of day; a day alone still asks it.
-    let time_ok = !clocks.is_empty() || asks_time || clock_in(&low, &c);
+    let time_ok = !clocks.is_empty() || asks_time || clock_in_for(&low, &c, kind);
     let phone = has_phone(&c);
     let name = name_in(task, &low);
     let mut miss: Vec<&'static str> = Vec::new();
@@ -2185,6 +2217,10 @@ mod tests {
 
     #[tokio::test]
     async fn a_slow_model_lets_the_call_go_ahead_within_the_limit() {
+        // The first check of a test run also loads the word tables, once. That
+        // is not what is timed here, so one check goes before the clock starts.
+        let warm = stand_in(200, 0, gemini_json(r#"{"type":"restaurant","missing":[]}"#)).await;
+        let _ = check(&Client::new(), &warm, "key", RU, &Known::default(), Lang::En, MODEL_TIMEOUT).await;
         let base = stand_in(200, 700, gemini_json(r#"{"type":"restaurant","missing":["party"]}"#)).await;
         let t0 = Instant::now();
         let v = check(&Client::new(), &base, "key", RU, &Known::default(), Lang::En, Duration::from_millis(120)).await;
@@ -2458,6 +2494,53 @@ mod tests {
         ];
         for p in not_party {
             assert!(!names_party(p), "{p}");
+        }
+    }
+
+    #[test]
+    fn a_number_after_a_party_lead_is_people_even_with_a_part_of_the_day_after_it() {
+        // The 4 is the party, so the time is still missing and still asked.
+        for task in [
+            "Book a table for 4 tonight",
+            "Book a table for 8 tonight",
+            "Réserver une table pour 4 ce soir",
+            "Reservar una mesa para 4 esta noche",
+            "Einen Tisch für 4 heute Abend reservieren",
+            "Reservar uma mesa para 4 hoje à noite",
+            "幫我訂位，今晚4位",
+        ] {
+            assert!(local(task).missing.contains(&"time"), "{task}");
+        }
+        // A time with the part of the day after it is still a time.
+        for task in [
+            "Book a table for 2 at 8 tonight",
+            "Book a table, 8 tonight",
+            "Book a table, 10 in the morning",
+            "Reservar una mesa a las 8 de la noche",
+            "Pesan meja, 3 petang",
+            "Réserver une table à 8h ce soir",
+            "Einen Tisch für 4 um 8 abends reservieren",
+            "Reservar uma mesa para 4 às 8 da noite",
+        ] {
+            assert!(!local(task).missing.contains(&"time"), "{task}");
+        }
+        assert!(names_clock("Pesan meja untuk 4 orang jam 8 malam"));
+        // "For" before a time is no party when what follows only fits a time.
+        for said in [
+            "Book a haircut for 10 in the morning",
+            "Pedir cita para 10 de la mañana",
+            "Einen Termin für 8 abends ausmachen",
+            "Marcar uma consulta para 9 da manhã",
+        ] {
+            assert!(names_clock(said), "{said}");
+        }
+        // Only a restaurant has a party: elsewhere "for 8 tonight" is eight o'clock.
+        for task in [
+            "Book a haircut for 8 tonight",
+            "Réserver un taxi pour 8 ce soir",
+            "Book a dentist appointment for 5 tonight",
+        ] {
+            assert!(!local(task).missing.contains(&"time"), "{task}");
         }
     }
 
