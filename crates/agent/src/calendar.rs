@@ -437,7 +437,9 @@ fn fresh_link_key() -> [u8; QUICK_LINK_KEY_LEN] {
 
 fn hex_bytes(s: &str) -> Option<Vec<u8>> {
     let s = s.trim();
-    if s.len() % 2 != 0 || !s.is_ascii() {
+    // Hex digits only: a number parser would also take "+a" for "0a", so one
+    // signature could be written several ways.
+    if s.len() % 2 != 0 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok()).collect()
@@ -586,9 +588,16 @@ fn check_quick_action_with(key: &[u8], op: &str, target: &str, name: &str, exp: 
 pub fn check_quick_action(op: &str, target: &str, name: &str, exp: &str, sig: &str) -> QuickLink {
     let now = chrono::Utc::now().timestamp();
     match check_quick_action_with(quick_action_key(), op, target, name, exp, sig, now) {
-        QuickLink::Valid if crate::used_links::global().is_used(&crate::used_links::link_id(sig), now) => QuickLink::Used,
+        QuickLink::Valid if quick_link_id(sig).is_some_and(|id| crate::used_links::global().is_used(&id, now)) => QuickLink::Used,
         other => other,
     }
+}
+
+/// The id a one-tap link is recorded under once used ([`crate::used_links::link_id`]
+/// of its signature's bytes): the same for every way of writing the signature
+/// that passes the check. None when the signature is not hex.
+pub fn quick_link_id(sig: &str) -> Option<String> {
+    hex_bytes(sig).map(|b| crate::used_links::link_id(&b))
 }
 
 fn quick_action_url_with(key: &[u8], public_url: &str, op: &str, target: &str, name: &str, now: i64) -> String {

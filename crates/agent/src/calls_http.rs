@@ -3437,11 +3437,11 @@ async fn quick_action(
     Query(q): Query<QuickActionQuery>,
 ) -> Response {
     let (access, one_shot) = quick_action_access(&state.settings, &headers, &q);
-    quick_action_run(state, method, headers, raw_query, q, access, one_shot).await
+    quick_action_run(state, method, headers, raw_query, q, access, one_shot.then(crate::used_links::global)).await
 }
 
-/// [`quick_action`] once its access is known. `one_shot`: the access is a link,
-/// which the first press that does something uses up.
+/// [`quick_action`] once its access is known. `once`: the record of used links
+/// when the access is a link, which the first press that does something uses up.
 async fn quick_action_run(
     state: CallsState,
     method: axum::http::Method,
@@ -3449,7 +3449,7 @@ async fn quick_action_run(
     raw_query: Option<String>,
     q: QuickActionQuery,
     access: crate::calendar::QuickLink,
-    one_shot: bool,
+    once: Option<&crate::used_links::UsedLinks>,
 ) -> Response {
     use crate::locale::Lang;
     let op = q.op.trim();
@@ -3543,14 +3543,32 @@ async fn quick_action_run(
     // A link works once, and the second press (a double tap, a repeat) never
     // gets here again: it is recorded before anything is done, and stays used
     // when the action failed (a call or text may already have gone out).
-    if one_shot {
+    // When the record cannot be saved nothing is done: a restart would forget it.
+    if let Some(record) = once {
         let now = chrono::Utc::now().timestamp();
         let exp = q.exp.trim().parse::<i64>().unwrap_or(now + crate::calendar::QUICK_ACTION_TTL_SECS);
-        if !crate::used_links::global().claim(&crate::used_links::link_id(&q.sig), exp, now) {
-            if wants_json {
-                return Json(json!({"ok": true, "already_done": true, "title": qw.used_title, "message": qw.used_detail})).into_response();
+        let claimed = match crate::calendar::quick_link_id(&q.sig) {
+            Some(id) => record.claim(&id, exp, now),
+            None => crate::used_links::Claim::NotSaved,
+        };
+        match claimed {
+            crate::used_links::Claim::First => {}
+            crate::used_links::Claim::Used => {
+                if wants_json {
+                    return Json(json!({"ok": true, "already_done": true, "title": qw.used_title, "message": qw.used_detail})).into_response();
+                }
+                return quick_action_page(qw.used_title, qw.used_detail, StatusCode::OK, "");
             }
-            return quick_action_page(qw.used_title, qw.used_detail, StatusCode::OK, "");
+            crate::used_links::Claim::NotSaved => {
+                if wants_json {
+                    return (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        Json(json!({"ok": false, "code": "link_not_saved", "title": qw.invalid_title, "message": qw.invalid_detail})),
+                    )
+                        .into_response();
+                }
+                return quick_action_page(qw.invalid_title, qw.invalid_detail, StatusCode::SERVICE_UNAVAILABLE, "");
+            }
         }
     }
     let w = crate::control::words::words(lang);
@@ -3718,7 +3736,7 @@ pub(crate) mod tests {
             raw.clone(),
             quick_query("white", number),
             crate::calendar::QuickLink::Valid,
-            true,
+            None,
         )
         .await;
         assert_eq!(r.status(), StatusCode::OK);
@@ -3734,7 +3752,7 @@ pub(crate) mod tests {
                 raw.clone(),
                 quick_query("white", number),
                 access,
-                true,
+                None,
             )
             .await;
             assert!(r.status() == StatusCode::GONE || r.status() == StatusCode::UNAUTHORIZED, "{:?}", r.status());
@@ -3747,11 +3765,104 @@ pub(crate) mod tests {
             raw,
             quick_query("white", number),
             crate::calendar::QuickLink::Valid,
-            true,
+            None,
         )
         .await;
         assert_eq!(r.status(), StatusCode::OK);
         assert_eq!(state.contacts.lookup(number, None).map(|c| c.kind), Some("whitelist".to_string()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A signed link's query as the route reads it, with `sig` in place of its own
+    /// signature when given, and the raw query.
+    fn link_query(url: &str, sig: Option<&str>) -> (QuickActionQuery, Option<String>) {
+        let u = reqwest::Url::parse(url).unwrap();
+        let pairs: HashMap<String, String> = u.query_pairs().map(|(k, v)| (k.into_owned(), v.into_owned())).collect();
+        let q = QuickActionQuery {
+            op: pairs["op"].clone(),
+            target: pairs["target"].clone(),
+            name: pairs.get("name").cloned(),
+            sig: sig.map_or_else(|| pairs["sig"].clone(), str::to_string),
+            exp: pairs["exp"].clone(),
+            token: None,
+        };
+        (q, u.query().map(str::to_string))
+    }
+
+    /// Press a link (POST) the way the route does; its access and status.
+    async fn press_link(state: &CallsState, url: &str, sig: Option<&str>) -> (crate::calendar::QuickLink, StatusCode) {
+        let (q, raw) = link_query(url, sig);
+        let (access, one_shot) = quick_action_access(&state.settings, &HeaderMap::new(), &q);
+        let r = quick_action_run(state.clone(), axum::http::Method::POST, HeaderMap::new(), raw, q, access, one_shot.then(crate::used_links::global)).await;
+        (access, r.status())
+    }
+
+    /// A used link stays used however its signature is written: in capitals, with
+    /// "+c" for "0c" (which a number parser reads the same), or with a digit more
+    /// or less. None of them does the action again.
+    #[tokio::test]
+    async fn a_used_link_written_another_way_does_nothing_again() {
+        let root = std::env::temp_dir().join(format!("bageo-qa-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let state = quick_state(&root);
+        let number = "0912000999";
+        let sig_of = |url: &str| link_query(url, None).0.sig;
+        // A link whose signature has a byte below 0x10 ("0c"), so "+c" can stand for it.
+        let url = (0..300)
+            .map(|i| crate::calendar::quick_action_url("https://bageo.example", "white", number, &format!("Lee {i}")))
+            .find(|u| sig_of(u).as_bytes().chunks(2).any(|b| b[0] == b'0'))
+            .expect("a signature with a byte below 0x10");
+        let sig = sig_of(&url);
+        let listed = || state.contacts.lookup(number, None).map(|c| c.kind);
+        assert_eq!(press_link(&state, &url, None).await, (crate::calendar::QuickLink::Valid, StatusCode::OK));
+        assert_eq!(listed(), Some("whitelist".to_string()));
+        let _ = state.contacts.unblock(number, &["blacklist", "stall", "whitelist"]).await;
+        let at = sig.as_bytes().chunks(2).position(|b| b[0] == b'0').unwrap() * 2;
+        let plus = format!("{}+{}", &sig[..at], &sig[at + 1..]);
+        let variants = [
+            ("capitals", sig.to_ascii_uppercase()),
+            ("plus", plus.clone()),
+            ("one digit more", format!("{sig}0")),
+            ("two digits more", format!("{sig}00")),
+            ("one digit less", sig[..sig.len() - 1].to_string()),
+            ("two digits less", sig[..sig.len() - 2].to_string()),
+        ];
+        for (what, v) in &variants {
+            let (access, status) = press_link(&state, &url, Some(v)).await;
+            assert_ne!(access, crate::calendar::QuickLink::Valid, "{what}: {v}");
+            assert_ne!(listed(), Some("whitelist".to_string()), "{what} did it again");
+            if *what == "capitals" {
+                assert_eq!((access, status), (crate::calendar::QuickLink::Used, StatusCode::OK), "{what}");
+            } else {
+                assert_eq!(access, crate::calendar::QuickLink::Invalid, "{what}: {v}");
+            }
+        }
+        // Even past the check, the record refuses a signature that is not plain hex.
+        let (q, raw) = link_query(&url, Some(&plus));
+        let r = quick_action_run(state.clone(), axum::http::Method::POST, HeaderMap::new(), raw, q, crate::calendar::QuickLink::Valid, Some(crate::used_links::global())).await;
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_ne!(listed(), Some("whitelist".to_string()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// When the record of used links cannot be saved, the link does nothing and the
+    /// page says it did not work.
+    #[tokio::test]
+    async fn a_link_whose_press_cannot_be_recorded_does_nothing() {
+        let root = std::env::temp_dir().join(format!("bageo-qa-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let state = quick_state(&root);
+        let number = "0912000555";
+        let blocker = root.join("not-a-folder");
+        std::fs::write(&blocker, "x").unwrap();
+        let record = crate::used_links::UsedLinks::open(&blocker.join("used-links.json"), chrono::Utc::now().timestamp());
+        let url = crate::calendar::quick_action_url("https://bageo.example", "white", number, "Lee");
+        let (q, raw) = link_query(&url, None);
+        let r = quick_action_run(state.clone(), axum::http::Method::POST, HeaderMap::new(), raw, q, crate::calendar::QuickLink::Valid, Some(&record)).await;
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let page = body_text(r).await;
+        assert!(page.contains(quick_words(crate::locale::notify_lang()).invalid_title) && !page.contains("<form"), "{page}");
+        assert!(state.contacts.lookup(number, None).is_none(), "the action ran without a record");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -3780,7 +3891,7 @@ pub(crate) mod tests {
             let (state, raw) = (state.clone(), raw.clone());
             async move {
                 let (access, one_shot) = quick_action_access(&state.settings, &HeaderMap::new(), &q());
-                let r = quick_action_run(state, method, HeaderMap::new(), raw, q(), access, one_shot).await;
+                let r = quick_action_run(state, method, HeaderMap::new(), raw, q(), access, one_shot.then(crate::used_links::global)).await;
                 (access, r.status(), body_text(r).await)
             }
         };
@@ -3806,7 +3917,7 @@ pub(crate) mod tests {
         assert!(page.contains(used_title) && !page.contains("<form"), "{page}");
         // Even when a second press got past the check at the same moment (a race), the
         // record stops it.
-        let r = quick_action_run(state.clone(), axum::http::Method::POST, HeaderMap::new(), raw.clone(), q(), crate::calendar::QuickLink::Valid, true).await;
+        let r = quick_action_run(state.clone(), axum::http::Method::POST, HeaderMap::new(), raw.clone(), q(), crate::calendar::QuickLink::Valid, Some(crate::used_links::global())).await;
         assert!(body_text(r).await.contains(used_title));
         assert_ne!(listed(&state), Some("whitelist".to_string()));
         let _ = std::fs::remove_dir_all(&root);

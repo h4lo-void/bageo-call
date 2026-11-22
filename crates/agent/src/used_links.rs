@@ -14,13 +14,28 @@ use std::sync::Mutex;
 /// File in the data directory holding the used links.
 const USED_LINKS_FILE: &str = "used-links.json";
 
-/// The id a link is recorded under: a hash of its signature, which covers the
-/// action, its target, the name and its time, so the record itself holds
-/// nothing a link could be rebuilt from.
-pub fn link_id(sig: &str) -> String {
+/// The id a link is recorded under: a hash of its signature's bytes (decoded,
+/// so the same signature written another way is the same link), which cover
+/// the action, its target, the name and its time. The record holds nothing a
+/// link could be rebuilt from.
+pub fn link_id(sig: &[u8]) -> String {
     use sha2::{Digest, Sha256};
-    let digest = Sha256::digest(sig.trim().to_ascii_lowercase().as_bytes());
-    digest.iter().take(16).map(|b| format!("{b:02x}")).collect()
+    let mut h = Sha256::new();
+    h.update(b"bageo-used1");
+    h.update(sig);
+    h.finalize().iter().take(16).map(|b| format!("{b:02x}")).collect()
+}
+
+/// What recording a press gives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Claim {
+    /// The first press, now recorded: do the action.
+    First,
+    /// Already used: do nothing.
+    Used,
+    /// The record could not be saved: do nothing (a press that would not be
+    /// remembered after a restart could be repeated).
+    NotSaved,
 }
 
 pub struct UsedLinks {
@@ -55,22 +70,22 @@ impl UsedLinks {
         self.lock().get(id).is_some_and(|exp| *exp >= now)
     }
 
-    /// Record a link as used. True for the first press; false when it was
-    /// already used. `exp` is the link's own expiry (unix seconds).
-    pub fn claim(&self, id: &str, exp: i64, now: i64) -> bool {
+    /// Record a link as used. `exp` is the link's own expiry (unix seconds).
+    pub fn claim(&self, id: &str, exp: i64, now: i64) -> Claim {
         let mut used = self.lock();
         used.retain(|_, e| *e >= now);
         if used.contains_key(id) {
-            return false;
+            return Claim::Used;
         }
         used.insert(id.to_string(), exp);
         if let Some(path) = &self.path {
             if let Err(e) = write_record(path, &used) {
-                // The press still counts for this run.
                 tracing::warn!("used one-tap links {}: {e}", path.display());
+                used.remove(id);
+                return Claim::NotSaved;
             }
         }
-        true
+        Claim::First
     }
 }
 
@@ -126,18 +141,18 @@ mod tests {
     fn a_link_is_used_once_and_the_record_survives_a_restart() {
         let (dir, file) = temp_file();
         let now = 1_700_000_000;
-        let id = link_id(&"ab".repeat(32));
+        let id = link_id(&[0xab; 32]);
         let first = UsedLinks::open(&file, now);
         assert!(!first.is_used(&id, now));
-        assert!(first.claim(&id, now + 600, now), "the first press does it");
-        assert!(!first.claim(&id, now + 600, now), "the second press does not");
+        assert_eq!(first.claim(&id, now + 600, now), Claim::First, "the first press does it");
+        assert_eq!(first.claim(&id, now + 600, now), Claim::Used, "the second press does not");
         assert!(first.is_used(&id, now));
         // Bageo starts again: the file is read back.
         let again = UsedLinks::open(&file, now + 60);
         assert!(again.is_used(&id, now + 60));
-        assert!(!again.claim(&id, now + 600, now + 60));
+        assert_eq!(again.claim(&id, now + 600, now + 60), Claim::Used);
         // Another link is not affected.
-        assert!(again.claim(&link_id(&"cd".repeat(32)), now + 600, now + 60));
+        assert_eq!(again.claim(&link_id(&[0xcd; 32]), now + 600, now + 60), Claim::First);
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -145,34 +160,51 @@ mod tests {
     fn expired_links_are_dropped_from_the_record() {
         let (dir, file) = temp_file();
         let now = 1_700_000_000;
-        let (old, fresh) = (link_id("old"), link_id("fresh"));
+        let (old, fresh, third) = (link_id(&[1; 32]), link_id(&[2; 32]), link_id(&[3; 32]));
         let store = UsedLinks::open(&file, now);
-        assert!(store.claim(&old, now + 10, now));
-        assert!(store.claim(&fresh, now + 1000, now));
+        assert_eq!(store.claim(&old, now + 10, now), Claim::First);
+        assert_eq!(store.claim(&fresh, now + 1000, now), Claim::First);
         // Loading after the first expired: it is gone.
         let later = UsedLinks::open(&file, now + 500);
         assert!(!later.is_used(&old, now + 500));
         assert!(later.is_used(&fresh, now + 500));
         // A claim after the second one's expiry cleans the file too.
-        assert!(later.claim(&link_id("third"), now + 2000, now + 1500));
+        assert_eq!(later.claim(&third, now + 2000, now + 1500), Claim::First);
         let text = std::fs::read_to_string(&file).unwrap();
         assert!(!text.contains(&fresh), "{text}");
-        assert!(text.contains(&link_id("third")), "{text}");
+        assert!(text.contains(&third), "{text}");
         let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
     fn the_record_holds_a_hash_and_a_broken_file_starts_empty() {
         let (dir, file) = temp_file();
-        let sig = "0123456789abcdef".repeat(4);
+        let sig = [0x5a; 32];
         let id = link_id(&sig);
         assert_eq!(id.len(), 32);
-        assert!(!id.contains(&sig[..16]));
-        assert_eq!(link_id(&format!(" {} ", sig.to_ascii_uppercase())), id, "case and spaces do not make another link");
+        assert!(!id.contains("5a5a5a5a"), "{id}");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(&file, "not json").unwrap();
         let store = UsedLinks::open(&file, 1);
-        assert!(store.claim(&id, 10, 1));
+        assert_eq!(store.claim(&id, 10, 1), Claim::First);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A press the record cannot keep does not count: nothing is done, and the
+    /// link is not taken as used either (it may be pressed again once the
+    /// record can be saved).
+    #[test]
+    fn a_press_that_cannot_be_saved_is_refused_and_not_kept() {
+        let (dir, _) = temp_file();
+        std::fs::create_dir_all(&dir).unwrap();
+        // The record's folder is an ordinary file: nothing can be written under it.
+        let blocker = dir.join("not-a-folder");
+        std::fs::write(&blocker, "x").unwrap();
+        let store = UsedLinks::open(&blocker.join(USED_LINKS_FILE), 1);
+        let id = link_id(&[7; 32]);
+        assert_eq!(store.claim(&id, 100, 1), Claim::NotSaved);
+        assert!(!store.is_used(&id, 1));
+        assert_eq!(store.claim(&id, 100, 1), Claim::NotSaved, "still not done the second time");
         let _ = std::fs::remove_dir_all(dir);
     }
 }

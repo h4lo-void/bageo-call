@@ -1452,7 +1452,10 @@ pub(crate) async fn guarded_client(url: &str) -> Result<Client> {
         if let Some(host) = u.host_str() {
             let addrs = checked_addrs(host, port).await?;
             if matches!(u.host(), Some(url::Host::Domain(_))) && !addrs.is_empty() {
-                builder = builder.resolve_to_addrs(host, &addrs);
+                // Port 0: each request goes to the port in its own address, else its
+                // scheme's (an http address that moves to https goes to 443).
+                let pinned: Vec<SocketAddr> = addrs.iter().map(|a| SocketAddr::new(a.ip(), 0)).collect();
+                builder = builder.resolve_to_addrs(host, &pinned);
             }
         }
     }
@@ -3131,6 +3134,87 @@ mod tests {
         send_channel(&Client::new(), &ch("webhook", &format!("http://pinned.example.invalid:{port}/hook"), "", ""), &msg())
             .await
             .unwrap();
+    }
+
+    /// A local server that answers each request with what `reply` gives for its path, one
+    /// connection per request, and counts the requests.
+    fn local_server(
+        listener: tokio::net::TcpListener,
+        reply: impl Fn(&str) -> String + Send + Sync + 'static,
+    ) -> std::sync::Arc<std::sync::atomic::AtomicUsize> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (count, reply) = (hits.clone(), std::sync::Arc::new(reply));
+        tokio::spawn(async move {
+            while let Ok((mut s, _)) = listener.accept().await {
+                count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let reply = reply.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let n = s.read(&mut buf).await.unwrap_or(0);
+                    let head = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    let path = head.split_whitespace().nth(1).unwrap_or("/").to_string();
+                    let _ = s.write_all(reply(&path).as_bytes()).await;
+                });
+            }
+        });
+        hits
+    }
+
+    fn answer_ok() -> String {
+        "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n".to_string()
+    }
+
+    fn answer_moved(to: &str) -> String {
+        format!("HTTP/1.1 302 Found\r\nlocation: {to}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+    }
+
+    async fn local_listener() -> (tokio::net::TcpListener, u16) {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = l.local_addr().unwrap().port();
+        (l, port)
+    }
+
+    /// The checked addresses carry no port of their own: each request goes to the port in
+    /// its address, or its scheme's when it has none (so an http address that moves to
+    /// https goes to 443), never to the port of the address that was checked.
+    #[tokio::test]
+    async fn a_checked_address_keeps_no_port_of_its_own() {
+        use std::sync::atomic::Ordering::SeqCst;
+        let ((a, pa), (b, pb)) = (local_listener().await, local_listener().await);
+        let (hits_a, hits_b) = (local_server(a, |_| answer_ok()), local_server(b, |_| answer_ok()));
+        host_resolves_to("ports.pinned.test", &["127.0.0.1"]);
+        let client = guarded_client(&format!("http://ports.pinned.test:{pa}/")).await.unwrap();
+        let get = |url: String| client.get(url).timeout(std::time::Duration::from_secs(3)).send();
+        assert_eq!(get(format!("http://ports.pinned.test:{pa}/")).await.unwrap().status(), 200);
+        assert_eq!(get(format!("http://ports.pinned.test:{pb}/")).await.unwrap().status(), 200);
+        // No port in the address: the scheme's own (80), whatever answers there.
+        let _ = get("http://ports.pinned.test/".to_string()).await;
+        assert_eq!((hits_a.load(SeqCst), hits_b.load(SeqCst)), (1, 1));
+    }
+
+    /// A redirect is followed on the same host and port only: one to another host or to a
+    /// metadata address comes back as it is, and the other server gets nothing.
+    #[tokio::test]
+    async fn a_redirect_stays_on_the_checked_host() {
+        use std::sync::atomic::Ordering::SeqCst;
+        let ((a, pa), (b, pb)) = (local_listener().await, local_listener().await);
+        let hits_b = local_server(b, |_| answer_ok());
+        let hits_a = local_server(a, move |path| match path {
+            "/elsewhere" => answer_moved(&format!("http://127.0.0.1:{pb}/x")),
+            "/metadata" => answer_moved("http://169.254.169.254/latest/meta-data"),
+            "/same" => answer_moved("/done"),
+            _ => answer_ok(),
+        });
+        host_resolves_to("redirect.pinned.test", &["127.0.0.1"]);
+        let base = format!("http://redirect.pinned.test:{pa}");
+        let client = guarded_client(&base).await.unwrap();
+        let get = |path: &str| client.get(format!("{base}{path}")).timeout(std::time::Duration::from_secs(3)).send();
+        assert_eq!(get("/same").await.unwrap().status(), 200, "the same host is followed");
+        assert_eq!(get("/elsewhere").await.unwrap().status(), 302);
+        assert_eq!(get("/metadata").await.unwrap().status(), 302);
+        assert_eq!(hits_b.load(SeqCst), 0, "another host got the request");
+        assert_eq!(hits_a.load(SeqCst), 4);
     }
 
     #[test]
