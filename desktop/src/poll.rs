@@ -243,7 +243,10 @@ impl Poller {
             if configured.is_none() && self.failures >= REDISCOVER_AFTER {
                 self.found = None;
             }
-            let base_for_address = configured.clone().or_else(|| self.found.clone());
+            // An address found by itself and never saved is not shown as Bageo's address.
+            let base_for_address = configured
+                .clone()
+                .or_else(|| self.found.clone().filter(|b| status::is_trusted(b, None, local_base)));
             let address = self.address(base_for_address.as_deref());
             let mut snap = match local::launch_reason(managed, gave_up, connected, since_launch) {
                 Some((level, reason)) => Snapshot::blank(level, reason, &self.lang, has_password, &address),
@@ -259,6 +262,14 @@ impl Poller {
         }
         if configured.is_none() {
             self.found = Some(base.clone());
+        }
+
+        // The password goes only to this computer or to an address the user saved. Bageo
+        // answered somewhere else by itself (a name on the network that anyone could claim):
+        // ask first, and send nothing but the plain health check until the user says yes.
+        if !status::is_trusted(&base, configured.as_deref(), local_base) {
+            self.last_good = None;
+            return Snapshot::found(&self.lang, has_password, &base);
         }
 
         // Step 3 (before building the snapshot so the address is current).
