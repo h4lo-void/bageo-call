@@ -415,6 +415,13 @@ pub struct RuntimeSettings {
     /// The owner's real phone number for Whitelist forwarding / emergency call.
     #[serde(default)]
     pub whitelist_forward_number: String,
+    /// Android Standalone edition only: how Whitelist / allowed callers are handled
+    /// locally on the device: `urgent_prompt` (default: AI screens and pops up an
+    /// urgent takeover prompt on urgent matters), `ring_phone` (ring this phone
+    /// directly), `forward_number` (three-way dial `whitelist_forward_number`), or
+    /// `ai_only` (AI answers normally).
+    #[serde(default = "default_standalone_whitelist_action")]
+    pub standalone_whitelist_action: String,
     /// Old switch for the urgent call. Kept so older settings files and backups still
     /// load; it no longer changes anything. With `whitelist_mode` emergency and a
     /// forwarding number, an urgent Whitelist caller is put on hold, the phone dials
@@ -676,6 +683,20 @@ fn default_reject_mode() -> String {
 
 fn default_whitelist_mode() -> String {
     "off".to_string()
+}
+
+fn default_standalone_whitelist_action() -> String {
+    "urgent_prompt".to_string()
+}
+
+/// `ring_phone` / `urgent_prompt` / `forward_number` / `ai_only`; anything else is `urgent_prompt`.
+pub fn sanitize_standalone_whitelist_action(s: &str) -> String {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "ring_phone" | "direct" => "ring_phone".to_string(),
+        "forward_number" | "forward" => "forward_number".to_string(),
+        "ai_only" | "off" => "ai_only".to_string(),
+        _ => default_standalone_whitelist_action(),
+    }
 }
 
 /// `off` / `direct` / `emergency`; anything else is `off`.
@@ -1242,6 +1263,10 @@ impl RuntimeSettings {
             device_labels: std::collections::BTreeMap::new(),
             whitelist_mode: sanitize_whitelist_mode(&env_or("WHITELIST_MODE", "off")),
             whitelist_forward_number: env_or("WHITELIST_FORWARD_NUMBER", ""),
+            standalone_whitelist_action: sanitize_standalone_whitelist_action(&env_or(
+                "STANDALONE_WHITELIST_ACTION",
+                "urgent_prompt",
+            )),
             whitelist_urgent_call: env_bool("WHITELIST_URGENT_CALL", false),
             transfer_whitelist: env_bool("TRANSFER_WHITELIST", true),
             transfer_contacts: env_bool("TRANSFER_CONTACTS", false),
@@ -1628,6 +1653,7 @@ impl RuntimeSettings {
             mcp_allowed_origins,
             whitelist_mode,
             whitelist_forward_number,
+            standalone_whitelist_action,
             ui_password,
         );
         macro_rules! set_copy {
@@ -1710,6 +1736,7 @@ impl RuntimeSettings {
         self.reject_mode = sanitize_reject_mode(&self.reject_mode);
         self.whitelist_mode = sanitize_whitelist_mode(&self.whitelist_mode);
         self.whitelist_forward_number = self.whitelist_forward_number.trim().chars().filter(|c| !c.is_control()).take(32).collect();
+        self.standalone_whitelist_action = sanitize_standalone_whitelist_action(&self.standalone_whitelist_action);
         self.country_code = digits_only(&self.country_code);
         self.home_country = sanitize_home_country(&self.home_country);
         self.talk_style_level = clamp_talk_style(u64::from(self.talk_style_level));
@@ -2210,6 +2237,8 @@ struct Overrides {
     whitelist_mode: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     whitelist_forward_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    standalone_whitelist_action: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     whitelist_urgent_call: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -3104,6 +3133,10 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     p_string(patch, "whitelist_forward_number", &mut ov.whitelist_forward_number);
     if let Some(v) = ov.whitelist_forward_number.take() {
         ov.whitelist_forward_number = Some(v.chars().filter(|c| !c.is_control()).take(32).collect());
+    }
+    p_string(patch, "standalone_whitelist_action", &mut ov.standalone_whitelist_action);
+    if let Some(v) = ov.standalone_whitelist_action.take() {
+        ov.standalone_whitelist_action = Some(sanitize_standalone_whitelist_action(&v));
     }
     p_bool(patch, "whitelist_urgent_call", &mut ov.whitelist_urgent_call);
     p_bool(patch, "transfer_whitelist", &mut ov.transfer_whitelist);

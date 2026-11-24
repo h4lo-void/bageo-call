@@ -10,8 +10,12 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.pm.ServiceInfo
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.Ringtone
+import android.media.RingtoneManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -65,6 +69,7 @@ class CallAudioService : Service() {
     private var smsSender: SmsSender? = null
     private var injector: UplinkInjector? = null
     private var audioGuard: LocalAudioGuard? = null
+    private var wakeController: CallWakeController? = null
     /**
      * AudioTrack teardown can block inside AudioFlinger even after stop/interrupt.
      * Keep it off the service main thread and serialize it with the next start.
@@ -124,11 +129,15 @@ class CallAudioService : Service() {
     private val pendingControlJson = java.util.concurrent.ConcurrentLinkedQueue<org.json.JSONObject>()
     /** Last call state (ringing/active vs idle) reported to the agent in `status`. */
     @Volatile private var reportedInCall: Boolean? = null
-    /**
-     * Result of a switch the agent asked for, found at start-up because the app was
+    /** Result of a switch the agent asked for, found at start-up because the app was
      * stopped while the root script ran; sent as `set_mode_result` once connected.
      */
     private val unreportedResult = java.util.concurrent.atomic.AtomicReference<PhoneModeManager.ApplyLog?>(null)
+    @Volatile private var localRingtone: Ringtone? = null
+    @Volatile private var pendingUrgentPromptId: String? = null
+    @Volatile private var activeTakeoverCaller: String = ""
+    @Volatile private var activeTakeoverCallerName: String = ""
+    @Volatile private var activeUrgentReason: String = ""
     private val modeListener = PhoneModeManager.Listener { mode ->
         mainHandler.post { onPhoneModeChanged(mode) }
     }
@@ -137,7 +146,12 @@ class CallAudioService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         audioGuard = LocalAudioGuard(this)
+        if (BuildConfig.STANDALONE) {
+            wakeController = CallWakeController.create(this)
+            EmbeddedAgent.ensureStarted(this)
+        }
         smsSender = SmsSender(this) { msg -> sendControlOrQueue(msg) }
         telephonyManager = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
         watchSimChanges()
@@ -161,6 +175,9 @@ class CallAudioService : Service() {
         val action = intent?.action
         if (action != ACTION_STOP) {
             cancelPendingServiceStop("new start action=${action ?: "sticky"}")
+            if (BuildConfig.STANDALONE) {
+                EmbeddedAgent.ensureStarted(this)
+            }
         }
         intent?.getStringExtra(EXTRA_CALLER_ID)?.trim()?.takeIf { it.isNotEmpty() }?.let {
             val instanceId = intent?.getLongExtra(EXTRA_CALL_INSTANCE_ID, NO_CALL_INSTANCE) ?: NO_CALL_INSTANCE
@@ -217,6 +234,53 @@ class CallAudioService : Service() {
                     Log.i(TAG, "SET_ENABLED=$en → ok=${result.ok} mode=${result.mode} error=${result.error}")
                 }
             }
+            ACTION_OWNER_TAKEOVER -> {
+                armWatcher()
+                if (BuildConfig.STANDALONE) {
+                    performOwnerTakeover(intent?.getStringExtra(EXTRA_URGENT_ID))
+                }
+            }
+            ACTION_DECLINE_URGENT -> {
+                armWatcher()
+                if (BuildConfig.STANDALONE) {
+                    performDeclineUrgent(intent?.getStringExtra(EXTRA_URGENT_ID).orEmpty())
+                }
+            }
+            ACTION_WHITELIST_ANSWER -> {
+                armWatcher()
+                if (BuildConfig.STANDALONE) {
+                    performWhitelistAnswer()
+                }
+            }
+            ACTION_WHITELIST_HAND_AI -> {
+                armWatcher()
+                if (BuildConfig.STANDALONE) {
+                    performWhitelistHandToAi()
+                }
+            }
+            ACTION_WHITELIST_REJECT -> {
+                armWatcher()
+                if (BuildConfig.STANDALONE) {
+                    performWhitelistReject()
+                }
+            }
+            ACTION_OWNER_HANGUP -> {
+                armWatcher()
+                if (BuildConfig.STANDALONE) {
+                    performOwnerHangup()
+                }
+            }
+            ACTION_REFRESH_NOTIF -> {
+                armWatcher()
+            }
+            ACTION_SWITCH_TO_NORMAL -> {
+                armWatcher()
+                if (BuildConfig.STANDALONE) {
+                    PhoneModeManager.requestSwitch(this, Prefs.PHONE_MODE_NORMAL, callBusy = isCallBusy()) { result ->
+                        Log.i(TAG, "notif switch normal ok=${result.ok} err=${result.error}")
+                    }
+                }
+            }
             else -> armWatcher()
         }
         return START_STICKY
@@ -240,16 +304,26 @@ class CallAudioService : Service() {
         }
         try {
             if (type != null) startForeground(NOTIF_ID, notification, type) else startForeground(NOTIF_ID, notification)
-            return
         } catch (e: Exception) {
             Log.e(TAG, "startForeground type=$type refused", e)
+            try {
+                startForeground(NOTIF_ID, notification)
+            } catch (e2: Exception) {
+                Log.e(TAG, "startForeground refused; the service keeps going without it", e2)
+            }
         }
-        try {
-            startForeground(NOTIF_ID, notification)
-        } catch (e: Exception) {
-            Log.e(TAG, "startForeground refused; the service keeps going without it", e)
+        if (shouldHideIdleNotification()) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
         }
     }
+
+    private fun shouldHideIdleNotification(): Boolean =
+        BuildConfig.STANDALONE &&
+            !Prefs.isStandalonePersistentNotif(this) &&
+            !anyCallBusy &&
+            !callActive &&
+            !answerScheduled &&
+            !ownerHandlingCallFlag
 
     private fun armWatcher() {
         enterForeground()
@@ -273,7 +347,9 @@ class CallAudioService : Service() {
         // (RINGING/OFFHOOK already sticky). Poll and fire handleCallState now so
         // ACTIVE→media hello does not sit ~8s waiting for a phantom OFFHOOK edge.
         catchUpCallState(reason = "armWatcher")
-        startCallStateWatchdog()
+        if (!BuildConfig.STANDALONE) {
+            startCallStateWatchdog()
+        }
         startControlClient()
         Log.i(
             TAG,
@@ -398,6 +474,17 @@ class CallAudioService : Service() {
                         handleCallState(state)
                         lastState = state
                     }
+                    if (BuildConfig.STANDALONE &&
+                        state == TelephonyManager.CALL_STATE_IDLE &&
+                        !callActive &&
+                        !answerScheduled &&
+                        bridge == null &&
+                        injector == null &&
+                        !ownerHandlingCallFlag
+                    ) {
+                        Log.i(TAG, "standalone watchdog idle — pausing until next call")
+                        break
+                    }
                 }
                 delay(CALL_STATE_WATCHDOG_MS)
             }
@@ -433,10 +520,24 @@ class CallAudioService : Service() {
             catchUpCallState(reason = "explicit-call-active-stale")
             return
         }
-        if (SilentInCallService.isOwnCallInstance(instanceId)) {
-            Log.i(TAG, "ignore ACTIVE instance=$instanceId: a call dialed by hand on the phone")
+        if (SilentInCallService.isOwnCallInstance(instanceId) || (BuildConfig.STANDALONE && ownerHandlingCallFlag)) {
+            Log.i(TAG, "ignore ACTIVE instance=$instanceId: owner handling call")
+            if (BuildConfig.STANDALONE && ownerHandlingCallFlag) {
+                stopLocalRingtone()
+                cancelOwnerCallNotification()
+                audioGuard?.restoreForOwnCall()
+                SilentInCallService.unmuteOwnCall()
+                launchOwnerCallUi(
+                    mode = "in_call",
+                    callerId = activeTakeoverCaller.ifBlank { currentCallerId() },
+                    callerName = activeTakeoverCallerName,
+                    reason = "",
+                    urgentId = "",
+                )
+            }
             return
         }
+        if (BuildConfig.STANDALONE) startCallStateWatchdog()
         val current = mediaCallInstance.get()
         if (keepMediaIfSamePstnCall("explicit ACTIVE", instanceId)) {
             return
@@ -569,6 +670,12 @@ class CallAudioService : Service() {
         }
         when (state) {
             TelephonyManager.CALL_STATE_RINGING -> {
+                anyCallBusy = true
+                if (BuildConfig.STANDALONE) {
+                    enterForeground()
+                    startCallStateWatchdog()
+                }
+                wakeController?.onCallActive("ringing")
                 if (answerScheduled) {
                     Log.i(TAG, "RINGING ignored (answer already scheduled)")
                     return
@@ -632,6 +739,27 @@ class CallAudioService : Service() {
                         rejectRingingCall()
                         return@launch
                     }
+                    if (BuildConfig.STANDALONE && plan.ownerPickup) {
+                        ownerHandlingCallFlag = true
+                        offhookWithoutAi = true
+                        answerScheduled = false
+                        activeTakeoverCaller = details.callerId
+                        activeTakeoverCallerName = plan.callerName
+                        activeUrgentReason = plan.reason
+                        audioGuard?.stopHoldLoop()
+                        audioGuard?.restoreForOwnCall()
+                        SilentInCallService.unmuteOwnCall()
+                        startLocalRingtone()
+                        notifyAndLaunchOwnerUi(
+                            mode = "incoming_whitelist",
+                            callerId = details.callerId,
+                            callerName = plan.callerName,
+                            reason = plan.reason,
+                            urgentId = "",
+                        )
+                        Log.i(TAG, "whitelist owner_pickup=true → ringing owner directly")
+                        return@launch
+                    }
                     val waitMs = plan.delayMs - (SystemClock.elapsedRealtime() - ringAt)
                     if (waitMs > 0) {
                         Log.i(TAG, "ring ${plan.delayMs}ms before answer — wait ${waitMs}ms more")
@@ -650,6 +778,32 @@ class CallAudioService : Service() {
                 }
             }
             TelephonyManager.CALL_STATE_OFFHOOK -> {
+                anyCallBusy = true
+                if (BuildConfig.STANDALONE) {
+                    enterForeground()
+                    startCallStateWatchdog()
+                }
+                wakeController?.onCallActive("offhook")
+                if (BuildConfig.STANDALONE && ownerHandlingCallFlag) {
+                    answerScheduled = false
+                    answerJob?.cancel()
+                    answerJob = null
+                    stopLocalRingtone()
+                    cancelOwnerCallNotification()
+                    audioGuard?.stopHoldLoop()
+                    audioGuard?.restoreForOwnCall()
+                    SilentInCallService.unmuteOwnCall()
+                    updateNotification()
+                    launchOwnerCallUi(
+                        mode = "in_call",
+                        callerId = activeTakeoverCaller.ifBlank { currentCallerId() },
+                        callerName = activeTakeoverCallerName,
+                        reason = "",
+                        urgentId = "",
+                    )
+                    Log.i(TAG, "OFFHOOK ownerHandlingCallFlag=true — kept on phone for owner")
+                    return
+                }
                 val answeredRing = answerScheduled
                 answerScheduled = false
                 ringGivenUp = false
@@ -688,6 +842,17 @@ class CallAudioService : Service() {
                 }
             }
             TelephonyManager.CALL_STATE_IDLE -> {
+                anyCallBusy = false
+                if (BuildConfig.STANDALONE) {
+                    stopLocalRingtone()
+                    cancelOwnerCallNotification()
+                    ownerHandlingCallFlag = false
+                    pendingUrgentPromptId = null
+                    activeTakeoverCaller = ""
+                    activeTakeoverCallerName = ""
+                    activeUrgentReason = ""
+                }
+                wakeController?.onCallIdle()
                 Log.i(TAG, "IDLE — end call session")
                 if (answerScheduled && !callActive) sendIncomingCancel()
                 answerScheduled = false
@@ -705,6 +870,8 @@ class CallAudioService : Service() {
                 Prefs.clearLastCallInfo(this)
                 // Stay hard-muted while armed (idle watcher); do not restore yet.
                 audioGuard?.applyHardMute()
+                audioGuard?.refreshConsolePreview()
+                updateNotification()
             }
         }
     }
@@ -1096,6 +1263,7 @@ class CallAudioService : Service() {
                 url = AgentControlClient.activeUrl(Prefs.connectionCandidates(this@CallAudioService)),
                 onBinary = { pcm ->
                     if (!isSessionCurrent(generation, callInstanceId)) return@BridgeClient
+                    if (BuildConfig.STANDALONE && ownerHandlingCallFlag) return@BridgeClient
                     // Never inject agent audio during local menu/wait (double-play root cause).
                     if (localMenuPlaying || localWaitPlaying || dropAgentPcm) return@BridgeClient
                     inj.writePcm(pcm)
@@ -1224,6 +1392,7 @@ class CallAudioService : Service() {
                     val buf = ByteArray(capture.frameBytes)
                     var sent = 0L
                     while (isActive && isSessionCurrent(generation, callInstanceId)) {
+                        if (BuildConfig.STANDALONE && ownerHandlingCallFlag) break
                         val n = capture.read(buf)
                         if (n > 0 && isSessionCurrent(generation, callInstanceId)) {
                             client.sendPcm(buf.copyOf(n))
@@ -1285,10 +1454,16 @@ class CallAudioService : Service() {
                 flushPendingControl()
                 // Text message results the agent may have missed while disconnected.
                 smsSender?.replay()
+                if (BuildConfig.STANDALONE) {
+                    LocalSmsForwarder.onControlOpened()
+                }
             },
         )
         controlClient = client
         client.connect(deviceSerial())
+        if (BuildConfig.STANDALONE) {
+            LocalSmsForwarder.start(this) { msg -> controlClient?.sendEvent(msg) == true }
+        }
         Log.i(
             TAG,
             "control client started urls=${Prefs.connectionCandidates(this).map { Prefs.redactUrl(it) }}",
@@ -1296,6 +1471,9 @@ class CallAudioService : Service() {
     }
 
     private fun stopControlClient() {
+        if (BuildConfig.STANDALONE) {
+            LocalSmsForwarder.stop()
+        }
         controlClient?.close()
         controlClient = null
     }
@@ -1309,10 +1487,13 @@ class CallAudioService : Service() {
                 val plan = AnswerPlan(
                     delayMs = obj.optLong("delay_ms", DEFAULT_ANSWER_RING_MS),
                     reject = obj.optBoolean("reject", false),
+                    ownerPickup = obj.optBoolean("owner_pickup", false),
+                    callerName = obj.optString("caller_name", ""),
+                    reason = obj.optString("reason", ""),
                 )
                 Log.i(
                     TAG,
-                    "answer_plan delay_ms=${plan.delayMs} reject=${plan.reject} prewarm=${obj.optBoolean("prewarm")}",
+                    "answer_plan delay_ms=${plan.delayMs} reject=${plan.reject} owner_pickup=${plan.ownerPickup} prewarm=${obj.optBoolean("prewarm")}",
                 )
                 // A reject that arrives after the plan wait still counts while the call rings.
                 if (plan.reject && answerScheduled && !callActive) answerRejected = true
@@ -1320,6 +1501,8 @@ class CallAudioService : Service() {
             }
             "set_mode" -> handleSetMode(obj)
             "send_sms" -> smsSender?.handle(obj)
+            "incoming_sms_ack" -> if (BuildConfig.STANDALONE) LocalSmsForwarder.onAck(obj)
+            "local_notice" -> if (BuildConfig.STANDALONE) showStandaloneSummaryNotification(this, obj)
             "agent_info" -> {
                 Prefs.setConsoleUrl(this, obj.optString("console_url"))
                 Prefs.setAgentVersion(this, obj.optString("agent_version"))
@@ -1528,6 +1711,8 @@ class CallAudioService : Service() {
             return
         }
         val subId = SimSubscriptions.fromCommand(obj)
+        anyCallBusy = true
+        wakeController?.onCallActive("place_call")
         Log.i(
             TAG,
             "place_call call_id=$callId task_id=$taskId number_len=${number.length} sub_id=${subId ?: "-"}",
@@ -1702,11 +1887,34 @@ class CallAudioService : Service() {
                     ) return
                     inj.clearPending()
                 }
+                "owner_urgent_prompt" -> {
+                    if (BuildConfig.STANDALONE && !ownerHandlingCallFlag) {
+                        val urgentId = obj.optString("id").trim()
+                        val caller = obj.optString("caller_id").ifBlank { currentCallerId() }
+                        val callerName = obj.optString("caller_name")
+                        val reason = obj.optString("reason")
+                        pendingUrgentPromptId = urgentId
+                        activeTakeoverCaller = caller
+                        activeTakeoverCallerName = callerName
+                        activeUrgentReason = reason
+                        Log.i(TAG, "owner_urgent_prompt received id=$urgentId")
+                        mainHandler.post {
+                            startLocalRingtone()
+                            notifyAndLaunchOwnerUi(
+                                mode = "urgent_prompt",
+                                callerId = caller,
+                                callerName = callerName,
+                                reason = reason,
+                                urgentId = urgentId,
+                            )
+                        }
+                    }
+                }
                 "hangup" -> {
                     if (!isSessionCurrent(generation, callInstanceId)) return
-                    // Whitelist urgent call: dialing the owner or merged — the caller's call stays up.
-                    if (SilentInCallService.isAddCallActiveOrMerged()) {
-                        Log.w(TAG, "agent hangup reason=${obj.optString("reason")} ignored: add_call dialing or merged")
+                    // Whitelist urgent call or owner takeover: caller's call stays up.
+                    if (SilentInCallService.isAddCallActiveOrMerged() || (BuildConfig.STANDALONE && ownerHandlingCallFlag)) {
+                        Log.w(TAG, "agent hangup reason=${obj.optString("reason")} ignored: owner/add_call active")
                         return
                     }
                     Log.i(TAG, "agent hangup reason=${obj.optString("reason")}")
@@ -2053,6 +2261,15 @@ class CallAudioService : Service() {
     }
 
     override fun onDestroy() {
+        anyCallBusy = false
+        stopLocalRingtone()
+        if (instance === this) instance = null
+        ownerHandlingCallFlag = false
+        wakeController?.releaseNow()
+        wakeController = null
+        if (BuildConfig.STANDALONE) {
+            LocalSmsForwarder.stop()
+        }
         stopWatchingSimChanges()
         PhoneModeManager.removeListener(modeListener)
         smsSender?.close()
@@ -2072,11 +2289,22 @@ class CallAudioService : Service() {
 
     private fun updateNotification(text: String? = null) {
         val nm = getSystemService(NotificationManager::class.java)
+        if (shouldHideIdleNotification()) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            nm.cancel(NOTIF_ID)
+            return
+        }
         nm.notify(NOTIF_ID, buildNotification(text ?: getString(R.string.notification_text_armed)))
     }
 
-    /** The agent's reply to `incoming`: ring [delayMs], or decline the call ([reject]). */
-    private data class AnswerPlan(val delayMs: Long, val reject: Boolean)
+    /** The agent's reply to `incoming`: ring [delayMs], or decline/direct-pickup. */
+    private data class AnswerPlan(
+        val delayMs: Long,
+        val reject: Boolean,
+        val ownerPickup: Boolean = false,
+        val callerName: String = "",
+        val reason: String = "",
+    )
 
     /** What the agent is told about a call: number ("" = hidden), SIM country and subscription. */
     private data class AgentCallDetails(val callerId: String, val simCountry: String, val simSubId: Int?)
@@ -2103,15 +2331,348 @@ class CallAudioService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val enabled = Prefs.isAiCallEnabled(this)
-        return NotificationCompat.Builder(this, channelId)
-            .setContentTitle(getString(R.string.notification_title))
-            .setContentText(if (enabled) text else getString(R.string.notification_text_normal))
+        if (!BuildConfig.STANDALONE) {
+            return NotificationCompat.Builder(this, channelId)
+                .setContentTitle(getString(R.string.notification_title))
+                .setContentText(if (enabled) text else getString(R.string.notification_text_normal))
+                .setSmallIcon(android.R.drawable.ic_lock_silent_mode)
+                .setContentIntent(pi)
+                .setOngoing(true)
+                .setSilent(true)
+                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .build()
+        }
+        val inAiCall = callActive && !ownerHandlingCallFlag
+        val title = when {
+            inAiCall -> standaloneString("sa_notif_ai_call_title", "AI 正在通話中")
+            ownerHandlingCallFlag -> standaloneString("sa_notif_owner_call_title", "通話中（本人接聽）")
+            enabled -> standaloneString("sa_notif_ai_idle_title", "AI 正在幫你接電話")
+            else -> getString(R.string.notification_text_normal)
+        }
+        val callerLabel = activeTakeoverCallerName.ifBlank { activeTakeoverCaller }
+            .ifBlank { currentCallerId() }
+            .ifBlank { text }
+        val contentText = when {
+            inAiCall || ownerHandlingCallFlag -> callerLabel
+            enabled -> standaloneString("sa_notif_ai_idle_text", "點擊開啟控制台，或使用下方按鈕切換")
+            else -> getString(R.string.notification_text_normal)
+        }
+        val builder = NotificationCompat.Builder(this, channelId)
+            .setContentTitle(title)
+            .setContentText(contentText)
             .setSmallIcon(android.R.drawable.ic_lock_silent_mode)
             .setContentIntent(pi)
             .setOngoing(true)
             .setSilent(true)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
-            .build()
+            .setPriority(if (inAiCall || ownerHandlingCallFlag) NotificationCompat.PRIORITY_DEFAULT else NotificationCompat.PRIORITY_MIN)
+
+        if (inAiCall) {
+            builder.addAction(
+                android.R.drawable.ic_menu_call,
+                standaloneString("sa_btn_takeover", "我來接聽"),
+                serviceActionPi(ACTION_OWNER_TAKEOVER, 101),
+            )
+            builder.addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                standaloneString("sa_btn_hangup", "掛斷"),
+                serviceActionPi(ACTION_OWNER_HANGUP, 102),
+            )
+        } else if (ownerHandlingCallFlag) {
+            builder.addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                standaloneString("sa_btn_hangup", "掛斷"),
+                serviceActionPi(ACTION_OWNER_HANGUP, 102),
+            )
+        } else if (enabled) {
+            builder.addAction(
+                android.R.drawable.ic_menu_revert,
+                standaloneString("sa_btn_switch_normal", "切為一般手機"),
+                serviceActionPi(ACTION_SWITCH_TO_NORMAL, 103),
+            )
+        }
+        return builder.build()
+    }
+
+    private fun standaloneString(name: String, fallback: String): String = try {
+        val id = resources.getIdentifier(name, "string", packageName)
+        if (id != 0) getString(id) else fallback
+    } catch (_: Exception) {
+        fallback
+    }
+
+    private fun serviceActionPi(action: String, code: Int, urgentId: String? = null): PendingIntent {
+        val i = Intent(this, CallAudioService::class.java).setAction(action)
+        if (!urgentId.isNullOrBlank()) i.putExtra(EXTRA_URGENT_ID, urgentId)
+        return PendingIntent.getService(
+            this,
+            code,
+            i,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    private fun performOwnerTakeover(urgentId: String?) {
+        ownerHandlingCallFlag = true
+        stopLocalRingtone()
+        cancelOwnerCallNotification()
+        val effectiveUrgent = urgentId?.takeIf { it.isNotBlank() } ?: pendingUrgentPromptId.orEmpty()
+        pendingUrgentPromptId = null
+        val client = synchronized(sessionOwnershipLock) {
+            localMenuPlaying = false
+            localWaitPlaying = false
+            dropAgentPcm = true
+            localMenuJob?.cancel()
+            localWaitJob?.cancel()
+            captureJob?.cancel()
+            bridge
+        }
+        injector?.let { inj ->
+            injector = null
+            injectorStopFuture = try {
+                injectorStopExecutor.submit { try { inj.stop() } catch (_: Exception) {} }
+            } catch (_: Exception) { null }
+        }
+        if (effectiveUrgent.isNotBlank()) {
+            client?.sendJson(
+                org.json.JSONObject()
+                    .put("type", "add_call_result")
+                    .put("id", effectiveUrgent)
+                    .put("status", "merged"),
+            )
+        }
+        client?.sendJson(
+            org.json.JSONObject()
+                .put("type", "owner_takeover")
+                .put("serial", deviceSerial())
+                .apply { if (effectiveUrgent.isNotBlank()) put("urgent_id", effectiveUrgent) },
+        )
+        audioGuard?.stopHoldLoop()
+        audioGuard?.restoreForOwnCall()
+        SilentInCallService.unmuteOwnCall()
+        updateNotification()
+        launchOwnerCallUi(
+            mode = "in_call",
+            callerId = activeTakeoverCaller.ifBlank { currentCallerId() },
+            callerName = activeTakeoverCallerName,
+            reason = "",
+            urgentId = "",
+        )
+        Log.i(TAG, "owner took over live call urgentId=$effectiveUrgent")
+    }
+
+    private fun performDeclineUrgent(urgentId: String) {
+        stopLocalRingtone()
+        cancelOwnerCallNotification()
+        val id = urgentId.ifBlank { pendingUrgentPromptId.orEmpty() }
+        pendingUrgentPromptId = null
+        if (id.isNotBlank()) {
+            synchronized(sessionOwnershipLock) { bridge }?.sendJson(
+                org.json.JSONObject()
+                    .put("type", "add_call_result")
+                    .put("id", id)
+                    .put("status", "failed")
+                    .put("reason", "owner_declined"),
+            )
+        }
+        Log.i(TAG, "owner declined urgent prompt id=$id — AI resumes")
+    }
+
+    private fun performWhitelistAnswer() {
+        stopLocalRingtone()
+        cancelOwnerCallNotification()
+        ownerHandlingCallFlag = true
+        offhookWithoutAi = true
+        audioGuard?.stopHoldLoop()
+        audioGuard?.restoreForOwnCall()
+        SilentInCallService.answerForOwner()
+        updateNotification()
+        launchOwnerCallUi(
+            mode = "in_call",
+            callerId = activeTakeoverCaller.ifBlank { currentCallerId() },
+            callerName = activeTakeoverCallerName,
+            reason = "",
+            urgentId = "",
+        )
+    }
+
+    private fun performWhitelistHandToAi() {
+        stopLocalRingtone()
+        cancelOwnerCallNotification()
+        ownerHandlingCallFlag = false
+        offhookWithoutAi = false
+        answerScheduled = true
+        audioGuard?.applyHardMute()
+        audioGuard?.startHoldLoop()
+        answerSilently()
+        Log.i(TAG, "whitelist incoming handed to AI by owner")
+    }
+
+    private fun performWhitelistReject() {
+        stopLocalRingtone()
+        cancelOwnerCallNotification()
+        ownerHandlingCallFlag = false
+        rejectRingingCall(retryOnFail = false)
+    }
+
+    private fun performOwnerHangup() {
+        stopLocalRingtone()
+        cancelOwnerCallNotification()
+        if (!SilentInCallService.disconnectActive()) {
+            try {
+                @Suppress("DEPRECATION")
+                (getSystemService(TELECOM_SERVICE) as TelecomManager).endCall()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun startLocalRingtone() {
+        stopLocalRingtone()
+        try {
+            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE) ?: return
+            val ringtone = RingtoneManager.getRingtone(this, uri) ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                ringtone.isLooping = true
+            }
+            ringtone.audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+            ringtone.play()
+            localRingtone = ringtone
+        } catch (e: Exception) {
+            Log.w(TAG, "startLocalRingtone failed: ${e.message}")
+        }
+    }
+
+    private fun stopLocalRingtone() {
+        val r = localRingtone ?: return
+        localRingtone = null
+        try {
+            if (r.isPlaying) r.stop()
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun ownerCallIntent(
+        mode: String,
+        callerId: String,
+        callerName: String,
+        reason: String,
+        urgentId: String,
+    ): Intent = Intent().apply {
+        setClassName(this@CallAudioService, "com.pixelcallai.streamer.OwnerCallActivity")
+        putExtra("mode", mode)
+        putExtra("caller_id", callerId)
+        putExtra("caller_name", callerName)
+        putExtra("reason", reason)
+        putExtra("urgent_id", urgentId)
+        addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP,
+        )
+    }
+
+    private fun launchOwnerCallUi(
+        mode: String,
+        callerId: String,
+        callerName: String,
+        reason: String,
+        urgentId: String,
+    ) {
+        try {
+            startActivity(ownerCallIntent(mode, callerId, callerName, reason, urgentId))
+        } catch (e: Exception) {
+            Log.w(TAG, "launchOwnerCallUi failed: ${e.message}")
+        }
+    }
+
+    private fun notifyAndLaunchOwnerUi(
+        mode: String,
+        callerId: String,
+        callerName: String,
+        reason: String,
+        urgentId: String,
+    ) {
+        val nm = getSystemService(NotificationManager::class.java)
+        val chId = "bageo_owner_calls"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    chId,
+                    standaloneString("sa_channel_owner_calls", "重要來電與急事接聽"),
+                    NotificationManager.IMPORTANCE_HIGH,
+                ),
+            )
+        }
+        val intent = ownerCallIntent(mode, callerId, callerName, reason, urgentId)
+        val fullScreenPi = PendingIntent.getActivity(
+            this,
+            200,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val display = callerName.ifBlank { callerId }.ifBlank { "來電" }
+        val titlePrefix = if (mode == "urgent_prompt") {
+            standaloneString("sa_notif_urgent_title", "緊急來電")
+        } else {
+            standaloneString("sa_notif_whitelist_title", "重要來電")
+        }
+        val title = "$titlePrefix: $display"
+        val body = if (mode == "urgent_prompt" && reason.isNotBlank()) {
+            reason
+        } else {
+            callerId.ifBlank { display }
+        }
+        val b = NotificationCompat.Builder(this, chId)
+            .setSmallIcon(android.R.drawable.sym_call_incoming)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setFullScreenIntent(fullScreenPi, true)
+            .setContentIntent(fullScreenPi)
+            .setAutoCancel(false)
+            .setOngoing(true)
+        if (mode == "urgent_prompt") {
+            b.addAction(
+                android.R.drawable.ic_menu_call,
+                standaloneString("sa_btn_takeover_now", "立刻接手"),
+                serviceActionPi(ACTION_OWNER_TAKEOVER, 201, urgentId),
+            )
+            b.addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                standaloneString("sa_btn_let_ai_handle", "讓 AI 請他留話"),
+                serviceActionPi(ACTION_DECLINE_URGENT, 202, urgentId),
+            )
+        } else {
+            b.addAction(
+                android.R.drawable.ic_menu_call,
+                standaloneString("sa_btn_answer", "接聽"),
+                serviceActionPi(ACTION_WHITELIST_ANSWER, 203),
+            )
+            b.addAction(
+                android.R.drawable.ic_menu_manage,
+                standaloneString("sa_btn_hand_ai", "交給 AI"),
+                serviceActionPi(ACTION_WHITELIST_HAND_AI, 204),
+            )
+            b.addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                standaloneString("sa_btn_hangup", "掛斷"),
+                serviceActionPi(ACTION_WHITELIST_REJECT, 205),
+            )
+        }
+        nm.notify(NOTIF_OWNER_CALL_ID, b.build())
+        launchOwnerCallUi(mode, callerId, callerName, reason, urgentId)
+    }
+
+    private fun cancelOwnerCallNotification() {
+        try {
+            getSystemService(NotificationManager::class.java)?.cancel(NOTIF_OWNER_CALL_ID)
+        } catch (_: Exception) {
+        }
     }
 
     companion object {
@@ -2121,6 +2682,15 @@ class CallAudioService : Service() {
         const val ACTION_SMOKE_CONNECT = "com.pixelcallai.streamer.SMOKE_CONNECT"
         const val ACTION_CALL_ACTIVE = "com.pixelcallai.streamer.CALL_ACTIVE"
         const val ACTION_CALL_ENDED = "com.pixelcallai.streamer.CALL_ENDED"
+        const val ACTION_OWNER_TAKEOVER = "com.pixelcallai.streamer.OWNER_TAKEOVER"
+        const val ACTION_DECLINE_URGENT = "com.pixelcallai.streamer.DECLINE_URGENT"
+        const val ACTION_WHITELIST_ANSWER = "com.pixelcallai.streamer.WHITELIST_ANSWER"
+        const val ACTION_WHITELIST_HAND_AI = "com.pixelcallai.streamer.WHITELIST_HAND_AI"
+        const val ACTION_WHITELIST_REJECT = "com.pixelcallai.streamer.WHITELIST_REJECT"
+        const val ACTION_OWNER_HANGUP = "com.pixelcallai.streamer.OWNER_HANGUP"
+        const val ACTION_REFRESH_NOTIF = "com.pixelcallai.streamer.REFRESH_NOTIF"
+        const val ACTION_SWITCH_TO_NORMAL = "com.pixelcallai.streamer.SWITCH_TO_NORMAL"
+        const val EXTRA_URGENT_ID = "urgent_id"
         /** SilentInCallService rejected a call that rang during another call. */
         const val ACTION_CALL_WAITING_REJECTED = "com.pixelcallai.streamer.CALL_WAITING_REJECTED"
         const val EXTRA_ENABLED = "enabled"
@@ -2136,6 +2706,118 @@ class CallAudioService : Service() {
         private const val NO_PENDING_SERVICE_STOP = 0L
         private const val NOTIF_ID = 42
         private const val NOTIF_INFO_ID = 43
+        private const val NOTIF_OWNER_CALL_ID = 44
+        private const val NOTIF_SUMMARY_BASE_ID = 1000
+        private val nextSummaryNotifId = java.util.concurrent.atomic.AtomicInteger(0)
+
+        @Volatile
+        private var instance: CallAudioService? = null
+
+        @Volatile
+        private var ownerHandlingCallFlag = false
+
+        fun isOwnerHandlingCall(): Boolean = BuildConfig.STANDALONE && ownerHandlingCallFlag
+
+        fun isLiveAiCallActive(): Boolean =
+            BuildConfig.STANDALONE && (instance?.let { it.callActive && !ownerHandlingCallFlag } == true)
+
+        fun requestOwnerTakeover(ctx: Context, urgentId: String? = null) {
+            if (!BuildConfig.STANDALONE) return
+            val i = Intent(ctx, CallAudioService::class.java).setAction(ACTION_OWNER_TAKEOVER)
+            if (!urgentId.isNullOrBlank()) i.putExtra(EXTRA_URGENT_ID, urgentId)
+            ctx.startService(i)
+        }
+
+        fun declineUrgentPrompt(ctx: Context, urgentId: String) {
+            if (!BuildConfig.STANDALONE) return
+            ctx.startService(
+                Intent(ctx, CallAudioService::class.java)
+                    .setAction(ACTION_DECLINE_URGENT)
+                    .putExtra(EXTRA_URGENT_ID, urgentId),
+            )
+        }
+
+        fun answerWhitelistForOwner(ctx: Context) {
+            if (!BuildConfig.STANDALONE) return
+            ctx.startService(Intent(ctx, CallAudioService::class.java).setAction(ACTION_WHITELIST_ANSWER))
+        }
+
+        fun handWhitelistToAi(ctx: Context) {
+            if (!BuildConfig.STANDALONE) return
+            ctx.startService(Intent(ctx, CallAudioService::class.java).setAction(ACTION_WHITELIST_HAND_AI))
+        }
+
+        fun rejectWhitelistForOwner(ctx: Context) {
+            if (!BuildConfig.STANDALONE) return
+            ctx.startService(Intent(ctx, CallAudioService::class.java).setAction(ACTION_WHITELIST_REJECT))
+        }
+
+        fun hangupActiveCall(ctx: Context) {
+            if (!BuildConfig.STANDALONE) return
+            ctx.startService(Intent(ctx, CallAudioService::class.java).setAction(ACTION_OWNER_HANGUP))
+        }
+
+        fun refreshNotification(ctx: Context) {
+            if (!BuildConfig.STANDALONE) return
+            try {
+                ctx.startService(Intent(ctx, CallAudioService::class.java).setAction(ACTION_REFRESH_NOTIF))
+            } catch (_: Exception) {
+            }
+        }
+
+        fun showStandaloneSummaryNotification(ctx: Context, notice: org.json.JSONObject) {
+            if (!BuildConfig.STANDALONE || !Prefs.isStandaloneCallSummaryNotif(ctx)) return
+            val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+            val chId = "bageo_call_summaries"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val chNameId = ctx.resources.getIdentifier("sa_channel_summaries", "string", ctx.packageName)
+                val chName = if (chNameId != 0) ctx.getString(chNameId) else "AI 通話摘要"
+                nm.createNotificationChannel(
+                    NotificationChannel(chId, chName, NotificationManager.IMPORTANCE_DEFAULT),
+                )
+            }
+            val callId = notice.optString("call_id").trim()
+            val callerId = notice.optString("caller_id").trim()
+            val title = notice.optString("title").ifBlank { callerId.ifBlank { "AI 通話摘要" } }
+            val body = notice.optString("body").trim()
+            if (body.isBlank()) return
+            val notifId = NOTIF_SUMMARY_BASE_ID + (nextSummaryNotifId.getAndIncrement() % 200)
+            val openIntent = Intent(ctx, MainActivity::class.java).apply {
+                if (callId.isNotBlank()) putExtra("open_call_id", callId)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            val openPi = PendingIntent.getActivity(
+                ctx,
+                notifId,
+                openIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            val builder = NotificationCompat.Builder(ctx, chId)
+                .setSmallIcon(android.R.drawable.sym_action_chat)
+                .setContentTitle(title)
+                .setContentText(body.lineSequence().firstOrNull().orEmpty())
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+                .setContentIntent(openPi)
+                .setAutoCancel(true)
+            if (callerId.isNotBlank()) {
+                val callbackLabelId = ctx.resources.getIdentifier("sa_btn_callback", "string", ctx.packageName)
+                val callbackLabel = if (callbackLabelId != 0) ctx.getString(callbackLabelId) else "回撥"
+                val dialIntent = Intent().apply {
+                    setClassName(ctx, "com.pixelcallai.streamer.OwnerCallActivity")
+                    putExtra("mode", "dialer")
+                    putExtra("dial_number", callerId)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                }
+                val dialPi = PendingIntent.getActivity(
+                    ctx,
+                    notifId + 10_000,
+                    dialIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+                builder.addAction(android.R.drawable.ic_menu_call, callbackLabel, dialPi)
+            }
+            nm.notify(notifId, builder.build())
+        }
         private const val TAG = "CallAudioService"
         /**
          * Max ring wait for the agent's CONTROL_IDLE connection. Not up by then: the call
@@ -2174,6 +2856,12 @@ class CallAudioService : Service() {
 
         /** True while a call the agent asked for is pending; such a call is not "dialed by hand". */
         fun isAgentCallbackPending(): Boolean = agentCallbackPending
+
+        @Volatile
+        private var anyCallBusy = false
+
+        /** True while RINGING, OFFHOOK, or outbound dial is in progress (used to mute console preview audio). */
+        fun isAnyCallBusy(): Boolean = anyCallBusy
 
         /**
          * Whether an OFFHOOK call gets the AI. [ownCall] = dialed by hand (stored per call

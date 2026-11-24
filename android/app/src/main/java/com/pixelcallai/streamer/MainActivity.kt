@@ -116,6 +116,7 @@ class MainActivity : Activity() {
 
     /** The status card's button: what it does ([StatusLine.action]). */
     private var statusAction: Int = 0
+    private val standaloneUi = StandaloneUi(this)
 
     private enum class CheckState { OK, MISSING, CHECK }
 
@@ -165,6 +166,10 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (StandaloneUi.ENABLED) {
+            standaloneUi.onCreate(savedInstanceState)
+            return
+        }
         setContentView(R.layout.activity_main)
         applySystemBarInsets(findViewById(R.id.root))
 
@@ -279,6 +284,10 @@ class MainActivity : Activity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (StandaloneUi.ENABLED) {
+            standaloneUi.onNewIntent(intent)
+            return
+        }
         handleLaunchIntent(intent)
     }
 
@@ -314,20 +323,44 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        if (StandaloneUi.ENABLED) standaloneUi.onStart()
+    }
+
+    override fun onStop() {
+        if (StandaloneUi.ENABLED) standaloneUi.onStop()
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
+        if (StandaloneUi.ENABLED) {
+            standaloneUi.onResume()
+            return
+        }
         PhoneModeManager.addListener(modeListener)
         handler.removeCallbacks(ticker)
         handler.post(ticker)
     }
 
     override fun onPause() {
+        if (StandaloneUi.ENABLED) {
+            standaloneUi.onPause()
+            super.onPause()
+            return
+        }
         PhoneModeManager.removeListener(modeListener)
         handler.removeCallbacks(ticker)
         super.onPause()
     }
 
     override fun onDestroy() {
+        if (StandaloneUi.ENABLED) {
+            standaloneUi.onDestroy()
+            super.onDestroy()
+            return
+        }
         handler.removeCallbacks(delayedRefresh)
         handler.removeCallbacks(ticker)
         testSequence++
@@ -340,6 +373,10 @@ class MainActivity : Activity() {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (StandaloneUi.ENABLED) {
+            standaloneUi.onRequestPermissionsResult(requestCode, permissions, grantResults)
+            return
+        }
         if (requestCode == REQ_GRANT_ALL && permissions.isNotEmpty()) {
             // "Permanently denied": still denied, Android will not ask again, and either it
             // asked before or it answered without showing a dialog.
@@ -363,7 +400,18 @@ class MainActivity : Activity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (StandaloneUi.ENABLED) {
+            standaloneUi.onActivityResult(requestCode, resultCode, data)
+            return
+        }
         refresh()
+    }
+
+    @Suppress("DEPRECATION")
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (StandaloneUi.ENABLED && standaloneUi.onBackPressed()) return
+        super.onBackPressed()
     }
 
     // ---------------------------------------------------------------- mode switch

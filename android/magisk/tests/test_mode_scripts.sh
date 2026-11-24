@@ -268,5 +268,15 @@ setup heal_no_google; ai_phone; echo normal > "$ST/data/mode"; touch "$ST/no_goo
 run_heal
 eq "exit" "$RC" 0; eq "phone app" "$([ "$(rd dialer)" = "$PKG" ] && echo bageo || echo system)" system
 
+# Standalone Daily Sound mode (app-nodnd-*): switches dialer without touching zen_mode or volumes.
+setup ai_nodnd; normal_phone; echo 0 > "$ST/zen"; echo 5 > "$ST/vol_2"; echo 6 > "$ST/vol_5"
+run_apply ai app-nodnd-daily-1
+eq "exit" "$RC" 0; is_ai_phone; eq "DND unchanged" "$(rd zen)" 0
+eq "ring vol unchanged" "$(rd vol_2)" 5; eq "notif vol unchanged" "$(rd vol_5)" 6
+
+setup normal_nodnd; ai_phone; echo 2 > "$ST/zen"; echo 3 > "$ST/vol_2"
+run_apply normal app-nodnd-daily-2
+eq "exit" "$RC" 0; is_normal_phone; eq "owner DND untouched" "$(rd zen)" 2
+
 echo "checks passed: $PASS, failed: $FAILS"
 [ "$FAILS" -eq 0 ]

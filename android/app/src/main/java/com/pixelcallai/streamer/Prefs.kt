@@ -273,11 +273,15 @@ object Prefs {
 
     /** The addresses to try, in order (see [ConnectionPlan.candidates]). */
     fun connectionCandidates(ctx: Context): List<String> =
-        ConnectionPlan.candidates(
-            BuildConfig.BRIDGE_WS_URL,
-            agentUrl(ctx),
-            ConnectionPlan.networkUrls(ipUrl(ctx), wifiUrls(ctx)),
-        )
+        if (BuildConfig.STANDALONE) {
+            listOf(BuildConfig.BRIDGE_WS_URL)
+        } else {
+            ConnectionPlan.candidates(
+                BuildConfig.BRIDGE_WS_URL,
+                agentUrl(ctx),
+                ConnectionPlan.networkUrls(ipUrl(ctx), wifiUrls(ctx)),
+            )
+        }
 
     fun audioMode(ctx: Context): String =
         sp(ctx).getString(KEY_MODE, MODE_SILENT_LOCAL) ?: MODE_SILENT_LOCAL
@@ -347,6 +351,119 @@ object Prefs {
     @Suppress("unused")
     private fun normalizeNumber(s: String): String =
         s.filter { !it.isWhitespace() && it != '-' }
+
+    private const val KEY_STANDALONE_LAN = "STANDALONE_LAN_ENABLED"
+    private const val KEY_STANDALONE_DAILY_SOUND = "STANDALONE_DAILY_SOUND"
+    private const val KEY_STANDALONE_PERSISTENT_NOTIF = "STANDALONE_PERSISTENT_NOTIF"
+    private const val KEY_STANDALONE_CALL_SUMMARY_NOTIF = "STANDALONE_CALL_SUMMARY_NOTIF"
+    private const val KEY_STANDALONE_WHITELIST_ACTION = "STANDALONE_WHITELIST_ACTION"
+    private const val KEY_STANDALONE_DND_AUTO_AI = "STANDALONE_DND_AUTO_AI"
+    private const val KEY_STANDALONE_DND_ANY_MODE = "STANDALONE_DND_ANY_MODE"
+    private const val KEY_STANDALONE_DND_RULE_ID = "STANDALONE_DND_RULE_ID"
+    private const val KEY_SMS_LAST_INBOX_ID = "SMS_LAST_INBOX_ID"
+    private const val KEY_SMS_PENDING_QUEUE = "SMS_PENDING_QUEUE"
+    private const val KEY_SMS_DEDUP_CACHE = "SMS_DEDUP_CACHE"
+
+    const val WHITELIST_ACTION_URGENT_PROMPT = "urgent_prompt"
+    const val WHITELIST_ACTION_RING_PHONE = "ring_phone"
+    const val WHITELIST_ACTION_FORWARD_NUMBER = "forward_number"
+    const val WHITELIST_ACTION_AI_ONLY = "ai_only"
+
+    /** Standalone edition: whether same-Wi-Fi LAN console access is turned on (default false). */
+    fun isStandaloneLanEnabled(ctx: Context): Boolean =
+        sp(ctx).getBoolean(KEY_STANDALONE_LAN, false)
+
+    fun setStandaloneLanEnabled(ctx: Context, enabled: Boolean) {
+        sp(ctx).edit().putBoolean(KEY_STANDALONE_LAN, enabled).apply()
+    }
+
+    /** Standalone edition: keep daily notification/media sounds intact while AI handles calls (default true). */
+    fun isStandaloneDailySound(ctx: Context): Boolean =
+        sp(ctx).getBoolean(KEY_STANDALONE_DAILY_SOUND, true)
+
+    fun setStandaloneDailySound(ctx: Context, enabled: Boolean) {
+        sp(ctx).edit().putBoolean(KEY_STANDALONE_DAILY_SOUND, enabled).apply()
+    }
+
+    /** Standalone edition: keep pinned "AI 正在幫你接電話" notification visible when idle (default true). */
+    fun isStandalonePersistentNotif(ctx: Context): Boolean =
+        sp(ctx).getBoolean(KEY_STANDALONE_PERSISTENT_NOTIF, true)
+
+    fun setStandalonePersistentNotif(ctx: Context, enabled: Boolean) {
+        sp(ctx).edit().putBoolean(KEY_STANDALONE_PERSISTENT_NOTIF, enabled).apply()
+    }
+
+    /** Standalone edition: post local call summary Android notifications after AI calls (default true). */
+    fun isStandaloneCallSummaryNotif(ctx: Context): Boolean =
+        sp(ctx).getBoolean(KEY_STANDALONE_CALL_SUMMARY_NOTIF, true)
+
+    fun setStandaloneCallSummaryNotif(ctx: Context, enabled: Boolean) {
+        sp(ctx).edit().putBoolean(KEY_STANDALONE_CALL_SUMMARY_NOTIF, enabled).apply()
+    }
+
+    /** Standalone edition: how whitelist/important callers are handled locally. */
+    fun standaloneWhitelistAction(ctx: Context): String =
+        normalizeWhitelistAction(sp(ctx).getString(KEY_STANDALONE_WHITELIST_ACTION, WHITELIST_ACTION_URGENT_PROMPT).orEmpty())
+
+    fun setStandaloneWhitelistAction(ctx: Context, action: String) {
+        sp(ctx).edit().putString(KEY_STANDALONE_WHITELIST_ACTION, normalizeWhitelistAction(action)).apply()
+    }
+
+    fun normalizeWhitelistAction(raw: String): String =
+        when (raw.trim().lowercase()) {
+            WHITELIST_ACTION_RING_PHONE -> WHITELIST_ACTION_RING_PHONE
+            WHITELIST_ACTION_FORWARD_NUMBER -> WHITELIST_ACTION_FORWARD_NUMBER
+            WHITELIST_ACTION_AI_ONLY -> WHITELIST_ACTION_AI_ONLY
+            else -> WHITELIST_ACTION_URGENT_PROMPT
+        }
+
+    /** Standalone edition: automatically switch AI on/off with dedicated DND rule. */
+    fun isStandaloneDndAutoAi(ctx: Context): Boolean =
+        sp(ctx).getBoolean(KEY_STANDALONE_DND_AUTO_AI, false)
+
+    fun setStandaloneDndAutoAi(ctx: Context, enabled: Boolean) {
+        sp(ctx).edit().putBoolean(KEY_STANDALONE_DND_AUTO_AI, enabled).apply()
+    }
+
+    /** Standalone edition: trigger AI auto-switch on any system DND mode, not only the dedicated rule. */
+    fun isStandaloneDndAnyMode(ctx: Context): Boolean =
+        sp(ctx).getBoolean(KEY_STANDALONE_DND_ANY_MODE, false)
+
+    fun setStandaloneDndAnyMode(ctx: Context, enabled: Boolean) {
+        sp(ctx).edit().putBoolean(KEY_STANDALONE_DND_ANY_MODE, enabled).apply()
+    }
+
+    /** Persisted system ID of Bageo's dedicated AutomaticZenRule. */
+    fun standaloneDndRuleId(ctx: Context): String =
+        sp(ctx).getString(KEY_STANDALONE_DND_RULE_ID, "").orEmpty()
+
+    fun setStandaloneDndRuleId(ctx: Context, ruleId: String) {
+        sp(ctx).edit().putString(KEY_STANDALONE_DND_RULE_ID, ruleId.trim()).apply()
+    }
+
+    /** Standalone SMS forwarder: last inbox `_id` seen (`-1` until baseline initialized). */
+    fun smsLastInboxId(ctx: Context): Long =
+        sp(ctx).getLong(KEY_SMS_LAST_INBOX_ID, -1L)
+
+    fun setSmsLastInboxId(ctx: Context, id: Long) {
+        sp(ctx).edit().putLong(KEY_SMS_LAST_INBOX_ID, id).apply()
+    }
+
+    /** Standalone SMS forwarder: persisted JSON array of unacknowledged outbound events. */
+    fun smsPendingQueue(ctx: Context): String? =
+        sp(ctx).getString(KEY_SMS_PENDING_QUEUE, null)
+
+    fun setSmsPendingQueue(ctx: Context, json: String) {
+        sp(ctx).edit().putString(KEY_SMS_PENDING_QUEUE, json).apply()
+    }
+
+    /** Standalone SMS forwarder: persisted JSON map of recent sender+hash dedup timestamps. */
+    fun smsDedupCache(ctx: Context): String? =
+        sp(ctx).getString(KEY_SMS_DEDUP_CACHE, null)
+
+    fun setSmsDedupCache(ctx: Context, json: String) {
+        sp(ctx).edit().putString(KEY_SMS_DEDUP_CACHE, json).apply()
+    }
 
     private const val NO_SUB_ID = -1
 }

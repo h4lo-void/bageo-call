@@ -290,8 +290,7 @@ thread_local! {
 /// Where Bageo keeps its data (CALLS_DATA_DIR, as the rest of the agent).
 #[cfg(not(test))]
 pub(crate) fn data_dir() -> PathBuf {
-    let default_dir = if Path::new("/data/calls").is_dir() { "/data/calls" } else { "data/calls" };
-    PathBuf::from(crate::config::env_or("CALLS_DATA_DIR", default_dir))
+    crate::config::data_dir()
 }
 
 /// Tests keep their files in a folder of their own, never in the working directory.

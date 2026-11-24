@@ -25,6 +25,32 @@ class TransparentDialerActivity : Activity() {
             overridePendingTransition(0, 0)
             return
         }
+        if (BuildConfig.STANDALONE) {
+            DialerRoleHelper.ensureRoles(this)
+            try {
+                val svc = Intent(this, CallAudioService::class.java)
+                    .setAction(CallAudioService.ACTION_START)
+                startForegroundService(svc)
+            } catch (_: Exception) {
+            }
+            val number = intent?.data?.schemeSpecificPart
+                ?: intent?.getStringExtra(Intent.EXTRA_PHONE_NUMBER)
+                ?: ""
+            val dialerIntent = Intent().apply {
+                setClassName(this@TransparentDialerActivity, "com.pixelcallai.streamer.OwnerCallActivity")
+                putExtra("mode", "dialer")
+                if (number.isNotBlank()) putExtra("dial_number", number)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            try {
+                startActivity(dialerIntent)
+            } catch (e: Exception) {
+                Log.w(TAG, "launch OwnerCallActivity failed: ${e.message}")
+            }
+            finish()
+            overridePendingTransition(0, 0)
+            return
+        }
         DialerRoleHelper.ensureRoles(this)
         // Keep CallAudioService armed; never show UI.
         try {

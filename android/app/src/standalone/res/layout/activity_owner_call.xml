@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial -->
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?android:attr/colorBackground"
+    android:gravity="center_horizontal"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:id="@+id/ocBadge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:background="@drawable/pca_card"
+        android:paddingStart="12dp"
+        android:paddingTop="4dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="4dp"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/ocTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:gravity="center"
+        android:textColor="?android:attr/textColorPrimary"
+        android:textSize="28sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/ocSubtitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:gravity="center"
+        android:textColor="?android:attr/textColorSecondary"
+        android:textSize="16sp" />
+
+    <LinearLayout
+        android:id="@+id/ocReasonCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:background="@drawable/pca_card"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/ocReasonText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textSize="16sp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- Mode 1: Whitelist Direct Incoming -->
+    <LinearLayout
+        android:id="@+id/ocPanelIncomingWhitelist"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/ocBtnWlAnswer"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="@string/sa_btn_answer"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/ocBtnWlHandAi"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="10dp"
+            android:text="@string/sa_btn_hand_ai" />
+
+        <Button
+            android:id="@+id/ocBtnWlReject"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="10dp"
+            android:text="@string/sa_btn_hangup" />
+    </LinearLayout>
+
+    <!-- Mode 2: Urgent AI Prompt Takeover -->
+    <LinearLayout
+        android:id="@+id/ocPanelUrgentPrompt"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/ocBtnUrgentTake"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="@string/sa_btn_takeover_now"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/ocBtnUrgentDecline"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="10dp"
+            android:text="@string/sa_btn_let_ai_handle" />
+    </LinearLayout>
+
+    <!-- Mode 3: Owner In-Call -->
+    <LinearLayout
+        android:id="@+id/ocPanelInCall"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <GridLayout
+            android:id="@+id/ocDtmfGrid"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:columnCount="3"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/ocBtnSpeaker"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:text="@string/sa_btn_speaker_off" />
+
+            <Button
+                android:id="@+id/ocBtnMute"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:text="@string/sa_btn_mute" />
+
+            <Button
+                android:id="@+id/ocBtnKeypad"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="@string/sa_btn_keypad" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/ocBtnInCallHangup"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="14dp"
+            android:text="@string/sa_btn_hangup"
+            android:textSize="16sp" />
+    </LinearLayout>
+
+    <!-- Mode 4: Standalone Dialer -->
+    <LinearLayout
+        android:id="@+id/ocPanelDialer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <EditText
+            android:id="@+id/ocDialInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:hint="@string/sa_dial_hint"
+            android:inputType="phone"
+            android:textSize="24sp" />
+
+        <LinearLayout
+            android:id="@+id/ocSimRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:visibility="gone" />
+
+        <GridLayout
+            android:id="@+id/ocDialGrid"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:columnCount="3" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/ocBtnDialClose"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:text="@string/sa_btn_close" />
+
+            <Button
+                android:id="@+id/ocBtnDialBack"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:text="@string/sa_btn_backspace" />
+
+            <Button
+                android:id="@+id/ocBtnDialPlace"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_weight="1.4"
+                android:text="@string/sa_btn_dial" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

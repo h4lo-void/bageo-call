@@ -687,6 +687,20 @@ impl ControlRegistry {
 
     /// Push blocklist to all connected idle control clients. Returns send count.
     pub async fn broadcast_blocklist_sync(&self, numbers: &[String]) -> usize {
+        let payload = blocklist_sync_payload(numbers);
+        let sent = self.broadcast_control_json(&payload).await;
+        if sent > 0 {
+            info!(
+                sent,
+                numbers_len = numbers.len(),
+                "blocklist_sync broadcast"
+            );
+        }
+        sent
+    }
+
+    /// Push a JSON notification/command object to all connected idle control clients.
+    pub async fn broadcast_control_json(&self, payload: &Value) -> usize {
         let clients = self.clients.lock().await;
         if clients.is_empty() {
             return 0;
@@ -697,14 +711,14 @@ impl ControlRegistry {
             .collect();
         drop(clients);
 
-        let payload = blocklist_sync_payload(numbers);
-        let text = match serde_json::to_string(&payload) {
+        let text = match serde_json::to_string(payload) {
             Ok(t) => t,
             Err(e) => {
-                warn!("blocklist_sync serialize failed: {e}");
+                warn!("control broadcast serialize failed: {e}");
                 return 0;
             }
         };
+        let kind = payload.get("type").and_then(Value::as_str).unwrap_or("json");
         let mut sent = 0usize;
         for (serial, sink) in sinks {
             if sink
@@ -716,15 +730,8 @@ impl ControlRegistry {
             {
                 sent += 1;
             } else {
-                warn!(serial, "blocklist_sync send failed");
+                warn!(serial, kind, "control broadcast send failed");
             }
-        }
-        if sent > 0 {
-            info!(
-                sent,
-                numbers_len = numbers.len(),
-                "blocklist_sync broadcast"
-            );
         }
         sent
     }

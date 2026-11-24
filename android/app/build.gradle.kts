@@ -25,6 +25,23 @@ android {
         buildConfigField("boolean", "LOCAL_MENU_ENABLED", "false")
     }
 
+    flavorDimensions += "edition"
+    productFlavors {
+        create("bridge") {
+            dimension = "edition"
+            buildConfigField("boolean", "STANDALONE", "false")
+            buildConfigField("int", "CONSOLE_PORT", "8787")
+        }
+        create("standalone") {
+            dimension = "edition"
+            buildConfigField("boolean", "STANDALONE", "true")
+            buildConfigField("int", "CONSOLE_PORT", "8787")
+            ndk {
+                abiFilters += "arm64-v8a"
+            }
+        }
+    }
+
     buildFeatures {
         buildConfig = true
     }

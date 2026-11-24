@@ -55,6 +55,15 @@ class LocalAudioGuard(context: Context) {
      */
     fun release() = coordinator.requestRelease()
 
+    /**
+     * Standalone app foreground preview: temporarily allow media playback (`STREAM_MUSIC`)
+     * for voice/ambience previews and call recordings when idle; immediately re-muted when
+     * backgrounded or when any call starts.
+     */
+    fun setConsolePreviewAllowed(allowed: Boolean) = coordinator.requestConsolePreview(allowed)
+
+    fun refreshConsolePreview() = coordinator.refreshConsolePreviewIfAllowed()
+
     companion object {
         const val HOLD_INTERVAL_MS = 500L
 
@@ -121,6 +130,8 @@ private class LocalAudioGuardCoordinator(context: Context) {
     private val restorePending = AtomicBoolean(false)
     private val ownCallPending = AtomicBoolean(false)
     private val releasePending = AtomicBoolean(false)
+    private val consolePreviewAllowed = AtomicBoolean(false)
+    private val previewPending = AtomicBoolean(false)
     private val drainScheduled = AtomicBoolean(false)
     private val restoreCallbacks = ConcurrentLinkedQueue<() -> Unit>()
 
@@ -206,6 +217,18 @@ private class LocalAudioGuardCoordinator(context: Context) {
         scheduleDrain()
     }
 
+    fun requestConsolePreview(allowed: Boolean) {
+        consolePreviewAllowed.set(allowed)
+        previewPending.set(true)
+        scheduleDrain()
+    }
+
+    fun refreshConsolePreviewIfAllowed() {
+        if (!consolePreviewAllowed.get()) return
+        previewPending.set(true)
+        scheduleDrain()
+    }
+
     private fun scheduleDrain() {
         if (!drainScheduled.compareAndSet(false, true)) return
         if (!workerHandler.post(drainRunnable)) {
@@ -234,6 +257,10 @@ private class LocalAudioGuardCoordinator(context: Context) {
                     if (desiredMuted.get()) mutePending.set(true)
                     continue
                 }
+                if (previewPending.getAndSet(false)) {
+                    runTrackedOperation("preview-audio") { applyConsolePreviewBlocking() }
+                    continue
+                }
 
                 if (!desiredMuted.get()) {
                     mutePending.set(false)
@@ -256,6 +283,7 @@ private class LocalAudioGuardCoordinator(context: Context) {
             if (
                 releasePending.get() ||
                 restorePending.get() ||
+                previewPending.get() ||
                 (desiredMuted.get() && mutePending.get())
             ) {
                 scheduleDrain()
@@ -308,8 +336,16 @@ private class LocalAudioGuardCoordinator(context: Context) {
     }
 
     private fun applyHardMuteBlocking(fromHold: Boolean, rootPass: Boolean) {
-        // Queued before the phone switched to normal mode: drop it.
+        // Queued before the phone switched to normal mode or while owner took over the call: drop it.
         if (!Prefs.isAiCallEnabled(appContext)) return
+        if (BuildConfig.STANDALONE && CallAudioService.isOwnerHandlingCall()) return
+        val callInProgress = holdActive.get() || CallAudioService.isAnyCallBusy()
+        val standaloneDailyIdle =
+            BuildConfig.STANDALONE && Prefs.isStandaloneDailySound(appContext) && !callInProgress
+        if (standaloneDailyIdle) {
+            // Daily Sound mode keeps idle notification, media, and alarm audio untouched.
+            return
+        }
         var firstArm = false
         if (!armed) {
             try {
@@ -369,7 +405,14 @@ private class LocalAudioGuardCoordinator(context: Context) {
             // setStreamMute() is intentionally forbidden here. On Android 16 it can
             // block in AudioService for 20s after an audioserver createTrack timeout.
             // Volume zero + silent ringer + DND provide the same local-hear guard.
+            val dailySoundCall = BuildConfig.STANDALONE && Prefs.isStandaloneDailySound(appContext)
             for (stream in LOCAL_ZERO_STREAMS) {
+                if (stream == AudioManager.STREAM_MUSIC && consolePreviewAllowed.get() && !callInProgress) {
+                    continue
+                }
+                if (dailySoundCall && stream != AudioManager.STREAM_RING) {
+                    continue
+                }
                 try {
                     am.setStreamVolume(stream, 0, 0)
                 } catch (e: Exception) {
@@ -378,17 +421,31 @@ private class LocalAudioGuardCoordinator(context: Context) {
                 }
             }
 
-            try {
-                am.ringerMode = AudioManager.RINGER_MODE_SILENT
-            } catch (e: Exception) {
-                Log.w(TAG, "RINGER_MODE_SILENT failed: ${e.message}")
-            }
+            if (!dailySoundCall) {
+                try {
+                    am.ringerMode = AudioManager.RINGER_MODE_SILENT
+                } catch (e: Exception) {
+                    Log.w(TAG, "RINGER_MODE_SILENT failed: ${e.message}")
+                }
 
-            applyZenSilence()
+                applyZenSilence()
+            }
             abandonFocus()
+        } else if (holdActive.get() || CallAudioService.isAnyCallBusy()) {
+            val dailySoundCall = BuildConfig.STANDALONE && Prefs.isStandaloneDailySound(appContext)
+            if (!dailySoundCall) {
+                // Ensure preview media audio is silenced immediately once a call starts.
+                try {
+                    if (am.getStreamVolume(AudioManager.STREAM_MUSIC) != 0) {
+                        am.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+                        tryZeroViaSettings(AudioManager.STREAM_MUSIC)
+                    }
+                } catch (_: Exception) {
+                }
+            }
         }
 
-        if (rootPass) applyRootForceMute()
+        if (rootPass && !(BuildConfig.STANDALONE && Prefs.isStandaloneDailySound(appContext))) applyRootForceMute()
 
         hardMuteRuns++
         if (!fromHold) {
@@ -588,6 +645,27 @@ private class LocalAudioGuardCoordinator(context: Context) {
         savedVolumes.clear()
         armed = false
         Log.i(TAG, "audio guard released (normal phone mode)")
+    }
+
+    private fun applyConsolePreviewBlocking() {
+        if (!Prefs.isAiCallEnabled(appContext)) return
+        val allow = consolePreviewAllowed.get() && !holdActive.get() && !CallAudioService.isAnyCallBusy()
+        try {
+            if (allow) {
+                val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+                val target = savedVolumes[AudioManager.STREAM_MUSIC]?.takeIf { it > 0 }
+                    ?: PhoneModeManager.defaultVolume(maxVol)
+                am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+                trySu("settings put system volume_music $target")
+                Log.i(TAG, "console preview audio enabled STREAM_MUSIC=$target")
+            } else {
+                am.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+                tryZeroViaSettings(AudioManager.STREAM_MUSIC)
+                Log.i(TAG, "console preview audio muted STREAM_MUSIC=0")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "console preview volume update failed: ${e.message}")
+        }
     }
 
     companion object {

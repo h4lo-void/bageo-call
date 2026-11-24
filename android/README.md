@@ -15,8 +15,13 @@ The phone does no AI work itself. The package name and module id keep the projec
 earlier working name, so phones already running the module update in place.
 
 **Version 1.7.0:** app `versionName` `1.7.0`, `versionCode` 34; module `version`
-`v1.7.0`, `versionCode` 26 (`module.prop`); release file
-`bageo-phone-module-1.7.0.zip`. A SIM is always picked by its subscription id (`sub_id`).
+`v1.7.0`, `versionCode` 26 (`module.prop`); release files
+`bageo-phone-module-1.7.0.zip` (bridge edition paired with a computer) and
+`bageo-phone-standalone-1.7.0.zip` (all-in-one standalone edition running Bageo
+directly inside the Android app via `libbageo_agent.so`, bundled `bageo_assets`,
+and an embedded `WebView` console). A SIM is always picked by its subscription id
+(`sub_id`). Both editions share `com.pixelcallai.streamer` and module id
+`pixelcallai_uplink`.
 
 > **Use a dedicated phone.** The module takes over the phone app, disables Google
 > Dialer, turns on Do Not Disturb and sets the ringer volume to zero. The phone is not
@@ -74,16 +79,23 @@ Build the APK and package the module zip in one step, from the `android` folder:
 ./scripts/package-uplink-module.sh
 ```
 
-Both scripts run `:app:assembleDebug`, copy the APK into the module as
+Both scripts run `:app:assembleBridgeDebug`, copy the APK into the module as
 `system/priv-app/com.pixelcallai.streamer/base.apk`, and write
 
 ```text
 magisk/dist/bageo-phone-module-<versionName>.zip
 ```
 
-To build only the APK, run `.\gradlew.bat :app:assembleDebug` (Windows) or
-`sh ./gradlew :app:assembleDebug` (macOS / Linux). It is written to
-`app/build/outputs/apk/debug/app-debug.apk`.
+Pass `-Standalone` (Windows) or `--standalone` (macOS / Linux) to cross-compile
+the Rust agent into `arm64-v8a` `libbageo_agent.so` (requires Android NDK and
+`rustup target add aarch64-linux-android`), assemble `:app:assembleStandaloneDebug`,
+bundle `bageo_assets/` (ambience WAVs and default `en` voices), and output
+`magisk/dist/bageo-phone-standalone-<versionName>.zip`.
+
+To build only the APKs, run `.\gradlew.bat :app:assembleBridgeDebug :app:assembleStandaloneDebug` (Windows) or
+`sh ./gradlew :app:assembleBridgeDebug :app:assembleStandaloneDebug` (macOS / Linux). They are written to
+`app/build/outputs/apk/bridge/debug/app-bridge-debug.apk` and
+`app/build/outputs/apk/standalone/debug/app-standalone-debug.apk` (legacy fallback `:app:assembleDebug` is replaced by the `bridge` and `standalone` flavors).
 
 The debug build is minified on purpose so the app stays in a single dex file: as a
 privileged app on Android 16, a second dex file caused `ClassNotFoundException` at

@@ -4,7 +4,6 @@
 //! Session NDJSON debug probe (debug mode). Written under CALLS_DATA_DIR.
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
@@ -41,7 +40,7 @@ pub fn agent_dbg(location: &str, message: &str, hypothesis_id: &str, data: Value
         "data": data,
     });
     let paths = [
-        PathBuf::from(crate::config::env_or("CALLS_DATA_DIR", "data/calls")).join("debug-probe.ndjson"),
+        crate::config::data_dir().join("debug-probe.ndjson"),
         std::env::temp_dir().join("bageo-call-debug-probe.ndjson"),
     ];
     for p in &paths {

@@ -12,7 +12,11 @@
 
 建置 App、它的權限與通訊協定，寫在 [`android/README.md`](../../android/README.md)（英文）。
 
-這一頁說明的是 **Bageo 1.7**：root 模組 `v1.7.0`（versionCode 26），裡面的 App 是 `1.7.0`（versionCode 34），安裝檔是 `bageo-phone-module-1.7.0.zip`。App 的版本在它的「進階」畫面看得到，控制台則在「系統 → 手機」。
+這一頁說明的是 **Bageo 1.7**：root 模組 `v1.7.0`（versionCode 26），裡面的 App 是 `1.7.0`（versionCode 34）。
+
+安裝檔有兩個：`bageo-phone-module-1.7.0.zip`（配合電腦或 NAS 使用）與 `bageo-phone-standalone-1.7.0.zip`（手機單機版，不需要電腦，把完整 Bageo 與控制台裝在手機裡）。App 的版本在「進階」畫面看得到，控制台則在「系統 → 手機」。
+
+> **想完全不靠電腦？** 直接改刷 `bageo-phone-standalone-1.7.0.zip` 即可。兩份模組套件 id 相同，可直接覆蓋切換；手機單機版預設只允許本機開啟控制台，也可以在 App 的「手機設定」設好密碼後讓同 Wi-Fi 的裝置連入。
 
 ## 手機會做哪些事
 

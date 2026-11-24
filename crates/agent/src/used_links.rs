@@ -122,8 +122,7 @@ pub fn global() -> &'static UsedLinks {
         if cfg!(test) {
             return UsedLinks::in_memory();
         }
-        let default_dir = if Path::new("/data/calls").is_dir() { "/data/calls" } else { "data/calls" };
-        let path = PathBuf::from(crate::config::env_or("CALLS_DATA_DIR", default_dir)).join(USED_LINKS_FILE);
+        let path = crate::config::data_dir().join(USED_LINKS_FILE);
         UsedLinks::open(&path, chrono::Utc::now().timestamp())
     })
 }

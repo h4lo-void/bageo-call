@@ -12,7 +12,11 @@
 
 构建应用、它的权限和通信协议，写在 [`android/README.md`](../../android/README.md)（英文）里。
 
-这一页说明的是 **Bageo 1.7**：root 模块 `v1.7.0`（versionCode 26），里面的应用是 `1.7.0`（versionCode 34），安装包是 `bageo-phone-module-1.7.0.zip`。应用的版本在它的“高级”页面能看到，控制台则在“系统 → 手机”里。
+这一页说明的是 **Bageo 1.7**：root 模块 `v1.7.0`（versionCode 26），里面的应用是 `1.7.0`（versionCode 34）。
+
+安装包有两个：`bageo-phone-module-1.7.0.zip`（配合电脑或 NAS 使用）与 `bageo-phone-standalone-1.7.0.zip`（手机单机版，不需要电脑，把完整 Bageo 与控制台装在手机里）。应用的版本在“高级”页面能看到，控制台则在“系统 → 手机”里。
+
+> **想完全不靠电脑？** 直接改刷 `bageo-phone-standalone-1.7.0.zip` 即可。两份模块包 id 相同，可直接覆盖切换；手机单机版默认只允许本机打开控制台，也可以在应用的“手机设置”设好密码后让同 Wi-Fi 的设备连入。
 
 ## 手机会做哪些事
 

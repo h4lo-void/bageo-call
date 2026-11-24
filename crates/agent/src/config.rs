@@ -356,17 +356,22 @@ pub struct Settings {
 
 impl Settings {
     pub fn from_env() -> Self {
-        let (host, host_auto) = agent_host(
-            env::var("AGENT_HOST").ok().as_deref(),
-            crate::settings_store::in_container(),
-        );
+        let (host, host_auto, port) = if let Some(o) = EMBEDDED_OVERRIDES.get() {
+            ("127.0.0.1".to_string(), true, o.port)
+        } else {
+            let (host, host_auto) = agent_host(
+                env::var("AGENT_HOST").ok().as_deref(),
+                crate::settings_store::in_container(),
+            );
+            (host, host_auto, env_parse("AGENT_PORT", 8787u16))
+        };
         Self {
             // Not set: automatic (the console on this network, see `crate::lan`).
             // `127.0.0.1` = this machine only; `0.0.0.0` opens everything to the
             // LAN (set `CALLS_UI_TOKEN` and `DEVICE_TOKEN` then).
             host,
             host_auto,
-            port: env_parse("AGENT_PORT", 8787u16),
+            port,
             agent_mode: AgentMode::parse(&env_or("AGENT_MODE", "ivr")),
             transfer_prompt: env_or("TRANSFER_PROMPT", "轉接中，請稍候。"),
             ivr_prompt_text: env_first(
@@ -464,7 +469,7 @@ impl Settings {
                 "SYSTEM_PROMPT",
                 "你是 AI 助理，用簡短中文口語回覆，一兩句話即可。",
             ),
-            calls_data_dir: env_or("CALLS_DATA_DIR", &default_data_dir()),
+            calls_data_dir: data_dir().to_string_lossy().into_owned(),
             calls_record: env_bool("CALLS_RECORD", true),
             calls_record_tts: env_bool("CALLS_RECORD_TTS", true),
             calls_retention_days: retention_days_default(env::var("CALLS_RETENTION_DAYS").ok().as_deref()),
@@ -508,7 +513,11 @@ impl Settings {
             summary_model: env_or("SUMMARY_MODEL", ""),
             gemini_api_key: env_or("GEMINI_API_KEY", "").into(),
             device_token: env_or("DEVICE_TOKEN", ""),
-            phone_wifi_port: env_parse("PHONE_WIFI_PORT", env_parse("AGENT_PORT", 8787u16).wrapping_add(1)),
+            phone_wifi_port: if let Some(o) = EMBEDDED_OVERRIDES.get() {
+                o.port.wrapping_add(1)
+            } else {
+                env_parse("PHONE_WIFI_PORT", env_parse("AGENT_PORT", 8787u16).wrapping_add(1))
+            },
         }
     }
 
@@ -539,10 +548,34 @@ impl Settings {
     }
 }
 
-/// Where the bundled sounds live: `ASSETS_DIR`, else `assets/` in the working
-/// directory, next to the program, or one / two levels above it (a source
-/// checkout), else the container path.
+/// Embedded runtime path/port overrides set by the Android standalone edition
+/// before the Tokio runtime and settings store start.
+#[derive(Debug, Clone)]
+pub struct EmbeddedOverrides {
+    pub data_dir: std::path::PathBuf,
+    pub assets_dir: std::path::PathBuf,
+    pub port: u16,
+}
+
+static EMBEDDED_OVERRIDES: std::sync::OnceLock<EmbeddedOverrides> = std::sync::OnceLock::new();
+
+/// Install embedded overrides once at startup (no-op if already set).
+pub fn set_embedded_overrides(overrides: EmbeddedOverrides) {
+    let _ = EMBEDDED_OVERRIDES.set(overrides);
+}
+
+/// True when running inside the embedded Android standalone runtime.
+pub fn is_embedded() -> bool {
+    EMBEDDED_OVERRIDES.get().is_some()
+}
+
+/// Where the bundled sounds live: embedded Android overrides, else `ASSETS_DIR`,
+/// else `assets/` in the working directory, next to the program, or one / two
+/// levels above it (a source checkout), else the container path.
 pub fn assets_dir() -> std::path::PathBuf {
+    if let Some(o) = EMBEDDED_OVERRIDES.get() {
+        return o.assets_dir.clone();
+    }
     if let Ok(dir) = env::var("ASSETS_DIR") {
         if !dir.trim().is_empty() {
             return std::path::PathBuf::from(dir.trim());
@@ -568,10 +601,19 @@ pub fn asset_path(name: &str) -> String {
     assets_dir().join(name).to_string_lossy().into_owned()
 }
 
+/// Where calls, recordings and settings are kept: embedded Android overrides,
+/// else `CALLS_DATA_DIR`, else `/data/calls` in a container, else `data/calls`.
+pub fn data_dir() -> std::path::PathBuf {
+    if let Some(o) = EMBEDDED_OVERRIDES.get() {
+        return o.data_dir.clone();
+    }
+    std::path::PathBuf::from(env_or("CALLS_DATA_DIR", &default_data_dir()))
+}
+
 /// Where calls, recordings and settings are kept unless `CALLS_DATA_DIR` says
 /// otherwise: the container's volume when it is there, else `data/calls` in
 /// the working directory.
-fn default_data_dir() -> String {
+pub(crate) fn default_data_dir() -> String {
     if std::path::Path::new("/data/calls").is_dir() {
         "/data/calls".to_string()
     } else {
