@@ -7,13 +7,17 @@
 //! for its kind ([Family], from the scam database's typology): six short
 //! descriptions of where the AI stands and what it could do there, or the full
 //! stall block when none fits. The AI picks and mixes its own moves and words.
-//! [StallEngine] only watches: when the AI says nearly the same thing twice or
-//! the caller is leaving, it hands out a short hint on where to take the talk
-//! (a direction, never a line), sent in the pause after the AI's turn. Pure
-//! in-memory work: no I/O, no model call, no waiting.
+//! [StallEngine] only watches: when the talk goes round in circles (the AI says
+//! nearly the same thing twice or gives an earlier reply again, the caller says
+//! again what they said before, reply after reply ends in a question) or the
+//! caller is leaving, it hands out a short hint on where to take the talk (a
+//! direction, never a line), sent in the pause after the AI's turn. The checks
+//! compare characters, so they work the same in every language. Pure in-memory
+//! work: no I/O, no model call, no waiting.
 
 use crate::locale::Lang;
 use crate::prompt_book::Text;
+use std::collections::VecDeque;
 
 // The words are in the prompt book (data/prompts/<language>.json); these are their handles.
 crate::prompt_book::prompt_texts! {
@@ -39,6 +43,9 @@ crate::prompt_book::prompt_texts! {
     ZH_IMPERSONATION_LOOP_STUCK_ELSEWHERE = "zh-TW/stall_script_impersonation_loop_stuck_elsewhere";
     ZH_IMPERSONATION_LOOP_CHANGE_TOPIC = "zh-TW/stall_script_impersonation_loop_change_topic";
     ZH_HARASSMENT_LOOP_OTHER_WAY = "zh-TW/stall_script_harassment_loop_other_way";
+    ZH_REPEAT_SAID_BEFORE = "zh-TW/stall_script_repeat_said_before";
+    ZH_REPEAT_CALLER_AGAIN = "zh-TW/stall_script_repeat_caller_again";
+    ZH_REPEAT_QUESTION_RUN = "zh-TW/stall_script_repeat_question_run";
     ZH_RETAIN_KEEP = "zh-TW/stall_script_retain_keep";
     ZH_RETAIN_KEEP_REASON = "zh-TW/stall_script_retain_keep_reason";
     ZH_IMPERSONATION_RETAIN_KEEP = "zh-TW/stall_script_impersonation_retain_keep";
@@ -58,6 +65,9 @@ crate::prompt_book::prompt_texts! {
     EN_IMPERSONATION_LOOP_STUCK_ELSEWHERE = "en/stall_script_impersonation_loop_stuck_elsewhere";
     EN_IMPERSONATION_LOOP_CHANGE_TOPIC = "en/stall_script_impersonation_loop_change_topic";
     EN_HARASSMENT_LOOP_OTHER_WAY = "en/stall_script_harassment_loop_other_way";
+    EN_REPEAT_SAID_BEFORE = "en/stall_script_repeat_said_before";
+    EN_REPEAT_CALLER_AGAIN = "en/stall_script_repeat_caller_again";
+    EN_REPEAT_QUESTION_RUN = "en/stall_script_repeat_question_run";
     EN_RETAIN_KEEP = "en/stall_script_retain_keep";
     EN_RETAIN_KEEP_REASON = "en/stall_script_retain_keep_reason";
     EN_IMPERSONATION_RETAIN_KEEP = "en/stall_script_impersonation_retain_keep";
@@ -242,7 +252,8 @@ pub fn slim_stall_prompt(prompt: &str, typology: &str) -> (String, Option<Lang>)
 pub enum Stage {
     /// The AI finds its own way: no hint.
     Free,
-    /// The AI said nearly the same thing twice: a hint to change course.
+    /// The talk goes round in circles (the AI or the caller says again what
+    /// was said, or every reply ends the same way): a hint to change course.
     Loop,
     /// The caller is leaving: a hint to keep them.
     Retain,
@@ -262,6 +273,24 @@ impl Stage {
 pub const MAX_CUE_CHARS: usize = 80;
 /// Two AI turns this alike (shared character pairs) count as going round in circles.
 pub const LOOP_SIMILARITY: f32 = 0.6;
+/// An AI turn this like an earlier one of the call (not only the last) is that
+/// reply given again: the caller came back to a point and got the old answer
+/// word for word. Unrelated replies of one call stay under 0.5 in every
+/// language tried, the same reply said again is above 0.7.
+pub const REUSE_SIMILARITY: f32 = 0.7;
+/// A caller turn this like an earlier one of theirs is the same thing said again.
+pub const CALLER_REPEAT_SIMILARITY: f32 = 0.7;
+/// Turns kept on each side for those two checks.
+const MEMORY_TURNS: usize = 60;
+/// A line lighter than this ([content_weight]) is too short to tell from another
+/// (「好好好」, "yes, I'm here"): it is neither kept nor looked up.
+const REPEAT_MIN_WEIGHT: usize = 24;
+/// This many AI turns in a row ending in a question bring the hint to end the
+/// next one another way.
+const QUESTION_RUN: u32 = 5;
+/// AI turns between two hints of the kinds above (the hint for two turns alike
+/// in a row and the keep hint are never held back).
+const HINT_GAP_TURNS: u32 = 3;
 
 /// Where to take the talk next, never a line to say: id, Chinese, English.
 type Hint = (&'static str, &'static Text, &'static Text);
@@ -282,6 +311,12 @@ static IMPERSONATION_LOOP: [Hint; 2] = [
 static HARASSMENT_LOOP: [Hint; 1] = [
     ("other_way", &ZH_HARASSMENT_LOOP_OTHER_WAY, &EN_HARASSMENT_LOOP_OTHER_WAY),
 ];
+/// The AI gave a reply of some turns ago again.
+static SAID_BEFORE: Hint = ("said_before", &ZH_REPEAT_SAID_BEFORE, &EN_REPEAT_SAID_BEFORE);
+/// The caller is saying again what they said earlier in the call.
+static CALLER_AGAIN: Hint = ("caller_again", &ZH_REPEAT_CALLER_AGAIN, &EN_REPEAT_CALLER_AGAIN);
+/// Reply after reply ends in a question.
+static QUESTION_RUN_HINT: Hint = ("question_run", &ZH_REPEAT_QUESTION_RUN, &EN_REPEAT_QUESTION_RUN);
 
 /// The caller is leaving. 「欸等一下，我還有一個問題」 is the owner's own example
 /// of the feel, not a line to recite.
@@ -341,20 +376,58 @@ pub fn similarity(a: &str, b: &str) -> f32 {
     (2 * shared) as f32 / (pa.len() + pb.len()) as f32
 }
 
+/// A character of a script written without spaces between words, where one
+/// character says about as much as a short word (Chinese, kana, hangul).
+fn is_wide(c: char) -> bool {
+    matches!(c as u32, 0x3040..=0x30FF | 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xAC00..=0xD7AF)
+}
+
+/// How much a line says: its letters and digits, a wide character counting as three.
+fn content_weight(s: &str) -> usize {
+    content_chars(s).iter().map(|c| if is_wide(*c) { 3 } else { 1 }).sum()
+}
+
+/// `said` is nearly one of the `earlier` lines (at least `threshold` alike).
+fn said_before(earlier: &VecDeque<String>, said: &str, threshold: f32) -> bool {
+    content_weight(said) >= REPEAT_MIN_WEIGHT && earlier.iter().any(|e| similarity(e, said) >= threshold)
+}
+
+/// Keeps `said` for later turns to be compared with (the newest [MEMORY_TURNS]).
+fn remember(lines: &mut VecDeque<String>, said: &str) {
+    if content_weight(said) < REPEAT_MIN_WEIGHT {
+        return;
+    }
+    if lines.len() >= MEMORY_TURNS {
+        lines.pop_front();
+    }
+    lines.push_back(said.to_string());
+}
+
+/// The line ends in a question mark of any script (closing quotes, brackets and
+/// further marks after it do not matter). Languages that mark no question in
+/// writing are not seen.
+fn ends_with_question(s: &str) -> bool {
+    s.trim_end()
+        .chars()
+        .rev()
+        .take_while(|c| !c.is_alphanumeric() && !c.is_whitespace())
+        .any(|c| matches!(c, '?' | '？' | '؟' | '⁇' | '⁈' | '⁉'))
+}
+
 /// A hint for the AI's next reply.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cue {
     pub stage: Stage,
     pub tactic: &'static str,
     pub turn: u32,
-    /// The AI went round in circles.
+    /// The talk went round in circles ([Stage::Loop]).
     pub looped: bool,
     pub text: String,
 }
 
 /// One per stalled call. The AI picks its own moves from the prompt; this only
-/// counts its turns and, when it goes round in circles or the caller is
-/// leaving, hands out a short hint on where to go next.
+/// counts its turns, keeps what was said and, when the talk goes round in
+/// circles or the caller is leaving, hands out a short hint on where to go next.
 #[derive(Debug, Clone)]
 pub struct StallEngine {
     pub family: Family,
@@ -363,6 +436,16 @@ pub struct StallEngine {
     ai_turns: u32,
     stage: Stage,
     last_ai: String,
+    /// The AI's turns so far while stalling (the newest [MEMORY_TURNS]).
+    ai_said: VecDeque<String>,
+    /// The caller's turns so far while stalling (the newest [MEMORY_TURNS]).
+    caller_said: VecDeque<String>,
+    /// The caller's last turn said again what an earlier one of theirs said.
+    caller_again: bool,
+    /// AI turns in a row that ended in a question.
+    question_run: u32,
+    /// AI turns since the last hint went out.
+    turns_since_hint: u32,
     retain_pending: bool,
     next_loop: usize,
     next_retain: usize,
@@ -377,6 +460,11 @@ impl StallEngine {
             ai_turns: 0,
             stage: Stage::Free,
             last_ai: String::new(),
+            ai_said: VecDeque::new(),
+            caller_said: VecDeque::new(),
+            caller_again: false,
+            question_run: 0,
+            turns_since_hint: HINT_GAP_TURNS,
             retain_pending: false,
             next_loop: 0,
             next_retain: 0,
@@ -433,34 +521,68 @@ impl StallEngine {
     pub fn take_retain(&mut self) -> Cue {
         self.retain_pending = false;
         self.stage = Stage::Retain;
+        self.turns_since_hint = 0;
         let list = self.retain_hints();
         let h = &list[self.next_retain % list.len()];
         self.next_retain += 1;
         Cue { stage: Stage::Retain, tactic: h.0, turn: self.ai_turns, looped: false, text: cue_text(h, self.lang) }
     }
 
+    /// A caller turn ended with `said`: it is kept, and noted when it says again
+    /// what an earlier turn of theirs said. The hint for that goes out after the
+    /// AI's turn ([Self::on_ai_turn]), like every other.
+    pub fn on_caller_turn(&mut self, said: &str) {
+        let said = said.trim();
+        if said.is_empty() {
+            return;
+        }
+        self.caller_again = said_before(&self.caller_said, said, CALLER_REPEAT_SIMILARITY);
+        remember(&mut self.caller_said, said);
+    }
+
     /// An AI turn ended with `said`: the hint to send in the pause now, if any —
-    /// only when a keep hint is owed or the AI is going round in circles.
+    /// only when a keep hint is owed or the talk is going round in circles: the
+    /// AI said nearly its last turn again, gave an earlier reply again, the
+    /// caller is repeating themselves, or reply after reply ends in a question.
     pub fn on_ai_turn(&mut self, said: &str) -> Option<Cue> {
         self.ai_turns += 1;
+        self.turns_since_hint = self.turns_since_hint.saturating_add(1);
         let said = said.trim();
         let looped = !said.is_empty() && similarity(&self.last_ai, said) >= LOOP_SIMILARITY;
+        let reused = !looped && said_before(&self.ai_said, said, REUSE_SIMILARITY);
+        // Noted for this reply only: one that is held back is not owed later.
+        let caller_again = std::mem::take(&mut self.caller_again);
         if !said.is_empty() {
+            self.question_run = if ends_with_question(said) { self.question_run + 1 } else { 0 };
             self.last_ai = said.to_string();
+            remember(&mut self.ai_said, said);
         }
         if self.retain_pending {
             let mut cue = self.take_retain();
             cue.looped = looped;
             return Some(cue);
         }
-        if !looped {
+        let h: &Hint = if looped {
+            let list = self.loop_hints();
+            self.next_loop += 1;
+            &list[(self.next_loop - 1) % list.len()]
+        } else if self.turns_since_hint < HINT_GAP_TURNS {
             self.stage = Stage::Free;
             return None;
-        }
+        } else if caller_again {
+            // Named first: it is also why an old reply came back.
+            &CALLER_AGAIN
+        } else if reused {
+            &SAID_BEFORE
+        } else if self.question_run >= QUESTION_RUN {
+            self.question_run = 0;
+            &QUESTION_RUN_HINT
+        } else {
+            self.stage = Stage::Free;
+            return None;
+        };
         self.stage = Stage::Loop;
-        let list = self.loop_hints();
-        let h = &list[self.next_loop % list.len()];
-        self.next_loop += 1;
+        self.turns_since_hint = 0;
         Some(Cue { stage: Stage::Loop, tactic: h.0, turn: self.ai_turns, looped: true, text: cue_text(h, self.lang) })
     }
 }
@@ -684,6 +806,7 @@ mod tests {
             .chain(&COLLECTION_LOOP)
             .chain(&IMPERSONATION_LOOP)
             .chain(&HARASSMENT_LOOP)
+            .chain([&SAID_BEFORE, &CALLER_AGAIN, &QUESTION_RUN_HINT])
             .chain(&RETAIN)
             .chain(&IMPERSONATION_RETAIN)
             .chain(&COLLECTION_RETAIN)
@@ -783,6 +906,343 @@ mod tests {
         assert!(looped(Lang::ZhCn).contains("系统小抄"));
         assert!(looped(Lang::Ja).starts_with(EN_OTHER_MARK.get()));
         assert!(looped(Lang::En).starts_with(EN_MARK.get()));
+    }
+
+    /// In each language: three replies that have nothing to do with each other,
+    /// the first one given again in nearly the same words, then two things a
+    /// caller says and the first of those said again as speech-to-text hears it.
+    const REPEATS: [(&str, [&str; 7]); 16] = [
+        (
+            "zh-TW",
+            [
+                "天哪，怎麼會這樣？我人在外地耶，怎麼會有人報案？",
+                "我老花眼鏡找不到，你念慢一點，我拿筆記下來。",
+                "附近是有一家超商，可是我膝蓋不好，走路很慢。",
+                "天哪，怎麼會這樣？我人在外地耶，怎麼會有人報案啊？",
+                "這支門號被拿去發詐騙簡訊，已經有人報案了。",
+                "你家附近有沒有超商或是提款機？",
+                "這支門號被拿去發詐騙簡訊已經有人報案了",
+            ],
+        ),
+        (
+            "zh-CN",
+            [
+                "天哪，怎么会这样？我人在外地啊，怎么会有人报案？",
+                "我老花镜找不到了，你念慢一点，我拿笔记下来。",
+                "附近是有一家便利店，可是我膝盖不好，走路很慢。",
+                "天哪，怎么会这样？我人在外地啊，怎么会有人报案呢？",
+                "这个号码被拿去发诈骗短信，已经有人报案了。",
+                "你家附近有没有便利店或者取款机？",
+                "这个号码被拿去发诈骗短信已经有人报案了",
+            ],
+        ),
+        (
+            "en",
+            [
+                "Oh no, really? Which number is it? I only use this one phone.",
+                "Hold on, let me find a pen, my glasses are somewhere around here.",
+                "There's a corner store nearby, but my knee is bad, I walk slowly.",
+                "Oh no, really? Which number is it? I only use this one phone, you know.",
+                "That number was used to send scam texts, and there is a police report on it.",
+                "Is there a store or an ATM near where you are?",
+                "That number was used to send scam texts and there's a police report on it",
+            ],
+        ),
+        (
+            "ja",
+            [
+                "えっ、本当ですか？どの番号ですか？この携帯しか使っていないんですが。",
+                "ちょっと待ってください、ペンを探します。眼鏡が見つからなくて。",
+                "近くにコンビニはありますが、膝が悪くて歩くのが遅いんです。",
+                "えっ、本当ですか？どの番号ですか？この携帯しか使ってないんですけど。",
+                "その番号が詐欺メッセージの送信に使われて、被害届が出ています。",
+                "お近くにコンビニかATMはありますか？",
+                "その番号が詐欺メッセージの送信に使われて被害届が出ています",
+            ],
+        ),
+        (
+            "ko",
+            [
+                "어머, 정말요? 어느 번호예요? 저는 이 전화만 쓰는데요.",
+                "잠깐만요, 펜 좀 찾을게요. 안경이 어디 있는지 모르겠네요.",
+                "근처에 편의점은 있는데 무릎이 안 좋아서 천천히 걸어요.",
+                "어머 정말요? 어느 번호예요? 저는 이 전화만 쓰는데요",
+                "그 번호가 사기 문자를 보내는 데 쓰여서 신고가 접수됐습니다.",
+                "근처에 편의점이나 현금인출기가 있습니까?",
+                "그 번호가 사기 문자를 보내는 데 쓰여서 신고가 접수됐습니다",
+            ],
+        ),
+        (
+            "es",
+            [
+                "¿De verdad? ¿Qué número es? Yo solo uso este teléfono.",
+                "Espere, voy a buscar un bolígrafo, no encuentro mis gafas.",
+                "Hay una tienda cerca, pero tengo mal la rodilla y camino despacio.",
+                "¿De verdad? ¿Y qué número es? Yo solo uso este teléfono.",
+                "Ese número se usó para enviar mensajes de estafa y ya hay una denuncia.",
+                "¿Hay una tienda o un cajero cerca de donde está?",
+                "Ese número se usó para enviar mensajes de estafa y ya hay una denuncia",
+            ],
+        ),
+        (
+            "fr",
+            [
+                "Ah bon, vraiment ? C'est quel numéro ? Je n'utilise que ce téléphone.",
+                "Attendez, je cherche un stylo, mes lunettes sont quelque part par ici.",
+                "Il y a une épicerie pas loin, mais j'ai mal au genou, je marche lentement.",
+                "Ah bon, vraiment ? C'est quel numéro ? Moi je n'utilise que ce téléphone.",
+                "Ce numéro a servi à envoyer des messages frauduleux et une plainte a été déposée.",
+                "Y a-t-il un magasin ou un distributeur près de chez vous ?",
+                "Ce numéro a servi à envoyer des messages frauduleux, une plainte a été déposée",
+            ],
+        ),
+        (
+            "de",
+            [
+                "Ach wirklich? Welche Nummer denn? Ich benutze nur dieses eine Telefon.",
+                "Moment, ich suche einen Stift, meine Brille ist irgendwo hier.",
+                "Es gibt einen Laden in der Nähe, aber mein Knie ist schlecht, ich gehe langsam.",
+                "Ach wirklich? Welche Nummer denn? Ich benutze doch nur dieses eine Telefon.",
+                "Mit dieser Nummer wurden Betrugsnachrichten verschickt, es liegt eine Anzeige vor.",
+                "Gibt es einen Laden oder einen Geldautomaten in Ihrer Nähe?",
+                "Mit dieser Nummer wurden Betrugsnachrichten verschickt und es liegt eine Anzeige vor",
+            ],
+        ),
+        (
+            "pt",
+            [
+                "É mesmo? Qual é o número? Eu só uso este telefone.",
+                "Espere, vou procurar uma caneta, não acho meus óculos.",
+                "Tem uma loja aqui perto, mas meu joelho está ruim, ando devagar.",
+                "É mesmo? E qual é o número? Eu só uso este telefone.",
+                "Esse número foi usado para enviar mensagens de golpe e já existe uma queixa.",
+                "Tem alguma loja ou caixa eletrônico perto de você?",
+                "Esse número foi usado para enviar mensagens de golpe, já existe uma queixa",
+            ],
+        ),
+        (
+            "it",
+            [
+                "Davvero? Che numero è? Io uso soltanto questo telefono.",
+                "Aspetti, cerco una penna, non trovo i miei occhiali.",
+                "C'è un negozio qui vicino, ma ho male al ginocchio e cammino piano.",
+                "Davvero? E che numero è? Io uso soltanto questo telefono.",
+                "Quel numero è stato usato per inviare messaggi truffa e c'è già una denuncia.",
+                "C'è un negozio o un bancomat vicino a lei?",
+                "Quel numero è stato usato per inviare messaggi truffa, c'è già una denuncia",
+            ],
+        ),
+        (
+            "ru",
+            [
+                "Правда? А какой это номер? Я пользуюсь только этим телефоном.",
+                "Подождите, я найду ручку, очки куда-то пропали.",
+                "Рядом есть магазин, но у меня болит колено, я хожу медленно.",
+                "Правда? А какой это номер? Я ведь пользуюсь только этим телефоном.",
+                "С этого номера рассылали мошеннические сообщения, уже есть заявление в полицию.",
+                "Рядом с вами есть магазин или банкомат?",
+                "С этого номера рассылали мошеннические сообщения и уже есть заявление в полицию",
+            ],
+        ),
+        (
+            "id",
+            [
+                "Masa sih? Nomor yang mana? Saya cuma pakai telepon yang ini.",
+                "Tunggu sebentar, saya cari pulpen dulu, kacamata saya entah di mana.",
+                "Ada warung dekat sini, tapi lutut saya sakit, jalannya pelan.",
+                "Masa sih? Nomor yang mana ya? Saya cuma pakai telepon yang ini.",
+                "Nomor itu dipakai untuk mengirim pesan penipuan dan sudah ada laporan polisi.",
+                "Apakah ada toko atau ATM di dekat Anda?",
+                "Nomor itu dipakai untuk mengirim pesan penipuan, sudah ada laporan polisi",
+            ],
+        ),
+        (
+            "vi",
+            [
+                "Thật vậy sao? Số nào vậy? Tôi chỉ dùng mỗi cái điện thoại này thôi.",
+                "Chờ chút, để tôi tìm cây bút, kính của tôi không biết để đâu rồi.",
+                "Gần đây có một cửa hàng, nhưng đầu gối tôi đau nên đi chậm lắm.",
+                "Thật vậy sao? Số nào vậy ạ? Tôi chỉ dùng mỗi cái điện thoại này thôi.",
+                "Số đó đã bị dùng để gửi tin nhắn lừa đảo và đã có người trình báo công an.",
+                "Gần chỗ anh có cửa hàng hay cây ATM nào không?",
+                "Số đó đã bị dùng để gửi tin nhắn lừa đảo, đã có người trình báo công an",
+            ],
+        ),
+        (
+            "th",
+            [
+                "จริงเหรอครับ เบอร์ไหนครับ ผมใช้แค่เครื่องนี้เครื่องเดียว",
+                "รอสักครู่นะครับ ผมหาปากกาก่อน แว่นไม่รู้อยู่ไหน",
+                "แถวนี้มีร้านสะดวกซื้อครับ แต่เข่าผมไม่ดี เดินช้า",
+                "จริงเหรอครับ เบอร์ไหนครับ ผมใช้แค่เครื่องนี้เครื่องเดียวเอง",
+                "เบอร์นั้นถูกใช้ส่งข้อความหลอกลวง และมีคนแจ้งความแล้ว",
+                "ใกล้ ๆ คุณมีร้านค้าหรือตู้เอทีเอ็มไหม",
+                "เบอร์นั้นถูกใช้ส่งข้อความหลอกลวงและมีคนแจ้งความแล้วครับ",
+            ],
+        ),
+        (
+            "ar",
+            [
+                "حقاً؟ أي رقم هذا؟ أنا أستخدم هذا الهاتف فقط.",
+                "انتظر لحظة، سأبحث عن قلم، لا أجد نظارتي.",
+                "يوجد متجر قريب، لكن ركبتي تؤلمني وأمشي ببطء.",
+                "حقاً؟ وأي رقم هذا؟ أنا أستخدم هذا الهاتف فقط.",
+                "هذا الرقم استُخدم لإرسال رسائل احتيال وهناك بلاغ لدى الشرطة.",
+                "هل يوجد متجر أو صراف آلي بالقرب منك؟",
+                "هذا الرقم استخدم لإرسال رسائل احتيال، وهناك بلاغ لدى الشرطة",
+            ],
+        ),
+        (
+            "hi",
+            [
+                "सच में? कौन सा नंबर है? मैं तो बस यही फ़ोन इस्तेमाल करता हूँ।",
+                "रुकिए, मैं पेन ढूँढता हूँ, मेरा चश्मा नहीं मिल रहा।",
+                "पास में एक दुकान है, पर मेरे घुटने में दर्द है, मैं धीरे चलता हूँ।",
+                "सच में? और कौन सा नंबर है? मैं तो बस यही फ़ोन इस्तेमाल करता हूँ।",
+                "उस नंबर से धोखाधड़ी के संदेश भेजे गए हैं और पुलिस में शिकायत दर्ज है।",
+                "क्या आपके पास कोई दुकान या एटीएम है?",
+                "उस नंबर से धोखाधड़ी के संदेश भेजे गए हैं, पुलिस में शिकायत दर्ज है",
+            ],
+        ),
+    ];
+
+    #[test]
+    fn an_earlier_reply_given_again_brings_a_hint_in_every_language() {
+        for (lang, [a, b, c, a_again, ..]) in REPEATS {
+            let mut e = StallEngine::new("fake_telecom", Lang::En);
+            for said in [a, b, c] {
+                assert!(e.on_ai_turn(said).is_none(), "{lang}: {said}");
+            }
+            let cue = e.on_ai_turn(a_again).unwrap_or_else(|| panic!("{lang}: {a_again}"));
+            assert_eq!((cue.stage, cue.tactic, cue.looped), (Stage::Loop, "said_before", true), "{lang}");
+            assert_eq!(e.stage(), Stage::Loop);
+        }
+    }
+
+    #[test]
+    fn a_caller_saying_it_again_brings_a_hint_in_every_language() {
+        for (lang, [a, b, c, _, x, y, x_again]) in REPEATS {
+            let mut e = StallEngine::new("fake_telecom", Lang::En);
+            e.on_caller_turn(x);
+            assert!(e.on_ai_turn(a).is_none(), "{lang}");
+            e.on_caller_turn(y);
+            assert!(e.on_ai_turn(b).is_none(), "{lang}: {y}");
+            e.on_caller_turn(x_again);
+            let cue = e.on_ai_turn(c).unwrap_or_else(|| panic!("{lang}: {x_again}"));
+            assert_eq!((cue.stage, cue.tactic), (Stage::Loop, "caller_again"), "{lang}");
+        }
+        // The hint is in the language of the call's script, marked like the others.
+        let hint = |lang: Lang| {
+            let mut e = StallEngine::new("fake_telecom", lang);
+            e.on_caller_turn(REPEATS[0].1[4]);
+            e.on_caller_turn(REPEATS[0].1[6]);
+            e.on_ai_turn(REPEATS[0].1[0]).unwrap().text
+        };
+        assert!(hint(Lang::ZhTw).starts_with(ZH_MARK.get()) && hint(Lang::ZhTw).contains("講過"), "{}", hint(Lang::ZhTw));
+        assert!(hint(Lang::ZhCn).contains("讲过"), "{}", hint(Lang::ZhCn));
+        assert!(hint(Lang::En).starts_with(EN_MARK.get()));
+        assert!(hint(Lang::Ja).starts_with(EN_OTHER_MARK.get()));
+    }
+
+    /// The call this was written for: the caller's whole pitch comes round a
+    /// second time and the AI answers every point as it did the first time.
+    #[test]
+    fn a_pitch_that_comes_round_again_is_noticed_but_not_at_every_turn() {
+        let pitch = [
+            ("這支門號被拿去發詐騙簡訊，已經有人報案了。", "天哪，怎麼會這樣？我人在外地耶，怎麼會有人報案？"),
+            ("我們要把你的錢先轉到監管帳戶保護起來。", "監管帳戶喔？聽起來好複雜，我不太會操作耶。"),
+            ("你如果不配合，明天就會收到法院的傳票。", "傳票？拜託不要，我一定配合，你一步一步教我。"),
+            ("你家附近有沒有超商或是提款機？", "附近是有一家超商，可是我膝蓋不好，走路很慢。"),
+            ("這是偵查不公開，你不可以跟家人講。", "好，我誰都不講，連我太太都不會說。"),
+            ("你先拿紙筆，我念一組案號給你。", "我老花眼鏡找不到，你念慢一點，我拿筆記下來。"),
+        ];
+        let mut e = StallEngine::new("fake_telecom", Lang::ZhTw);
+        for (caller, ai) in pitch {
+            e.on_caller_turn(caller);
+            assert!(e.on_ai_turn(ai).is_none(), "first time round: {ai}");
+        }
+        let second: Vec<Option<&str>> = pitch
+            .iter()
+            .map(|(caller, ai)| {
+                e.on_caller_turn(caller);
+                e.on_ai_turn(ai).map(|c| c.tactic)
+            })
+            .collect();
+        assert_eq!(second, [Some("caller_again"), None, None, Some("caller_again"), None, None]);
+        // The caller moves on but the AI falls back on an old reply: that alone is named.
+        e.on_caller_turn("那你現在把身分證字號念給我聽。");
+        e.on_ai_turn("等一下喔，我這邊收訊不太好，你剛剛說什麼？");
+        e.on_caller_turn("我說身分證字號，你聽得到嗎？聽到就回答。");
+        assert_eq!(e.on_ai_turn(pitch[1].1).map(|c| c.tactic), Some("said_before"));
+    }
+
+    #[test]
+    fn short_lines_said_again_are_nothing_to_notice() {
+        let replies = [
+            "天哪，怎麼會這樣？我人在外地耶，怎麼會有人報案？",
+            "監管帳戶喔？聽起來好複雜，我不太會操作耶。",
+            "傳票？拜託不要，我一定配合，你一步一步教我。",
+            "附近是有一家超商，可是我膝蓋不好，走路很慢。",
+            "好，我誰都不講，連我太太都不會說。",
+            "我老花眼鏡找不到，你念慢一點，我拿筆記下來。",
+        ];
+        let callers = ["喂？你還在嗎？", "Hello? Are you there?", "喂？你還在嗎？", "Hello? Are you there?", "여보세요?", "喂？你還在嗎？"];
+        let mut e = StallEngine::new("fake_telecom", Lang::ZhTw);
+        for (caller, reply) in callers.iter().zip(replies) {
+            e.on_caller_turn(caller);
+            assert!(e.on_ai_turn(reply).is_none(), "{caller}");
+        }
+        let mut lines = VecDeque::new();
+        for n in 0..MEMORY_TURNS + 5 {
+            remember(&mut lines, &format!("這是第{n}句夠長的話，留著給後面的話比對"));
+        }
+        assert_eq!(lines.len(), MEMORY_TURNS);
+        assert!(lines.front().unwrap().contains("第5句"), "the oldest go first");
+        remember(&mut lines, "好好好");
+        assert_eq!(lines.len(), MEMORY_TURNS, "too short to keep");
+    }
+
+    #[test]
+    fn reply_after_reply_ending_in_a_question_brings_a_hint_to_end_another_way() {
+        for q in ["那要怎麼辦？", "So what do I do?", "¿Y ahora qué hago?", "ماذا أفعل الآن؟", "それで、どうすれば？」", "Really?!", "Et maintenant ? "] {
+            assert!(ends_with_question(q), "{q}");
+        }
+        for s in ["好，我知道了。", "Okay, I see.", "What? No, wait", "…嗯", ""] {
+            assert!(!ends_with_question(s), "{s}");
+        }
+        let asks = [
+            "那保費一個月大概多少錢啊？",
+            "要繳幾年呢？繳完之後錢拿得回來嗎？",
+            "住院的話是一天給多少？手術也有嗎？",
+            "你們自己也有買這個嗎？",
+            "那等待期要多久？哪些情況不賠？",
+        ];
+        let mut e = StallEngine::new("insurance_sales", Lang::ZhTw);
+        for said in &asks[..4] {
+            assert!(e.on_ai_turn(said).is_none(), "{said}");
+        }
+        let cue = e.on_ai_turn(asks[4]).unwrap();
+        assert_eq!((cue.stage, cue.tactic), (Stage::Loop, "question_run"));
+        assert!(cue.text.contains("收尾"), "{}", cue.text);
+        // A reply that does not ask breaks the run; the count starts over after a hint.
+        let en = [
+            "So how much would that be a month?",
+            "And how many years do I pay for?",
+            "Does it cover a hospital stay too?",
+            "Do you have this plan yourself?",
+            "Hold on, my tea is boiling over.",
+            "What happens if I miss a payment?",
+            "Is there a waiting period at all?",
+            "Can my wife be on it as well?",
+            "Could you send me that in writing?",
+        ];
+        let mut e = StallEngine::new("insurance_sales", Lang::En);
+        for said in en {
+            assert!(e.on_ai_turn(said).is_none(), "{said}");
+        }
+        let cue = e.on_ai_turn("And who do I call if something goes wrong?").unwrap();
+        assert_eq!(cue.tactic, "question_run");
+        assert!(e.on_ai_turn("Would my son be covered as well, then?").is_none());
     }
 
     /// Words that hand the AI a fixed line to recite.
