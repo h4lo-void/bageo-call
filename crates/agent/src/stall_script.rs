@@ -9,7 +9,7 @@
 //! stall block when none fits. The AI picks and mixes its own moves and words.
 //! [StallEngine] only watches: when the talk goes round in circles (the AI says
 //! nearly the same thing twice or gives an earlier reply again, the caller says
-//! again what they said before, reply after reply ends in a question) or the
+//! again what they said before, most replies end in a question) or the
 //! caller is leaving, it hands out a short hint on where to take the talk (a
 //! direction, never a line), sent in the pause after the AI's turn. The checks
 //! compare characters, so they work the same in every language. Pure in-memory
@@ -45,6 +45,7 @@ crate::prompt_book::prompt_texts! {
     ZH_HARASSMENT_LOOP_OTHER_WAY = "zh-TW/stall_script_harassment_loop_other_way";
     ZH_REPEAT_SAID_BEFORE = "zh-TW/stall_script_repeat_said_before";
     ZH_REPEAT_CALLER_AGAIN = "zh-TW/stall_script_repeat_caller_again";
+    ZH_REPEAT_CALLER_STILL = "zh-TW/stall_script_repeat_caller_still";
     ZH_REPEAT_QUESTION_RUN = "zh-TW/stall_script_repeat_question_run";
     ZH_RETAIN_KEEP = "zh-TW/stall_script_retain_keep";
     ZH_RETAIN_KEEP_REASON = "zh-TW/stall_script_retain_keep_reason";
@@ -67,6 +68,7 @@ crate::prompt_book::prompt_texts! {
     EN_HARASSMENT_LOOP_OTHER_WAY = "en/stall_script_harassment_loop_other_way";
     EN_REPEAT_SAID_BEFORE = "en/stall_script_repeat_said_before";
     EN_REPEAT_CALLER_AGAIN = "en/stall_script_repeat_caller_again";
+    EN_REPEAT_CALLER_STILL = "en/stall_script_repeat_caller_still";
     EN_REPEAT_QUESTION_RUN = "en/stall_script_repeat_question_run";
     EN_RETAIN_KEEP = "en/stall_script_retain_keep";
     EN_RETAIN_KEEP_REASON = "en/stall_script_retain_keep_reason";
@@ -285,12 +287,23 @@ const MEMORY_TURNS: usize = 60;
 /// A line lighter than this ([content_weight]) is too short to tell from another
 /// (「好好好」, "yes, I'm here"): it is neither kept nor looked up.
 const REPEAT_MIN_WEIGHT: usize = 24;
-/// This many AI turns in a row ending in a question bring the hint to end the
-/// next one another way.
-const QUESTION_RUN: u32 = 5;
-/// AI turns between two hints of the kinds above (the hint for two turns alike
-/// in a row and the keep hint are never held back).
+/// The AI's last turns looked at for how they end…
+const QUESTION_WINDOW: usize = 6;
+/// …and how many of them ending in a question (the newest one too) bring the
+/// hint to end most replies another way. What asks is judged as the closing
+/// machine does ([crate::end_call::ends_on_question]): a question mark, or a
+/// last sentence that asks in its language (Thai, Japanese and others write
+/// questions without a mark).
+const QUESTION_MANY: usize = 4;
+/// AI turns after any hint before the one about questions may go out. The
+/// others are never held back: the AI follows a hint for one reply and then
+/// falls back on its old answers, so while the caller keeps repeating
+/// themselves every reply gets one.
 const HINT_GAP_TURNS: u32 = 3;
+/// AI turns between two hints that ask to say the caller is repeating
+/// themselves; a repeat sooner than that gets the hint for new words without
+/// mentioning it (naming it every time would be a loop of its own).
+const CALLER_NAME_GAP: u32 = 5;
 
 /// Where to take the talk next, never a line to say: id, Chinese, English.
 type Hint = (&'static str, &'static Text, &'static Text);
@@ -315,7 +328,9 @@ static HARASSMENT_LOOP: [Hint; 1] = [
 static SAID_BEFORE: Hint = ("said_before", &ZH_REPEAT_SAID_BEFORE, &EN_REPEAT_SAID_BEFORE);
 /// The caller is saying again what they said earlier in the call.
 static CALLER_AGAIN: Hint = ("caller_again", &ZH_REPEAT_CALLER_AGAIN, &EN_REPEAT_CALLER_AGAIN);
-/// Reply after reply ends in a question.
+/// The caller goes on repeating themselves: new words, without saying so again.
+static CALLER_STILL: Hint = ("caller_still", &ZH_REPEAT_CALLER_STILL, &EN_REPEAT_CALLER_STILL);
+/// Most of the last replies end in a question.
 static QUESTION_RUN_HINT: Hint = ("question_run", &ZH_REPEAT_QUESTION_RUN, &EN_REPEAT_QUESTION_RUN);
 
 /// The caller is leaving. 「欸等一下，我還有一個問題」 is the owner's own example
@@ -403,17 +418,6 @@ fn remember(lines: &mut VecDeque<String>, said: &str) {
     lines.push_back(said.to_string());
 }
 
-/// The line ends in a question mark of any script (closing quotes, brackets and
-/// further marks after it do not matter). Languages that mark no question in
-/// writing are not seen.
-fn ends_with_question(s: &str) -> bool {
-    s.trim_end()
-        .chars()
-        .rev()
-        .take_while(|c| !c.is_alphanumeric() && !c.is_whitespace())
-        .any(|c| matches!(c, '?' | '？' | '؟' | '⁇' | '⁈' | '⁉'))
-}
-
 /// A hint for the AI's next reply.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cue {
@@ -442,8 +446,10 @@ pub struct StallEngine {
     caller_said: VecDeque<String>,
     /// The caller's last turn said again what an earlier one of theirs said.
     caller_again: bool,
-    /// AI turns in a row that ended in a question.
-    question_run: u32,
+    /// AI turns since the hint that asks to say so last went out.
+    turns_since_named: u32,
+    /// Whether each of the AI's last turns ended in a question (the newest [QUESTION_WINDOW]).
+    asked: VecDeque<bool>,
     /// AI turns since the last hint went out.
     turns_since_hint: u32,
     retain_pending: bool,
@@ -463,7 +469,8 @@ impl StallEngine {
             ai_said: VecDeque::new(),
             caller_said: VecDeque::new(),
             caller_again: false,
-            question_run: 0,
+            turns_since_named: CALLER_NAME_GAP,
+            asked: VecDeque::new(),
             turns_since_hint: HINT_GAP_TURNS,
             retain_pending: false,
             next_loop: 0,
@@ -533,7 +540,9 @@ impl StallEngine {
     /// AI's turn ([Self::on_ai_turn]), like every other.
     pub fn on_caller_turn(&mut self, said: &str) {
         let said = said.trim();
-        if said.is_empty() {
+        // Too short to tell from another line: no repeat.
+        if content_weight(said) < REPEAT_MIN_WEIGHT {
+            self.caller_again = false;
             return;
         }
         self.caller_again = said_before(&self.caller_said, said, CALLER_REPEAT_SIMILARITY);
@@ -543,17 +552,24 @@ impl StallEngine {
     /// An AI turn ended with `said`: the hint to send in the pause now, if any —
     /// only when a keep hint is owed or the talk is going round in circles: the
     /// AI said nearly its last turn again, gave an earlier reply again, the
-    /// caller is repeating themselves, or reply after reply ends in a question.
+    /// caller is repeating themselves, or most of its last replies end in a question.
     pub fn on_ai_turn(&mut self, said: &str) -> Option<Cue> {
         self.ai_turns += 1;
         self.turns_since_hint = self.turns_since_hint.saturating_add(1);
+        self.turns_since_named = self.turns_since_named.saturating_add(1);
         let said = said.trim();
         let looped = !said.is_empty() && similarity(&self.last_ai, said) >= LOOP_SIMILARITY;
         let reused = !looped && said_before(&self.ai_said, said, REUSE_SIMILARITY);
         // Noted for this reply only: one that is held back is not owed later.
         let caller_again = std::mem::take(&mut self.caller_again);
+        let mut asks_a_lot = false;
         if !said.is_empty() {
-            self.question_run = if ends_with_question(said) { self.question_run + 1 } else { 0 };
+            let asks = crate::end_call::ends_on_question(said);
+            if self.asked.len() >= QUESTION_WINDOW {
+                self.asked.pop_front();
+            }
+            self.asked.push_back(asks);
+            asks_a_lot = asks && self.asked.iter().filter(|a| **a).count() >= QUESTION_MANY;
             self.last_ai = said.to_string();
             remember(&mut self.ai_said, said);
         }
@@ -566,16 +582,18 @@ impl StallEngine {
             let list = self.loop_hints();
             self.next_loop += 1;
             &list[(self.next_loop - 1) % list.len()]
-        } else if self.turns_since_hint < HINT_GAP_TURNS {
-            self.stage = Stage::Free;
-            return None;
         } else if caller_again {
-            // Named first: it is also why an old reply came back.
-            &CALLER_AGAIN
+            // Before the AI's own repeat: it is why the old reply came back.
+            if self.turns_since_named >= CALLER_NAME_GAP {
+                self.turns_since_named = 0;
+                &CALLER_AGAIN
+            } else {
+                &CALLER_STILL
+            }
         } else if reused {
             &SAID_BEFORE
-        } else if self.question_run >= QUESTION_RUN {
-            self.question_run = 0;
+        } else if asks_a_lot && self.turns_since_hint >= HINT_GAP_TURNS {
+            self.asked.clear();
             &QUESTION_RUN_HINT
         } else {
             self.stage = Stage::Free;
@@ -806,7 +824,7 @@ mod tests {
             .chain(&COLLECTION_LOOP)
             .chain(&IMPERSONATION_LOOP)
             .chain(&HARASSMENT_LOOP)
-            .chain([&SAID_BEFORE, &CALLER_AGAIN, &QUESTION_RUN_HINT])
+            .chain([&SAID_BEFORE, &CALLER_AGAIN, &CALLER_STILL, &QUESTION_RUN_HINT])
             .chain(&RETAIN)
             .chain(&IMPERSONATION_RETAIN)
             .chain(&COLLECTION_RETAIN)
@@ -1145,9 +1163,10 @@ mod tests {
     }
 
     /// The call this was written for: the caller's whole pitch comes round a
-    /// second time and the AI answers every point as it did the first time.
+    /// second time and the AI answers every point as it did the first time. A
+    /// hint goes with every reply; it asks to say so only now and then.
     #[test]
-    fn a_pitch_that_comes_round_again_is_noticed_but_not_at_every_turn() {
+    fn a_pitch_that_comes_round_again_brings_a_hint_with_every_reply() {
         let pitch = [
             ("這支門號被拿去發詐騙簡訊，已經有人報案了。", "天哪，怎麼會這樣？我人在外地耶，怎麼會有人報案？"),
             ("我們要把你的錢先轉到監管帳戶保護起來。", "監管帳戶喔？聽起來好複雜，我不太會操作耶。"),
@@ -1168,7 +1187,23 @@ mod tests {
                 e.on_ai_turn(ai).map(|c| c.tactic)
             })
             .collect();
-        assert_eq!(second, [Some("caller_again"), None, None, Some("caller_again"), None, None]);
+        assert_eq!(
+            second,
+            [
+                Some("caller_again"),
+                Some("caller_still"),
+                Some("caller_still"),
+                Some("caller_still"),
+                Some("caller_still"),
+                Some("caller_again")
+            ]
+        );
+        // A line too short to tell apart is no repeat; one that comes back a
+        // few turns later is, and is not named again so soon.
+        e.on_caller_turn("喂？");
+        assert!(e.on_ai_turn("嗯，我在，我只是在找我的老花眼鏡啦。").is_none());
+        e.on_caller_turn(pitch[0].0);
+        assert_eq!(e.on_ai_turn("好啦好啦，我有在聽，你慢慢講沒關係。").map(|c| c.tactic), Some("caller_still"));
         // The caller moves on but the AI falls back on an old reply: that alone is named.
         e.on_caller_turn("那你現在把身分證字號念給我聽。");
         e.on_ai_turn("等一下喔，我這邊收訊不太好，你剛剛說什麼？");
@@ -1203,46 +1238,58 @@ mod tests {
     }
 
     #[test]
-    fn reply_after_reply_ending_in_a_question_brings_a_hint_to_end_another_way() {
-        for q in ["那要怎麼辦？", "So what do I do?", "¿Y ahora qué hago?", "ماذا أفعل الآن؟", "それで、どうすれば？」", "Really?!", "Et maintenant ? "] {
-            assert!(ends_with_question(q), "{q}");
-        }
-        for s in ["好，我知道了。", "Okay, I see.", "What? No, wait", "…嗯", ""] {
-            assert!(!ends_with_question(s), "{s}");
+    fn mostly_ending_in_questions_brings_a_hint_to_end_another_way() {
+        // What asks is told as the closing machine tells it: Thai and Japanese ask without a mark.
+        for (asks, line) in [
+            (true, "ใกล้ ๆ มีตู้เอทีเอ็มไหมครับ"),
+            (true, "次は何をすればいいですか。"),
+            (false, "ผมหาปากกาไม่เจอเลยครับ"),
+            (false, "眼鏡が見つからなくて、少し待ってください。"),
+        ] {
+            assert_eq!(crate::end_call::ends_on_question(line), asks, "{line}");
         }
         let asks = [
             "那保費一個月大概多少錢啊？",
             "要繳幾年呢？繳完之後錢拿得回來嗎？",
             "住院的話是一天給多少？手術也有嗎？",
             "你們自己也有買這個嗎？",
-            "那等待期要多久？哪些情況不賠？",
         ];
         let mut e = StallEngine::new("insurance_sales", Lang::ZhTw);
-        for said in &asks[..4] {
+        for said in &asks[..3] {
             assert!(e.on_ai_turn(said).is_none(), "{said}");
         }
-        let cue = e.on_ai_turn(asks[4]).unwrap();
+        let cue = e.on_ai_turn(asks[3]).unwrap();
         assert_eq!((cue.stage, cue.tactic), (Stage::Loop, "question_run"));
         assert!(cue.text.contains("收尾"), "{}", cue.text);
-        // A reply that does not ask breaks the run; the count starts over after a hint.
-        let en = [
-            "So how much would that be a month?",
-            "And how many years do I pay for?",
-            "Does it cover a hospital stay too?",
-            "Do you have this plan yourself?",
-            "Hold on, my tea is boiling over.",
-            "What happens if I miss a payment?",
-            "Is there a waiting period at all?",
-            "Can my wife be on it as well?",
-            "Could you send me that in writing?",
-        ];
+        // Every other reply asking is how people talk: no hint.
         let mut e = StallEngine::new("insurance_sales", Lang::En);
-        for said in en {
+        for said in [
+            "So how much would that be a month?",
+            "Hold on, my tea is boiling over.",
+            "And how many years do I pay for?",
+            "My knee has been bad all week.",
+            "Does it cover a hospital stay too?",
+            "I had better write that down.",
+            "Do you have this plan yourself?",
+            "Well, that is a lot of money.",
+        ] {
             assert!(e.on_ai_turn(said).is_none(), "{said}");
         }
-        let cue = e.on_ai_turn("And who do I call if something goes wrong?").unwrap();
-        assert_eq!(cue.tactic, "question_run");
-        assert!(e.on_ai_turn("Would my son be covered as well, then?").is_none());
+        // Four of the last six asking, the newest too, in a language that writes
+        // no question mark; the count starts over after the hint.
+        let thai = [
+            "ใกล้ ๆ มีตู้เอทีเอ็มไหมครับ",
+            "ต้องเตรียมเอกสารอะไรบ้างครับ",
+            "ทำไมต้องปิดเป็นความลับครับ",
+            "ผมหาปากกาไม่เจอเลยครับ",
+            "แล้วผมต้องทำยังไงต่อครับ",
+        ];
+        let mut e = StallEngine::new("fake_telecom", Lang::En);
+        for said in &thai[..4] {
+            assert!(e.on_ai_turn(said).is_none(), "{said}");
+        }
+        assert_eq!(e.on_ai_turn(thai[4]).map(|c| c.tactic), Some("question_run"));
+        assert!(e.on_ai_turn("เงินจะได้คืนเมื่อไหร่ครับ").is_none());
     }
 
     /// Words that hand the AI a fixed line to recite.

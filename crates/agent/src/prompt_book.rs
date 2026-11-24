@@ -48,7 +48,7 @@ pub const FORMAT: u64 = rules::BOOK_FORMAT;
 /// The version of the built-in texts (YYYYMMDDNN). A download is used only
 /// when it is newer. Raise it whenever a file in data/prompts changes (the
 /// test `the_builtin_texts_match_their_version` says so).
-pub const BUILTIN_VERSION: u64 = 2026112401;
+pub const BUILTIN_VERSION: u64 = 2026112402;
 
 /// The installed download, in the packs folder.
 pub const FILE_NAME: &str = rules::PROMPTS_FILE;
@@ -643,7 +643,7 @@ mod tests {
     }
 
     /// The SHA-256 of the built-in texts when BUILTIN_VERSION was last raised.
-    const BUILTIN_DIGEST: &str = "d0d3d311f29eb1466f255b21380cd3ee2f32a15c12d9541aa1c3f7810a5e6df1";
+    const BUILTIN_DIGEST: &str = "d0c733941569e22627c32a5def357f75967e6c97af6db0ed6bf89433f03e3ff0";
 
     /// A download is used only when it is newer than the built-in texts, so a
     /// change to them must come with a new version.
