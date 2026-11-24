@@ -3550,7 +3550,8 @@ fn in_call_language(payload: String, call: Option<crate::locale::Lang>) -> Strin
 }
 
 /// Drop STT placeholders such as `<no speech detected>` (the AI's silent turn
-/// during the carrier prompt).
+/// during the carrier prompt) and the marks the speech-to-text of the AI's own
+/// voice writes for a pause (`{pause}`): never said, so never shown.
 pub(crate) fn strip_stt_markers(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut depth = 0u32;
@@ -3562,14 +3563,46 @@ pub(crate) fn strip_stt_markers(s: &str) -> String {
             _ => {}
         }
     }
-    out.trim().to_string()
+    strip_brace_marks(&out).trim().to_string()
+}
+
+/// `s` without marks like `{pause}` (a word or two of ASCII letters in
+/// braces); other braces stay.
+fn strip_brace_marks(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find('{') {
+        out.push_str(&rest[..i]);
+        let after = &rest[i + 1..];
+        match after.find('}') {
+            Some(j)
+                if (1..=24).contains(&j)
+                    && after[..j].chars().any(|c| c.is_ascii_alphabetic())
+                    && after[..j].chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ' ')) =>
+            {
+                rest = &after[j + 1..];
+                // One space where the mark sat between two words.
+                if out.ends_with(char::is_whitespace) || out.is_empty() {
+                    rest = rest.trim_start();
+                }
+            }
+            _ => {
+                out.push('{');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Append an STT fragment: Chinese joins directly, Latin words keep a space.
 /// The STT puts the break between two words either at the start of the next
 /// fragment (" bye") or at the end of this one ("Okay "): both make a space. A
 /// fragment's trailing space is kept at the end of `acc` (a later fragment
-/// adds no second one); whoever reads the line trims it.
+/// adds no second one); whoever reads the line trims it. A new sentence after
+/// one that ended ("today?" + "I've", the next turn of the same side) gets a
+/// space too, as [tx_gap] does; Chinese and Japanese join directly.
 pub(crate) fn join_fragment(acc: &mut String, next: &str) {
     // A fragment the STT began with a space starts a new word (Korean, accented
     // Latin); Chinese and Japanese join directly; two ASCII words always get one.
@@ -3581,7 +3614,13 @@ pub(crate) fn join_fragment(acc: &mut String, next: &str) {
     };
     if let Some(a) = acc.chars().last() {
         let word = |c: char| !c.is_whitespace() && !is_cjk(c);
-        if (spaced && word(a) && word(b)) || (a.is_ascii_alphanumeric() && b.is_ascii_alphanumeric()) {
+        let after_mark = !is_cjk(b)
+            && match a {
+                ',' | ';' | ':' => b.is_alphabetic(),
+                '.' | '!' | '?' | '…' => (b.is_alphabetic() && !b.is_lowercase()) || matches!(b, '¿' | '¡'),
+                _ => false,
+            };
+        if (spaced && word(a) && word(b)) || (a.is_ascii_alphanumeric() && b.is_ascii_alphanumeric()) || after_mark {
             acc.push(' ');
         }
     }
@@ -5475,6 +5514,9 @@ pub async fn run_session(
     // whether they ran out before the dialogue opened.
     let mut warm_rekicks: u32 = 0;
     let mut warm_text_only = false;
+    // The held opening's turn ended while it rang: the first turn after pickup
+    // is a new one (its audio is counted from there).
+    let mut warm_opening_done = false;
     // Transcript length before the held opening (cut back if it is never played).
     let mut opening_mark: Option<usize> = None;
     // Set when an international hold ends on line voice (the carrier's prompt).
@@ -5493,6 +5535,10 @@ pub async fn run_session(
             .and_then(|b| b.lock().ok().map(|g| g.len()))
             .unwrap_or(0);
         opening_mark = Some(warm_transcript_mark);
+        // Where the current turn's words start in the transcript and how much
+        // audio was held before it: a later turn that adds no audio is cut back.
+        let mut warm_turn_mark = warm_transcript_mark;
+        let mut warm_turn_prebuf = 0usize;
         if !greets_kicked && setup_ready.load(Ordering::Relaxed) {
             if send_text_before_deadline(
                 &mut sink,
@@ -5571,6 +5617,22 @@ pub async fn run_session(
                                 prebuf_chunks = prebuf_chunks.saturating_add(1);
                             };
                             let _ = handle_server_msg(&v, phone_sr, &mut capture);
+                            let warm_turn_done = v
+                                .pointer("/serverContent/turnComplete")
+                                .and_then(|x| x.as_bool())
+                                == Some(true);
+                            // A turn after the held opening that brought no audio (the
+                            // model went on in text only while it rang): never heard, so
+                            // not written down either.
+                            if warm_turn_done && !prebuf.is_empty() && prebuf.len() == warm_turn_prebuf {
+                                let dropped = truncate_transcript(&transcript_out, warm_turn_mark);
+                                if !dropped.is_empty() {
+                                    warn!(
+                                        "Gemini Live warm turn without audio serial={serial} out_stt={dropped:?} — left out of the transcript",
+                                        dropped = Said(&dropped)
+                                    );
+                                }
+                            }
                             // Opening answered with text only (in one run, 4 of 6
                             // openings): ask again now, while the phone still rings,
                             // instead of after pickup. The unheard line leaves the transcript.
@@ -5607,6 +5669,14 @@ pub async fn run_session(
                                         dropped = Said(&dropped)
                                     );
                                 }
+                            }
+                            if warm_turn_done {
+                                warm_opening_done |= !prebuf.is_empty();
+                                warm_turn_mark = transcript_out
+                                    .as_ref()
+                                    .and_then(|b| b.lock().ok().map(|g| g.len()))
+                                    .unwrap_or(0);
+                                warm_turn_prebuf = prebuf.len();
                             }
                         }
                     }
@@ -5807,6 +5877,11 @@ pub async fn run_session(
     // This model turn's audio was held or dropped for the carrier's prompt (see
     // IntlGate) or a voice menu — its end is no turn for the checks.
     let mut intl_gated_turn = false;
+    // Where the words of the model's current turn start in the transcript (its
+    // first output transcription), and when its last turn ended: a turn that
+    // ends without any audio played was never heard and leaves the transcript.
+    let mut ai_turn_tx_mark: Option<usize> = None;
+    let mut last_turn_complete_at: Option<tokio::time::Instant> = None;
     // Stall quiet-line nudge: audio count when the last one went out (the next one
     // waits for the model's answer to it) and when.
     let mut stall_nudge_chunks: Option<u64> = None;
@@ -5918,7 +5993,7 @@ pub async fn run_session(
     // Model turns completed, and the audio count when the current one began
     // (what the repeat guard and propose_appointment's caller compare against).
     let mut turns_done: u64 = 0;
-    let mut chunks_at_turn_start: u64 = 0;
+    let mut chunks_at_turn_start: u64 = if warm_opening_done && prebuf_flushed_bytes > 0 { audio_chunks_out } else { 0 };
     // Model turns completed when the caller's last turn ended (cold-gap nudge).
     let mut turns_at_last_caller_eou: u64 = 0;
     // end_call accepted, waiting for our last words and the quiet after them.
@@ -7635,7 +7710,21 @@ pub async fn run_session(
                                 } else {
                                     &v
                                 };
-                                append_transcriptions(v_tx, &transcript_out);
+                                // Words that come in just after a turn ended with no new audio
+                                // are that turn's late tail, not a new turn.
+                                if ai_turn_tx_mark.is_none()
+                                    && output_transcription_text(v_tx).is_some()
+                                    && (has_audio || last_turn_complete_at.map_or(true, |t| t.elapsed() >= LATE_TRANSCRIPT_TAIL))
+                                {
+                                    ai_turn_tx_mark = transcript_out
+                                        .as_ref()
+                                        .and_then(|b| b.lock().ok().map(|g| g.len()));
+                                }
+                                // The caller's words often come in after the AI began
+                                // answering them: written before that answer, unless the
+                                // caller is talking now (then they cut in over it).
+                                let caller_before = if activity_open { None } else { ai_turn_tx_mark.as_mut() };
+                                append_transcriptions_ordered(v_tx, &transcript_out, caller_before);
                                 let (in_tx, out_tx) = extract_transcription_snippets(v_tx);
                                 // An errand: live captions for the owner's web console.
                                 if let Some(e) = &errand {
@@ -8435,6 +8524,23 @@ pub async fn run_session(
                                     audio_chunks_out > tool_answer_chunks,
                                 );
                                 if turn_complete {
+                                    // Its words, with no audio played and none held to play
+                                    // later (a held or dropped turn is handled on its own).
+                                    if let Some(mark) = ai_turn_tx_mark.take() {
+                                        if !turn_had_audio && !tool_quiet && prebuf.is_empty() {
+                                            let dropped = transcript_out
+                                                .as_ref()
+                                                .and_then(|b| b.lock().ok().map(|mut g| drop_ai_lines_after(&mut g, mark)))
+                                                .unwrap_or_default();
+                                            if !dropped.is_empty() {
+                                                warn!(
+                                                    "Gemini Live turn without audio serial={serial} out_stt={dropped:?} — left out of the transcript",
+                                                    dropped = Said(&dropped)
+                                                );
+                                            }
+                                        }
+                                    }
+                                    last_turn_complete_at = Some(tokio::time::Instant::now());
                                     turns_done += 1;
                                     chunks_at_turn_start = audio_chunks_out;
                                     if cb_once {
@@ -8754,7 +8860,9 @@ pub async fn run_session(
                                             && !activity_open
                                             && !goodbye_pending
                                             && ivr_since.is_none();
-                                        if let Some(d) = call_language.ai_turn(&turn_out_text, can_tell) {
+                                        // The caller's words that came in after this turn began
+                                        // (their speech-to-text lags) count as what it answers.
+                                        if let Some(d) = call_language.ai_turn_after(&turn_out_text, &caller_recent, can_tell) {
                                             let note = crate::prompts::language_drift_note(crate::locale::current(), d.call);
                                             match send_text_before_deadline(
                                                 &mut sink,
@@ -9704,6 +9812,10 @@ fn truncate_transcript(transcript_out: &Option<Arc<std::sync::Mutex<String>>>, m
     dropped
 }
 
+/// How long after a turn ended the model's words are still taken as that
+/// turn's late tail (its speech-to-text can trail the audio).
+const LATE_TRANSCRIPT_TAIL: Duration = Duration::from_millis(1500);
+
 fn append_transcriptions(v: &Value, transcript_out: &Option<Arc<std::sync::Mutex<String>>>) {
     let Some(buf) = transcript_out else {
         return;
@@ -9738,6 +9850,42 @@ fn append_transcriptions(v: &Value, transcript_out: &Option<Arc<std::sync::Mutex
                 g.push('\n');
             }
             g.push_str(&p);
+        }
+    }
+}
+
+/// [append_transcriptions], with the caller's words (`對方：`) put in at
+/// `caller_before` (where the AI's current turn starts, moved on past them)
+/// instead of at the end. None, or a turn that starts the transcript: at the end.
+fn append_transcriptions_ordered(
+    v: &Value,
+    transcript_out: &Option<Arc<std::sync::Mutex<String>>>,
+    caller_before: Option<&mut usize>,
+) {
+    let Some(at) = caller_before.filter(|at| **at > 0) else {
+        return append_transcriptions(v, transcript_out);
+    };
+    let Some(buf) = transcript_out else {
+        return;
+    };
+    let (input, output) = extract_transcription_snippets(v);
+    if let Ok(mut g) = buf.lock() {
+        if *at <= g.len() && g.is_char_boundary(*at) {
+            for t in &input {
+                let line = format!("\n對方：{t}");
+                g.insert_str(*at, &line);
+                *at += line.len();
+            }
+        } else {
+            for t in &input {
+                g.push_str(&format!("\n對方：{t}"));
+            }
+        }
+        for t in &output {
+            if !g.is_empty() {
+                g.push('\n');
+            }
+            g.push_str(&format!("接聽：{t}"));
         }
     }
 }
@@ -11651,6 +11799,67 @@ mod tests {
         assert_eq!(merged, "對方：민준아, 나 지훈인데. 오늘 저녁 8시쯤에괜찮아?\n接聽：Sí, está bien.喂？好");
         // Chinese still joins directly; ASCII words still get their space.
         assert_eq!(merge_dialogue_fragments("對方：我想\n對方：預約\n接聽：Hallo, ist\n接聽：jemand"), "對方：我想預約\n接聽：Hallo, ist jemand");
+    }
+
+    #[test]
+    fn the_record_leaves_out_pause_marks_in_every_language() {
+        for (raw, want) in [
+            ("接聽：沒問題我會幫您轉告王先生的謝謝您{pause}", "接聽：沒問題我會幫您轉告王先生的謝謝您"),
+            ("接聽：<no speech>{pause}\n對方：Hola", "對方：Hola"),
+            ("接聽：Thank you {pause} goodbye.", "接聽：Thank you goodbye."),
+            ("接聽：Gracias, se lo digo{pause}.", "接聽：Gracias, se lo digo."),
+            ("接聽：Merci{pause}, au revoir.", "接聽：Merci, au revoir."),
+            ("接聽：はい、承知しました{pause}", "接聽：はい、承知しました"),
+            ("接聽：Gut{ pause }, danke.", "接聽：Gut, danke."),
+        ] {
+            assert_eq!(merge_dialogue_fragments(raw), want, "{raw}");
+        }
+        // Braces that are not a mark stay.
+        assert_eq!(strip_stt_markers("Code {123} und {}"), "Code {123} und {}");
+    }
+
+    #[test]
+    fn turns_of_one_side_are_kept_apart_in_the_record() {
+        for (raw, want) in [
+            ("接聽：How can I help you today?\n接聽：I've noted that down.", "接聽：How can I help you today? I've noted that down."),
+            ("接聽：¿En qué puedo ayudarle?\n接聽：¿Algo más?", "接聽：¿En qué puedo ayudarle? ¿Algo más?"),
+            ("接聽：C'est noté.\n接聽：Autre chose ?", "接聽：C'est noté. Autre chose ?"),
+            ("接聽：Gut, danke.\n接聽：Noch etwas?", "接聽：Gut, danke. Noch etwas?"),
+            ("接聽：네, 알겠습니다.\n接聽：다른 건요?", "接聽：네, 알겠습니다. 다른 건요?"),
+            // Chinese and Japanese join directly after their own full stop.
+            ("接聽：好的。\n接聽：還有其他事嗎？", "接聽：好的。還有其他事嗎？"),
+            ("接聽：承知しました。\n接聽：他にありますか？", "接聽：承知しました。他にありますか？"),
+            // Numbers, addresses and words cut in two stay whole.
+            ("對方：3.\n對方：5 dollars", "對方：3.5 dollars"),
+            ("對方：example.\n對方：com", "對方：example.com"),
+        ] {
+            assert_eq!(merge_dialogue_fragments(raw), want, "{raw}");
+        }
+    }
+
+    #[test]
+    fn a_turn_with_no_audio_played_leaves_the_transcript_but_the_callers_words_stay() {
+        for (said, unheard, caller) in [
+            ("Hi, this is the assistant. How can I help?", "I've noted that down for him.", "Bonjour, c'est la Poste."),
+            ("Hola, ¿en qué puedo ayudarle?", "Lo he anotado.", "Le habla Carlos de DHL."),
+            ("你好，請問有什麼事嗎？", "好的，我記下來了。", "我是宅配，包裹到了。"),
+            ("はい、どういったご用件でしょうか。", "承知しました、メモしました。", "宅配便です。"),
+        ] {
+            let t = Some(Arc::new(std::sync::Mutex::new(format!("接聽：{said}"))));
+            // The AI's next turn starts; the caller's words, late, come in while it runs.
+            let mut mark = t.as_ref().unwrap().lock().unwrap().len();
+            append_transcriptions_ordered(&json!({"serverContent": {"outputTranscription": {"text": unheard}}}), &t, Some(&mut mark));
+            append_transcriptions_ordered(&json!({"serverContent": {"inputTranscription": {"text": caller}}}), &t, Some(&mut mark));
+            // They are written before the turn that answers them.
+            assert_eq!(*t.as_ref().unwrap().lock().unwrap(), format!("接聽：{said}\n對方：{caller}\n接聽：{unheard}"));
+            // The turn ends with no audio played: its words go, the caller's stay.
+            let dropped = drop_ai_lines_after(&mut t.as_ref().unwrap().lock().unwrap(), mark);
+            assert_eq!(dropped, unheard);
+            assert_eq!(*t.as_ref().unwrap().lock().unwrap(), format!("接聽：{said}\n對方：{caller}"));
+            // Without a turn under way, the caller's words go at the end.
+            append_transcriptions_ordered(&json!({"serverContent": {"inputTranscription": {"text": caller}}}), &t, None);
+            assert!(t.as_ref().unwrap().lock().unwrap().ends_with(&format!("\n對方：{caller}\n對方：{caller}")));
+        }
     }
 
     #[test]

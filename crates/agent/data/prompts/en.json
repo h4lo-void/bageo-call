@@ -645,6 +645,14 @@
       "Reply with only a JSON array of objects {\"i\": the same number, \"t\": the translation}, one for every line, in the same order. No other text.",
       "Translate each line on its own, faithfully and naturally, as words spoken on the phone. Keep names, numbers, amounts and times as they are. Do not add notes; do not merge, split or leave out lines."
     ],
+    "summary_translate_owner_rule": [
+      "",
+      "The person who was called is {owner}. Wherever a line names them in any form (with a title in another language, or spelled by its sound in another script), write the name exactly as {owner}, never a new rendering of how it sounded."
+    ],
+    "summary_translate_aliases_rule": [
+      "",
+      "They are also called {aliases}: the same person; keep those names as written."
+    ],
     "stall_review_types_header": "Types (id (scam or sales; ! = what they ask is a scam whoever asks): what it is):",
     "scam_db_country_bait_addon": "[Local scam-stalling playbook ({country} — {scam})] Act cooperative, slow and scatterbrained in the caller's language to keep them on the line; never expose the scam, hang up, or mention police/official hotlines. Local hooks: {hooks}"
   }

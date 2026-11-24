@@ -11,6 +11,11 @@
 //! [DRIFT_NOTES_MAX] times a call, and, when the call is no longer in its
 //! opening language, only once the caller has clearly spoken the call's language
 //! in [DRIFT_CALLER_TURNS] turns. Memory only; a few string scans per turn.
+//! Until the caller has said anything clear, the opening language is only the
+//! AI's guess (from the SIM or the number): a caller turn of a few words that
+//! reads as another language, even not clearly, moves the call to it for now,
+//! and the caller's latest words are never called a drift when the AI answers
+//! in their language.
 
 use crate::locale::Lang;
 
@@ -30,6 +35,11 @@ pub const DRIFT_NOTES_MAX: u32 = 2;
 /// away from it, when that language is not the one the call opened in: one
 /// misread turn must not turn the AI back.
 pub const DRIFT_CALLER_TURNS: u32 = 2;
+
+/// Words (Latin script) or letters (Chinese, Japanese, Korean) a caller turn
+/// needs before a reading that is not clear moves a call still on its opening
+/// guess: a "Hello?" or 「喂？」 does not.
+const TENTATIVE_MIN_WORDS: usize = 3;
 
 /// The AI's turn came out in another language than the call's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,6 +63,8 @@ pub struct CallLanguage {
     pending: Option<Spoken>,
     /// The language of the caller's last clear turn.
     caller_last: Option<Spoken>,
+    /// What the caller's latest turn reads as, clear or not (None: nothing to read).
+    caller_read: Option<Lang>,
     /// Chinese is held in this variant (the prompt's when it is Chinese).
     zh: Lang,
     ai_turns: u32,
@@ -79,6 +91,7 @@ impl CallLanguage {
             settled: false,
             pending: None,
             caller_last: None,
+            caller_read: None,
             zh,
             ai_turns: 0,
             drift_notes: 0,
@@ -138,6 +151,7 @@ impl CallLanguage {
     /// A finished turn of the caller's. Returns the call's new language when it
     /// changed.
     pub fn caller_turn(&mut self, said: &str) -> Option<Spoken> {
+        self.caller_read = self.read(said);
         let Some(heard) = self.clear(said) else {
             if let Some(pending) = self.pending {
                 if let Some(r) = crate::urgency::read_language(said) {
@@ -146,7 +160,7 @@ impl CallLanguage {
                     }
                 }
             }
-            return None;
+            return self.tentative(said);
         };
         self.caller_last = Some(heard);
         if heard == self.now {
@@ -167,11 +181,44 @@ impl CallLanguage {
         None
     }
 
+    /// What `said` reads as among the languages with a setting, clear or not.
+    fn read(&self, said: &str) -> Option<Lang> {
+        if crate::urgency::unlisted_language(said) {
+            return None;
+        }
+        crate::urgency::read_language(said).map(|r| self.same_variant(r.lang))
+    }
+
+    /// A caller turn that is not clear, on a call still on its opening guess
+    /// that the caller never spoke: a few words that read as another language
+    /// move the call there. Nothing is settled, so the caller's next clear turn
+    /// decides at once.
+    fn tentative(&mut self, said: &str) -> Option<Spoken> {
+        if self.settled || self.now != self.opening || words_or_letters(said) < TENTATIVE_MIN_WORDS {
+            return None;
+        }
+        let read = Spoken::Lang(self.caller_read?);
+        if read == self.now {
+            return None;
+        }
+        self.now = read;
+        self.now_clear_turns = 0;
+        self.pending = None;
+        Some(read)
+    }
+
     /// A finished turn of the AI's (its speech-to-text): the drift to remind it
     /// of, when its turn is clearly in another language than the call's that the
     /// caller did not just speak, and reminders are left. `can_tell`: a reminder
     /// can go now; otherwise nothing is counted.
     pub fn ai_turn(&mut self, said: &str, can_tell: bool) -> Option<Drift> {
+        self.ai_turn_after(said, "", can_tell)
+    }
+
+    /// [Self::ai_turn] with `late`: the caller's words that came in after the
+    /// AI began this turn (speech-to-text of the caller often lags behind the
+    /// reply). The AI answering in their language is no drift either.
+    pub fn ai_turn_after(&mut self, said: &str, late: &str, can_tell: bool) -> Option<Drift> {
         self.ai_turns += 1;
         let call = self.lang()?;
         let ai = match self.clear(said)? {
@@ -184,7 +231,12 @@ impl CallLanguage {
             return None;
         }
         let followed = |s: Option<Spoken>| s == Some(Spoken::Lang(ai));
-        if ai == call || followed(self.caller_last) || followed(self.pending) {
+        if ai == call
+            || followed(self.caller_last)
+            || followed(self.pending)
+            || self.caller_read == Some(ai)
+            || self.read(late) == Some(ai)
+        {
             return None;
         }
         // Close Latin languages share short words (a Spanish line can score a
@@ -205,6 +257,19 @@ impl CallLanguage {
         self.drift_notes += 1;
         Some(Drift { ai, call, turn: self.ai_turns })
     }
+}
+
+/// Latin words plus Chinese, Japanese and Korean letters in `said`.
+fn words_or_letters(said: &str) -> usize {
+    let cjk = said
+        .chars()
+        .filter(|c| matches!(*c as u32, 0x3040..=0x30FF | 0x4E00..=0x9FFF | 0xAC00..=0xD7AF))
+        .count();
+    let words = said
+        .split(|c: char| !c.is_alphabetic() && c != '\'')
+        .filter(|w| !w.is_empty() && w.chars().all(|c| c == '\'' || (c.is_alphabetic() && (c as u32) < 0x2000)))
+        .count();
+    cjk + words
 }
 
 #[cfg(test)]
@@ -364,6 +429,69 @@ mod close_latin_languages {
         assert_eq!(de.ai_turn("Ja, das ist mein Paket, bitte beim Nachbarn abgeben.", true), None);
         let mut fr = CallLanguage::new(Lang::Fr, Lang::Fr);
         assert_eq!(fr.ai_turn("Oui, c'est moi, vous pouvez le laisser chez le gardien.", true), None);
+    }
+
+    #[test]
+    fn a_caller_in_another_language_moves_a_call_still_on_its_opening_guess() {
+        // A US SIM opens in English; the caller's first words are in another
+        // language, short or not quite clear.
+        for (said, lang, ai_said) in [
+            ("Hola. Le habla Carlos de DHL.", Lang::Es, "Hola Carlos, ¿en qué puedo ayudarle?"),
+            ("Bonjour, ici la Poste, j'ai un colis pour monsieur.", Lang::Fr, "Bonjour, oui, je vous écoute, c'est pour quel colis ?"),
+            ("Guten Tag, hier ist der Paketdienst.", Lang::De, "Guten Tag, worum geht es denn bei dem Paket?"),
+            ("もしもし、宅配便です。", Lang::Ja, "はい、お荷物の件ですね、どうぞ。"),
+            ("여보세요, 택배입니다.", Lang::Ko, "네, 택배 관련해서 말씀해 주세요."),
+            ("你好，我這邊是宅配。", Lang::ZhTw, "你好，請問是什麼包裹呢？"),
+        ] {
+            let mut c = CallLanguage::new(Lang::En, Lang::En);
+            assert_eq!(c.caller_turn(said), Some(Spoken::Lang(lang)), "{said}");
+            // The AI answering in the caller's language is no drift…
+            assert_eq!(c.ai_turn(ai_said, true), None, "{said}");
+            // …and its English is not pulled back to: the call is in theirs now.
+            assert_eq!(c.ai_turn("I understand you have a package for the owner, how can I help?", true), None, "{said}");
+            assert_eq!(c.lang(), Some(lang), "{said}");
+        }
+    }
+
+    #[test]
+    fn a_few_stray_words_leave_the_opening_and_a_settled_call_alone() {
+        // Too short to move anything.
+        for said in ["Hello?", "Hello hello", "喂？", "Allô ?"] {
+            let mut c = CallLanguage::new(Lang::ZhTw, Lang::ZhTw);
+            assert_eq!(c.caller_turn(said), None, "{said}");
+            assert_eq!(c.lang(), Some(Lang::ZhTw), "{said}");
+        }
+        // A call the caller already spoke clearly: one unclear turn changes nothing.
+        let mut c = CallLanguage::new(Lang::En, Lang::En);
+        assert_eq!(c.caller_turn("Hi, I'm calling about the package for your office today."), None);
+        assert_eq!(c.caller_turn("Hola. Le habla Carlos."), None);
+        assert_eq!(c.lang(), Some(Lang::En));
+        // A wrong guess moved by an unclear turn: the caller's next clear turn decides at once.
+        let mut c = CallLanguage::new(Lang::En, Lang::En);
+        assert!(c.caller_turn("Hola. Le habla Carlos de DHL.").is_some());
+        assert_eq!(
+            c.caller_turn("Sorry, I actually speak English, I have a package for your office today."),
+            Some(Spoken::Lang(Lang::En))
+        );
+    }
+
+    #[test]
+    fn the_ai_answering_the_callers_latest_words_is_no_drift() {
+        // Settled in English; the caller says a few unclear words in Spanish and
+        // the AI answers in Spanish.
+        let mut c = CallLanguage::new(Lang::En, Lang::En);
+        c.caller_turn("Hi, I'm calling about the package for your office today.");
+        c.caller_turn("Sí, sí, gracias.");
+        assert_eq!(c.ai_turn("Muy bien, gracias a usted, ¿algo más?", true), None);
+        // The caller's words that came in late (after the AI began) count too.
+        let mut c = CallLanguage::new(Lang::En, Lang::En);
+        c.caller_turn("Hi, I'm calling about the package for your office today.");
+        assert_eq!(
+            c.ai_turn_after("D'accord, je note, je lui transmets votre message.", "Bonjour, je préfère parler français, s'il vous plaît.", true),
+            None
+        );
+        // Without them, the same French turn is a drift from English.
+        assert!(c.ai_turn("D'accord, je note, je lui transmets votre message, merci beaucoup.", true).is_some());
     }
 
     #[test]
