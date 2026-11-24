@@ -5,6 +5,7 @@ package com.pixelcallai.streamer
 
 import android.util.Log
 import org.java_websocket.client.WebSocketClient
+import org.java_websocket.drafts.Draft_6455
 import org.java_websocket.handshake.ServerHandshake
 import org.json.JSONObject
 import java.io.File
@@ -55,7 +56,8 @@ class BridgeClient(
     ) {
         debugSerial = serial
         agentReady.set(false)
-        val ws = object : WebSocketClient(URI(url)) {
+        // Standalone: the loopback phone bridge needs the agent's key (null elsewhere, as before).
+        val ws = object : WebSocketClient(URI(url), Draft_6455(), EmbeddedAgent.bridgeHeaders(url), 0) {
             override fun onOpen(handshakedata: ServerHandshake?) {
                 open.set(true)
                 droppedPcm.set(0)

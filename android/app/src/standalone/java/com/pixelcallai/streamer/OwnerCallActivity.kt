@@ -64,6 +64,8 @@ class OwnerCallActivity : Activity() {
     private var callerName = ""
     private var reason = ""
     private var urgentId = ""
+    /** The AI could not take this ringing call and gave it back to the owner. */
+    private var aiMissed = false
     private var selectedSubId: Int? = null
     private var showDtmfPad = false
 
@@ -151,6 +153,7 @@ class OwnerCallActivity : Activity() {
         callerName = i.getStringExtra("caller_name").orEmpty()
         reason = i.getStringExtra("reason").orEmpty()
         urgentId = i.getStringExtra("urgent_id").orEmpty()
+        aiMissed = i.getBooleanExtra("ai_missed", false)
         val dialPrefill = i.getStringExtra("dial_number").orEmpty()
         if (currentMode == MODE_DIALER && dialPrefill.isNotBlank()) {
             dialInput.setText(dialPrefill)
@@ -449,7 +452,9 @@ class OwnerCallActivity : Activity() {
             MODE_INCOMING_WL -> {
                 avatarWrap.visibility = View.VISIBLE
                 avatarText.text = avatarGlyph(callerName, callerId)
-                badgeText.text = getString(R.string.sa_badge_whitelist)
+                // A call the AI could not take rings here the same way, without "hand to AI".
+                badgeText.text = getString(if (aiMissed) R.string.sa_ai_missed_title else R.string.sa_badge_whitelist)
+                findViewById<Button>(R.id.ocBtnWlHandAi).visibility = if (aiMissed) View.GONE else View.VISIBLE
                 titleText.text = displayTitle
                 subtitleText.text = callerId.takeIf { callerName.isNotBlank() }.orEmpty()
             }

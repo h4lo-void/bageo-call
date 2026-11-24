@@ -131,6 +131,9 @@ object PhoneModeManager {
         Thread(r, "phone-mode").apply { isDaemon = true }
     }
     private val busy = AtomicBoolean(false)
+    /** The mode the running switch goes to; null when no switch runs. */
+    @Volatile
+    private var switchTarget: String? = null
     private val listeners = CopyOnWriteArraySet<Listener>()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var retryRunnable: Runnable? = null
@@ -162,6 +165,13 @@ object PhoneModeManager {
 
     /** A switch (or the start-up check) is running. */
     fun isSwitching(): Boolean = busy.get()
+
+    /**
+     * A switch to [mode] is running now. While the phone goes to a normal phone, the
+     * app's copy of the mode still says AI until the script is done: nothing may mute
+     * the phone or take the phone app role back then.
+     */
+    fun isSwitchingTo(mode: String): Boolean = switchTarget == mode
 
     fun isValidMode(mode: String): Boolean =
         mode == Prefs.PHONE_MODE_AI || mode == Prefs.PHONE_MODE_NORMAL
@@ -418,11 +428,23 @@ object PhoneModeManager {
     private fun readRootMode(ctx: Context): String? = readRootState(ctx)?.mode
 
     private fun switchBlocking(ctx: Context, target: String, id: String, allowRetry: Boolean = false): Result {
+        switchTarget = target
+        try {
+            return switchBlockingInner(ctx, target, id, allowRetry)
+        } finally {
+            switchTarget = null
+        }
+    }
+
+    private fun switchBlockingInner(ctx: Context, target: String, id: String, allowRetry: Boolean): Result {
         val before = Prefs.phoneMode(ctx)
         if (!isPhoneIdle(ctx)) return Result(false, before, ERR_IN_CALL)
         if (scriptRunning(ctx)) return Result(false, before, ERR_BUSY)
         if (target == Prefs.PHONE_MODE_AI && before == Prefs.PHONE_MODE_NORMAL) saveNormalVolumes(ctx)
-        val volumes = if (target == Prefs.PHONE_MODE_NORMAL) normalVolumes(ctx) else emptyList()
+        val noDnd = isNoDndId(id)
+        // A switch to AI in Daily Sound gets them too: when the phone leaves the silent AI
+        // mode for Daily Sound, the script turns the ring and notification volumes back on.
+        val volumes = if (target == Prefs.PHONE_MODE_NORMAL || noDnd) normalVolumes(ctx, noDnd) else emptyList()
         // Android 15+: turn Bageo's own Do Not Disturb mode off now, before the script checks
         // that Do Not Disturb went off (the audio guard's release below is only queued).
         if (target == Prefs.PHONE_MODE_NORMAL) LocalAudioGuard.turnOffOwnDndMode(ctx)
@@ -645,33 +667,56 @@ object PhoneModeManager {
 
     // ------------------------------------------------------------- volumes
 
-    /** Normal-mode volumes for the script: saved value, or half of the maximum (0 = skip). */
-    private fun normalVolumes(ctx: Context): List<Int> {
+    /**
+     * Normal-mode volumes for the script: saved value, or half of the maximum (0 = skip).
+     * In Daily Sound ([noDnd]) the phone kept its own volumes in AI mode, so the current
+     * ones are the owner's, unless Bageo has one turned down right now.
+     */
+    private fun normalVolumes(ctx: Context, noDnd: Boolean): List<Int> {
         val am = ctx.getSystemService(AudioManager::class.java) ?: return emptyList()
         val saved = readSavedVolumes(ctx)
+        val trustCurrent = BuildConfig.STANDALONE && noDnd && !LocalAudioGuard(ctx).isMutingNow()
         return VOLUMES.map { v ->
             val max = try {
                 am.getStreamMaxVolume(v.stream)
             } catch (_: Exception) {
                 0
             }
-            // A saved zero would leave the phone silent: a normal phone rings.
-            if (max <= 0) 0 else (saved[v.key]?.takeIf { it > 0 } ?: defaultVolume(max)).coerceIn(1, max)
+            pickNormalVolume(
+                current = streamVolume(am, v.stream),
+                saved = saved[v.key],
+                min = streamMin(am, v.stream),
+                max = max,
+                trustCurrent = trustCurrent,
+            )
         }
     }
 
     /** Half of the maximum, when nothing was saved. */
     fun defaultVolume(max: Int): Int = ((max + 1) / 2).coerceAtLeast(1)
 
-    /** `files/mode/normal_audio`: one `key=value` line per stream. */
+    /**
+     * `files/mode/normal_audio`: one `key=value` line per stream. Saved only while the
+     * phone really is a normal phone (the module's mode file says so) and Bageo has
+     * nothing turned down: the earpiece Bageo keeps at its lowest during AI calls must
+     * never become the "normal" earpiece volume. A volume at its lowest keeps the value
+     * saved before.
+     */
     private fun saveNormalVolumes(ctx: Context) {
+        val rootMode = readRootMode(ctx)
+        if (rootMode != null && rootMode != Prefs.PHONE_MODE_NORMAL) {
+            Log.i(TAG, "normal-phone volumes not saved: the module's mode file says $rootMode")
+            return
+        }
+        if (LocalAudioGuard(ctx).isMutingNow()) {
+            Log.i(TAG, "normal-phone volumes not saved: Bageo has the volumes turned down")
+            return
+        }
         val am = ctx.getSystemService(AudioManager::class.java) ?: return
+        val previous = readSavedVolumes(ctx)
         val lines = VOLUMES.mapNotNull { v ->
-            try {
-                "${v.key}=${am.getStreamVolume(v.stream)}"
-            } catch (_: Exception) {
-                null
-            }
+            chooseSavedVolume(streamVolume(am, v.stream), previous[v.key], streamMin(am, v.stream))
+                ?.let { "${v.key}=$it" }
         }
         if (lines.isEmpty()) return
         val file = File(appDir(ctx), AUDIO_FILE)
@@ -686,6 +731,18 @@ object PhoneModeManager {
             tmp.delete()
             Log.w(TAG, "cannot save the normal-phone volumes: ${e.message}")
         }
+    }
+
+    private fun streamVolume(am: AudioManager, stream: Int): Int? = try {
+        am.getStreamVolume(stream)
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun streamMin(am: AudioManager, stream: Int): Int = try {
+        am.getStreamMinVolume(stream)
+    } catch (_: Exception) {
+        0
     }
 
     private fun readSavedVolumes(ctx: Context): Map<String, Int> = try {
@@ -716,6 +773,32 @@ object PhoneModeManager {
  */
 internal fun formatModeRequestId(noDnd: Boolean, suffix: String = UUID.randomUUID().toString()): String =
     if (noDnd) "${PhoneModeManager.LOCAL_ID_PREFIX}nodnd-$suffix" else "${PhoneModeManager.LOCAL_ID_PREFIX}$suffix"
+
+/** Daily Sound requests (`nodnd-`, `app-nodnd-`), as apply_mode.sh reads the id. */
+internal fun isNoDndId(id: String): Boolean =
+    id.startsWith("nodnd-") || id.startsWith("${PhoneModeManager.LOCAL_ID_PREFIX}nodnd-")
+
+/**
+ * One normal-mode volume for the script. A current value counts only when
+ * [trustCurrent] and above the stream's lowest step [min]; then the saved one; then half
+ * of the maximum. Never zero (a normal phone rings); 0 only for a stream the phone lacks.
+ */
+internal fun pickNormalVolume(current: Int?, saved: Int?, min: Int, max: Int, trustCurrent: Boolean): Int {
+    if (max <= 0) return 0
+    val fromCurrent = current?.takeIf { trustCurrent && it > min }
+    val half = ((max + 1) / 2).coerceAtLeast(1)
+    return (fromCurrent ?: saved?.takeIf { it > 0 } ?: half).coerceIn(1, max)
+}
+
+/**
+ * The normal-phone volume to save: the current one, unless it sits at the stream's
+ * lowest step [min] and an older value exists (Bageo keeps the earpiece there in AI calls).
+ */
+internal fun chooseSavedVolume(current: Int?, previous: Int?, min: Int): Int? {
+    if (current == null) return previous
+    if (current <= min && previous != null) return previous
+    return current
+}
 
 internal fun resolveOutcome(
     target: String,

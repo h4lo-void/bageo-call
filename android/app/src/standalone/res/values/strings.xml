@@ -5,15 +5,6 @@
     <string name="sa_phone_setup_btn">Phone setup</string>
     <string name="sa_starting_title">Starting Bageo…</string>
     <string name="sa_starting_desc">First launch may take a few seconds.</string>
-    <string name="sa_lan_title">Allow same Wi-Fi access</string>
-    <string name="sa_lan_hint">Let another computer or phone on the same Wi-Fi open this console.</string>
-    <string name="sa_lan_pw_title">Set a console password first</string>
-    <string name="sa_lan_pw_body">Set a password of at least 8 characters before opening this console to other devices on Wi-Fi.</string>
-    <string name="sa_lan_pw_hint">At least 8 characters</string>
-    <string name="sa_lan_pw_short">Password must be at least 8 characters.</string>
-    <string name="sa_lan_pw_failed">Could not save the password. Try again once Bageo finishes starting.</string>
-    <string name="sa_lan_url_label">Wi-Fi address</string>
-    <string name="sa_lan_mdns_hint">Or open %1$s</string>
     <string name="sa_copy_url">Copy address</string>
     <string name="sa_copied">Copied</string>
     <string name="sa_battery_tip">When plugged in long-term, turn on the 80% charging limit in Settings to protect the battery.</string>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial -->
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
+<resources>
+    <string name="sa_call_idle_title">AI 응답 켜짐</string>
+    <string name="sa_call_idle_text">전화가 오면 AI가 먼저 받아요</string>
+    <string name="sa_channel_live_call">통화 중</string>
+    <string name="sa_ai_missed_title">AI가 받지 못했어요</string>
+    <string name="sa_ai_missed_ringing_text">벨이 울리고 있어요. 직접 받아 주세요</string>
+    <string name="sa_channel_ai_missed">AI가 받지 못한 전화</string>
+</resources>

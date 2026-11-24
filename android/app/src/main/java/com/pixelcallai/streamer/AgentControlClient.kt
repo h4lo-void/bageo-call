@@ -75,7 +75,9 @@ class AgentControlClient(
             val url = target?.takeIf { it in list } ?: list.first()
             currentUrl = url
             val openedHere = AtomicBoolean(false)
-            ws = object : WebSocketClient(URI(url), Draft_6455(), null, CONNECT_TIMEOUT_MS) {
+            // Standalone: the loopback phone bridge needs the agent's key (null elsewhere).
+            val headers = EmbeddedAgent.bridgeHeaders(url)
+            ws = object : WebSocketClient(URI(url), Draft_6455(), headers, CONNECT_TIMEOUT_MS) {
                 override fun onOpen(handshakedata: ServerHandshake?) {
                     synchronized(stateLock) {
                         if (!shouldRun.get() || client !== this) {

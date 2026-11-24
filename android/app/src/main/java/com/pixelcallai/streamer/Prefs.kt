@@ -352,7 +352,6 @@ object Prefs {
     private fun normalizeNumber(s: String): String =
         s.filter { !it.isWhitespace() && it != '-' }
 
-    private const val KEY_STANDALONE_LAN = "STANDALONE_LAN_ENABLED"
     private const val KEY_STANDALONE_DAILY_SOUND = "STANDALONE_DAILY_SOUND"
     private const val KEY_STANDALONE_PERSISTENT_NOTIF = "STANDALONE_PERSISTENT_NOTIF"
     private const val KEY_STANDALONE_CALL_SUMMARY_NOTIF = "STANDALONE_CALL_SUMMARY_NOTIF"
@@ -368,13 +367,12 @@ object Prefs {
     const val WHITELIST_ACTION_FORWARD_NUMBER = "forward_number"
     const val WHITELIST_ACTION_AI_ONLY = "ai_only"
 
-    /** Standalone edition: whether same-Wi-Fi LAN console access is turned on (default false). */
-    fun isStandaloneLanEnabled(ctx: Context): Boolean =
-        sp(ctx).getBoolean(KEY_STANDALONE_LAN, false)
-
-    fun setStandaloneLanEnabled(ctx: Context, enabled: Boolean) {
-        sp(ctx).edit().putBoolean(KEY_STANDALONE_LAN, enabled).apply()
-    }
+    /**
+     * Standalone edition: the console opens only inside the app, so it is never shared on
+     * Wi-Fi. Always false; an old saved choice is ignored.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun isStandaloneLanEnabled(ctx: Context): Boolean = false
 
     /** Standalone edition: keep daily notification/media sounds intact while AI handles calls (default true). */
     fun isStandaloneDailySound(ctx: Context): Boolean =

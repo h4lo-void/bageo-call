@@ -5,15 +5,6 @@
     <string name="sa_phone_setup_btn">端末設定</string>
     <string name="sa_starting_title">Bageo を起動しています…</string>
     <string name="sa_starting_desc">初回は数秒かかることがあります。</string>
-    <string name="sa_lan_title">同じ Wi-Fi からの接続を許可</string>
-    <string name="sa_lan_hint">オンにすると、同じ Wi-Fi のパソコンや別のスマホからコンソールを開けます。</string>
-    <string name="sa_lan_pw_title">先にコンソールのパスワードを設定</string>
-    <string name="sa_lan_pw_body">同じ Wi-Fi の端末から開く前に、8 文字以上のパスワードを設定してください。</string>
-    <string name="sa_lan_pw_hint">8 文字以上</string>
-    <string name="sa_lan_pw_short">パスワードは 8 文字以上にしてください。</string>
-    <string name="sa_lan_pw_failed">パスワードを保存できませんでした。起動後にやり直してください。</string>
-    <string name="sa_lan_url_label">Wi-Fi アドレス</string>
-    <string name="sa_lan_mdns_hint">または %1$s</string>
     <string name="sa_copy_url">アドレスをコピー</string>
     <string name="sa_copied">コピーしました</string>
     <string name="sa_battery_tip">常時充電する場合は、システム設定で「充電の上限 80%」をオンにすると電池を保護できます。</string>

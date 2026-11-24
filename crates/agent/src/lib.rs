@@ -1428,15 +1428,21 @@ async fn bootstrap_runtime() -> Result<(AppState, CallsState, Arc<control::Contr
             settings.openrouter_base_url, settings.openrouter_model
         ),
     };
-    let listening = if settings.host_auto {
+    let listening = if crate::config::is_embedded() {
+        // Android standalone: no console port; the app hands the console its requests itself.
+        format!(
+            "inside the app only (no console port; phone bridge ws://127.0.0.1:{}, app key required)",
+            embedded::LOCAL_BRIDGE_PORT
+        )
+    } else if settings.host_auto {
         let name = mdns::parse_name_setting(&settings_store.snapshot().mdns_name);
         let lan = if name.is_empty() { String::new() } else { format!(", on this network http://{name}.local:{}/", settings.port) };
-        format!("0.0.0.0:{} (this computer http://localhost:{}/{lan})", settings.port, settings.port)
+        format!("listening on http://0.0.0.0:{} (this computer http://localhost:{}/{lan})", settings.port, settings.port)
     } else {
-        format!("{}:{}", settings.host, settings.port)
+        format!("listening on http://{}:{}", settings.host, settings.port)
     };
     info!(
-        "pixel-agent listening on http://{} (ws /ws, ui /calls/) mode={} ivr_prompt={:?} ivr_start_delay_ms={} ivr_segments={:?} ivr_prompt_pcm_bytes={} ivr_fail_pcm_bytes={} ivr_goodbye_pcm_bytes={} ivr_reject_unknown_pcm_bytes={} dtmf_hold={} dtmf_vm={} dtmf_end={:?} ivr_loop={} max_menu_plays={} reprompt_ms={} wait_remote_voice={} hold_music={} hold_pcm_bytes={} calls_dir={} calls_record={} llm={} whisper={} piper={}",
+        "pixel-agent {} (ws /ws, ui /calls/) mode={} ivr_prompt={:?} ivr_start_delay_ms={} ivr_segments={:?} ivr_prompt_pcm_bytes={} ivr_fail_pcm_bytes={} ivr_goodbye_pcm_bytes={} ivr_reject_unknown_pcm_bytes={} dtmf_hold={} dtmf_vm={} dtmf_end={:?} ivr_loop={} max_menu_plays={} reprompt_ms={} wait_remote_voice={} hold_music={} hold_pcm_bytes={} calls_dir={} calls_record={} llm={} whisper={} piper={}",
         listening,
         mode,
         settings.ivr_prompt_text,

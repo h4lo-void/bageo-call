@@ -35,6 +35,7 @@ import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -48,17 +49,21 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URI
-import java.net.URL
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /**
  * Pure mobile App host for Android Standalone edition:
- * - Full-screen WebView serving `/calls/mobile` (`standalone.html`) with zero desktop/hybrid chrome.
+ * - Full-screen WebView showing `/calls/mobile` (`standalone.html`) with zero desktop/hybrid chrome.
+ *   The console never goes over the network: the page lives at [CONSOLE_ORIGIN], a reserved
+ *   address that never resolves, and every request for it is answered by the agent inside this
+ *   app ([EmbeddedAgent.http]): GET and HEAD in [WebViewClient.shouldInterceptRequest], requests
+ *   with a body through [MobileAppJsBridge.httpRequest] (a web view cannot pass a body on).
  * - Direct `@JavascriptInterface` (`window.BageoAndroid`) bridging single-phone AI mode switching,
  *   Google Phone / native dialpad launch, permission & role setup, native contacts sync,
- *   local mobile preferences, LAN sharing, haptics, file picker/export, and dynamic system bars.
+ *   local mobile preferences, haptics, file picker/export, and dynamic system bars.
  */
 class StandaloneUi(private val activity: Activity) {
     private lateinit var rootView: View
@@ -77,13 +82,18 @@ class StandaloneUi(private val activity: Activity) {
     private var grantRequestedAt = 0L
     private var grantRationaleBefore: Map<String, Boolean> = emptyMap()
     private var backCallback: Any? = null
+    private var lastStartAttempt = 0L
+
+    /** Runs the page's console requests off the main thread. */
+    private val httpExecutor: ExecutorService = Executors.newCachedThreadPool()
 
     private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
     private var pendingExport: PendingExport? = null
 
     private data class PendingExport(
         val stagedFile: File?,
-        val downloadUrl: String?,
+        /** Console path to fetch from the agent (instead of [stagedFile]). */
+        val downloadTarget: String?,
         val filename: String,
         val mimeType: String,
     )
@@ -146,8 +156,6 @@ class StandaloneUi(private val activity: Activity) {
                 DialerRoleHelper.ensureRoles(activity)
                 CallAudioService.ensureArmed(activity)
             }
-        } else if (Prefs.isStandaloneLanEnabled(activity) && hasRequiredPerms()) {
-            CallAudioService.ensureArmed(activity)
         }
 
         checkEmbeddedReady()
@@ -198,6 +206,7 @@ class StandaloneUi(private val activity: Activity) {
     fun onDestroy() {
         unregisterBackNavigation()
         handler.removeCallbacks(pollRunnable)
+        httpExecutor.shutdown()
         fileUploadCallback?.onReceiveValue(null)
         fileUploadCallback = null
         if (::webView.isInitialized) {
@@ -334,6 +343,15 @@ class StandaloneUi(private val activity: Activity) {
         }
         webView.addJavascriptInterface(MobileAppJsBridge(), "BageoAndroid")
         webView.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?,
+            ): WebResourceResponse? {
+                val req = request ?: return null
+                if (!isLocalConsoleUri(req.url)) return null
+                return serveConsoleRequest(req)
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 if (!pageReady && url != null && url.contains("/calls/mobile")) {
@@ -418,6 +436,14 @@ class StandaloneUi(private val activity: Activity) {
 
     private fun checkEmbeddedReady() {
         val st = EmbeddedAgent.status()
+        if (!st.running) {
+            // Not started yet, or it stopped: try again, at most every few seconds.
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastStartAttempt >= RESTART_EVERY_MS) {
+                lastStartAttempt = now
+                EmbeddedAgent.ensureStarted(activity)
+            }
+        }
         if (st.ready && !embeddedSettingsSynced) {
             embeddedSettingsSynced = true
             val action = Prefs.standaloneWhitelistAction(activity)
@@ -431,13 +457,12 @@ class StandaloneUi(private val activity: Activity) {
         }
         if (st.ready && !consoleLoaded) {
             consoleLoaded = true
-            val baseUrl = EmbeddedAgent.localMobileUrl(st.uiToken)
             val openCall = pendingOpenCallId
             pendingOpenCallId = null
             val url = if (!openCall.isNullOrBlank()) {
-                "$baseUrl#call=${Uri.encode(openCall)}"
+                "$CONSOLE_URL#call=${Uri.encode(openCall)}"
             } else {
-                baseUrl
+                CONSOLE_URL
             }
             webView.loadUrl(url)
             // Fallback splash dismissal in case onPageFinished is delayed.
@@ -453,16 +478,102 @@ class StandaloneUi(private val activity: Activity) {
         val scheme = uri.scheme?.lowercase().orEmpty()
         val host = uri.host?.lowercase().orEmpty()
         val port = uri.port
-        return scheme == "http" &&
-            (host == "127.0.0.1" || host == "localhost") &&
-            (port == -1 || port == BuildConfig.CONSOLE_PORT)
+        return scheme == "https" && host == CONSOLE_HOST && (port == -1 || port == 443)
+    }
+
+    /**
+     * Path and query of a console address ([CONSOLE_HOST]) or of a bare path such as
+     * `/calls/api/list`. Null for any other place.
+     */
+    private fun consoleTarget(uri: Uri): String? {
+        if (uri.scheme == null) {
+            if (uri.encodedAuthority != null) return null
+        } else if (!isLocalConsoleUri(uri)) {
+            return null
+        }
+        val path = uri.encodedPath.orEmpty()
+        if (!path.startsWith("/") || path.startsWith("//")) return null
+        val query = uri.encodedQuery
+        return if (query.isNullOrEmpty()) path else "$path?$query"
+    }
+
+    /** A page request for [CONSOLE_HOST], answered by the agent in this app (runs off the main thread). */
+    private fun serveConsoleRequest(req: WebResourceRequest): WebResourceResponse {
+        val method = req.method.orEmpty().uppercase()
+        if (method != "GET" && method != "HEAD") {
+            // The page sends these through BageoAndroid.httpRequest: the body cannot be read here.
+            return emptyResponse(405)
+        }
+        var target = consoleTarget(req.url) ?: return emptyResponse(400)
+        val headers = req.requestHeaders ?: emptyMap()
+        var hops = 0
+        while (true) {
+            val res = EmbeddedAgent.http(method, target, headers) ?: return emptyResponse(503)
+            if (res.status in 300..399) {
+                // A web view cannot take a redirect from here: follow it inside the app.
+                val next = res.header("location")?.let { consoleTarget(Uri.parse(it)) }
+                if (next != null && hops < MAX_REDIRECTS) {
+                    target = next
+                    hops++
+                    continue
+                }
+                return emptyResponse(502)
+            }
+            return toWebResponse(res, method == "HEAD")
+        }
+    }
+
+    private fun toWebResponse(res: EmbeddedAgent.HttpResult, headOnly: Boolean): WebResourceResponse {
+        val contentType = res.header("content-type").orEmpty()
+        val mime = contentType.substringBefore(';').trim().ifEmpty { "application/octet-stream" }
+        val charset = CHARSET_RE.find(contentType)?.groupValues?.get(1)?.trim()?.trim('"')?.ifEmpty { null }
+        val headers = LinkedHashMap<String, String>()
+        for ((name, value) in res.headers) {
+            if (name in SKIPPED_RESPONSE_HEADERS) continue
+            headers[name] = headers[name]?.let { "$it, $value" } ?: value
+        }
+        val status = if (res.status in 200..299 || res.status in 400..599) res.status else 502
+        val body = if (headOnly) ByteArray(0) else res.body
+        return WebResourceResponse(mime, charset, status, reasonPhrase(status), headers, ByteArrayInputStream(body))
+    }
+
+    private fun emptyResponse(status: Int): WebResourceResponse =
+        WebResourceResponse(
+            "text/plain",
+            "utf-8",
+            status,
+            reasonPhrase(status),
+            mutableMapOf("cache-control" to "no-store"),
+            ByteArrayInputStream(ByteArray(0)),
+        )
+
+    /** WebResourceResponse needs a non-empty reason phrase. */
+    private fun reasonPhrase(status: Int): String = when (status) {
+        200 -> "OK"
+        201 -> "Created"
+        202 -> "Accepted"
+        204 -> "No Content"
+        206 -> "Partial Content"
+        400 -> "Bad Request"
+        401 -> "Unauthorized"
+        403 -> "Forbidden"
+        404 -> "Not Found"
+        405 -> "Method Not Allowed"
+        409 -> "Conflict"
+        413 -> "Payload Too Large"
+        416 -> "Range Not Satisfiable"
+        422 -> "Unprocessable Entity"
+        429 -> "Too Many Requests"
+        500 -> "Internal Server Error"
+        502 -> "Bad Gateway"
+        503 -> "Service Unavailable"
+        else -> if (status < 400) "OK" else "Error"
     }
 
     private fun buildNativeStateJson(): JSONObject {
         val mode = PhoneModeManager.reconcileLocalMirror(activity)
         val ai = mode == Prefs.PHONE_MODE_AI
         val switching = PhoneModeManager.isSwitching()
-        val st = EmbeddedAgent.status()
 
         val roleManager = activity.getSystemService(RoleManager::class.java)
         val moduleOk = isPrivilegedSystemApp() && privilegedPermissions.all { isGranted(it) }
@@ -500,14 +611,6 @@ class StandaloneUi(private val activity: Activity) {
             .put("dnd_any", Prefs.isStandaloneDndAnyMode(activity))
             .put("whitelist_action", Prefs.standaloneWhitelistAction(activity))
 
-        val lan = JSONObject()
-            .put("requested", Prefs.isStandaloneLanEnabled(activity))
-            .put("enabled", st.lanEnabled)
-            .put("password_set", st.passwordSet)
-            .put("lan_ip", st.lanIp)
-            .put("lan_url", st.lanUrl)
-            .put("mdns_url", st.mdnsUrl)
-
         val errCode = modeErrorCode
         val errText = if (errCode != null && !switching) {
             activity.getString(R.string.mode_failed, modeErrorText(errCode))
@@ -538,7 +641,6 @@ class StandaloneUi(private val activity: Activity) {
             .put("sims", sims)
             .put("checks", checks)
             .put("prefs", prefs)
-            .put("lan", lan)
     }
 
     private fun pushNativeState() {
@@ -568,6 +670,32 @@ class StandaloneUi(private val activity: Activity) {
     private inner class MobileAppJsBridge {
         @JavascriptInterface
         fun getNativeStateJson(): String = buildNativeStateJson().toString()
+
+        /**
+         * A console request with a body (POST, PUT, DELETE…), answered by the agent in this app
+         * on a background thread. The answer comes back as
+         * `window.__bageoHttpDone(id, {status, headers, body})` with the body in base64;
+         * `status` 0 means it could not be sent.
+         */
+        @JavascriptInterface
+        fun httpRequest(id: String, method: String, url: String, headersJson: String, bodyBase64: String) {
+            val cleanId = id.take(64)
+            try {
+                httpExecutor.execute {
+                    val reply = runPageRequest(method, url, headersJson, bodyBase64)
+                    val js = "if(window.__bageoHttpDone)window.__bageoHttpDone(${JSONObject.quote(cleanId)},$reply);"
+                    activity.runOnUiThread {
+                        if (!activity.isDestroyed && ::webView.isInitialized) webView.evaluateJavascript(js, null)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "console request not queued: ${e.message}")
+                val js = "if(window.__bageoHttpDone)window.__bageoHttpDone(${JSONObject.quote(cleanId)},{\"status\":0});"
+                activity.runOnUiThread {
+                    if (!activity.isDestroyed && ::webView.isInitialized) webView.evaluateJavascript(js, null)
+                }
+            }
+        }
 
         @JavascriptInterface
         fun setAiMode(enable: Boolean) {
@@ -698,44 +826,6 @@ class StandaloneUi(private val activity: Activity) {
         }
 
         @JavascriptInterface
-        fun setLanAccess(enabled: Boolean, password: String): String {
-            if (!enabled) {
-                EmbeddedAgent.setLanEnabled(activity, false)
-                activity.runOnUiThread {
-                    if (!Prefs.isAiCallEnabled(activity)) {
-                        activity.startService(
-                            Intent(activity, CallAudioService::class.java).setAction(CallAudioService.ACTION_STOP),
-                        )
-                    }
-                    pushNativeState()
-                    refreshSoon()
-                }
-                return JSONObject().put("ok", true).toString()
-            }
-            val pw = password.trim()
-            val st = EmbeddedAgent.status()
-            if (pw.isNotEmpty()) {
-                if (pw.length < MIN_PASSWORD_LEN) {
-                    return JSONObject().put("ok", false).put("error", "password_too_short").toString()
-                }
-                if (!EmbeddedAgent.setConsolePassword(pw)) {
-                    return JSONObject().put("ok", false).put("error", "save_failed").toString()
-                }
-            } else if (!st.passwordSet) {
-                return JSONObject().put("ok", false).put("error", "need_password").toString()
-            }
-            EmbeddedAgent.setLanEnabled(activity, true)
-            activity.runOnUiThread {
-                if (!Prefs.isAiCallEnabled(activity) && hasRequiredPerms()) {
-                    CallAudioService.ensureArmed(activity)
-                }
-                pushNativeState()
-                refreshSoon()
-            }
-            return JSONObject().put("ok", true).toString()
-        }
-
-        @JavascriptInterface
         fun syncTheme(theme: String) {
             activity.runOnUiThread {
                 applySystemBarTheme(theme == "dark")
@@ -779,6 +869,43 @@ class StandaloneUi(private val activity: Activity) {
         fun copyText(text: String) {
             activity.runOnUiThread { copyToClipboard(text) }
         }
+    }
+
+    /** One request from the page's JS bridge; the reply as JSON for `__bageoHttpDone`. */
+    private fun runPageRequest(method: String, url: String, headersJson: String, bodyBase64: String): JSONObject {
+        val reply = JSONObject()
+        try {
+            val target = consoleTarget(Uri.parse(url.trim()))
+            if (target == null) {
+                reply.put("status", 0)
+                return reply
+            }
+            val headers = LinkedHashMap<String, String>()
+            val given = try {
+                JSONObject(headersJson)
+            } catch (_: Exception) {
+                JSONObject()
+            }
+            for (key in given.keys()) headers[key] = given.optString(key)
+            val body = if (bodyBase64.isEmpty()) null else Base64.decode(bodyBase64, Base64.DEFAULT)
+            val verb = method.trim().uppercase().ifEmpty { "GET" }
+            val res = EmbeddedAgent.http(verb, target, headers, body)
+            if (res == null) {
+                reply.put("status", 0)
+                return reply
+            }
+            val outHeaders = JSONObject()
+            for ((name, value) in res.headers) {
+                if (!outHeaders.has(name)) outHeaders.put(name, value)
+            }
+            reply.put("status", res.status)
+                .put("headers", outHeaders)
+                .put("body", Base64.encodeToString(res.body, Base64.NO_WRAP))
+        } catch (t: Throwable) {
+            Log.w(TAG, "console request failed: ${t.message}")
+            reply.put("status", 0)
+        }
+        return reply
     }
 
     private fun openDialerOrPhoneApp(number: String) {
@@ -861,19 +988,11 @@ class StandaloneUi(private val activity: Activity) {
     }
 
     private fun resolveLocalUrl(rawUrl: String): String? {
+        val raw = rawUrl.trim()
+        if (raw.isEmpty()) return null
         return try {
-            val base = URI("http://127.0.0.1:${BuildConfig.CONSOLE_PORT}/calls/")
-            val target = base.resolve(rawUrl.trim())
-            val host = target.host?.lowercase().orEmpty()
-            val port = if (target.port == -1) 80 else target.port
-            if (target.scheme == "http" &&
-                (host == "127.0.0.1" || host == "localhost") &&
-                port == BuildConfig.CONSOLE_PORT
-            ) {
-                target.toString()
-            } else {
-                null
-            }
+            val resolved = java.net.URI("$CONSOLE_ORIGIN/calls/").resolve(raw)
+            consoleTarget(Uri.parse(resolved.toString()))
         } catch (_: Exception) {
             null
         }
@@ -902,20 +1021,11 @@ class StandaloneUi(private val activity: Activity) {
                     if (job.stagedFile != null) {
                         job.stagedFile.inputStream().use { input -> input.copyTo(out) }
                         ok = true
-                    } else if (job.downloadUrl != null) {
-                        val conn = (URL(job.downloadUrl).openConnection() as HttpURLConnection).apply {
-                            connectTimeout = 10_000
-                            readTimeout = 60_000
-                            val tok = EmbeddedAgent.status().uiToken
-                            if (tok.isNotBlank()) setRequestProperty("x-calls-token", tok)
-                        }
-                        try {
-                            if (conn.responseCode in 200..299) {
-                                conn.inputStream.use { input -> input.copyTo(out) }
-                                ok = true
-                            }
-                        } finally {
-                            conn.disconnect()
+                    } else if (job.downloadTarget != null) {
+                        val res = EmbeddedAgent.http("GET", job.downloadTarget)
+                        if (res != null && res.ok) {
+                            out.write(res.body)
+                            ok = true
                         }
                     }
                 }
@@ -1120,7 +1230,21 @@ class StandaloneUi(private val activity: Activity) {
     companion object {
         const val ENABLED = true
         private const val TAG = "StandaloneUi"
-        private const val MIN_PASSWORD_LEN = 8
+
+        /**
+         * Where the page lives: Android's reserved address for app content, which never
+         * reaches the network. Every request for it is answered inside this app.
+         */
+        private const val CONSOLE_HOST = "appassets.androidplatform.net"
+        private const val CONSOLE_ORIGIN = "https://$CONSOLE_HOST"
+        private const val CONSOLE_URL = "$CONSOLE_ORIGIN/calls/mobile"
+        private const val MAX_REDIRECTS = 3
+        private const val RESTART_EVERY_MS = 5_000L
+        private val CHARSET_RE = Regex("charset=([^;]+)", RegexOption.IGNORE_CASE)
+
+        /** Set from the parameters of WebResourceResponse, or not for a web view. */
+        private val SKIPPED_RESPONSE_HEADERS = setOf("content-type", "content-encoding", "transfer-encoding", "connection")
+
         private const val REQ_GRANT_ALL = 101
         private const val REQ_CONTACTS = 102
         private const val REQ_SCREENING_ROLE = 7102

@@ -1409,13 +1409,6 @@ async fn settings_put(
                     "blocklist_sync cleared after settings save (deny gating removed)"
                 );
             }
-            if crate::config::is_embedded()
-                && (patch.get("ui_password").is_some()
-                    || patch.get("mdns_name").is_some()
-                    || patch.get("phone_wifi").is_some())
-            {
-                crate::embedded::notify_lan_config_changed();
-            }
             Json(json!({
                 "ok": true,
                 "settings": state.settings_store.masked_json(),

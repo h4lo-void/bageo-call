@@ -82,10 +82,17 @@ class SilentCallScreeningService : CallScreeningService() {
         respondAllowSilent(callDetails, silence = true)
         Log.i(TAG, "screened: silence=true reject=false skipNotification=false (allow-legal)")
 
-        try {
-            LocalAudioGuard(this).silenceRingingCall()
-        } catch (e: Exception) {
-            Log.w(TAG, "silenceRingingCall: ${e.message}")
+        // Standalone: this process never touches the phone's volumes. Its audio guard is
+        // separate from the main process's one and never restores, so a ring volume set to
+        // zero here stayed zero after the call (and was saved as the "before" value).
+        // The call itself is silenced by the response above, and Bageo's phone app does
+        // not ring for a call the AI takes.
+        if (!BuildConfig.STANDALONE) {
+            try {
+                LocalAudioGuard(this).silenceRingingCall()
+            } catch (e: Exception) {
+                Log.w(TAG, "silenceRingingCall: ${e.message}")
+            }
         }
 
         // Arm streamer and signal RINGING early with EXTRA so the agent's answer_plan

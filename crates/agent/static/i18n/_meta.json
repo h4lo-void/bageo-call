@@ -2713,6 +2713,11 @@
     "who": "the owner",
     "placeholders": []
   },
+  "err_try_again": {
+    "where": "an error the console shows when something did not work and there is no more exact reason. English: That didn't work. Please try again.",
+    "who": "the owner",
+    "placeholders": []
+  },
   "err_network_error": {
     "where": "an error the console shows. English: The service could not be reached.",
     "who": "the owner",
@@ -4329,16 +4334,6 @@
   },
   "m_er_turn_on": {
     "where": "Button in AI Errands to enable AI answering mode. English: Turn on AI answering",
-    "who": "the owner",
-    "placeholders": []
-  },
-  "m_lan_h": {
-    "where": "Help text for same Wi-Fi console access. English: Off by default. Requires a password of at least 8 characters.",
-    "who": "the owner",
-    "placeholders": []
-  },
-  "m_lan_title": {
-    "where": "Switch to allow opening the console from another device on the same Wi-Fi. English: Allow console access on same Wi-Fi",
     "who": "the owner",
     "placeholders": []
   },
@@ -5997,6 +5992,11 @@
     "placeholders": [
       "{msg}"
     ]
+  },
+  "set_not_loaded": {
+    "where": "a message when Save is tapped before the settings have arrived. English: The settings are still loading. Try again in a moment.",
+    "who": "the owner",
+    "placeholders": []
   },
   "save_region": {
     "where": "the save bar. English: Unsaved changes",

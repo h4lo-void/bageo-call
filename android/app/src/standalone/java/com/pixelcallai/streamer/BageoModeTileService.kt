@@ -26,6 +26,15 @@ class BageoModeTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
+        // On the lock screen the switch waits for the owner to unlock first.
+        if (isLocked) {
+            unlockAndRun { toggleMode() }
+        } else {
+            toggleMode()
+        }
+    }
+
+    private fun toggleMode() {
         PhoneModeManager.reconcileLocalMirror(this)
         val isAi = Prefs.isAiCallEnabled(this)
         val target = if (isAi) Prefs.PHONE_MODE_NORMAL else Prefs.PHONE_MODE_AI

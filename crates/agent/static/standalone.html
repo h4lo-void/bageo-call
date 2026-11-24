@@ -356,8 +356,7 @@ audio{width:100%;height:42px;margin-top:10px;display:block}
 .sim-badge{font-size:.75rem;font-weight:700;padding:2px 7px;border-radius:6px;background:var(--surface2);color:var(--muted)}
 .sim-num{font-family:var(--mono);font-size:.92rem;font-weight:600}
 .sim-in{flex:1 1 10rem;min-height:38px;padding:6px 10px;font-family:var(--mono)}
-.qr-box{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:12px;padding:12px;border-radius:var(--radius-sm);background:var(--surface2)}
-.qr-box canvas{width:136px;height:136px;image-rendering:pixelated;border-radius:8px;border:1px solid var(--line);background:#fff}
+[aria-invalid="true"]{border-color:var(--bad)}
 
 /* ---------- Errands & Contacts ---------- */
 .er-to{position:relative}
@@ -1468,30 +1467,6 @@ dialog .terms li+li{margin-top:7px}
         </div>
 
         <div class="card pad">
-          <label class="sw" style="padding-top:0">
-            <span><b data-i18n="m_lan_title"></b><small data-i18n="m_lan_h"></small></span>
-            <input type="checkbox" id="lanToggle" />
-          </label>
-          <div id="lanPwRow" class="field" hidden>
-            <label for="lanPwIn" data-i18n="f_ui_pw"></label>
-            <div class="with-btn">
-              <input type="password" id="lanPwIn" autocomplete="new-password" spellcheck="false" data-i18n-ph="pw_setup_ph" />
-              <button type="button" class="btn sm primary" id="lanPwSaveBtn" data-i18n="ct_save"></button>
-            </div>
-            <p class="dlg-err" id="lanPwErr" hidden></p>
-          </div>
-          <div id="lanInfoBox" hidden style="margin-top:8px">
-            <div class="row" style="justify-content:space-between">
-              <span class="mono small" id="lanUrlText" style="word-break:break-all"></span>
-              <button type="button" class="btn xs" id="lanCopyBtn" data-i18n="cu_copy"></button>
-            </div>
-            <div class="qr-box" id="lanQrBox" hidden>
-              <canvas id="lanQrCanvas" data-i18n-aria="cu_qr_alt"></canvas>
-            </div>
-          </div>
-        </div>
-
-        <div class="card pad">
           <div class="field"><label for="f-gemini_live_model" data-i18n="f_model"></label>
             <input type="text" id="f-gemini_live_model" data-k="gemini_live_model" data-t="text" list="modelList" spellcheck="false" placeholder="gemini-3.8-live" /></div>
           <div class="field"><label for="f-gemini_thinking_level" data-i18n="f_think"></label>
@@ -1776,7 +1751,6 @@ let native = {
   sims: [],
   checks: { module_ok: true, perms_ok: true, dialer_ok: true, screening_ok: true, dnd_ok: true, battery_ok: true, contacts_perm: false, uplink_ok: true },
   prefs: { daily_sound: false, persistent_notif: false, summary_notif: true, dnd_auto: false, dnd_any: true, whitelist_action: "urgent_prompt" },
-  lan: { requested: false, enabled: false, password_set: false, lan_ip: "", lan_url: "", mdns_url: "" },
 };
 
 function readInitialNativeState() {
@@ -1797,7 +1771,6 @@ window.__onBageoNativeState = function (st) {
     ...st,
     checks: { ...native.checks, ...(st.checks || {}) },
     prefs: { ...native.prefs, ...(st.prefs || {}) },
-    lan: { ...native.lan, ...(st.lan || {}) },
     sims: Array.isArray(st.sims) ? st.sims : native.sims,
   };
   if (prevSwitching && !native.switching && prevAi !== native.ai_enabled) {
@@ -1808,7 +1781,6 @@ window.__onBageoNativeState = function (st) {
   renderSetup();
   renderMobilePrefs();
   renderAdvPermsAndSims();
-  renderLanSection();
   erRenderSimField();
   renderSetMenuSummaries();
 };
@@ -1824,7 +1796,7 @@ window.__onBageoContactsSynced = function (res) {
     toast(t("m_sync_done", { added: res.added || 0, merged: res.merged || 0 }));
     contactsChanged();
   } else if (res.error && res.error !== "no_permission") {
-    toast(String(res.error), true);
+    toast(errCodeText(res.error), true);
   }
 };
 
@@ -1892,7 +1864,7 @@ async function loadLang(l) {
   if (!l || I18N[l]) return !!I18N[l];
   if (!pageLangs().includes(l) && !/^[a-z]{2,3}$/.test(l)) return false;
   try {
-    const res = await fetch(basePath + "/i18n/" + encodeURIComponent(l) + ".json", { cache: "no-cache" });
+    const res = await rawFetch(basePath + "/i18n/" + encodeURIComponent(l) + ".json", { cache: "no-cache" }, REQ_TIMEOUT_MS);
     if (!res.ok) return false;
     const d = await res.json();
     if (!d || d.schema !== 1 || d.lang !== l || !d.strings || typeof d.strings !== "object") return false;
@@ -2121,13 +2093,19 @@ class ApiError extends Error {
   constructor(msg, status, detail, data) { super(msg); this.status = status; this.detail = detail || ""; this.data = data || null; }
 }
 const ERR_WITH_DETAIL = new Set(["http_error", "service_error", "network_error", "send_failed", "bot_problem"]);
+const hasText = (key) => (I18N[lang] && I18N[lang][key]) != null || I18N.en[key] != null;
+// A short error code (from Bageo or the app) in words, or "That didn't work" when there are none.
+function errCodeText(code) {
+  const key = "err_" + String(code || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  return hasText(key) ? t(key) : t("err_try_again");
+}
 function apiErrorText(data, status) {
-  const raw = String((data && (data.error || data.detail)) || `HTTP ${status}`);
+  const raw = String((data && (data.error || data.detail)) || "").trim();
   const code = String((data && data.code) || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
   const key = "err_" + code;
-  if (!code || ((I18N[lang] && I18N[lang][key]) == null && I18N.en[key] == null)) return raw;
+  if (!code || !hasText(key)) return t(status === 0 ? "err_network" : "err_try_again");
   const text = t(key, { field: data.field ? chanFieldLabel(String(data.kind || ""), String(data.field)) : "" });
-  if (!ERR_WITH_DETAIL.has(code) || !raw.trim()) return text;
+  if (!ERR_WITH_DETAIL.has(code) || !raw) return text;
   return /^(zh|ja)/.test(lang) ? `${text}（${raw}）` : `${text} (${raw})`;
 }
 let tokenAsk = null, tokenDeclined = false;
@@ -2145,11 +2123,89 @@ function askToken(wrong) {
   }
   return tokenAsk;
 }
+// Requests give up after REQ_TIMEOUT_MS, except long jobs (backups, downloads, imports,
+// samples, test messages), which wait as long as they take.
+const REQ_TIMEOUT_MS = 10000;
+const LONG_API = /^\/(backup|voices|extras|packs|contacts\/import|notify\/test|preview)(\/|\?|$)/;
+function isLongRequest(url) {
+  const path = String(url || "");
+  return path.startsWith(apiBase) && LONG_API.test(path.slice(apiBase.length));
+}
+// Inside the Bageo app the console never goes over the network: a GET is answered by the
+// app as the page asks for it, and a request with a body goes through the app as well
+// (BageoAndroid.httpRequest) because the web view cannot hand its body on.
+const NATIVE_HTTP = !!(window.BageoAndroid && typeof window.BageoAndroid.httpRequest === "function");
+const httpPending = new Map();
+let httpSeq = 0;
+window.__bageoHttpDone = function (id, reply) {
+  const done = httpPending.get(id);
+  if (!done) return;
+  httpPending.delete(id);
+  done(reply);
+};
+function b64ToBytes(b64) {
+  const bin = atob(String(b64 || ""));
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function blobToB64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const s = String(reader.result || "");
+      const idx = s.indexOf(",");
+      resolve(idx >= 0 ? s.slice(idx + 1) : "");
+    };
+    reader.onerror = () => reject(reader.error || new Error("read"));
+    reader.readAsDataURL(blob);
+  });
+}
+async function nativeFetch(url, init, ms) {
+  const req = new Request(new URL(url, location.href).href, init);
+  const headers = {};
+  req.headers.forEach((v, k) => { headers[k] = v; });
+  const blob = await req.blob();
+  const body = blob.size ? await blobToB64(blob) : "";
+  const id = "h" + (++httpSeq);
+  const reply = await new Promise((resolve) => {
+    httpPending.set(id, resolve);
+    if (ms) setTimeout(() => { if (httpPending.delete(id)) resolve(null); }, ms);
+    try { window.BageoAndroid.httpRequest(id, req.method, req.url, JSON.stringify(headers), body); }
+    catch (_) { httpPending.delete(id); resolve(null); }
+  });
+  if (!reply || !(reply.status >= 200 && reply.status <= 599)) throw new TypeError("network");
+  const out = new Headers();
+  for (const [k, v] of Object.entries(reply.headers || {})) { try { out.append(k, String(v)); } catch (_) {} }
+  const empty = req.method === "HEAD" || [204, 205, 304].includes(reply.status);
+  return new Response(empty ? null : b64ToBytes(reply.body), { status: reply.status, headers: out });
+}
+async function rawFetch(url, init, ms) {
+  const opts = init || {};
+  const method = String(opts.method || "GET").toUpperCase();
+  if (NATIVE_HTTP && method !== "GET" && method !== "HEAD") return nativeFetch(url, opts, ms);
+  const ctl = ms && typeof AbortController === "function" ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), ms) : 0;
+  try { return await fetch(url, ctl ? { ...opts, signal: ctl.signal } : opts); }
+  finally { clearTimeout(timer); }
+}
+let netDown = false;
 async function request(url, opts) {
+  const o = { ...(opts || {}) };
+  const ms = o.timeoutMs != null ? o.timeoutMs : (isLongRequest(url) ? 0 : REQ_TIMEOUT_MS);
+  delete o.timeoutMs;
   for (;;) {
     let res;
-    try { res = await fetch(url, authInit(opts)); }
-    catch (_) { throw new ApiError(t("err_network"), 0); }
+    try { res = await rawFetch(url, authInit(o), ms); }
+    catch (_) {
+      netDown = true;
+      showNet(t("err_network"));
+      throw new ApiError(t("err_network"), 0);
+    }
+    if (netDown) {
+      netDown = false;
+      if (!tokenDeclined) $("netBanner").hidden = true;
+    }
     if (res.status !== 401) return res;
     if (!(await askToken(!!token))) throw new ApiError(t("token_title"), 401);
   }
@@ -2242,6 +2298,8 @@ const SUBPAGES = {
   data: "m_sg_data",
   adv: "m_sg_adv",
 };
+// Subpages with fields to save (phone and data act at once and have nothing to save).
+const SAVE_SUBPAGES = new Set(["basics", "answer", "prompt", "spam", "notify", "adv"]);
 let view = "calls";
 let settingsSub = "";
 
@@ -2274,7 +2332,7 @@ function renderHeader() {
   const canCallBack = inDetail && detail.call && String(detail.call.caller_id || "").trim().length > 0;
   $("hdrCallback").hidden = !canCallBack;
   $("hdrAddContact").hidden = sub || view !== "contacts";
-  $("hdrSave").hidden = !inSubpage;
+  $("hdrSave").hidden = !inSubpage || !SAVE_SUBPAGES.has(settingsSub);
 }
 
 function showTab(name, sub) {
@@ -2297,7 +2355,7 @@ function showTab(name, sub) {
     $("setForm").hidden = !S || !settingsSub;
     document.querySelectorAll("#setForm .spage").forEach((sp) => { sp.hidden = sp.dataset.sp !== settingsSub; });
     if (settingsSub === "data") { bkLoad(); pkLoad(); vpLoad(); }
-    if (settingsSub === "adv") { loadHealth(); renderAdvPermsAndSims(); renderLanSection(); }
+    if (settingsSub === "adv") { loadHealth(); renderAdvPermsAndSims(); }
   }
 
   if (view === "contacts") loadContacts();
@@ -2471,7 +2529,14 @@ let live = { ok: null, count: 0, calls: [] };
 let liveSig = null;
 const isLive = (c) => c && (c.status === "ringing" || c.status === "active");
 
+let pollLiveBusy = false;
 async function pollLive() {
+  // A slow answer is not asked for again on top of itself.
+  if (pollLiveBusy) return;
+  pollLiveBusy = true;
+  try { await pollLiveOnce(); } finally { pollLiveBusy = false; }
+}
+async function pollLiveOnce() {
   try {
     const d = await api("/live");
     live = { ok: true, count: Number(d.count || 0), calls: d.calls || [] };
@@ -4197,6 +4262,12 @@ let autoSaveTimer = 0;
 let pendingPatch = {};
 let saveLoopPromise = null;
 let populating = false;
+// The settings as Bageo last confirmed them: S goes back to these when a save fails.
+let serverS = null;
+function setServerSettings(s) {
+  S = s || {};
+  serverS = JSON.parse(JSON.stringify(S));
+}
 
 function applyOptimisticPatch(patch) {
   if (!S || !patch || !Object.keys(patch).length) return;
@@ -4226,12 +4297,15 @@ async function savePatch(patch, quietToast) {
   }
   if (saveLoopPromise) return await saveLoopPromise;
   saveLoopPromise = (async () => {
+    let inFlight = null;
     try {
       while (Object.keys(pendingPatch).length) {
         const send = { ...pendingPatch };
+        inFlight = send;
         pendingPatch = {};
         const d = await api("/settings", jsonBody("PUT", send));
-        S = d.settings || S;
+        inFlight = null;
+        setServerSettings(d.settings || S);
         if (Object.keys(pendingPatch).length) applyOptimisticPatch(pendingPatch);
         const srv = matchLang(S.notify_language || S.language);
         if (srv) store.set("pca.srvlang", srv);
@@ -4250,6 +4324,14 @@ async function savePatch(patch, quietToast) {
       }
       return true;
     } catch (e) {
+      // Nothing was saved: show what Bageo really has, and keep the changes for the next try.
+      if (inFlight) pendingPatch = { ...inFlight, ...pendingPatch };
+      if (serverS) {
+        S = JSON.parse(JSON.stringify(serverS));
+        renderSetup();
+        renderHero();
+        renderSetMenuSummaries();
+      }
       if (e.status !== 401) toast(t("save_failed", { msg: e.message }), true);
       return false;
     } finally {
@@ -4265,11 +4347,26 @@ function isNumberInputValid(el) {
   const v = Number(el.value), lo = Number(el.min), hi = Number(el.max);
   return Number.isFinite(v) && v >= lo && v <= hi;
 }
+// Marks a number field that is out of range (and clears the mark once it is fixed).
+function markNumberField(el) {
+  const bad = !isNumberInputValid(el);
+  if (bad) el.setAttribute("aria-invalid", "true");
+  else el.removeAttribute("aria-invalid");
+  return bad;
+}
+function showRangeError(el, focus) {
+  const lab = el.id ? form.querySelector(`label[for="${el.id}"]`) : null;
+  const label = (lab && lab.textContent.trim()) || "";
+  toast(t("range_err", { label, lo: el.min, hi: el.max }), true);
+  if (!focus) return;
+  try { el.scrollIntoView({ block: "center" }); el.focus({ preventScroll: true }); } catch (_) {}
+}
+const onShownSubpage = (el) => { const sp = el.closest(".spage"); return !settingsSub || (!!sp && sp.dataset.sp === settingsSub); };
 
 function queueFieldAutoSave(el, immediate) {
   if (populating || !S || !el || !el.dataset.k || el.dataset.t === "secret") return;
   const k = el.dataset.k;
-  if (!isNumberInputValid(el)) return;
+  if (markNumberField(el)) { showRangeError(el, false); return; }
   const patch = {};
   if (k === "gemini_persona_prompt") {
     syncPromptDraft();
@@ -4298,7 +4395,12 @@ function blurActiveInput() {
 async function saveCurrentSettings(explicitClick, blurInputs) {
   clearTimeout(autoSaveTimer);
   if (blurInputs) blurActiveInput();
-  if (!S || populating) return true;
+  if (!S) {
+    // The settings have not arrived yet: there is nothing to compare with or save.
+    if (explicitClick) toast(t("set_not_loaded"), true);
+    return !explicitClick;
+  }
+  if (populating) return true;
 
   for (const chipId of ["f-about_say", "f-about_avoid"]) {
     const box = $(chipId);
@@ -4307,10 +4409,20 @@ async function saveCurrentSettings(explicitClick, blurInputs) {
   }
 
   const patch = {};
+  const invalid = [];
   for (const el of fieldEls()) {
     const k = el.dataset.k;
     if (!k || el.dataset.t === "secret") continue;
-    if (!isNumberInputValid(el)) continue;
+    if (!isNumberInputValid(el)) {
+      const typed = curValue(el);
+      // A value Bageo already has is left alone; one typed here must be fixed before saving
+      // (on the page shown; another page's field was checked when it was left).
+      if (typed !== null && JSON.stringify(typed) === JSON.stringify(S[k])) continue;
+      el.setAttribute("aria-invalid", "true");
+      if (onShownSubpage(el)) invalid.push(el);
+      continue;
+    }
+    el.removeAttribute("aria-invalid");
     if (k === "gemini_persona_prompt") {
       syncPromptDraft();
       const pPersona = promptDraft.persona.trim();
@@ -4323,6 +4435,10 @@ async function saveCurrentSettings(explicitClick, blurInputs) {
     if ((k === "language" || k === "notify_language") && val === "__more__") continue;
     if (val === null) continue;
     if (JSON.stringify(val) !== JSON.stringify(S[k])) patch[k] = val;
+  }
+  if (invalid.length) {
+    showRangeError(invalid[0], true);
+    return false;
   }
 
   const clearedSecrets = [];
@@ -4354,9 +4470,6 @@ async function saveCurrentSettings(explicitClick, blurInputs) {
           if (nextNum !== curNum) saveSimNumber(serial, subId, sim.country, nextNum);
         }
       }
-    }
-    if (lanNeedPwShown && $("lanPwIn") && $("lanPwIn").value.trim().length >= 8) {
-      $("lanPwSaveBtn").click();
     }
   }
 
@@ -4774,7 +4887,7 @@ function tsMountExtArt(code, art) {
 }
 function tsLoadArt(code) {
   if (!code || TS_REGIONS[code] || TS_EXT_ART[code] || TS_EXT_LOADING[code] || TS_EXT_MISS[code]) return;
-  TS_EXT_LOADING[code] = fetch(basePath + "/extras/art/art-" + encodeURIComponent(code) + ".json", { cache: "no-store" })
+  TS_EXT_LOADING[code] = rawFetch(basePath + "/extras/art/art-" + encodeURIComponent(code) + ".json", { cache: "no-store" }, REQ_TIMEOUT_MS)
     .then(async (res) => res.ok ? res.json() : null)
     .then((d) => {
       if (d && d.region === code && d.look && d.draw) { TS_EXT_ART[code] = d; delete TS_EXT_MISS[code]; }
@@ -5316,7 +5429,7 @@ async function loadSettings() {
   $("setLoading").hidden = !!S;
   try {
     const d = await api("/settings");
-    S = d.settings || {};
+    setServerSettings(d.settings);
     $("setLoading").hidden = true;
     if (view === "settings") {
       $("setMenu").hidden = !!settingsSub;
@@ -5533,118 +5646,6 @@ function renderAdvPermsAndSims() {
     }
   }
 }
-
-// Compact QR encoder & LAN Wi-Fi sharing
-const QR = (() => {
-  const ECC = [0, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26];
-  const BLOCKS = [0, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5];
-  const rawModules = (v) => { let r = (16 * v + 128) * v + 64; if (v >= 2) { const n = Math.floor(v / 7) + 2; r -= (25 * n - 10) * n - 55; if (v >= 7) r -= 36; } return r; };
-  const dataCodewords = (v) => Math.floor(rawModules(v) / 8) - ECC[v] * BLOCKS[v];
-  const gfMul = (x, y) => { let z = 0; for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >>> 7) * 0x11d); z ^= ((y >>> i) & 1) * x; } return z; };
-  function rsDivisor(deg) { const r = new Array(deg).fill(0); r[deg - 1] = 1; let root = 1; for (let i = 0; i < deg; i++) { for (let j = 0; j < r.length; j++) { r[j] = gfMul(r[j], root); if (j + 1 < r.length) r[j] ^= r[j + 1]; } root = gfMul(root, 0x02); } return r; }
-  function rsRem(data, div) { const r = div.map(() => 0); for (const b of data) { const f = b ^ r.shift(); r.push(0); div.forEach((c, i) => { r[i] ^= gfMul(c, f); }); } return r; }
-  function encode(text) {
-    const bytes = Array.from(new TextEncoder().encode(text));
-    let v = 1;
-    while (v <= 10 && 4 + (v < 10 ? 8 : 16) + 8 * bytes.length > dataCodewords(v) * 8) v++;
-    if (v > 10) return null;
-    const bits = [], put = (val, n) => { for (let i = n - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
-    put(4, 4); put(bytes.length, v < 10 ? 8 : 16);
-    for (const b of bytes) put(b, 8);
-    const dc = dataCodewords(v);
-    put(0, Math.min(4, dc * 8 - bits.length));
-    put(0, (8 - bits.length % 8) % 8);
-    const data = [];
-    for (let i = 0; i < bits.length; i += 8) data.push(bits.slice(i, i + 8).reduce((a, b) => (a << 1) | b, 0));
-    for (let pad = 0xec; data.length < dc; pad ^= 0xec ^ 0x11) data.push(pad);
-    const nB = BLOCKS[v], eccL = ECC[v], raw = Math.floor(rawModules(v) / 8), nS = nB - raw % nB, sL = Math.floor(raw / nB), div = rsDivisor(eccL), blocks = [];
-    for (let i = 0, k = 0; i < nB; i++) { const dat = data.slice(k, k + sL - eccL + (i < nS ? 0 : 1)); k += dat.length; const ecc = rsRem(dat, div); if (i < nS) dat.push(0); blocks.push(dat.concat(ecc)); }
-    const words = [];
-    for (let i = 0; i < blocks[0].length; i++) blocks.forEach((b, j) => { if (i !== sL - eccL || j >= nS) words.push(b[i]); });
-    const size = v * 4 + 17, mod = Array.from({ length: size }, () => new Array(size).fill(false)), fn = Array.from({ length: size }, () => new Array(size).fill(false));
-    const set = (x, y, dark) => { mod[y][x] = dark; fn[y][x] = true; };
-    for (let i = 0; i < size; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
-    const finder = (cx, cy) => { for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const x = cx + dx, y = cy + dy, d = Math.max(Math.abs(dx), Math.abs(dy)); if (x >= 0 && x < size && y >= 0 && y < size) set(x, y, d !== 2 && d !== 4); } };
-    finder(3, 3); finder(size - 4, 3); finder(3, size - 4);
-    if (v >= 2) { const n = Math.floor(v / 7) + 2, step = Math.ceil((v * 4 + 4) / (n * 2 - 2)) * 2, pos = [6]; for (let p = size - 7; pos.length < n; p -= step) pos.splice(1, 0, p); for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { if ((i === 0 && j === 0) || (i === 0 && j === n - 1) || (i === n - 1 && j === 0)) continue; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(pos[i] + dx, pos[j] + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1); } }
-    const format = (mask) => { let r = mask; for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537); const b = ((mask << 10) | r) ^ 0x5412, bit = (i) => ((b >>> i) & 1) === 1; for (let i = 0; i <= 5; i++) set(8, i, bit(i)); set(8, 7, bit(6)); set(8, 8, bit(7)); set(7, 8, bit(8)); for (let i = 9; i < 15; i++) set(14 - i, 8, bit(i)); for (let i = 0; i < 8; i++) set(size - 1 - i, 8, bit(i)); for (let i = 8; i < 15; i++) set(8, size - 15 + i, bit(i)); set(8, size - 8, true); };
-    format(0);
-    let n = 0;
-    for (let right = size - 1; right >= 1; right -= 2) { if (right === 6) right = 5; for (let vert = 0; vert < size; vert++) for (let j = 0; j < 2; j++) { const x = right - j, y = ((right + 1) & 2) === 0 ? size - 1 - vert : vert; if (!fn[y][x] && n < words.length * 8) { mod[y][x] = ((words[n >>> 3] >>> (7 - (n & 7))) & 1) === 1; n++; } } }
-    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if ((x + y) % 2 === 0 && !fn[y][x]) mod[y][x] = !mod[y][x];
-    format(0);
-    return mod;
-  }
-  return { encode };
-})();
-function drawQr(canvas, text) {
-  const m = QR.encode(text), g = m && canvas.getContext("2d");
-  if (!g) return false;
-  const quiet = 4, n = m.length + quiet * 2, scale = Math.max(2, Math.ceil(280 / n));
-  canvas.width = canvas.height = n * scale;
-  g.fillStyle = "#fff"; g.fillRect(0, 0, canvas.width, canvas.height);
-  g.fillStyle = "#000"; m.forEach((row, y) => row.forEach((dark, x) => { if (dark) g.fillRect((x + quiet) * scale, (y + quiet) * scale, scale, scale); }));
-  return true;
-}
-
-let lanNeedPwShown = false;
-function renderLanSection() {
-  const lan = native.lan || {};
-  const active = !!lan.enabled;
-  if (!lanNeedPwShown) $("lanToggle").checked = active;
-  $("lanPwRow").hidden = !lanNeedPwShown && !active;
-  const url = String(lan.lan_url || lan.mdns_url || "").trim();
-  $("lanInfoBox").hidden = !active || !url;
-  $("lanUrlText").textContent = url;
-  if (active && url) {
-    $("lanQrBox").hidden = !drawQr($("lanQrCanvas"), url);
-  } else {
-    $("lanQrBox").hidden = true;
-  }
-}
-$("lanToggle").addEventListener("change", () => {
-  const want = $("lanToggle").checked;
-  $("lanPwErr").hidden = true;
-  if (!window.BageoAndroid || typeof window.BageoAndroid.setLanAccess !== "function") return;
-  if (!want) {
-    lanNeedPwShown = false;
-    window.BageoAndroid.setLanAccess(false, "");
-    renderLanSection();
-    return;
-  }
-  const r = JSON.parse(window.BageoAndroid.setLanAccess(true, "") || "{}");
-  if (r.ok) {
-    lanNeedPwShown = false;
-    renderLanSection();
-  } else if (r.error === "need_password") {
-    lanNeedPwShown = true;
-    $("lanPwRow").hidden = false;
-    $("lanPwIn").focus();
-  }
-});
-$("lanPwSaveBtn").addEventListener("click", () => {
-  const pw = $("lanPwIn").value.trim();
-  if (pw.length < 8) {
-    $("lanPwErr").textContent = t("pw_setup_short");
-    $("lanPwErr").hidden = false;
-    return;
-  }
-  if (!window.BageoAndroid || typeof window.BageoAndroid.setLanAccess !== "function") return;
-  const r = JSON.parse(window.BageoAndroid.setLanAccess(true, pw) || "{}");
-  if (r.ok) {
-    token = pw;
-    store.set("pca.token", pw);
-    lanNeedPwShown = false;
-    $("lanPwIn").value = "";
-    $("lanPwErr").hidden = true;
-    toast(t("pw_setup_saved"));
-    renderLanSection();
-  } else {
-    $("lanPwErr").textContent = t("err_save_failed");
-    $("lanPwErr").hidden = false;
-  }
-});
-$("lanCopyBtn").addEventListener("click", () => copyWithToast($("lanUrlText").textContent));
 
 // ---------------------------------------------------------------- Backup, Packs, Voices & Extra Languages
 const BK_ORDER = ["settings", "keys", "contacts", "numbers", "phones", "errands", "calls", "tasks"];
@@ -6146,19 +6147,20 @@ window.__bageoHandleBack = function () {
   buildSecrets();
   applyThemeMode(document.documentElement.dataset.themeMode || "auto");
   const want = rawLang(qs.get("lang")) || rawLang(store.get("pca.lang")) || rawLang(store.get("pca.srvlang")) || BOOT.lang;
-  lang = (await loadLang(want)) ? want : BOOT.lang;
   const saved = matchLang(store.get("pca.lang"));
   if (saved) store.set("pca.lang", saved);
-  setLang(lang);
+  // Show the page at once in a language it already has; another one follows when it arrives
+  // (a slow or missing language file never leaves the page blank).
+  setLang(I18N[want] ? want : BOOT.lang);
   renderMobilePrefs();
   renderAdvPermsAndSims();
-  renderLanSection();
   route();
   pollLive();
   loadDevices();
   refreshCalls();
   loadSettings();
   loadHealth();
+  if (want !== lang) chooseLang(want, true);
 })();
 </script>
 </body>

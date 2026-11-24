@@ -298,5 +298,31 @@ eq "spare_mute set" "$(cat "$ST/data/spare_mute" 2>/dev/null | tr -d '\n')" 1
 run_apply ai app-nodnd-sa-2
 eq "exit" "$RC" 0; eq "spare_mute cleared on nodnd" "$([ -e "$ST/data/spare_mute" ] && echo present || echo absent)" absent
 
+# Daily Sound turned on while the phone is the silent AI phone (Bageo's Do Not Disturb on),
+# then a switch to a normal phone: Do Not Disturb must not stay on.
+setup ai_nodnd_after_silent_ai; ai_phone; echo 0 > "$ST/ringer"; echo 1 > "$ST/data/bageo_dnd"
+run_apply ai app-nodnd-daily-4 5 4 4 5 5 5
+eq "exit" "$RC" 0; is_ai_phone; eq "Bageo DND cleared" "$(rd zen)" 0
+eq "ringer back on" "$(rd ringer)" 2; eq "ring vol back" "$(rd vol_2)" 5; eq "notif vol back" "$(rd vol_5)" 4
+eq "bageo_dnd flag removed" "$([ -e "$ST/data/bageo_dnd" ] && echo present || echo absent)" absent
+run_apply normal app-nodnd-daily-5 5 4 4 5 5 5
+eq "exit to normal" "$RC" 0; is_normal_phone; eq "DND off as a normal phone" "$(rd zen)" 0
+
+# A Daily Sound switch to AI leaves the owner's own Do Not Disturb and volumes alone.
+setup ai_nodnd_owner_dnd; normal_phone; echo 1 > "$ST/zen"
+run_apply ai app-nodnd-daily-6 5 4 4 5 5 5
+eq "exit" "$RC" 0; is_ai_phone; eq "owner DND untouched" "$(rd zen)" 1; eq "ring vol unchanged" "$(rd vol_2)" 4
+
+# Bageo's Do Not Disturb will not go off on that switch: the phone stays an AI phone and
+# keeps the marker, so the switch to a normal phone still turns it off later.
+setup ai_nodnd_dnd_stuck; ai_phone; echo 1 > "$ST/data/bageo_dnd"
+inject 'noop|set_dnd off'; inject 'noop|put global zen_mode 0'
+run_apply ai app-nodnd-daily-7 5 4 4 5 5 5
+eq "exit" "$RC" 1; eq "error" "$(last error)" dnd_failed; is_ai_phone
+eq "bageo_dnd flag kept" "$([ -e "$ST/data/bageo_dnd" ] && echo present || echo absent)" present
+rm -f "$ST/inject"
+run_apply normal app-nodnd-daily-8 5 4 4 5 5 5
+eq "exit to normal" "$RC" 0; is_normal_phone; eq "DND off as a normal phone" "$(rd zen)" 0
+
 echo "checks passed: $PASS, failed: $FAILS"
 [ "$FAILS" -eq 0 ]

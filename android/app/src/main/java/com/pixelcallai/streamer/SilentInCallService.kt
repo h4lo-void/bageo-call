@@ -118,12 +118,21 @@ class SilentInCallService : InCallService() {
             LocalAudioGuard(this).silenceRingingCall()
             forceMuteCall(call)
             when (state) {
-                Call.STATE_RINGING, Call.STATE_NEW -> {
+                Call.STATE_RINGING -> {
                     // Do NOT answer here — CallAudioService waits for the agent first.
                     Log.i(TAG, "RINGING — defer answer to CallAudioService (agent gate)")
                     forceMuteCall(call)
                     LocalAudioGuard(this).silenceRingingCall()
                     signalCallRinging(info.callerId, instanceId)
+                }
+                Call.STATE_NEW -> {
+                    // NEW is also the first state of a call this phone dials: only an
+                    // incoming one is a ring.
+                    if (!outgoing) {
+                        Log.i(TAG, "NEW incoming — defer answer to CallAudioService (agent gate)")
+                        forceMuteCall(call)
+                        signalCallRinging(info.callerId, instanceId)
+                    }
                 }
                 Call.STATE_ACTIVE -> {
                     forceMuteCall(call)
@@ -1159,6 +1168,15 @@ class SilentInCallService : InCallService() {
 
         fun hasRingingCall(): Boolean = activeService != null && ringingCall() != null
 
+        /**
+         * Telecom has a call that is not ending (ringing, dialing, or up). False without
+         * InCallService and while it is bound but no call has been added yet.
+         */
+        fun hasLiveCalls(): Boolean {
+            if (activeService == null) return false
+            return liveCalls.any { it.state != Call.STATE_DISCONNECTED && it.state != Call.STATE_DISCONNECTING }
+        }
+
         fun hasRingingOrLiveAiCall(): Boolean {
             if (activeService == null) return false
             if (BuildConfig.STANDALONE && CallAudioService.isOwnerHandlingCall()) return false
@@ -1184,10 +1202,26 @@ class SilentInCallService : InCallService() {
         }
 
         private fun ringingCall(): Call? =
-            activeCall?.takeIf {
-                it in liveCalls && (it.state == Call.STATE_RINGING || it.state == Call.STATE_NEW)
-            } ?: liveCalls.firstOrNull {
-                it.state == Call.STATE_RINGING || it.state == Call.STATE_NEW
+            activeCall?.takeIf { it in liveCalls && isRingingIncoming(it) }
+                ?: liveCalls.firstOrNull(::isRingingIncoming)
+
+        /**
+         * A call that rings on this phone. NEW counts only for an incoming call: a call
+         * the owner or the agent dials starts in NEW too, and must never be answered or
+         * reported as a ring.
+         */
+        private fun isRingingIncoming(call: Call): Boolean =
+            when (call.state) {
+                Call.STATE_RINGING -> true
+                Call.STATE_NEW -> isIncomingDirection(call)
+                else -> false
+            }
+
+        private fun isIncomingDirection(call: Call): Boolean =
+            try {
+                call.details.callDirection == Call.Details.DIRECTION_INCOMING
+            } catch (_: Exception) {
+                false
             }
 
         private fun selectActiveCall(call: Call, instanceId: Long) {

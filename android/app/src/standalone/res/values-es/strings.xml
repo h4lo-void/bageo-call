@@ -5,15 +5,6 @@
     <string name="sa_phone_setup_btn">Ajustes</string>
     <string name="sa_starting_title">Iniciando Bageo…</string>
     <string name="sa_starting_desc">El primer inicio puede tardar unos segundos.</string>
-    <string name="sa_lan_title">Permitir acceso en la misma Wi-Fi</string>
-    <string name="sa_lan_hint">Deja que otra computadora o teléfono en la misma red Wi-Fi abra esta consola.</string>
-    <string name="sa_lan_pw_title">Configura una contraseña primero</string>
-    <string name="sa_lan_pw_body">Define una contraseña de al menos 8 caracteres antes de abrir esta consola a otros dispositivos de tu Wi-Fi.</string>
-    <string name="sa_lan_pw_hint">Al menos 8 caracteres</string>
-    <string name="sa_lan_pw_short">La contraseña debe tener al menos 8 caracteres.</string>
-    <string name="sa_lan_pw_failed">No se pudo guardar la contraseña. Inténtalo cuando Bageo termine de iniciar.</string>
-    <string name="sa_lan_url_label">Dirección Wi-Fi</string>
-    <string name="sa_lan_mdns_hint">O abre %1$s</string>
     <string name="sa_copy_url">Copiar dirección</string>
     <string name="sa_copied">Copiado</string>
     <string name="sa_battery_tip">Si queda enchufado siempre, activa el límite de carga del 80% en Ajustes para cuidar la batería.</string>

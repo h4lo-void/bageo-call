@@ -4,193 +4,176 @@
 //! Zero-crate JNI entrypoint for running Bageo directly inside the Android
 //! standalone application (`com.pixelcallai.streamer.EmbeddedAgent`).
 //!
-//! JNINativeInterface function table indices verified against Android NDK
+//! Text and request bodies cross as Java `byte[]` holding UTF-8 (never
+//! `GetStringUTFChars` / `NewStringUTF`, whose "modified UTF-8" mangles emoji and
+//! NUL bytes). JNINativeInterface function table indices from Android NDK
 //! `sysroot/usr/include/jni.h`:
-//! - 167: `NewStringUTF`
-//! - 169: `GetStringUTFChars`
-//! - 170: `ReleaseStringUTFChars`
+//! - 171: `GetArrayLength`
+//! - 176: `NewByteArray`
+//! - 200: `GetByteArrayRegion`
+//! - 208: `SetByteArrayRegion`
 
 #[cfg(target_os = "android")]
 mod imp {
-    use std::ffi::{c_char, c_void, CStr, CString};
+    use std::ffi::c_void;
+    use std::panic::{catch_unwind, AssertUnwindSafe};
     use std::path::PathBuf;
-    use std::sync::{Arc, OnceLock};
 
-    use tracing::{error, info};
-
-    use crate::embedded::{self, EmbeddedControl};
+    use crate::embedded::{self, LocalRequest, LocalResponse};
 
     type JNIEnv = *mut *const *const c_void;
     type JClass = *mut c_void;
-    type JString = *mut c_void;
+    type JByteArray = *mut c_void;
     type JBoolean = u8;
-    type JInt = i32;
+    type JSize = i32;
 
-    const IDX_NEW_STRING_UTF: usize = 167;
-    const IDX_GET_STRING_UTF_CHARS: usize = 169;
-    const IDX_RELEASE_STRING_UTF_CHARS: usize = 170;
+    const IDX_GET_ARRAY_LENGTH: usize = 171;
+    const IDX_NEW_BYTE_ARRAY: usize = 176;
+    const IDX_GET_BYTE_ARRAY_REGION: usize = 200;
+    const IDX_SET_BYTE_ARRAY_REGION: usize = 208;
 
-    type FnNewStringUTF = unsafe extern "C" fn(JNIEnv, *const c_char) -> JString;
-    type FnGetStringUTFChars = unsafe extern "C" fn(JNIEnv, JString, *mut u8) -> *const c_char;
-    type FnReleaseStringUTFChars = unsafe extern "C" fn(JNIEnv, JString, *const c_char);
+    type FnGetArrayLength = unsafe extern "C" fn(JNIEnv, JByteArray) -> JSize;
+    type FnNewByteArray = unsafe extern "C" fn(JNIEnv, JSize) -> JByteArray;
+    type FnGetByteArrayRegion = unsafe extern "C" fn(JNIEnv, JByteArray, JSize, JSize, *mut i8);
+    type FnSetByteArrayRegion = unsafe extern "C" fn(JNIEnv, JByteArray, JSize, JSize, *const i8);
 
-    static CONTROL: OnceLock<Arc<EmbeddedControl>> = OnceLock::new();
-
-    unsafe fn jstring_to_string(env: JNIEnv, s: JString) -> Option<String> {
-        if env.is_null() || s.is_null() {
-            return None;
-        }
-        let vtable = *env;
-        if vtable.is_null() {
-            return None;
-        }
-        let get_chars: FnGetStringUTFChars = std::mem::transmute(*vtable.add(IDX_GET_STRING_UTF_CHARS));
-        let rel_chars: FnReleaseStringUTFChars =
-            std::mem::transmute(*vtable.add(IDX_RELEASE_STRING_UTF_CHARS));
-        let ptr = get_chars(env, s, std::ptr::null_mut());
-        if ptr.is_null() {
-            return None;
-        }
-        let text = CStr::from_ptr(ptr).to_string_lossy().into_owned();
-        rel_chars(env, s, ptr);
-        Some(text)
-    }
-
-    unsafe fn string_to_jstring(env: JNIEnv, s: &str) -> JString {
+    /// Entry `idx` of the JNI function table.
+    unsafe fn table_entry(env: JNIEnv, idx: usize) -> Option<*const c_void> {
         if env.is_null() {
-            return std::ptr::null_mut();
+            return None;
         }
-        let vtable = *env;
-        if vtable.is_null() {
-            return std::ptr::null_mut();
+        let table = *env;
+        if table.is_null() {
+            return None;
         }
-        let new_utf: FnNewStringUTF = std::mem::transmute(*vtable.add(IDX_NEW_STRING_UTF));
-        let cleaned = s.replace('\0', "");
-        let cstr = CString::new(cleaned).unwrap_or_else(|_| CString::new("{}").unwrap());
-        new_utf(env, cstr.as_ptr())
+        let f = *table.add(idx);
+        (!f.is_null()).then_some(f)
     }
 
+    /// The bytes of a Java `byte[]` (None for null).
+    unsafe fn read_bytes(env: JNIEnv, arr: JByteArray) -> Option<Vec<u8>> {
+        if arr.is_null() {
+            return None;
+        }
+        let len_of: FnGetArrayLength = std::mem::transmute(table_entry(env, IDX_GET_ARRAY_LENGTH)?);
+        let copy: FnGetByteArrayRegion = std::mem::transmute(table_entry(env, IDX_GET_BYTE_ARRAY_REGION)?);
+        let len = len_of(env, arr);
+        if len <= 0 {
+            return Some(Vec::new());
+        }
+        let mut buf = vec![0u8; len as usize];
+        copy(env, arr, 0, len, buf.as_mut_ptr().cast());
+        Some(buf)
+    }
+
+    /// A Java `byte[]` of UTF-8 text.
+    unsafe fn read_text(env: JNIEnv, arr: JByteArray) -> Option<String> {
+        String::from_utf8(read_bytes(env, arr)?).ok()
+    }
+
+    /// A new Java `byte[]` holding `data` (null when it cannot be made).
+    unsafe fn new_bytes(env: JNIEnv, data: &[u8]) -> JByteArray {
+        let Ok(len) = JSize::try_from(data.len()) else {
+            return std::ptr::null_mut();
+        };
+        let (Some(make), Some(fill)) = (
+            table_entry(env, IDX_NEW_BYTE_ARRAY),
+            table_entry(env, IDX_SET_BYTE_ARRAY_REGION),
+        ) else {
+            return std::ptr::null_mut();
+        };
+        let make: FnNewByteArray = std::mem::transmute(make);
+        let fill: FnSetByteArrayRegion = std::mem::transmute(fill);
+        let arr = make(env, len);
+        if !arr.is_null() && len > 0 {
+            fill(env, arr, 0, len, data.as_ptr().cast());
+        }
+        arr
+    }
+
+    /// Start the agent, or find it running. Called again after it stopped, it starts it anew.
     #[no_mangle]
     pub unsafe extern "C" fn Java_com_pixelcallai_streamer_EmbeddedAgent_nativeStart(
         env: JNIEnv,
         _cls: JClass,
-        data_dir: JString,
-        assets_dir: JString,
-        port: JInt,
-        lan_enabled: JBoolean,
+        data_dir: JByteArray,
+        assets_dir: JByteArray,
     ) -> JBoolean {
-        let Some(data) = jstring_to_string(env, data_dir) else {
-            return 0;
-        };
-        let Some(assets) = jstring_to_string(env, assets_dir) else {
+        let (Some(data), Some(assets)) = (read_text(env, data_dir), read_text(env, assets_dir)) else {
             return 0;
         };
         let data_path = PathBuf::from(data);
-        let assets_path = PathBuf::from(assets);
-        let listen_port = u16::try_from(port).unwrap_or(8787);
-        let lan = lan_enabled != 0;
-
         embedded::init_embedded_logging(&data_path);
-
-        if CONTROL.get().is_some() {
-            return 1;
-        }
-
-        let ctrl = EmbeddedControl::new(data_path, assets_path, listen_port, lan);
-        if CONTROL.set(ctrl.clone()).is_err() {
-            return 1;
-        }
-
-        let spawned = std::thread::Builder::new()
-            .name("bageo-embedded".into())
-            .spawn(move || {
-                let rt = match tokio::runtime::Builder::new_multi_thread()
-                    .enable_all()
-                    .thread_name("bageo-tokio")
-                    .build()
-                {
-                    Ok(r) => r,
-                    Err(e) => {
-                        error!("failed to build tokio runtime: {e}");
-                        return;
-                    }
-                };
-                info!("starting embedded Bageo agent");
-                if let Err(e) = rt.block_on(embedded::run_embedded(ctrl)) {
-                    error!("embedded Bageo agent exited: {e:#}");
-                }
-            });
-
-        if spawned.is_ok() {
-            1
-        } else {
-            0
-        }
-    }
-
-    #[no_mangle]
-    pub unsafe extern "C" fn Java_com_pixelcallai_streamer_EmbeddedAgent_nativeSetLanEnabled(
-        _env: JNIEnv,
-        _cls: JClass,
-        enabled: JBoolean,
-    ) -> JBoolean {
-        let Some(ctrl) = CONTROL.get() else {
-            return 0;
-        };
-        if ctrl.set_lan_enabled(enabled != 0) {
-            1
-        } else {
-            0
-        }
-    }
-
-    #[no_mangle]
-    pub unsafe extern "C" fn Java_com_pixelcallai_streamer_EmbeddedAgent_nativeSetUiPassword(
-        env: JNIEnv,
-        _cls: JClass,
-        password: JString,
-    ) -> JBoolean {
-        let Some(ctrl) = CONTROL.get() else {
-            return 0;
-        };
-        let Some(pw) = jstring_to_string(env, password) else {
-            return 0;
-        };
-        if ctrl.set_ui_password(&pw).is_ok() {
-            1
-        } else {
-            0
-        }
+        let started = catch_unwind(AssertUnwindSafe(|| {
+            embedded::start(data_path, PathBuf::from(assets)).is_some()
+        }));
+        u8::from(started.unwrap_or(false))
     }
 
     #[no_mangle]
     pub unsafe extern "C" fn Java_com_pixelcallai_streamer_EmbeddedAgent_nativePatchSettings(
         env: JNIEnv,
         _cls: JClass,
-        patch_json: JString,
+        patch_json: JByteArray,
     ) -> JBoolean {
-        let Some(ctrl) = CONTROL.get() else {
+        let Some(raw) = read_text(env, patch_json) else {
             return 0;
         };
-        let Some(raw) = jstring_to_string(env, patch_json) else {
-            return 0;
-        };
-        if ctrl.apply_settings_patch(&raw).is_ok() {
-            1
-        } else {
-            0
-        }
+        let applied = catch_unwind(AssertUnwindSafe(|| {
+            embedded::current().is_some_and(|ctrl| ctrl.apply_settings_patch(&raw).is_ok())
+        }));
+        u8::from(applied.unwrap_or(false))
     }
 
     #[no_mangle]
     pub unsafe extern "C" fn Java_com_pixelcallai_streamer_EmbeddedAgent_nativeStatusJson(
         env: JNIEnv,
         _cls: JClass,
-    ) -> JString {
-        let payload = match CONTROL.get() {
-            Some(ctrl) => ctrl.status_json().to_string(),
-            None => r#"{"running":false,"ready":false,"lan_enabled":false,"password_set":false,"ui_token":"","port":8787,"lan_ip":"","lan_url":"","mdns_url":"","active_calls":0}"#.to_string(),
+    ) -> JByteArray {
+        let payload = catch_unwind(embedded::status_json)
+            .map(|v| v.to_string())
+            .unwrap_or_else(|_| r#"{"running":false,"ready":false,"active_calls":0}"#.to_string());
+        new_bytes(env, payload.as_bytes())
+    }
+
+    /// The key the app's call service shows on the phone bridge (empty when not running).
+    #[no_mangle]
+    pub unsafe extern "C" fn Java_com_pixelcallai_streamer_EmbeddedAgent_nativeBridgeKey(
+        env: JNIEnv,
+        _cls: JClass,
+    ) -> JByteArray {
+        let key = catch_unwind(|| embedded::current().map(|c| c.bridge_key().to_string()))
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        new_bytes(env, key.as_bytes())
+    }
+
+    /// One console request: method, path with query, headers (one
+    /// `name: value` per line) and body, all UTF-8 bytes; the answer as
+    /// [`LocalResponse::encode`]. Blocks: call it from a background thread.
+    #[no_mangle]
+    pub unsafe extern "C" fn Java_com_pixelcallai_streamer_EmbeddedAgent_nativeHttp(
+        env: JNIEnv,
+        _cls: JClass,
+        method: JByteArray,
+        target: JByteArray,
+        headers: JByteArray,
+        body: JByteArray,
+    ) -> JByteArray {
+        let (Some(method), Some(target)) = (read_text(env, method), read_text(env, target)) else {
+            return std::ptr::null_mut();
         };
-        string_to_jstring(env, &payload)
+        let headers = read_bytes(env, headers)
+            .map(|raw| embedded::parse_header_lines(&raw))
+            .unwrap_or_default();
+        let body = read_bytes(env, body).unwrap_or_default();
+        let req = LocalRequest { method, target, headers, body };
+        let res = catch_unwind(AssertUnwindSafe(move || match embedded::current() {
+            Some(ctrl) => ctrl.http(req),
+            None => LocalResponse::not_ready(),
+        }))
+        .unwrap_or_else(|_| LocalResponse::failed());
+        new_bytes(env, &res.encode())
     }
 }

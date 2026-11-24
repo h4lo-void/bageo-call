@@ -5,15 +5,6 @@
     <string name="sa_phone_setup_btn">手机设置</string>
     <string name="sa_starting_title">正在启动 Bageo…</string>
     <string name="sa_starting_desc">第一次打开可能需要几秒钟。</string>
-    <string name="sa_lan_title">允许同 Wi-Fi 设备连进来</string>
-    <string name="sa_lan_hint">打开后，电脑或另一台手机可以在同一个 Wi-Fi 浏览这个控制台。</string>
-    <string name="sa_lan_pw_title">先设置控制台密码</string>
-    <string name="sa_lan_pw_body">让同一个 Wi-Fi 的设备连接前，需要先设置一组至少 8 个字符的密码。</string>
-    <string name="sa_lan_pw_hint">至少 8 个字符</string>
-    <string name="sa_lan_pw_short">密码至少要 8 个字符。</string>
-    <string name="sa_lan_pw_failed">密码未能保存，请确认 Bageo 已启动后再试一次。</string>
-    <string name="sa_lan_url_label">Wi-Fi 网址</string>
-    <string name="sa_lan_mdns_hint">或使用 %1$s</string>
     <string name="sa_copy_url">复制网址</string>
     <string name="sa_copied">已复制</string>
     <string name="sa_battery_tip">长期插电建议在系统设置开启“充电上限 80%”，保护电池健康。</string>

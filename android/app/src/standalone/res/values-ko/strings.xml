@@ -5,15 +5,6 @@
     <string name="sa_phone_setup_btn">휴대폰 설정</string>
     <string name="sa_starting_title">Bageo 시작 중…</string>
     <string name="sa_starting_desc">처음 실행할 때는 몇 초 걸릴 수 있습니다.</string>
-    <string name="sa_lan_title">같은 Wi-Fi 기기 접속 허용</string>
-    <string name="sa_lan_hint">켜면 같은 Wi-Fi의 컴퓨터나 다른 휴대폰에서 이 콘솔을 열 수 있습니다.</string>
-    <string name="sa_lan_pw_title">먼저 콘솔 비밀번호 설정</string>
-    <string name="sa_lan_pw_body">같은 Wi-Fi 기기에서 열기 전에 8자 이상의 비밀번호를 설정해 주세요.</string>
-    <string name="sa_lan_pw_hint">8자 이상</string>
-    <string name="sa_lan_pw_short">비밀번호는 8자 이상이어야 합니다.</string>
-    <string name="sa_lan_pw_failed">비밀번호를 저장할 수 없습니다. Bageo가 시작된 뒤 다시 시도해 주세요.</string>
-    <string name="sa_lan_url_label">Wi-Fi 주소</string>
-    <string name="sa_lan_mdns_hint">또는 %1$s</string>
     <string name="sa_copy_url">주소 복사</string>
     <string name="sa_copied">복사됨</string>
     <string name="sa_battery_tip">상시 충전 시 설정에서 80% 충전 제한을 켜면 배터리 수명을 지킬 수 있습니다.</string>
