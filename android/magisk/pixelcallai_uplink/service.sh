@@ -70,7 +70,11 @@ rm -f /data/adb/pixelcallai/daemon.pid 2>/dev/null || true
       POST_NOTIFICATIONS READ_CALL_LOG CALL_PHONE SEND_SMS RECEIVE_SMS READ_SMS; do
     pm grant "$PKG" "android.permission.$p" >/dev/null 2>&1 || true
   done
-  if [ -d "$MODDIR/bageo_assets" ]; then
+  STANDALONE_MOD=0
+  if [ -d "$MODDIR/system/priv-app/$PKG/bageo_assets" ] || [ -d "$MODDIR/bageo_assets" ]; then
+    STANDALONE_MOD=1
+  fi
+  if [ "$STANDALONE_MOD" -eq 1 ]; then
     pm grant "$PKG" android.permission.READ_CONTACTS >/dev/null 2>&1 || true
   fi
   cmd appops set "$PKG" ACCESS_NOTIFICATION_POLICY allow >/dev/null 2>&1 || true
@@ -101,7 +105,7 @@ rm -f /data/adb/pixelcallai/daemon.pid 2>/dev/null || true
     # Do Not Disturb on, as apply_mode.sh does: Android puts a bare zen_mode write back,
     # set_dnd is what turns it on. On standalone Daily Sound mode (no spare_mute flag),
     # keep DND and notification/media volumes untouched.
-    if [ ! -d "$MODDIR/bageo_assets" ] || [ -f /data/adb/pixelcallai/spare_mute ]; then
+    if [ "$STANDALONE_MOD" -ne 1 ] || [ -f /data/adb/pixelcallai/spare_mute ]; then
       settings put global zen_mode 2 >/dev/null 2>&1 || true
       cmd notification set_dnd on >/dev/null 2>&1 || true
       settings put system volume_ring 0 >/dev/null 2>&1 || true

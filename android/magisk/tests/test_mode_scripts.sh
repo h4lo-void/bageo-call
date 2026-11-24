@@ -278,5 +278,15 @@ setup normal_nodnd; ai_phone; echo 2 > "$ST/zen"; echo 3 > "$ST/vol_2"
 run_apply normal app-nodnd-daily-2
 eq "exit" "$RC" 0; is_normal_phone; eq "owner DND untouched" "$(rd zen)" 2
 
+# Standalone layout detection via system/priv-app/<pkg>/bageo_assets
+setup standalone_privapp_assets; normal_phone; echo 0 > "$ST/zen"
+mkdir -p "$ST/system/priv-app/$PKG/bageo_assets"
+run_apply ai sa-mute-1
+eq "exit" "$RC" 0; is_ai_phone
+eq "READ_CONTACTS granted" "$(grep -c 'pm grant com.pixelcallai.streamer android.permission.READ_CONTACTS' "$ST/calls")" 1
+eq "spare_mute set" "$(cat "$ST/data/spare_mute" 2>/dev/null | tr -d '\n')" 1
+run_apply ai app-nodnd-sa-2
+eq "exit" "$RC" 0; eq "spare_mute cleared on nodnd" "$([ -e "$ST/data/spare_mute" ] && echo present || echo absent)" absent
+
 echo "checks passed: $PASS, failed: $FAILS"
 [ "$FAILS" -eq 0 ]

@@ -72,18 +72,15 @@ if (-not (Test-Path $apk)) { throw "APK missing: $apk" }
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-# Verify single-dex invariant (Android 16 /system/priv-app) and flavor native library presence.
+# Verify single-dex invariant (Android 16 /system/priv-app) and ensure .so is NOT packed inside base.apk
+# (priv-app keeps extractNativeLibs=false; standalone installs libbageo_agent.so under priv-app/lib/arm64).
 $apkZip = [System.IO.Compression.ZipFile]::OpenRead($apk)
 try {
     $names = $apkZip.Entries | ForEach-Object { $_.FullName }
     if ($names -notcontains "classes.dex") { throw "classes.dex missing in $apk" }
     if ($names -contains "classes2.dex") { throw "classes2.dex found in $apk (must stay single-dex)" }
-    $hasSo = $names -contains "lib/arm64-v8a/libbageo_agent.so"
-    if ($Standalone -and -not $hasSo) {
-        throw "lib/arm64-v8a/libbageo_agent.so missing from standalone APK $apk"
-    }
-    if (-not $Standalone -and $hasSo) {
-        throw "lib/arm64-v8a/libbageo_agent.so unexpectedly included in bridge APK $apk"
+    if ($names -contains "lib/arm64-v8a/libbageo_agent.so") {
+        throw "lib/arm64-v8a/libbageo_agent.so must live in priv-app/lib/arm64, not inside $apk"
     }
 } finally {
     $apkZip.Dispose()
@@ -100,8 +97,16 @@ try {
     Copy-Item $apk (Join-Path $stagePrivDir "base.apk") -Force
 
     if ($Standalone) {
+        $agentSo = Join-Path $android "rust-jni\arm64-v8a\libbageo_agent.so"
+        if (-not (Test-Path $agentSo)) {
+            throw "libbageo_agent.so missing at $agentSo (run build-rust-android.ps1 first)"
+        }
+        $stageLibDir = Join-Path $stagePrivDir "lib\arm64"
+        New-Item -ItemType Directory -Force -Path $stageLibDir | Out-Null
+        Copy-Item $agentSo (Join-Path $stageLibDir "libbageo_agent.so") -Force
+
         $srcAssets = Join-Path $repoRoot "assets"
-        $dstAssets = Join-Path $stage "bageo_assets"
+        $dstAssets = Join-Path $stagePrivDir "bageo_assets"
         New-Item -ItemType Directory -Force -Path $dstAssets | Out-Null
         Get-ChildItem -Path $srcAssets -Force | ForEach-Object {
             if ($_.Name -eq "voices" -and $_.PSIsContainer) {
@@ -154,6 +159,22 @@ try {
 
 $zipItem = Get-Item $zipOut
 if ($zipItem.Length -lt 100000) { throw "ZIP too small ($($zipItem.Length) bytes); APK not packaged" }
+
+$verifyZip = [System.IO.Compression.ZipFile]::OpenRead($zipOut)
+try {
+    $znames = $verifyZip.Entries | ForEach-Object { $_.FullName }
+    $soEntry = "system/priv-app/com.pixelcallai.streamer/lib/arm64/libbageo_agent.so"
+    $assetEntry = "system/priv-app/com.pixelcallai.streamer/bageo_assets/ambience_office.wav"
+    if ($Standalone) {
+        if ($znames -notcontains $soEntry) { throw "$soEntry missing in $zipOut" }
+        if ($znames -notcontains $assetEntry) { throw "$assetEntry missing in $zipOut" }
+    } else {
+        if ($znames -contains $soEntry) { throw "$soEntry unexpectedly present in $zipOut" }
+        if ($znames -contains $assetEntry) { throw "$assetEntry unexpectedly present in $zipOut" }
+    }
+} finally {
+    $verifyZip.Dispose()
+}
 
 Write-Host "APK: $apk ($((Get-Item $apk).Length) bytes)"
 Write-Host "ZIP: $zipOut ($($zipItem.Length) bytes)"

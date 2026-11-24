@@ -6,9 +6,10 @@ MODDIR=${0%/*}
 PKG=com.pixelcallai.streamer
 APK="$MODDIR/system/priv-app/$PKG/base.apk"
 PERM="$MODDIR/system/etc/permissions/privapp-permissions-$PKG.xml"
-if [ -f "$APK" ]; then
-  chmod 644 "$APK"
-  chcon u:object_r:system_file:s0 "$APK" 2>/dev/null || true
+if [ -d "$MODDIR/system/priv-app/$PKG" ]; then
+  find "$MODDIR/system/priv-app/$PKG" -type d -exec chmod 755 {} + 2>/dev/null || true
+  find "$MODDIR/system/priv-app/$PKG" -type f -exec chmod 644 {} + 2>/dev/null || true
+  chcon -R u:object_r:system_file:s0 "$MODDIR/system/priv-app/$PKG" 2>/dev/null || true
 fi
 if [ -f "$PERM" ]; then
   chmod 644 "$PERM"
@@ -25,8 +26,9 @@ mkdir -p "$OV/u" "$OV/w" "$OV/merged" "$OV/pu" "$OV/pw" "$OV/pmerged"
 if [ -d "$MODDIR/system/priv-app/$PKG" ]; then
   mkdir -p "$OV/u/$PKG"
   cp -a "$MODDIR/system/priv-app/$PKG/." "$OV/u/$PKG/" 2>/dev/null || true
-  chmod 644 "$OV/u/$PKG/base.apk" 2>/dev/null || true
-  chcon u:object_r:system_file:s0 "$OV/u/$PKG" "$OV/u/$PKG/base.apk" 2>/dev/null || true
+  find "$OV/u/$PKG" -type d -exec chmod 755 {} + 2>/dev/null || true
+  find "$OV/u/$PKG" -type f -exec chmod 644 {} + 2>/dev/null || true
+  chcon -R u:object_r:system_file:s0 "$OV/u/$PKG" 2>/dev/null || true
   mount -t overlay overlay -o lowerdir=/system/priv-app,upperdir="$OV/u",workdir="$OV/w" "$OV/merged" 2>/dev/null || true
   if [ -f "$OV/merged/$PKG/base.apk" ]; then
     mount --bind "$OV/merged" /system/priv-app 2>/dev/null || true
