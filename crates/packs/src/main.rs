@@ -42,6 +42,15 @@ const USAGE: &str = "usage:
   packs sync-source --bageo-call <checkout> --out <packs folder> [--commit <text>]
   packs export-app --packs <packs folder> --android <res folder> --desktop <i18n.ext.json> [--commit <text>] [--check]";
 
+/// Plain `x.y.z` from `CARGO_PKG_VERSION` (stripping `-beta`, `-rc.1`, `+build`).
+fn default_min_bageo() -> String {
+    env!("CARGO_PKG_VERSION")
+        .split(['-', '+'])
+        .next()
+        .unwrap_or(env!("CARGO_PKG_VERSION"))
+        .to_string()
+}
+
 fn report(issues: &[Issue]) {
     for i in issues {
         println!("{i}");
@@ -164,7 +173,7 @@ fn cmd_check(args: &[String]) -> ExitCode {
 fn cmd_build(args: &[String]) -> ExitCode {
     let mut dir = None;
     let (mut version, mut commit, mut out, mut index) = (None, None, None, None);
-    let mut min_bageo = env!("CARGO_PKG_VERSION").to_string();
+    let mut min_bageo = default_min_bageo();
     let mut it = args.iter();
     while let Some(a) = it.next() {
         let slot = match a.as_str() {
@@ -305,7 +314,7 @@ fn cmd_build_locales(args: &[String]) -> ExitCode {
     if !valid_rfc3339_utc(&built_at) {
         return usage();
     }
-    let min_bageo = a.opts.get("--min-bageo").cloned().unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+    let min_bageo = a.opts.get("--min-bageo").cloned().unwrap_or_else(default_min_bageo);
 
     let sources = match load_locales(Path::new(dir)) {
         Ok(s) => s,
@@ -415,7 +424,7 @@ fn cmd_build_extras(args: &[String]) -> ExitCode {
     if !valid_rfc3339_utc(&built_at) || !valid_commit_arg(commit) {
         return usage();
     }
-    let min_bageo = a.opts.get("--min-bageo").cloned().unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+    let min_bageo = a.opts.get("--min-bageo").cloned().unwrap_or_else(default_min_bageo);
 
     let sources = match load_locales(Path::new(dir)) {
         Ok(s) => s,
@@ -492,7 +501,7 @@ fn cmd_build_scams(args: &[String]) -> ExitCode {
     if !valid_rfc3339_utc(&built_at) {
         return usage();
     }
-    let min_bageo = a.opts.get("--min-bageo").cloned().unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+    let min_bageo = a.opts.get("--min-bageo").cloned().unwrap_or_else(default_min_bageo);
 
     let built = match build_scams_at(Path::new(dir), version, commit, &built_at) {
         Ok(b) => b,
@@ -560,7 +569,7 @@ fn cmd_build_prompts(args: &[String]) -> ExitCode {
     if !valid_rfc3339_utc(&built_at) {
         return usage();
     }
-    let min_bageo = a.opts.get("--min-bageo").cloned().unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+    let min_bageo = a.opts.get("--min-bageo").cloned().unwrap_or_else(default_min_bageo);
 
     let built = match build_prompts_at(Path::new(dir), version, commit, &built_at) {
         Ok(Some(b)) => b,
