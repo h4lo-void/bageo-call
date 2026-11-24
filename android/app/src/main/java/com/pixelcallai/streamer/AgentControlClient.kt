@@ -118,7 +118,9 @@ class AgentControlClient(
                         Log.w(TAG, "after-hello step failed: ${e.message}")
                     }
                     ensurePingLoop()
-                    ensureUsbWatch()
+                    if (!BuildConfig.STANDALONE) {
+                        ensureUsbWatch()
+                    }
                 }
 
                 override fun onMessage(message: String?) {
@@ -129,7 +131,7 @@ class AgentControlClient(
                             "hello_ack", "hello_ok", "ack", "pong" -> {
                                 Log.i(TAG, "control TEXT ${obj.optString("type")}")
                             }
-                            "place_call", "blocklist_sync", "answer_plan", "set_mode", "agent_info", "send_sms" -> onCommand(obj)
+                            "place_call", "blocklist_sync", "answer_plan", "set_mode", "agent_info", "send_sms", "incoming_sms_ack", "local_notice" -> onCommand(obj)
                             else -> Log.i(TAG, "control TEXT type=${obj.optString("type")} len=${message.length}")
                         }
                     } catch (e: Exception) {
@@ -175,12 +177,18 @@ class AgentControlClient(
     }
 
     fun sendJson(obj: JSONObject) {
-        val c = client ?: return
-        if (!open.get() || !c.isOpen) return
-        try {
+        sendEvent(obj)
+    }
+
+    fun sendEvent(obj: JSONObject): Boolean {
+        val c = client ?: return false
+        if (!open.get() || !c.isOpen) return false
+        return try {
             c.send(obj.toString())
+            true
         } catch (e: Exception) {
             Log.w(TAG, "control sendJson failed: ${e.message}")
+            false
         }
     }
 
@@ -208,7 +216,7 @@ class AgentControlClient(
         pingThread = Thread {
             while (shouldRun.get()) {
                 try {
-                    Thread.sleep(PING_INTERVAL_MS)
+                    Thread.sleep(if (BuildConfig.STANDALONE) STANDALONE_PING_INTERVAL_MS else PING_INTERVAL_MS)
                 } catch (_: InterruptedException) {
                     break
                 }
@@ -316,6 +324,8 @@ class AgentControlClient(
         private const val TAG = "AgentControlClient"
         /** Keep the agent's CONTROL_IDLE registration warm. */
         private const val PING_INTERVAL_MS = 15_000L
+        /** Loopback standalone control needs infrequent keepalive to stay zero-drain while idle. */
+        private const val STANDALONE_PING_INTERVAL_MS = 300_000L
         /** Faster than 3s — idle drops show up as missing callbacks. */
         private const val RECONNECT_MS = 1_500L
         /** A silent address (Wi-Fi off, wrong network) must not hold up the next one for long. */

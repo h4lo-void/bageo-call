@@ -506,8 +506,7 @@ fn quick_action_key() -> &'static [u8] {
         if cfg!(test) {
             return fresh_link_key();
         }
-        let default_dir = if std::path::Path::new("/data/calls").is_dir() { "/data/calls" } else { "data/calls" };
-        let path = std::path::PathBuf::from(crate::config::env_or("CALLS_DATA_DIR", default_dir)).join(QUICK_LINK_KEY_FILE);
+        let path = crate::config::data_dir().join(QUICK_LINK_KEY_FILE);
         load_or_create_link_key(&path).unwrap_or_else(|e| {
             tracing::warn!("one-tap link key {}: {e}; using a key for this run only", path.display());
             fresh_link_key()

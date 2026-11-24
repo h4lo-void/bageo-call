@@ -21,7 +21,11 @@
 (function () {
   var t = "";
   try {
-    t = new URLSearchParams(location.search).get("theme") || localStorage.getItem("pca.theme") || "";
+    var sp = new URLSearchParams(location.search);
+    t = sp.get("theme") || localStorage.getItem("pca.theme") || "";
+    if (sp.get("embed") === "android" || typeof window.BageoAndroid !== "undefined") {
+      document.documentElement.dataset.embed = "android";
+    }
   } catch (e) {}
   if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   document.documentElement.dataset.theme = t;
@@ -785,6 +789,7 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
 [dir=rtl] #tsBox .bts-svg{transform:scaleX(-1)}
 [dir=rtl] #tsBox .bts-svg text{transform:scaleX(-1);transform-box:fill-box;transform-origin:center}
 [dir=rtl] .sw input,[dir=rtl] .trsw input,[dir=rtl] input[type=range]{direction:rtl}
+html[data-embed="android"] .brand .word{display:none}
 </style>
 </head>
 <body>
@@ -2388,6 +2393,12 @@ function toast(msg, isErr) {
 // navigator.clipboard only exists on https / localhost; most consoles run on plain http in a LAN.
 async function copyText(text) {
   try {
+    if (window.BageoAndroid && typeof window.BageoAndroid.copyText === "function") {
+      window.BageoAndroid.copyText(String(text));
+      return true;
+    }
+  } catch (_) { /* fall through */ }
+  try {
     if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; }
   } catch (_) { /* fall through */ }
   const ta = h("textarea", { value: text, readOnly: true, style: "position:fixed;left:-999px;top:0;opacity:0" });
@@ -2474,12 +2485,30 @@ const authInit = (opts) => {
   if (token) init.headers = { ...(init.headers || {}), "x-calls-token": token };
   return init;
 };
+function saveBlobViaAndroid(blob, name) {
+  if (!window.BageoAndroid || typeof window.BageoAndroid.saveBase64File !== "function") return false;
+  try {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const res = String(reader.result || "");
+      const idx = res.indexOf(",");
+      const b64 = idx >= 0 ? res.slice(idx + 1) : res;
+      window.BageoAndroid.saveBase64File(b64, name, blob.type || "application/octet-stream");
+    };
+    reader.readAsDataURL(blob);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
 // A file from the agent saved through the page (so the password stays in the header).
 async function saveApiFile(path, name) {
   try {
     const res = await request(path);
     if (!res.ok) throw new Error("http");
-    const url = URL.createObjectURL(await res.blob());
+    const blob = await res.blob();
+    if (saveBlobViaAndroid(blob, name)) return;
+    const url = URL.createObjectURL(blob);
     const a = h("a", { href: url });
     a.download = name;
     document.body.append(a);
@@ -3455,7 +3484,9 @@ $("btnJson").addEventListener("click", async () => {
   if (!detail.id) return;
   try {
     const d = await api("/call/" + encodeURIComponent(detail.id));
-    const url = URL.createObjectURL(new Blob([JSON.stringify({ call: d.call, notes: d.notes || null }, null, 2)], { type: "application/json" }));
+    const blob = new Blob([JSON.stringify({ call: d.call, notes: d.notes || null }, null, 2)], { type: "application/json" });
+    if (saveBlobViaAndroid(blob, `call-${detail.id}.json`)) return;
+    const url = URL.createObjectURL(blob);
     const a = h("a", { href: url, download: `call-${detail.id}.json` });
     document.body.append(a);
     a.click();
@@ -5285,8 +5316,13 @@ async function bkLoad() {
 }
 // A download through a one-time ticket: the link holds no password.
 function bkDownload(ticket) {
+  const path = apiBase + "/backup/download/" + encodeURIComponent(ticket);
+  if (window.BageoAndroid && typeof window.BageoAndroid.downloadUrl === "function") {
+    window.BageoAndroid.downloadUrl(path, "");
+    return;
+  }
   const a = document.createElement("a");
-  a.href = apiBase + "/backup/download/" + encodeURIComponent(ticket);
+  a.href = path;
   a.rel = "noopener";
   document.body.appendChild(a);
   a.click();
@@ -7730,6 +7766,18 @@ function openCal(app, links, icsPath) {
   if (app === "apple" || app === "ics") {
     // An errand's event: its .ics made on this page (a data: link).
     if (!/^data:/.test(icsPath)) { saveApiFile(apiBase + icsPath, "event.ics"); return; }
+    if (window.BageoAndroid && typeof window.BageoAndroid.saveBase64File === "function") {
+      const comma = icsPath.indexOf(",");
+      if (comma >= 0) {
+        const meta = icsPath.slice(0, comma);
+        const body = icsPath.slice(comma + 1);
+        const b64 = /;base64/i.test(meta)
+          ? body
+          : btoa(unescape(encodeURIComponent(decodeURIComponent(body))));
+        window.BageoAndroid.saveBase64File(b64, "event.ics", "text/calendar");
+        return;
+      }
+    }
     const a = h("a", { href: icsPath });
     if (app === "ics") a.download = "event.ics";
     document.body.append(a);
@@ -8651,6 +8699,7 @@ document.addEventListener("visibilitychange", () => {
 
 // ---------------------------------------------------------------- first-time password prompt
 async function checkInitialPassword() {
+  if (document.documentElement.dataset.embed === "android" || typeof window.BageoAndroid !== "undefined") return;
   try {
     const res = await fetch(apiBase + "/auth-status", { cache: "no-store" });
     if (!res.ok) return;
@@ -8702,6 +8751,33 @@ async function checkInitialPassword() {
     d.showModal();
   } catch (_) {}
 }
+
+// ---------------------------------------------------------------- Android back navigation
+window.__bageoHandleBack = function () {
+  try {
+    const openDlgs = Array.from(document.querySelectorAll("dialog[open]"));
+    if (openDlgs.length > 0) {
+      openDlgs[openDlgs.length - 1].close();
+      return true;
+    }
+    if (document.body.classList.contains("detail-open") && $("btnBack")) {
+      $("btnBack").click();
+      return true;
+    }
+    if (view === "sms") {
+      const smsGrid = document.querySelector("#view-sms .sms-grid");
+      if (smsGrid && smsGrid.classList.contains("in-convo") && $("smsBack")) {
+        $("smsBack").click();
+        return true;
+      }
+    }
+    if (view !== "calls") {
+      setHash("calls");
+      return true;
+    }
+  } catch (_) {}
+  return false;
+};
 
 // ---------------------------------------------------------------- start
 (async function boot() {

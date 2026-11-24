@@ -16,7 +16,9 @@ name: Docker
 
 on:
   push:
-    tags: ["v*"]
+    tags:
+      - "v*"
+      - "!v*-*"
   pull_request:
     paths:
       - Dockerfile

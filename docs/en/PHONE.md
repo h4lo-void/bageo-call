@@ -18,8 +18,15 @@ Building the app, its permissions and its protocol are covered in
 
 This page describes **Bageo 1.7**: the root module `v1.7.0` (versionCode 26)
 with the app `1.7.0` (versionCode 34) inside, installed from
-`bageo-phone-module-1.7.0.zip`. The app shows its version under *Advanced*,
-and the console under *System → Phones*.
+`bageo-phone-module-1.7.0.zip` (for pairing with Bageo on a computer or NAS) or
+`bageo-phone-standalone-1.7.0.zip` (phone-only standalone edition: runs the full
+Bageo engine and console inside the phone with no computer needed). The app shows
+its version under *Advanced*, and the console under *System → Phones*.
+
+> **Want phone-only with no computer?** Flash `bageo-phone-standalone-1.7.0.zip`
+> instead. Both zips share the same app and module id, so one updates over the
+> other; standalone starts strictly local and can optionally share the console on
+> your Wi-Fi after you set a console password in *Phone setup*.
 
 ## What the phone does
 

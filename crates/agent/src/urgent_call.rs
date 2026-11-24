@@ -176,6 +176,12 @@ pub fn will_dial(rt: &RuntimeSettings, t: &Transfer, key: &str, limits: &DialLim
     number_to_call(rt).is_some() && (t.who != TransferWho::Stranger || limits.free(key, now))
 }
 
+/// Standalone phone mode local urgent prompt: checks stranger rate limits without
+/// requiring a separate forwarding phone number.
+pub fn will_dial_local(t: &Transfer, key: &str, limits: &DialLimit, now: Instant) -> bool {
+    t.who != TransferWho::Stranger || limits.free(key, now)
+}
+
 /// The owner's number as the phone may dial it: full `+` numbers are checked
 /// against their own country (`phone_region::normalize`), even when the incoming
 /// phone carries another country's SIM (`sim`); numbers without `+` use the
@@ -211,6 +217,18 @@ pub fn add_call_payload(id: &str, number: &str) -> Value {
         "number": number,
         "merge": true,
         "answer_timeout_ms": OWNER_ANSWER_TIMEOUT.as_millis() as u64,
+    })
+}
+
+/// Standalone phone local urgent takeover prompt payload.
+pub fn local_urgent_prompt_payload(id: &str, caller_id: &str, caller_name: &str, reason: &str) -> Value {
+    json!({
+        "type": "owner_urgent_prompt",
+        "id": id,
+        "caller_id": caller_id,
+        "caller_name": caller_name,
+        "reason": reason,
+        "timeout_ms": OWNER_ANSWER_TIMEOUT.as_millis() as u64,
     })
 }
 
@@ -750,6 +768,32 @@ fn owner_on_call_at(phone: &str, now: Instant) -> bool {
 /// A phone's control `status`: `in_call` false clears the mark.
 pub fn status_ends_owner_call(status: &Value) -> bool {
     status.get("in_call").and_then(Value::as_bool) == Some(false)
+}
+
+fn takeovers() -> &'static Mutex<HashMap<String, Instant>> {
+    static M: OnceLock<Mutex<HashMap<String, Instant>>> = OnceLock::new();
+    M.get_or_init(Default::default)
+}
+
+/// Owner took over the active AI call directly on this standalone phone: stop Gemini
+/// cleanly without sending `"hangup"` or starting voicemail.
+pub fn mark_takeover(phone: &str) {
+    if let Ok(mut g) = takeovers().lock() {
+        g.insert(phone.to_string(), Instant::now());
+    }
+}
+
+pub fn clear_takeover(phone: &str) -> bool {
+    takeovers().lock().ok().is_some_and(|mut g| g.remove(phone).is_some())
+}
+
+pub fn is_takeover_active(phone: &str) -> bool {
+    let now = Instant::now();
+    takeovers()
+        .lock()
+        .ok()
+        .and_then(|g| g.get(phone).copied())
+        .is_some_and(|t| now.duration_since(t) < OWNER_ON_CALL_MAX)
 }
 
 #[cfg(test)]

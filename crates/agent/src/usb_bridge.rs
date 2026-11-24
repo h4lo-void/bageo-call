@@ -49,7 +49,7 @@ pub struct Config {
 impl Config {
     pub fn from_env(agent_port: u16) -> Self {
         Self {
-            enabled: env_bool("USB_BRIDGE", true),
+            enabled: !crate::config::is_embedded() && env_bool("USB_BRIDGE", true),
             adb: env_or("ADB_BIN", ""),
             phone_port: env_parse("USB_PHONE_PORT", PHONE_PORT_DEFAULT),
             agent_port,

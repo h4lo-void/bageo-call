@@ -3,6 +3,9 @@
 
 -keep class com.pixelcallai.streamer.** { *; }
 -keepclassmembers class com.pixelcallai.streamer.** { *; }
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
 -keep class kotlin.** { *; }
 -keep class kotlin.Metadata { *; }
 -dontwarn kotlin.**

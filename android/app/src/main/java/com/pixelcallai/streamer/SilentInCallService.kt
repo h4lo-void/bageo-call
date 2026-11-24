@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.telecom.Call
+import android.telecom.CallAudioState
 import android.telecom.DisconnectCause
 import android.telecom.InCallService
 import android.telecom.PhoneAccountHandle
@@ -109,9 +110,9 @@ class SilentInCallService : InCallService() {
                 "sim_country=${info.simCountry.ifEmpty { "?" }} sim_sub_id=${info.simSubId ?: "?"} " +
                 "outgoing=$outgoing agent_callback=$agentCallback own=$ownCall",
         )
-        if (ownCall) {
-            // Dialed by hand on this phone: the owner talks on it. No mute, no AI.
-            if (Prefs.isAiCallEnabled(this)) Log.i(TAG, "own outgoing call — not muted, AI not attached")
+        if (ownCall || (BuildConfig.STANDALONE && CallAudioService.isOwnerHandlingCall())) {
+            // Dialed by hand or taken over by the owner: never muted, no AI.
+            if (Prefs.isAiCallEnabled(this)) Log.i(TAG, "owner call — not muted, AI not attached")
         } else {
             ensureArmed(info.callerId, instanceId)
             LocalAudioGuard(this).applyHardMute()
@@ -136,8 +137,13 @@ class SilentInCallService : InCallService() {
         call.registerCallback(object : Call.Callback() {
             override fun onStateChanged(call: Call, state: Int) {
                 Log.i(TAG, "call state -> $state instance=$instanceId")
-                // The owner's own call: never muted, never handed to the AI.
-                if (isOwnCall(call)) return
+                // The owner's own call or an AI call taken over by owner: never muted, never handed back to AI.
+                if (isOwnCall(call) || (BuildConfig.STANDALONE && CallAudioService.isOwnerHandlingCall())) {
+                    if (state == Call.STATE_ACTIVE && BuildConfig.STANDALONE) {
+                        signalCallActive(refreshCallerId(call, instanceId), instanceId)
+                    }
+                    return
+                }
                 forceMuteCall(call)
                 if (state == Call.STATE_ACTIVE) {
                     if (call !in liveCalls) return
@@ -430,8 +436,8 @@ class SilentInCallService : InCallService() {
     private fun forceMuteCall(call: Call) {
         // Normal phone mode: the owner talks on this call; never mute it.
         if (!Prefs.isAiCallEnabled(this)) return
-        // A call the owner dialed by hand on the phone: never mute it either.
-        if (isOwnCall(call)) return
+        // A call the owner dialed by hand or took over on standalone: never mute it either.
+        if (isOwnCall(call) || (BuildConfig.STANDALONE && CallAudioService.isOwnerHandlingCall())) return
         try {
             setMuted(true)
             Log.i(TAG, "InCallService.setMuted(true) state=${call.state}")
@@ -1186,7 +1192,7 @@ class SilentInCallService : InCallService() {
         /** Re-assert Telecom mic mute while we own the active call (hold loop). */
         fun forceMuteActive(): Boolean {
             val svc = activeService ?: return false
-            if (isOwnCallInProgress()) return false
+            if (isOwnCallInProgress() || (BuildConfig.STANDALONE && CallAudioService.isOwnerHandlingCall())) return false
             return try {
                 svc.setMuted(true)
                 true
@@ -1254,6 +1260,91 @@ class SilentInCallService : InCallService() {
             } catch (e: Exception) {
                 Log.w(TAG, "disconnectActive failed: ${e.message}")
                 false
+            }
+        }
+
+        /** Standalone owner call state snapshot for [OwnerCallActivity]. */
+        data class OwnerCallSnapshot(
+            val state: Int,
+            val number: String,
+            val speakerOn: Boolean,
+            val micMuted: Boolean,
+            val connectTimeMs: Long,
+        )
+
+        fun ownerCallSnapshot(): OwnerCallSnapshot? {
+            val svc = activeService ?: return null
+            val call = preferredLiveCall() ?: return null
+            val audio = try {
+                @Suppress("DEPRECATION")
+                svc.callAudioState
+            } catch (_: Exception) {
+                null
+            }
+            val speaker = audio?.route == CallAudioState.ROUTE_SPEAKER
+            val muted = audio?.isMuted ?: false
+            val num = try {
+                call.details?.handle?.schemeSpecificPart?.trim().orEmpty()
+            } catch (_: Exception) {
+                ""
+            }
+            val connectedMs = try {
+                call.details?.connectTimeMillis ?: 0L
+            } catch (_: Exception) {
+                0L
+            }
+            return OwnerCallSnapshot(call.state, num, speaker, muted, connectedMs)
+        }
+
+        fun answerForOwner(): Boolean {
+            val call = ringingCall() ?: activeCall ?: return false
+            return try {
+                call.answer(VideoProfile.STATE_AUDIO_ONLY)
+                unmuteOwnCall()
+                true
+            } catch (e: Exception) {
+                Log.w(TAG, "answerForOwner failed: ${e.message}")
+                false
+            }
+        }
+
+        @Suppress("DEPRECATION")
+        fun setSpeakerphone(on: Boolean): Boolean {
+            val svc = activeService ?: return false
+            return try {
+                svc.setAudioRoute(
+                    if (on) CallAudioState.ROUTE_SPEAKER else CallAudioState.ROUTE_WIRED_OR_EARPIECE,
+                )
+                true
+            } catch (e: Exception) {
+                Log.w(TAG, "setSpeakerphone failed: ${e.message}")
+                false
+            }
+        }
+
+        fun setOwnerMuted(muted: Boolean): Boolean {
+            val svc = activeService ?: return false
+            return try {
+                svc.setMuted(muted)
+                true
+            } catch (e: Exception) {
+                Log.w(TAG, "setOwnerMuted failed: ${e.message}")
+                false
+            }
+        }
+
+        fun sendDtmfBurst(digit: Char) {
+            val call = preferredLiveCall() ?: return
+            try {
+                call.playDtmfTone(digit)
+                addCallHandler.postDelayed({
+                    try {
+                        call.stopDtmfTone()
+                    } catch (_: Exception) {
+                    }
+                }, 180L)
+            } catch (e: Exception) {
+                Log.w(TAG, "sendDtmfBurst failed: ${e.message}")
             }
         }
     }

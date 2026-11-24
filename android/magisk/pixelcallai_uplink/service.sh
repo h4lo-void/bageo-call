@@ -67,10 +67,14 @@ rm -f /data/adb/pixelcallai/daemon.pid 2>/dev/null || true
   fi
 
   for p in RECORD_AUDIO READ_PHONE_STATE READ_PHONE_NUMBERS ANSWER_PHONE_CALLS ACCESS_NOTIFICATION_POLICY \
-      POST_NOTIFICATIONS READ_CALL_LOG CALL_PHONE SEND_SMS; do
+      POST_NOTIFICATIONS READ_CALL_LOG CALL_PHONE SEND_SMS RECEIVE_SMS READ_SMS; do
     pm grant "$PKG" "android.permission.$p" >/dev/null 2>&1 || true
   done
+  if [ -d "$MODDIR/bageo_assets" ]; then
+    pm grant "$PKG" android.permission.READ_CONTACTS >/dev/null 2>&1 || true
+  fi
   cmd appops set "$PKG" ACCESS_NOTIFICATION_POLICY allow >/dev/null 2>&1 || true
+  dumpsys deviceidle whitelist +"$PKG" >/dev/null 2>&1 || true
 
   if [ "$MODE" = "normal" ]; then
     DEF=$(telecom get-default-dialer 2>/dev/null || true)
@@ -95,12 +99,14 @@ rm -f /data/adb/pixelcallai/daemon.pid 2>/dev/null || true
     fi
 
     # Do Not Disturb on, as apply_mode.sh does: Android puts a bare zen_mode write back,
-    # set_dnd is what turns it on. On Android 15+ the app no longer adds its own mode,
-    # so this is the AI phone's Do Not Disturb after a reboot.
-    settings put global zen_mode 2 >/dev/null 2>&1 || true
-    cmd notification set_dnd on >/dev/null 2>&1 || true
-    settings put system volume_ring 0 >/dev/null 2>&1 || true
-    settings put system volume_notification 0 >/dev/null 2>&1 || true
+    # set_dnd is what turns it on. On standalone Daily Sound mode (no spare_mute flag),
+    # keep DND and notification/media volumes untouched.
+    if [ ! -d "$MODDIR/bageo_assets" ] || [ -f /data/adb/pixelcallai/spare_mute ]; then
+      settings put global zen_mode 2 >/dev/null 2>&1 || true
+      cmd notification set_dnd on >/dev/null 2>&1 || true
+      settings put system volume_ring 0 >/dev/null 2>&1 || true
+      settings put system volume_notification 0 >/dev/null 2>&1 || true
+    fi
   fi
 
   am start-foreground-service -n "$PKG/.CallAudioService" -a "$PKG.START" >/dev/null 2>&1 || true

@@ -166,6 +166,10 @@ object PhoneModeManager {
 
     fun newLocalId(): String = LOCAL_ID_PREFIX + UUID.randomUUID()
 
+    /** Standalone Daily Sound switches use `app-nodnd-` so apply_mode.sh skips global DND and notification muting. */
+    fun newModeRequestId(context: Context): String =
+        formatModeRequestId(BuildConfig.STANDALONE && Prefs.isStandaloneDailySound(context))
+
     /** The id goes into the request line: letters, digits and dashes only. */
     fun safeId(id: String): String =
         id.filter { (it.isLetterOrDigit() && it.code < 128) || it == '-' }.take(64)
@@ -179,7 +183,7 @@ object PhoneModeManager {
         context: Context,
         target: String,
         callBusy: Boolean,
-        id: String = newLocalId(),
+        id: String = newModeRequestId(context),
         onDone: (Result) -> Unit,
     ) {
         clearRetry()
@@ -625,6 +629,9 @@ object PhoneModeManager {
  * app had. The mode is the file's, and a switch only counts as done when the file says
  * [target]. Top level, so it needs nothing from Android.
  */
+internal fun formatModeRequestId(noDnd: Boolean, suffix: String = UUID.randomUUID().toString()): String =
+    if (noDnd) "${PhoneModeManager.LOCAL_ID_PREFIX}nodnd-$suffix" else "${PhoneModeManager.LOCAL_ID_PREFIX}$suffix"
+
 internal fun resolveOutcome(
     target: String,
     before: String,

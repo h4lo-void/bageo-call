@@ -14,6 +14,12 @@ if [ -f "$PERM" ]; then
   chmod 644 "$PERM"
   chcon u:object_r:system_file:s0 "$PERM" 2>/dev/null || true
 fi
+ASSETS="$MODDIR/bageo_assets"
+if [ -d "$ASSETS" ]; then
+  find "$ASSETS" -type d -exec chmod 755 {} + 2>/dev/null || true
+  find "$ASSETS" -type f -exec chmod 644 {} + 2>/dev/null || true
+  chcon -R u:object_r:system_file:s0 "$ASSETS" 2>/dev/null || true
+fi
 OV=/dev/pca_ov
 mkdir -p "$OV/u" "$OV/w" "$OV/merged" "$OV/pu" "$OV/pw" "$OV/pmerged"
 if [ -d "$MODDIR/system/priv-app/$PKG" ]; then

@@ -35,6 +35,10 @@ MODE=$1
 ID=$2
 case "$MODE" in ai|normal) ;; *) echo "usage: $0 ai|normal <id> [volumes]" >&2; exit 2 ;; esac
 case "$ID" in ''|*[!A-Za-z0-9-]*) ID=invalid ;; esac
+NODND=0
+case "$ID" in nodnd-*|app-nodnd-*) NODND=1 ;; esac
+STANDALONE_MOD=0
+[ -d "${0%/*}/bageo_assets" ] && STANDALONE_MOD=1
 
 mkdir -p "$DIR" || exit 3
 if ! mkdir "$LOCK" 2>/dev/null; then
@@ -206,24 +210,35 @@ apply_normal() {
   [ $? -eq 0 ] && fail screening screening_failed
   step screening ok
 
-  # 2. Do Not Disturb off. Both commands only reach the phone's own Do Not Disturb: a mode
-  #    that stays on (an app's or a schedule's) fails here, noting which one.
-  q cmd notification set_dnd off
-  q settings put global zen_mode 0
-  until_ok dnd_off || { note_dnd_blocker; fail dnd dnd_failed; }
-  step dnd ok
+  # 2. Do Not Disturb off (skipped in Daily Sound / no-DND mode). Both commands
+  #    only reach the phone's own Do Not Disturb: a mode that stays on fails here.
+  if [ "$NODND" -eq 1 ]; then
+    step dnd ok
+    set_volume 2 "$3" volume_ring
+    set_volume 5 "$4" volume_notification
+    set_volume 0 "$5" ""
+    set_volume 3 "$6" volume_music
+    set_volume 4 "$7" volume_alarm
+    set_volume 1 "$8" volume_system
+    step volume ok
+  else
+    q cmd notification set_dnd off
+    q settings put global zen_mode 0
+    until_ok dnd_off || { note_dnd_blocker; fail dnd dnd_failed; }
+    step dnd ok
 
-  # 3. Ringer on, volumes back (ring, notification, earpiece, media, alarm, system).
-  q cmd audio set-ringer-mode NORMAL
-  q settings put global mode_ringer 2
-  set_volume 2 "$3" volume_ring
-  set_volume 5 "$4" volume_notification
-  set_volume 0 "$5" ""
-  set_volume 3 "$6" volume_music
-  set_volume 4 "$7" volume_alarm
-  set_volume 1 "$8" volume_system
-  until_ok ring_on || fail volume volume_failed
-  step volume ok
+    # 3. Ringer on, volumes back (ring, notification, earpiece, media, alarm, system).
+    q cmd audio set-ringer-mode NORMAL
+    q settings put global mode_ringer 2
+    set_volume 2 "$3" volume_ring
+    set_volume 5 "$4" volume_notification
+    set_volume 0 "$5" ""
+    set_volume 3 "$6" volume_music
+    set_volume 4 "$7" volume_alarm
+    set_volume 1 "$8" volume_system
+    until_ok ring_on || fail volume volume_failed
+    step volume ok
+  fi
 
   # 4. Undo the AI mode's root microphone mutes (controls a phone lacks are ignored).
   q cmd media.audio_flinger mute mic 0
@@ -313,6 +328,10 @@ apply_ai() {
       POST_NOTIFICATIONS READ_CALL_LOG CALL_PHONE SEND_SMS; do
     q pm grant "$PKG" "android.permission.$p"
   done
+  if [ "$STANDALONE_MOD" -eq 1 ]; then
+    q pm grant "$PKG" "android.permission.READ_CONTACTS"
+    if [ "$NODND" -eq 1 ]; then rm -f "$DIR/spare_mute"; else echo 1 > "$DIR/spare_mute"; fi
+  fi
   q cmd appops set "$PKG" ACCESS_NOTIFICATION_POLICY allow
 
   # 1. Bageo is the phone app and the call screener (as service.sh does at boot).
@@ -333,20 +352,25 @@ apply_ai() {
   q pm disable-user --user 0 "$GD"
   step google ok
 
-  # 3. Do Not Disturb on, ringer and notification volume settings zero (the app's
-  #    audio guard zeroes the live volumes when its service arms).
-  T_DND=1
-  OLD_ZEN=$(zen)
-  q settings put global zen_mode 2
-  q cmd notification set_dnd on
-  until_ok dnd_on || fail dnd dnd_failed
-  step dnd ok
-  T_VOL=1
-  OLD_VOL_RING=$(o settings get system volume_ring | tr -d "$STRIP")
-  OLD_VOL_NOTIFICATION=$(o settings get system volume_notification | tr -d "$STRIP")
-  q settings put system volume_ring 0
-  q settings put system volume_notification 0
-  step volume ok
+  # 3. Do Not Disturb on, ringer and notification volume settings zero (skipped in
+  #    Daily Sound / no-DND mode so notification and media audio remain normal).
+  if [ "$NODND" -eq 1 ]; then
+    step dnd ok
+    step volume ok
+  else
+    T_DND=1
+    OLD_ZEN=$(zen)
+    q settings put global zen_mode 2
+    q cmd notification set_dnd on
+    until_ok dnd_on || fail dnd dnd_failed
+    step dnd ok
+    T_VOL=1
+    OLD_VOL_RING=$(o settings get system volume_ring | tr -d "$STRIP")
+    OLD_VOL_NOTIFICATION=$(o settings get system volume_notification | tr -d "$STRIP")
+    q settings put system volume_ring 0
+    q settings put system volume_notification 0
+    step volume ok
+  fi
 }
 
 if [ "$MODE" = normal ]; then apply_normal "$@"; else apply_ai; fi

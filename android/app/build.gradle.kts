@@ -14,8 +14,8 @@ android {
         applicationId = "com.pixelcallai.streamer"
         minSdk = 29
         targetSdk = 35
-        versionCode = 34
-        versionName = "1.7.0"
+        versionCode = 35
+        versionName = "1.7.1-beta"
         multiDexEnabled = true
         // Default agent URL: localhost, mapped to the PC with `adb reverse tcp:8765 tcp:8787`.
         // Users can override it in the app (Prefs.agentUrl) for Wi-Fi/LAN mode.
@@ -23,6 +23,24 @@ android {
         buildConfigField("int", "SAMPLE_RATE", "16000")
         // The agent streams all audio over the WebSocket; the phone-local menu stays OFF.
         buildConfigField("boolean", "LOCAL_MENU_ENABLED", "false")
+    }
+
+    flavorDimensions += "edition"
+    productFlavors {
+        create("bridge") {
+            dimension = "edition"
+            buildConfigField("boolean", "STANDALONE", "false")
+            buildConfigField("int", "CONSOLE_PORT", "8787")
+        }
+        create("standalone") {
+            dimension = "edition"
+            buildConfigField("boolean", "STANDALONE", "true")
+            buildConfigField("int", "CONSOLE_PORT", "8787")
+            buildConfigField("String", "BRIDGE_WS_URL", "\"ws://127.0.0.1:8766\"")
+            ndk {
+                abiFilters += "arm64-v8a"
+            }
+        }
     }
 
     buildFeatures {

@@ -11,6 +11,11 @@ repository.workspace = true
 homepage.workspace = true
 description = "Bageo agent: answers the phone's calls with a Gemini Live voice, web console, notifications"
 
+[lib]
+name = "bageo_agent"
+path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
+
 [[bin]]
 name = "agent"
 path = "src/main.rs"

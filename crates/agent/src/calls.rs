@@ -1895,6 +1895,22 @@ impl CallStore {
             .collect()
     }
 
+    /// Best-effort synchronous count of live calls for JNI status snapshots.
+    pub fn live_calls_count_try(&self) -> usize {
+        self.index
+            .try_lock()
+            .map(|idx| {
+                idx.calls
+                    .iter()
+                    .filter(|c| {
+                        let st = c.status.as_str();
+                        (st == "ringing" || st == "active") && !is_twin_serial(&c.serial)
+                    })
+                    .count()
+            })
+            .unwrap_or(0)
+    }
+
     /// Delete a single finished call record, its WAV files, and its `_notes.json`.
     /// Returns `Err("call_in_progress")` if the call is still `ringing` or `active`,
     /// `Ok(false)` if not found, and `Ok(true)` when deleted.
