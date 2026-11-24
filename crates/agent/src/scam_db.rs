@@ -318,15 +318,37 @@ pub fn han_text(text: &str) -> String {
         .replace("好賣加", "好賣+")
 }
 
+fn ascii_word(c: Option<char>) -> bool {
+    c.is_some_and(|c| c.is_ascii_alphanumeric())
+}
+
+/// `kw` in `text`. A keyword written in ASCII, or an end of one that is an
+/// ASCII letter or digit (`升級為vip`, `atm`), stands at the edge of a word: the
+/// letters next to it are not ASCII letters or digits ("streamline", "online"
+/// or "deadline" are not 加 LINE, "hotpot" is not OTP). `gaps` is for text
+/// with its spaces taken out (`compact_gaps`): `gaps[i]` is true when a space
+/// stood before character `i`, which keeps "got parcel" from reading "otp".
+fn edge_contains(text: &str, kw: &str, gaps: Option<&[bool]>) -> bool {
+    let ascii = kw.is_ascii();
+    let check_start = ascii || ascii_word(kw.chars().next());
+    let check_end = ascii || ascii_word(kw.chars().next_back());
+    if !check_start && !check_end {
+        return text.contains(kw);
+    }
+    let len = kw.chars().count();
+    text.match_indices(kw).any(|(i, _)| {
+        let from = gaps.map(|_| text[..i].chars().count());
+        let gap = |at: usize| gaps.is_some_and(|g| g.get(at).copied().unwrap_or(false));
+        let start_ok = !check_start || !ascii_word(text[..i].chars().next_back()) || from.is_some_and(gap);
+        let end_ok = !check_end || !ascii_word(text[i + kw.len()..].chars().next()) || from.is_some_and(|f| gap(f + len));
+        start_ok && end_ok
+    })
+}
+
 /// An ASCII keyword inside Chinese text only as a whole word: "streamline",
 /// "online" or "deadline" are not 加 LINE.
 pub fn han_contains(text: &str, kw: &str) -> bool {
-    if !kw.is_ascii() {
-        return text.contains(kw);
-    }
-    let word = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric());
-    text.match_indices(kw)
-        .any(|(i, _)| !word(text[..i].chars().next_back()) && !word(text[i + kw.len()..].chars().next()))
+    edge_contains(text, kw, None)
 }
 
 /// Lowercase words of `text`, punctuation dropped (apostrophes kept inside words).
@@ -339,8 +361,37 @@ fn words(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// Full-width ASCII (ＯＴＰ, ＡＴＭ) and the ideographic space as plain ASCII.
+fn halfwidth(text: &str) -> String {
+    text.chars()
+        .map(|c| match c {
+            '\u{FF01}'..='\u{FF5E}' => char::from_u32(c as u32 - 0xFEE0).unwrap_or(c),
+            '\u{3000}' => ' ',
+            _ => c,
+        })
+        .collect()
+}
+
+/// Lowercase text with its spaces taken out, and for each character kept
+/// whether a space stood before it (speech-to-text puts spaces between Thai
+/// words and none in Korean; the keywords have none).
+fn compact_gaps(text: &str) -> (String, Vec<bool>) {
+    let (mut out, mut gaps) = (String::new(), Vec::new());
+    let mut gap = false;
+    for c in halfwidth(text).to_lowercase().chars() {
+        if c.is_whitespace() {
+            gap = true;
+        } else {
+            out.push(c);
+            gaps.push(gap);
+            gap = false;
+        }
+    }
+    (out, gaps)
+}
+
 fn compact(text: &str) -> String {
-    text.to_lowercase().chars().filter(|c| !c.is_whitespace()).collect()
+    compact_gaps(text).0
 }
 
 /// Lowercase with Latin accents taken off, whether the letter is one character
@@ -428,6 +479,8 @@ struct Prepared {
     padded: String,
     lower: String,
     compact: String,
+    /// For each character of `compact`: a space stood before it.
+    gaps: Vec<bool>,
     /// The text is Japanese or Korean (letters of those scripts outweigh the
     /// ideographs): the Chinese keywords are not read in it.
     skip_han: bool,
@@ -438,12 +491,14 @@ impl Prepared {
         let words_list = words(&fold_accents(text));
         let padded = format!(" {} ", words_list.join(" "));
         let (own, han) = script_counts(text);
+        let (compact, gaps) = compact_gaps(text);
         Prepared {
             han: han_text(text),
             words_list,
             padded,
-            lower: text.to_lowercase(),
-            compact: compact(text),
+            lower: halfwidth(text).to_lowercase(),
+            compact,
+            gaps,
             skip_han: own >= 3 && own * 4 >= own + han,
         }
     }
@@ -533,6 +588,7 @@ impl Keyword {
         let needle = match mode {
             Match::Word => format!(" {}", fold_accents(&text)),
             _ if squeeze => compact(&text),
+            Match::Run => halfwidth(&text),
             _ => text.clone(),
         };
         let word_end =
@@ -566,9 +622,9 @@ impl Keyword {
                     SHORT_WORD_ENDINGS.contains(&rest.split(' ').next().unwrap_or(""))
                 })
             }
-            Match::Run if self.squeeze => p.compact.contains(&self.needle),
-            Match::Run => p.lower.contains(&self.needle),
-            Match::Compact => p.compact.contains(&self.needle),
+            Match::Run if self.squeeze => edge_contains(&p.compact, &self.needle, Some(&p.gaps)),
+            Match::Run => edge_contains(&p.lower, &self.needle, None),
+            Match::Compact => edge_contains(&p.compact, &self.needle, Some(&p.gaps)),
         }
     }
 }
@@ -2835,6 +2891,82 @@ mod tests {
 
     fn hit_texts(text: &str) -> Vec<&'static str> {
         keyword_hits(text).into_iter().map(|h| h.text).collect()
+    }
+
+    /// Keywords written in Latin letters inside the lists of Lao, Burmese,
+    /// Sinhala and Thai (the Run and Compact lists, which ignore spaces) are found
+    /// at the edge of a word, not across two English, Spanish, French, German,
+    /// Portuguese, Italian or Indonesian words: "got parcel" is not OTP.
+    #[test]
+    fn latin_keywords_of_unspaced_scripts_do_not_start_inside_other_words() {
+        for said in [
+            "Got parcel for Mr. X. Can check if he will be home tomorrow afternoon?",
+            "We had hotpot for dinner and then walked along the footpath",
+            "I forgot pizza at the office",
+            "She got pregnant last spring",
+            "Mi robot pasa el pasto cada tarde",
+            "Mon robot prépare le dîner pour les enfants",
+            "Der Pilot prüft vor dem Flug das Flugzeug",
+            "O meu robot pede ajuda quando a bateria acaba",
+            "Il robot pulisce il pavimento ogni mattina",
+            "Robot pembersih lantai itu bagus sekali",
+        ] {
+            let hits = hit_texts(said);
+            assert!(!hits.contains(&"otp"), "{said}: {hits:?}");
+            assert!(!has_hard_hit(said), "{said}: {hits:?}");
+        }
+        // The same words are still read when they are one word of a Thai, Lao,
+        // Burmese or Sinhala sentence, or the speaker writes the code in full width.
+        for said in ["ກະລຸນາບອກ OTP ໃຫ້ຂ້ອຍ", "ကျေးဇူးပြု၍ OTP ပေးပါ", "කරුණාකර OTP කියන්න", "บอกรหัส OTP ให้ฉันหน่อย", "ＯＴＰ ကိုပြောပါ"] {
+            assert!(has_hard_hit(said) || hit_texts(said).contains(&"otp"), "{said}: {:?}", hit_texts(said));
+        }
+    }
+
+    #[test]
+    fn spaces_taken_out_of_the_text_do_not_join_two_words_of_a_keyword() {
+        let (c, gaps) = compact_gaps("got p arcel");
+        assert_eq!(c, "gotparcel");
+        assert!(!edge_contains(&c, "otp", Some(&gaps)));
+        let (c, gaps) = compact_gaps("send me the OTP now");
+        assert!(edge_contains(&c, "otp", Some(&gaps)));
+        let (c, gaps) = compact_gaps("ＯＴＰ　ကို");
+        assert_eq!(c, "otpကို");
+        assert!(edge_contains(&c, "otp", Some(&gaps)));
+        // Chinese keywords with an ASCII end stand at the edge of a word too.
+        assert!(han_contains("請安裝anydesk軟體", "安裝anydesk"));
+        assert!(!han_contains("請安裝anydeskpro", "安裝anydesk"));
+        assert!(han_contains("online banking 要加line", "line"));
+        assert!(!han_contains("streamline 的方案", "line"));
+    }
+
+    #[test]
+    fn full_width_letters_read_like_plain_ones_in_japanese() {
+        assert!(hit_texts("ＡＴＭで還付金を受け取れます").contains(&"atmで還付金"));
+        assert!(hit_texts("ATMで還付金を受け取れます").contains(&"atmで還付金"));
+    }
+
+    /// Scam sentences in every kind of script keep being caught.
+    #[test]
+    fn real_code_requests_are_still_hard_hits_in_every_script() {
+        for said in [
+            "Please send me the OTP right now",
+            "Read me the verification code that you just received",
+            "Dígame el código de verificación que le llegó",
+            "Donnez-moi le code de vérification reçu sur votre téléphone",
+            "Sagen Sie mir bitte den Bestätigungscode, den Sie bekommen haben",
+            "Me passa o código que chegou no seu celular",
+            "Mi dica il codice OTP che ha ricevuto",
+            "Sebutkan kode OTP yang masuk ke HP Anda",
+            "Cho tôi mã OTP vừa gửi tới điện thoại",
+            "請你把驗證碼念給我聽",
+            "验证码告诉我",
+            "認証コードを教えてください",
+            "인증번호 알려 주세요",
+            "บอกรหัส OTP หน่อย",
+            "Назовите код из СМС",
+        ] {
+            assert!(has_hard_hit(said), "{said}: {:?}", hit_texts(said));
+        }
     }
 
     #[test]

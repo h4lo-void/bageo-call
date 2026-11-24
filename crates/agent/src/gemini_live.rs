@@ -5380,11 +5380,20 @@ pub async fn run_session(
         .or(lang_plan.prompt_lang)
         .unwrap_or_else(crate::locale::current)
         .code();
+    // The closing goes by the language the call is held in
+    // ([`crate::closing::closing_lang`]): the opening's, or the local way it opened
+    // (Italy, Thailand…), then what the caller is heard to speak — not the owner's
+    // setting for a call held in another language.
+    let closing_lang_opened = lang_plan
+        .opening
+        .map(|l| l.code())
+        .or(lang_plan.local_hello.filter(|_| persona).map(|h| h.code))
+        .unwrap_or(call_lang);
     // AI errands keep the old timer (the regional one is for answered calls).
-    let hangup_timer = (persona && errand.is_none()).then(|| {
-        crate::closing::hangup_timer(goodbye_hangup_delay_ms, crate::call_sim_country(serial).as_deref(), call_lang)
+    let mut hangup_timer = (persona && errand.is_none()).then(|| {
+        crate::closing::hangup_timer(goodbye_hangup_delay_ms, crate::call_sim_country(serial).as_deref(), closing_lang_opened)
     });
-    let hangup_delay_ms = hangup_timer
+    let mut hangup_delay_ms = hangup_timer
         .as_ref()
         .map_or_else(|| goodbye_hangup_delay_ms.clamp(200, 15_000), |t| t.ms);
     // The stored prompt stays as it is; appointments add their part after it
@@ -5952,7 +5961,7 @@ pub async fn run_session(
     let mut caller_end_signal = false;
     // Persona: Talking → PreClosing → Closing → Hangup, judged from each transcript
     // piece in memory (crate::closing); logs closing_state.
-    let mut closing_sm = crate::closing::ClosingMachine::new(call_lang);
+    let mut closing_sm = crate::closing::ClosingMachine::new(closing_lang_opened);
     // Logged once per arm: AI said bye, line held for the caller's.
     let mut await_bye_logged = false;
     let mut await_exchange_bye_logged = false;
@@ -7129,9 +7138,10 @@ pub async fn run_session(
         // it has stayed quiet end_call::GRACE; the caller speaking again cancels it,
         // and so does the call turning out to be a sales or scam call to stall.
         if let Some(p) = end_call_pending {
+            let caller_spoke = activity_open || local_eou_sent > p.eou_at_accept;
             let view = crate::end_call::PendingView {
                 since_accept: p.accepted_at.elapsed(),
-                caller_spoke: activity_open || local_eou_sent > p.eou_at_accept,
+                caller_spoke,
                 caller_talking: activity_open,
                 caller_settled: last_caller_voice_at.map_or(true, |t| t.elapsed() >= crate::end_call::BYE_SETTLE),
                 ai_busy: model_generating || !play_head.speech_left(phone_sr).is_zero(),
@@ -7140,7 +7150,7 @@ pub async fn run_session(
                 quiet_for_grace: play_head.drained_for(crate::end_call::GRACE, PLAYER_DRAIN_SLACK_BYTES),
                 quiet_for_close: play_head.drained_for(crate::end_call::QUIET_CLOSE, PLAYER_DRAIN_SLACK_BYTES)
                     && last_caller_voice_at.map_or(true, |t| t.elapsed() >= crate::end_call::QUIET_CLOSE),
-                caller_done: closing_sm.caller_done(),
+                caller_done: crate::end_call::caller_done(&closing_sm, caller_spoke),
                 stalling: stall_on || live_is_stall,
             };
             match crate::end_call::step(&view) {
@@ -8604,6 +8614,19 @@ pub async fn run_session(
                                                     crate::lang_lock::Spoken::Other => "other",
                                                 }
                                             );
+                                            // The closing follows the call's language, and so
+                                            // does the goodbye clock when the SIM's country has none.
+                                            let lang = crate::closing::closing_lang(call_language.lang(), closing_lang_opened);
+                                            closing_sm.follow_lang(lang);
+                                            if persona && errand.is_none() {
+                                                let t = crate::closing::hangup_timer(
+                                                    goodbye_hangup_delay_ms,
+                                                    crate::call_sim_country(serial).as_deref(),
+                                                    lang,
+                                                );
+                                                hangup_delay_ms = t.ms;
+                                                hangup_timer = Some(t);
+                                            }
                                         }
                                         info!(
                                             "Gemini Live new model turn after caller serial={serial} (clear recap STT window)"

@@ -225,7 +225,8 @@ pub struct PendingView {
     /// Our audio has been played out for [`QUIET_CLOSE`].
     pub quiet_for_close: bool,
     /// The caller's latest words show they are done: their goodbye, their own
-    /// wrap-up, or thanks for a settled matter ([`crate::closing::ClosingMachine::caller_done`]).
+    /// wrap-up, or thanks for a settled matter ([`crate::closing::ClosingMachine::caller_done`]),
+    /// or words since it was accepted that bring nothing new ([`caller_done`]).
     pub caller_done: bool,
     /// The call is being stalled (a sales or scam call). The verdict can come
     /// after the end_call was accepted: such a call is never closed by it.
@@ -260,6 +261,16 @@ pub fn step(v: &PendingView) -> Step {
     } else {
         Step::Wait
     }
+}
+
+/// [`PendingView::caller_done`]: the closing says the caller is done; or their
+/// latest words bring nothing new — thanks, an okay, a goodbye ("Muchas gracias",
+/// 「감사합니다」) — and were said after the end_call was accepted
+/// (`spoke_after_accept`) or closed the call themselves (their thanks for a
+/// settled matter, then the AI's closing line with its end_call): no reason to
+/// go on, the line closes after their words.
+pub fn caller_done(closing: &crate::closing::ClosingMachine, spoke_after_accept: bool) -> bool {
+    closing.caller_done() || (closing.caller_nothing_new() && (spoke_after_accept || closing.caller_closing()))
 }
 
 /// One look at the line for the cold-gap nudge.
@@ -1117,6 +1128,108 @@ mod a6rev_tests {
         for (lang, l) in lines {
             let v = PendingView { ai_asked: ends_on_question(l), quiet_for_grace: true, ..view() };
             assert_eq!(step(&v), Step::HangUp, "{lang}: {l}");
+        }
+    }
+}
+
+/// The caller only thanking or saying goodbye after the end_call was accepted
+/// ("Muchas gracias", 「네, 감사합니다」) never calls it off; anything new does.
+#[cfg(test)]
+mod thanks_after_end_call_tests {
+    use super::*;
+    use crate::closing::ClosingMachine;
+
+    fn view(caller_done: bool) -> PendingView {
+        PendingView {
+            since_accept: Duration::from_secs(4),
+            caller_spoke: true,
+            caller_talking: false,
+            caller_settled: true,
+            ai_busy: false,
+            ai_spoke: true,
+            ai_asked: false,
+            quiet_for_grace: true,
+            quiet_for_close: false,
+            caller_done,
+            stalling: false,
+        }
+    }
+
+    /// (language, the caller's business, the AI's closing line with its end_call)
+    const CALLS: &[(&str, &str, &str)] = &[
+        ("es", "Hola, le llamo de la paquetería, mañana le dejo el paquete en portería.", "Con gusto, ahí lo recojo."),
+        ("ko", "택배 기사인데요, 내일 경비실에 맡겨 둘게요.", "네, 좋아요. 그렇게 해 주세요."),
+        ("en", "Hi, this is the courier, I'll leave the parcel at the front desk tomorrow.", "Sounds good, I'll pick it up there."),
+        ("th", "สวัสดีครับ พรุ่งนี้ผมฝากพัสดุไว้ที่นิติบุคคลนะครับ", "ได้ค่ะ เดี๋ยวไปรับเองค่ะ"),
+        ("yue", "你好，我係速遞，聽日放喺管理處俾你。", "好呀，我自己去攞。"),
+        ("tl", "Magandang hapon po, courier po ito, iiwan ko po bukas sa guard.", "Sige po, kukunin ko na lang doon."),
+        ("it", "Buongiorno, sono il corriere, domani lascio il pacco in portineria.", "Perfetto, lo ritiro lì."),
+    ];
+
+    fn after_end_call(lang: &str, said: &str) -> Step {
+        let &(code, business, ai) = CALLS.iter().find(|c| c.0 == lang).expect("a call in this language");
+        let mut m = ClosingMachine::new(code);
+        m.on_caller(business, business, false, false);
+        m.on_ai_turn(ai, false, false);
+        m.on_caller(said, said, crate::locale::caller_wraps_up(said), false);
+        step(&view(caller_done(&m, true)))
+    }
+
+    #[test]
+    fn thanks_or_a_goodbye_after_end_call_closes_the_line() {
+        for (lang, said) in [
+            ("es", "Muchas gracias."), ("es", "Gracias, adiós."), ("ko", "네, 감사합니다."), ("en", "Okay, thanks!"),
+            ("en", "Have a great day!"), ("th", "ขอบคุณครับ"), ("tl", "Salamat po."), ("it", "Grazie, arrivederci!"),
+            ("yue", "好，拜拜。"),
+        ] {
+            assert_eq!(after_end_call(lang, said), Step::HangUp, "{lang}: {said}");
+        }
+    }
+
+    #[test]
+    fn something_new_after_end_call_calls_it_off() {
+        for (lang, said) in [
+            ("es", "Gracias, pero una cosa más: el paquete es frágil."),
+            ("ko", "감사합니다. 근데 경비실은 몇 시까지 해요?"),
+            ("en", "Thanks, one more thing, the gate code changed."),
+            ("th", "ขอบคุณครับ แต่นิติบุคคลเปิดกี่โมงครับ"),
+            ("it", "Grazie, ma a che ora chiude la portineria?"),
+        ] {
+            assert_eq!(after_end_call(lang, said), Step::Cancel, "{lang}: {said}");
+        }
+    }
+
+    #[test]
+    fn before_the_caller_speaks_again_it_is_the_closings_own_verdict() {
+        let mut m = ClosingMachine::new("es");
+        m.on_caller("Le dejo el paquete en portería.", "Le dejo el paquete en portería.", false, false);
+        m.on_ai_turn("Con gusto.", false, false);
+        m.on_caller("Vale.", "Vale.", false, false);
+        // Their "vale" came before the end_call: no goodbye of theirs yet.
+        assert_eq!(caller_done(&m, false), m.caller_done());
+        assert!(!caller_done(&m, false));
+    }
+
+    /// The caller's thanks for a settled matter, then the AI's closing line that
+    /// is no goodbye word (「好，謝謝你」"Con gusto") with its end_call: the line
+    /// closes on the short quiet, not the long one for an unanswered goodbye.
+    #[test]
+    fn the_callers_own_closing_then_end_call_closes_on_the_short_quiet() {
+        for (lang, business, closing, ai) in [
+            ("zh-TW", "我是快遞，明天下午家裡有人嗎？", "沒問題，那我明天幫你放在管理室，感謝你喔！", "好，謝謝你。"),
+            ("es", "Le llamo de la paquetería, ¿mañana hay alguien en casa?", "Vale, se lo dejo en portería, muchas gracias.", "Con gusto."),
+            ("ko", "택배인데요, 내일 집에 계세요?", "네, 알겠습니다. 문 앞에 둘게요. 이용해 주셔서 감사합니다.", "네, 감사합니다."),
+            ("th", "สวัสดีครับ ผมเป็นคนส่งพัสดุ พรุ่งนี้มีคนอยู่บ้านไหมครับ", "ได้ครับ งั้นผมฝากไว้ที่นิติบุคคลนะครับ ขอบคุณที่ใช้บริการครับ", "ค่ะ ขอบคุณค่ะ"),
+            ("en", "Hi, courier here, anyone home tomorrow?", "Okay, I'll leave it at the front desk. Thanks for your help.", "Sounds good."),
+        ] {
+            let mut m = ClosingMachine::new(lang);
+            m.on_caller(business, business, false, false);
+            m.on_ai_turn("Front desk, please.", false, false);
+            m.on_caller(closing, closing, crate::locale::caller_wraps_up(closing), false);
+            m.on_ai_turn(ai, false, false);
+            assert!(caller_done(&m, false), "{lang}: {closing} / {ai}");
+            let v = PendingView { caller_spoke: false, ..view(caller_done(&m, false)) };
+            assert_eq!(step(&v), Step::HangUp, "{lang}");
         }
     }
 }

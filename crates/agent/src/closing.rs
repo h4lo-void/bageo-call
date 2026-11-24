@@ -108,6 +108,9 @@ pub struct ClosingMachine {
     /// The caller's announced end is one people hang up on ([FINAL_WRAPUPS]):
     /// no bye of theirs is owed after it.
     caller_final: bool,
+    /// The caller's words this turn bring nothing new: thanks, short replies,
+    /// closing words (「謝謝」"Gracias", "Have a great day"), and no question.
+    caller_nothing_new: bool,
 }
 
 impl ClosingMachine {
@@ -120,7 +123,36 @@ impl ClosingMachine {
             late_ai: None,
             bye_owed: false,
             caller_final: false,
+            caller_nothing_new: false,
         }
+    }
+
+    /// The call's language as heard now ([closing_lang]): the label of the
+    /// closing log and of the goodbye clock, until closing words of their own
+    /// are heard.
+    pub fn follow_lang(&mut self, lang: &'static str) {
+        if self.lang != lang {
+            info!("closing_lang from={} to={lang}", self.lang);
+            self.lang = lang;
+        }
+    }
+
+    /// The label the closing log uses now.
+    pub fn lang(&self) -> &'static str {
+        self.lang
+    }
+
+    /// The caller's latest turn brings nothing new ([Self::caller_nothing_new]):
+    /// after the AI's end of the call, thanks or a goodbye of theirs is no reason
+    /// to go on.
+    pub fn caller_nothing_new(&self) -> bool {
+        self.caller_nothing_new
+    }
+
+    /// The caller's own words have started the closing (their thanks for a
+    /// settled matter, a pre-closing or a goodbye) and nothing new came after.
+    pub fn caller_closing(&self) -> bool {
+        self.state != ClosingState::Talking && self.caller_closed
     }
 
     #[allow(dead_code)] // for the stalling logic and tests
@@ -194,6 +226,9 @@ impl ClosingMachine {
         if !self.substance && !greeting_only(heard) {
             self.substance = true;
         }
+        let wrap = !opening_only && thanks_wrap(heard);
+        self.caller_nothing_new = !ends_as_question(heard)
+            && (kind.is_some() || wrap || (!norm(heard).is_empty() && is_fluff(heard)));
         let tag = |t: &'static str| if stalling { stall_trigger(t) } else { t };
         match kind {
             Some(Kind::Farewell) => {
@@ -220,9 +255,20 @@ impl ClosingMachine {
                 ClosingStep { event: ClosingEvent::CallerPreClosing, ends_call: old_rules || exchange }
             }
             None => {
+                // Their short answer to our farewell (「好，謝謝」"Grazie!" 「감사합니다」):
+                // nothing new and no goodbye word, still the exchange. Their own bye
+                // may follow: the line is held a moment for it, not the long quiet
+                // after an unanswered goodbye. Not while stalling.
+                if !stalling && self.caller_nothing_new && self.state == ClosingState::PreClosing && !self.caller_closed {
+                    self.caller_closed = true;
+                    self.caller_final = false;
+                    self.go(ClosingState::Closing, "caller_closing_answer");
+                    self.bye_owed = true;
+                    return ClosingStep { event: ClosingEvent::CallerPreClosing, ends_call: true };
+                }
                 // 「好的，沒問題，那我放管理室，謝謝！」: the matter is settled. The
                 // AI's farewell after it ends the call (not their thanks alone).
-                if thanks_wrap(heard) && !opening_only {
+                if wrap {
                     if self.state == ClosingState::Talking {
                         self.caller_closed = true;
                         self.go(ClosingState::PreClosing, tag("caller_thanks_wrap"));
@@ -387,6 +433,20 @@ fn stall_trigger(t: &'static str) -> &'static str {
 // ---------------------------------------------------------------------------
 // Hangup timer by region.
 
+/// The language a call's closing goes by (the closing log's label and the
+/// goodbye clock): the one the caller is heard to speak (lang_lock; `heard`
+/// None when it cannot tell which, as for Thai), else the language the call
+/// opened in when it is not one of the nine core ones (a call opened the Thai
+/// or Italian way), else English. Never the owner's setting for a call held in
+/// another language.
+pub fn closing_lang(heard: Option<crate::locale::Lang>, opened: &'static str) -> &'static str {
+    match heard {
+        Some(l) => l.code(),
+        None if !crate::locale::CORE.iter().any(|l| l.code() == opened) => opened,
+        None => "en",
+    }
+}
+
 /// The setting's default (`goodbye_hangup_delay_ms`): any other value is the
 /// owner's choice and wins over the regional timers.
 pub const DEFAULT_HANGUP_DELAY_MS: u64 = 2_000;
@@ -478,6 +538,9 @@ const PRE_CLOSINGS: Lexicon = &[
         // Not "gotta run" alone: "which program do I gotta run" asks something.
         "alright i gotta run", "okay i gotta run", "ok i gotta run", "anyway i gotta run", "sorry i gotta run",
         "well i gotta run", "i've gotta run", "sorry gotta run", "anyway gotta run",
+        // Thanks for their help closes the call ("Thank you so much for your help").
+        "thanks for your help", "thank you for your help", "thanks for the help", "thank you for the help",
+        "thanks for helping", "thank you for helping", "appreciate your help", "appreciate the help",
     ]),
     ("zh-TW", &[
         "那就先這樣", "就先這樣", "先這樣", "先這樣子", "不耽誤你時間了", "不耽誤您時間了", "不耽誤你了",
@@ -487,16 +550,20 @@ const PRE_CLOSINGS: Lexicon = &[
         "簡訊回你", "簡訊回您",
         // Said to end the call: 「好那就這樣」「回頭聯絡」.
         "那就這樣", "好就這樣", "回頭聯絡", "回頭聯繫",
+        // Thanks for their help closes the call.
+        "謝謝你的幫忙", "謝謝您的幫忙", "謝謝幫忙", "謝謝你幫忙", "謝謝您幫忙", "感謝你的幫忙", "感謝您的幫忙",
     ]),
     ("zh-CN", &[
         "那就先这样", "就先这样", "先这样", "回头微信说", "回头微信聊", "不说了", "不耽误你时间了",
         "不耽误您时间了", "有问题再联系", "不打扰了", "不打扰您了", "再联系", "再联络", "再聊", "回头再说",
         "再打给你", "再打给您", "再回电给你", "再回你电话", "再回你", "再回您", "短信回你", "短信回您",
         "那就这样", "好就这样", "回头联系", "回头联络", "不打扰你了", "回聊",
+        "谢谢你的帮忙", "谢谢您的帮忙", "谢谢帮忙", "感谢你的帮忙", "感谢您的帮忙",
     ]),
     ("yue", &[
         "係咁先", "系咁先", "就咁先", "唔阻你", "唔阻你啦", "唔阻你喇", "再打俾你", "再打畀你", "再覆你", "覆返你",
         "短訊覆你", "短讯覆你", "收線先", "收线先", "得閒再傾", "得闲再倾",
+        "多謝你幫手", "多謝幫手", "多谢你帮手", "多谢帮手", "唔該你幫手", "唔该你帮手",
     ]),
     ("ja", &[
         "以上となりますが", "以上となります", "それではよろしくお願いいたします",
@@ -515,40 +582,61 @@ const PRE_CLOSINGS: Lexicon = &[
         "나중에다시연락드릴게요", "다시연락드릴게요", "연락드릴게요", "연락드리겠습니다", "나끊는다", "그럼이만", "이만줄일게요",
         "이제끊을게요", "먼저끊을게요",
         "나중에통화해요",
+        // Thanks for using the service or for the help: 「이용해 주셔서 감사합니다」.
+        "이용해주셔서감사합니다", "이용해주셔서고맙습니다", "이용해주셔서감사드립니다",
+        "도와주셔서감사합니다", "도와주셔서고맙습니다", "도와주셔서감사드립니다",
     ]),
     ("es", &[
         "bueno te dejo", "te dejo", "le dejo", "nada era solo eso", "era solo eso", "hablamos luego",
         "hablamos después", "hablamos despues",
         // Not "nos hablamos" alone: "desde entonces no nos hablamos" is no closing.
         "órale nos hablamos", "orale nos hablamos", "cualquier cosa te aviso", "cualquier cosa le aviso",
+        // Thanks for the help: "Muchas gracias por la ayuda".
+        "gracias por la ayuda", "gracias por su ayuda", "gracias por tu ayuda", "gracias por ayudarme",
+        "gracias por atenderme", "le agradezco su ayuda", "te agradezco la ayuda",
     ]),
     ("fr", &[
         "je ne vous retiens pas plus longtemps", "je ne vous retiens pas", "je ne te retiens pas",
         "je vous laisse", "je te laisse", "je vous laisse à vos occupations", "je te laisse à tes occupations",
         "c'est noté", "c'est note",
+        "merci pour votre aide", "merci de votre aide", "merci pour l'aide", "merci pour ton aide", "merci de ton aide",
     ]),
     ("de", &[
         "gut dann verbleiben wir so", "dann verbleiben wir so", "verbleiben wir so",
         "alles klar dann weiß ich bescheid", "dann weiß ich bescheid", "dann weiss ich bescheid",
+        "danke für ihre hilfe", "danke für die hilfe", "danke für deine hilfe",
     ]),
-    ("pt", &["então tá bom", "entao ta bom", "combinado então", "combinado entao", "a gente se fala", "falamos depois"]),
+    ("pt", &[
+        "então tá bom", "entao ta bom", "combinado então", "combinado entao", "a gente se fala", "falamos depois",
+        "obrigado pela ajuda", "obrigada pela ajuda", "obrigado pela atenção", "obrigada pela atenção",
+        "obrigado pela atencao", "obrigada pela atencao",
+    ]),
     ("th", &[
         "งั้นแค่นี้", "งั้นแค่นี้นะ", "แค่นี้นะ", "แค่นี้ก่อน", "แค่นี้", "เอาไว้คุยกันใหม่", "คุยกันแค่นี้ก่อน",
+        // Thanks for using the service or for the help.
+        "ขอบคุณที่ใช้บริการ", "ขอบคุณสำหรับความช่วยเหลือ", "ขอบคุณที่ช่วยเหลือ", "ขอบคุณที่ช่วย",
     ]),
     ("vi", &[
         "dạ vậy nhé", "vậy nhé", "vay nhe", "thế nhé", "the nhe", "thôi nhé",
         // "If anything, we'll be in touch later, okay": only with the closing particle.
         "có gì liên lạc sau nhé", "có gì liên lạc sau nha", "co gi lien lac sau nhe",
+        "cảm ơn anh đã giúp", "cảm ơn chị đã giúp", "cảm ơn đã giúp đỡ", "cảm ơn vì đã giúp",
     ]),
     ("id", &[
         "oke sudah dulu ya", "sudah dulu ya", "sudah dulu", "udah dulu ya", "udah dulu", "segitu dulu ya", "itu saja",
         "saya tutup dulu ya", "saya tutup dulu", "tutup dulu ya",
+        // Thanks for the help.
+        "terima kasih atas bantuannya", "terima kasih atas bantuan anda", "terima kasih bantuannya",
+        "makasih atas bantuannya", "makasih bantuannya", "terima kasih sudah membantu",
+        "makasih infonya", "terima kasih infonya", "makasih atas infonya", "terima kasih atas infonya",
     ]),
     ("it", &[
         "allora ti lascio", "ti lascio", "la lascio", "non ti disturbo più", "non ti disturbo piu", "non la disturbo più", "non la disturbo piu",
         "non la trattengo", "non ti trattengo", "non la trattengo oltre", "non ti trattengo oltre", "per ora è tutto", "per ora e tutto",
         "è tutto per ora", "e tutto per ora", "ne parliamo dopo", "ti richiamo dopo", "la richiamo dopo", "ti chiamo dopo", "la chiamo dopo",
         "ti richiamo più tardi", "ti richiamo piu tardi", "la richiamo più tardi", "la richiamo piu tardi", "adesso attacco", "ora attacco",
+        "grazie per l'aiuto", "grazie dell'aiuto", "grazie per la disponibilità", "grazie per la disponibilita",
+        "grazie della disponibilità", "grazie della disponibilita",
     ]),
     ("ru", &["хорошо тогда до свидания", "ладно мне пора", "мне пора", "я перезвоню", "поговорим позже", "тогда пока", "всего вам доброго"]),
     ("ar", &["حسنا سأغلق الآن", "حسنا ساغلق الان", "لنتحدث لاحقا", "سأتصل بك لاحقا", "ساتصل بك لاحقا", "سأتركك الآن", "هذا كل شيء"]),
@@ -604,6 +692,9 @@ const PRE_CLOSINGS: Lexicon = &[
     ("tl", &[
         "kailangan ko nang umalis", "tatawag ako ulit mamaya", "tawag na lang ulit", "usap tayo mamaya",
         "tatawag ako ulit", "mamaya na lang", "iyon lang muna", "yun lang muna",
+        // Thanks for the help.
+        "salamat sa tulong", "salamat po sa tulong", "salamat sa tulong mo", "salamat po sa tulong ninyo",
+        "salamat po sa inyong tulong",
     ]),
     ("bn", &["এই পর্যন্তই থাক তাহলে", "তাহলে এখন রাখি", "পরে ফোন করছি"]),
     ("ur", &[
@@ -659,6 +750,9 @@ const FAREWELLS: Lexicon = &[
         "cheers mate", "lovely ta", "ta ta", "see you", "see ya", "catch you later",
         "catch ya later", "ta ra", "slán", "slan", "slán go fóill", "slan go foill",
         "have a nice day", "have a good one", "have a nice one",
+        "have a great day", "have a good day", "have a wonderful day", "have a lovely day", "have a great one",
+        "have a great weekend", "have a good weekend", "have a nice weekend", "have a good evening",
+        "have a nice evening", "have a great evening", "enjoy your day",
     ]),
     ("zh-TW", &[
         "掰掰", "掰", "拜拜", "再見", "再會", "掰囉", "掰掰囉", "掛囉", "掛啦", "先掛了", "我掛了", "我先掛了", "那我掛了",
@@ -1218,7 +1312,8 @@ const ADDRESS_TITLES: &[&str] = &[
 
 /// Particles after the last word: 「先這樣囉」, 「นะคะ」.
 const ZH_PARTICLES: &str = "喔哦囉啰啦呢吧耶齁欸啊喇嘞呀噢";
-const TH_PARTICLES: &[&str] = &["ค่ะ", "คะ", "ครับ", "คับ", "นะ", "จ้ะ", "จ้า", "จ๊ะ", "ฮะ"];
+/// 「ครับผม」 is the polite 「ครับ」 a man often ends on: 「ขอบคุณมากครับผม」.
+const TH_PARTICLES: &[&str] = &["ครับผม", "ค่ะ", "คะ", "ครับ", "คับ", "นะ", "จ้ะ", "จ้า", "จ๊ะ", "ฮะ"];
 /// Japanese sentence-end particles after a closing: 「ご連絡いたしますね」.
 const JA_PARTICLES: &[&str] = &["よね", "ねー", "ね", "よ"];
 
@@ -2049,6 +2144,7 @@ const SETTLED: &[&str] = &[
     "حسناً", "حسنا", "تمام", "طيب", "فهمت", "لا مشكلة", "آسف", "الرقم غلط", "رقم غلط",
     "ठीक है", "अच्छा", "समझ गया", "समझ गई", "कोई बात नहीं", "माफ़ कीजिए", "माफ कीजिए", "गलत नंबर",
     "tamam", "peki", "anladım", "sorun değil", "özür dilerim", "yanlış numara", "yanlış aradım",
+    "sige", "sige po", "okay po", "noted po", "naintindihan ko po", "naintindihan ko",
 ];
 
 /// Settling words that close a call with nothing more said: a wrong number.
@@ -2502,12 +2598,14 @@ mod tests {
         assert_eq!(m.on_ai_turn("Okay, bye!", true, false), ClosingEvent::None);
         assert_eq!(m.state(), ClosingState::PreClosing);
         assert!(!m.may_hang_up(false));
-        // The caller answers with thanks only: still not theirs to end.
-        caller(&mut m, "Thank you");
-        assert!(!m.may_hang_up(false));
+        // The caller answers with thanks only: the farewells are exchanged, and
+        // the line is held a moment for their own bye.
+        assert!(caller(&mut m, "Thank you").ends_call);
+        assert!(m.awaits_caller_bye());
         // Their goodbye does.
         assert!(caller(&mut m, "Bye").ends_call);
         assert!(m.may_hang_up(false));
+        assert!(!m.awaits_caller_bye());
         m.hangup("goodbye_timer");
         assert_eq!(m.state(), ClosingState::Hangup);
     }
@@ -2570,7 +2668,9 @@ mod tests {
         let latest = "Got it. I'll leave the package with the building management tomorrow afternoon. Thanks for your help.";
         let heard = format!("Hi, I have a package for you. Will someone be home tomorrow afternoon? Or maybe I can leave it with building management. {latest}");
         let step = m.on_caller(&heard, latest, false, false);
-        assert_eq!(step.event, ClosingEvent::CallerThanksWrap);
+        // Thanks for their help closes as a pre-closing ([PRE_CLOSINGS]); a thanks wrap-up before.
+        assert!(matches!(step.event, ClosingEvent::CallerThanksWrap | ClosingEvent::CallerPreClosing), "{:?}", step.event);
+        assert!(!step.ends_call);
         assert_eq!(m.on_ai_turn("Sounds good,bye.", true, false), ClosingEvent::FarewellsExchanged);
         assert!(m.may_hang_up(false));
         for t in ["Thank you for calling!", "Thanks so much for your time", "Muchas gracias por su ayuda", "Obrigado pela atenção"] {
@@ -4956,8 +5056,8 @@ mod regional_closing_words_3_tests {
     }
 
     /// Swedish, Norwegian, Danish and Finnish thanks after settling words only is a
-    /// wrap-up; after the AI's goodbye bare thanks keeps the closing; with a goodbye
-    /// after it, it ends the call.
+    /// wrap-up; after the AI's goodbye bare thanks answers it (the line is held a
+    /// moment for their own bye); with a goodbye after it, it ends the call.
     #[test]
     fn nordic_thanks_still_wraps_up() {
         let wraps: &[(&'static str, &str)] = &[
@@ -4981,7 +5081,7 @@ mod regional_closing_words_3_tests {
             let mut m = after_talk(lang);
             m.on_ai_turn("Okay, goodbye!", false, false);
             let s = hears(&mut m, t);
-            if m.state() == ClosingState::Talking || closes(&s) {
+            if m.state() == ClosingState::Talking || !m.awaits_caller_bye() {
                 bad.push(format!("after the AI's goodbye [{lang}] {t} -> {:?} state={:?}", s.event, m.state()));
             }
         }
@@ -7568,5 +7668,170 @@ mod polite_partings {
         let mut m = ClosingMachine::new("ja");
         assert!(!said(&mut m, "もしもし、大和運輸の田中です。失礼します。").ends_call);
         assert_eq!(m.state(), ClosingState::Talking);
+    }
+}
+
+/// A caller's closing line (thanks for the help, a good-day wish) moves the call
+/// into its closing, their thanks-only answer to the AI's goodbye is their last
+/// word, and the closing goes by the call's language, never the owner's setting.
+#[cfg(test)]
+mod closing_answer_tests {
+    use super::*;
+    use crate::locale::{Ext, Lang};
+
+    fn hear(m: &mut ClosingMachine, t: &str) -> ClosingStep {
+        m.on_caller(t, t, crate::locale::caller_wraps_up(t), false)
+    }
+
+    /// (language, the caller's business, the AI's reply)
+    const CALLS: &[(&str, &str, &str)] = &[
+        ("ko", "택배 기사인데요, 내일 오후에 댁에 계세요?", "내일은 집에 없어요. 문 앞에 두시면 돼요."),
+        ("es", "Hola, le llamo de la paquetería, ¿va a estar en casa mañana?", "Mañana no estoy, déjelo con el portero, por favor."),
+        ("en", "Hi, this is the courier, will someone be home tomorrow afternoon?", "Nobody's home tomorrow, you can leave it at the front desk."),
+        ("th", "สวัสดีครับ ผมเป็นคนส่งพัสดุ พรุ่งนี้บ่ายมีคนอยู่บ้านไหมครับ", "พรุ่งนี้ไม่มีคนอยู่ค่ะ ฝากไว้ที่นิติบุคคลได้เลยค่ะ"),
+        ("yue", "你好，我係速遞，聽日下晝有冇人喺屋企呀？", "聽日冇人喺度，你放喺管理處就得。"),
+        ("tl", "Magandang hapon po, courier po ito, may tao po ba bukas ng hapon?", "Wala pong tao bukas, iwan na lang po sa guard."),
+        ("id", "Halo, saya kurir, besok siang ada orang di rumah?", "Besok tidak ada orang, titip di satpam saja."),
+        ("it", "Buongiorno, sono il corriere, domani pomeriggio c'è qualcuno a casa?", "Domani non c'è nessuno, lo lasci in portineria."),
+        ("vi", "Alo, em bên giao hàng, chiều mai anh có ở nhà không ạ?", "Mai anh không có nhà, em để ở lễ tân nhé."),
+        ("zh-TW", "你好，我是宅配，明天下午家裡有人嗎？", "明天沒人在，你放管理室就好。"),
+    ];
+
+    fn talked(lang: &str) -> ClosingMachine {
+        let &(code, business, ai) = CALLS.iter().find(|c| c.0 == lang).expect("a call in this language");
+        let mut m = ClosingMachine::new(code);
+        hear(&mut m, business);
+        m.on_ai_turn(ai, false, false);
+        assert_eq!(m.state(), ClosingState::Talking, "{lang}: {business} / {ai}");
+        m
+    }
+
+    #[test]
+    fn the_callers_closing_line_starts_the_closing_in_every_language() {
+        let cases: &[(&str, &str)] = &[
+            ("ko", "네, 알겠습니다. 문 앞에 두고 갈게요. 이용해 주셔서 감사합니다."),
+            ("es", "Perfecto, se lo dejo al portero. Muchas gracias por la ayuda."),
+            ("en", "Okay, I'll leave it at the front desk. Have a great day!"),
+            ("en", "Got it, front desk then. Thank you so much for your help."),
+            ("th", "ได้ครับ งั้นผมฝากไว้ที่นิติบุคคลนะครับ ขอบคุณที่ใช้บริการครับ"),
+            ("th", "เข้าใจแล้วครับ เดี๋ยวผมฝากไว้ที่นิติบุคคลให้เรียบร้อยครับ ขอบคุณมากครับผม"),
+            ("yue", "好，咁我放喺管理處，多謝你幫手。"),
+            ("tl", "Sige po, iiwan ko na lang sa guard. Salamat po sa tulong."),
+            ("tl", "Ah, sige po. Iiwan ko na lang po kay Kuya Guard sa lobby. Salamat po sa instruction."),
+            ("id", "Baik, saya titip di satpam ya. Terima kasih atas bantuannya."),
+            ("id", "Oh, oke Pak, siap. Nanti saya taruh di pos satpam ya. Makasih infonya, Pak."),
+            ("it", "Va bene, lo lascio in portineria. Grazie per l'aiuto."),
+            ("zh-TW", "好，那我放管理室，謝謝你的幫忙。"),
+        ];
+        let mut bad = Vec::new();
+        for &(lang, line) in cases {
+            let mut m = talked(lang);
+            let s = hear(&mut m, line);
+            if m.state() == ClosingState::Talking {
+                bad.push(format!("still talking [{lang}] {line} -> {:?}", s.event));
+                continue;
+            }
+            // The AI's goodbye after it: the line may close.
+            m.on_ai_turn("bye", true, false);
+            if !m.may_hang_up(false) {
+                bad.push(format!("no hangup after the AI's goodbye [{lang}] {line} state={:?}", m.state()));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    #[test]
+    fn thanks_only_after_the_ais_goodbye_is_the_callers_last_word() {
+        let cases: &[(&str, &str)] = &[
+            ("ko", "네, 감사합니다."), ("es", "Gracias."), ("en", "Okay, thanks!"), ("th", "ขอบคุณครับ"),
+            ("tl", "Salamat po."), ("id", "Terima kasih."), ("it", "Grazie!"), ("vi", "Dạ vâng, cảm ơn anh."),
+            ("zh-TW", "好，謝謝。"), ("es", "Vale, gracias."),
+        ];
+        let mut bad = Vec::new();
+        for &(lang, answer) in cases {
+            // The AI said goodbye first.
+            let mut m = talked(lang);
+            m.on_ai_turn("bye", true, false);
+            assert_eq!(m.state(), ClosingState::PreClosing, "{lang}");
+            let s = hear(&mut m, answer);
+            if !(s.ends_call && m.may_hang_up(false) && m.awaits_caller_bye() && m.caller_nothing_new()) {
+                bad.push(format!("after the AI's goodbye [{lang}] {answer} -> {:?} ends={} state={:?}", s.event, s.ends_call, m.state()));
+            }
+            // Farewells exchanged on the caller's closing, then their thanks: the
+            // closing stands (the line closes on the quiet), nothing new for end_call.
+            let mut m = talked(lang);
+            hear(&mut m, "Thank you for your help.");
+            assert_eq!(m.on_ai_turn("bye", true, false), ClosingEvent::FarewellsExchanged, "{lang}");
+            assert!(!m.caller_done(), "{lang}: their bye is still owed");
+            let s = hear(&mut m, answer);
+            if !(m.state() == ClosingState::Closing && m.may_hang_up(false) && m.caller_nothing_new()) {
+                bad.push(format!("after the exchange [{lang}] {answer} -> {:?} ends={} state={:?}", s.event, s.ends_call, m.state()));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    #[test]
+    fn more_words_after_the_ais_goodbye_still_go_on_and_bare_thanks_mid_call_stays_talk() {
+        let more: &[(&str, &str)] = &[
+            ("it", "Grazie, ma domani a che ora passa?"),
+            ("es", "Gracias, una cosa más: el paquete es frágil."),
+            ("en", "Thanks, one more thing, the gate code changed."),
+            ("ko", "감사합니다. 근데 하나만 더 여쭤볼게요, 경비실 몇 시까지 해요?"),
+            ("th", "ขอบคุณครับ แต่พรุ่งนี้นิติบุคคลเปิดกี่โมงครับ"),
+            ("id", "Terima kasih, tapi satpamnya buka sampai jam berapa?"),
+        ];
+        for &(lang, t) in more {
+            let mut m = talked(lang);
+            m.on_ai_turn("bye", true, false);
+            let s = hear(&mut m, t);
+            assert!(!s.ends_call && !m.caller_nothing_new(), "{lang}: {t} -> {:?}", s.event);
+            assert_eq!(m.state(), ClosingState::Talking, "{lang}: {t}");
+        }
+        // Bare thanks mid-call, before any closing of the AI's: no closing.
+        for (lang, t) in [("es", "Gracias."), ("en", "Okay, thanks."), ("ko", "네, 감사합니다."), ("zh-TW", "好，謝謝。")] {
+            let mut m = talked(lang);
+            let s = hear(&mut m, t);
+            assert!(!s.ends_call, "{lang}: {t}");
+            assert_eq!(m.state(), ClosingState::Talking, "{lang}: {t}");
+        }
+    }
+
+    #[test]
+    fn the_closing_follows_the_calls_language_never_the_setting() {
+        // A caller heard to speak a language: that one (an Indian SIM, English spoken).
+        assert_eq!(closing_lang(Some(Lang::En), "zh-TW"), "en");
+        for code in ["it", "vi", "th", "id", "tl", "fil"] {
+            if let Some(e) = Ext::from_code(code) {
+                assert_eq!(closing_lang(Some(Lang::Ext(e)), "zh-TW"), e.code(), "{code}");
+            }
+        }
+        for code in ["it", "vi", "th", "id"] {
+            assert!(Ext::from_code(code).is_some(), "{code}");
+        }
+        // lang_lock cannot tell (Thai, a language without its word lists): the
+        // local way the call opened, else English — never the owner's zh-TW.
+        for opened in ["th", "vi", "it", "id", "tl"] {
+            assert_eq!(closing_lang(None, opened), opened);
+        }
+        assert_eq!(closing_lang(None, "zh-TW"), "en");
+        assert_eq!(closing_lang(None, "ja"), "en");
+
+        // The machine's label follows, and an AI goodbye keeps it.
+        for (opened, heard) in [("zh-TW", None), ("th", None), ("zh-TW", Some(Lang::En))] {
+            let mut m = ClosingMachine::new(opened);
+            m.follow_lang(closing_lang(heard, opened));
+            m.on_caller("Parcel delivery info", "Parcel delivery info", false, false);
+            m.on_ai_turn("bye", true, false);
+            assert_ne!(m.lang(), "zh-TW", "{opened} {heard:?}");
+        }
+
+        // The goodbye clock: the SIM's country first, else the call's language.
+        let it = hangup_timer(DEFAULT_HANGUP_DELAY_MS, Some("it"), closing_lang(None, "it"));
+        assert_eq!((it.ms, it.region.as_str()), (1_500, "it"));
+        let in_en = hangup_timer(DEFAULT_HANGUP_DELAY_MS, Some("in"), closing_lang(Some(Lang::En), "zh-TW"));
+        assert_eq!((in_en.ms, in_en.region.as_str()), (1_500, "IN"));
+        let other = hangup_timer(DEFAULT_HANGUP_DELAY_MS, None, closing_lang(None, "zh-TW"));
+        assert_eq!(other.region, "en");
     }
 }
