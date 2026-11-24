@@ -521,6 +521,7 @@ dialog .terms li+li{margin-top:7px}
 [dir=rtl] #tsBox .bts-svg{transform:scaleX(-1)}
 [dir=rtl] #tsBox .bts-svg text{transform:scaleX(-1);transform-box:fill-box;transform-origin:center}
 [dir=rtl] .sw input,[dir=rtl] .hero-sw,[dir=rtl] input[type=range]{direction:rtl}
+#hdrSave{border-radius:999px;padding-inline:15px;min-height:36px}
 </style>
 </head>
 <body>
@@ -544,6 +545,9 @@ dialog .terms li+li{margin-top:7px}
     </button>
     <button type="button" class="icon-btn" id="hdrAddContact" hidden>
       <span data-i18n="ct_add"></span>
+    </button>
+    <button type="button" class="btn sm primary" id="hdrSave" hidden>
+      <span data-i18n="ct_save"></span>
     </button>
   </div>
 </header>
@@ -2265,17 +2269,19 @@ function renderHeader() {
     $("appTitle").textContent = view === "calls" ? "Bageo" : t("tab_" + view);
   }
 
+  $("appSaved").hidden = inSubpage;
   $("hdrRefresh").hidden = sub || (view !== "calls" && view !== "errands");
   const canCallBack = inDetail && detail.call && String(detail.call.caller_id || "").trim().length > 0;
   $("hdrCallback").hidden = !canCallBack;
   $("hdrAddContact").hidden = sub || view !== "contacts";
+  $("hdrSave").hidden = !inSubpage;
 }
 
 function showTab(name, sub) {
   const prevView = view;
   const prevSub = settingsSub;
   if (prevView === "settings" && prevSub && (name !== "settings" || sub !== prevSub)) {
-    flushAutoSave();
+    saveCurrentSettings(false, true);
   }
   view = TABS.includes(name) ? name : "calls";
   settingsSub = view === "settings" && sub && SUBPAGES[sub] ? sub : "";
@@ -2346,6 +2352,9 @@ $("hdrCallback").addEventListener("click", () => {
 $("hdrAddContact").addEventListener("click", async () => {
   haptic("tap");
   if (await editContact(null)) contactsChanged();
+});
+$("hdrSave").addEventListener("click", () => {
+  saveCurrentSettings(true, true);
 });
 
 // ---------------------------------------------------------------- Single-Phone SIM Helpers
@@ -4186,68 +4195,198 @@ const form = $("setForm");
 const fieldEls = () => Array.from(form.querySelectorAll("[data-k]"));
 let autoSaveTimer = 0;
 let pendingPatch = {};
-let savingPatch = false;
+let saveLoopPromise = null;
 let populating = false;
 
-async function savePatch(patch, quietToast) {
-  if (!patch || !Object.keys(patch).length) return true;
-  Object.assign(pendingPatch, patch);
-  if (savingPatch) return true;
-  savingPatch = true;
-  try {
-    while (Object.keys(pendingPatch).length) {
-      const send = { ...pendingPatch };
-      pendingPatch = {};
-      const d = await api("/settings", jsonBody("PUT", send));
-      S = d.settings || S;
-      const srv = matchLang(S.notify_language || S.language);
-      if (srv) store.set("pca.srvlang", srv);
-      flashSavedBadge();
-      if (!quietToast) toast(t("m_autosaved"));
-      renderSetup();
-      renderHero();
-      renderSetMenuSummaries();
-      if ($("sumReady")) {
-        $("sumReady").className = "tag " + (S.summary_ready ? "ok" : "warn");
-        $("sumReady").textContent = t(S.summary_ready ? "sum_ready" : "sum_notready");
-      }
-      if ("gemini_api_key" in send || "gemini_api_key_clear" in send) refreshSecret("gemini_api_key");
-      if ("summary_api_key" in send || "summary_api_key_clear" in send) refreshSecret("summary_api_key");
-      if ("backup_password" in send || "backup_password_clear" in send) refreshSecret("backup_password");
+function applyOptimisticPatch(patch) {
+  if (!S || !patch || !Object.keys(patch).length) return;
+  for (const [k, v] of Object.entries(patch)) {
+    if (k === "gemini_api_key" || k === "summary_api_key" || k === "backup_password") {
+      S[k + "_set"] = true;
+    } else if (k.endsWith("_clear") && v === true) {
+      const base = k.slice(0, -6);
+      S[base + "_set"] = false;
+      S[base] = "";
+    } else {
+      S[k] = v;
     }
-    return true;
-  } catch (e) {
-    if (e.status !== 401) toast(t("save_failed", { msg: e.message }), true);
-    return false;
-  } finally {
-    savingPatch = false;
   }
+  renderSetup();
+  renderHero();
+  renderSetMenuSummaries();
+}
+
+async function savePatch(patch, quietToast) {
+  if (patch && Object.keys(patch).length) {
+    Object.assign(pendingPatch, patch);
+    applyOptimisticPatch(patch);
+  }
+  if (!Object.keys(pendingPatch).length) {
+    return saveLoopPromise ? await saveLoopPromise : true;
+  }
+  if (saveLoopPromise) return await saveLoopPromise;
+  saveLoopPromise = (async () => {
+    try {
+      while (Object.keys(pendingPatch).length) {
+        const send = { ...pendingPatch };
+        pendingPatch = {};
+        const d = await api("/settings", jsonBody("PUT", send));
+        S = d.settings || S;
+        if (Object.keys(pendingPatch).length) applyOptimisticPatch(pendingPatch);
+        const srv = matchLang(S.notify_language || S.language);
+        if (srv) store.set("pca.srvlang", srv);
+        flashSavedBadge();
+        if (!quietToast) toast(t("m_autosaved"));
+        renderSetup();
+        renderHero();
+        renderSetMenuSummaries();
+        if ($("sumReady")) {
+          $("sumReady").className = "tag " + (S.summary_ready ? "ok" : "warn");
+          $("sumReady").textContent = t(S.summary_ready ? "sum_ready" : "sum_notready");
+        }
+        if ("gemini_api_key" in send || "gemini_api_key_clear" in send) refreshSecret("gemini_api_key");
+        if ("summary_api_key" in send || "summary_api_key_clear" in send) refreshSecret("summary_api_key");
+        if ("backup_password" in send || "backup_password_clear" in send) refreshSecret("backup_password");
+      }
+      return true;
+    } catch (e) {
+      if (e.status !== 401) toast(t("save_failed", { msg: e.message }), true);
+      return false;
+    } finally {
+      saveLoopPromise = null;
+    }
+  })();
+  return await saveLoopPromise;
+}
+
+function isNumberInputValid(el) {
+  if (el.type !== "number") return true;
+  if (el.value.trim() === "") return false;
+  const v = Number(el.value), lo = Number(el.min), hi = Number(el.max);
+  return Number.isFinite(v) && v >= lo && v <= hi;
 }
 
 function queueFieldAutoSave(el, immediate) {
   if (populating || !S || !el || !el.dataset.k || el.dataset.t === "secret") return;
   const k = el.dataset.k;
-  if (el.type === "number") {
-    if (el.value.trim() === "") return;
-    const v = Number(el.value), lo = Number(el.min), hi = Number(el.max);
-    if (!Number.isFinite(v) || v < lo || v > hi) return;
-  }
+  if (!isNumberInputValid(el)) return;
   const patch = {};
   if (k === "gemini_persona_prompt") {
     syncPromptDraft();
     patch.gemini_persona_prompt = promptDraft.persona.trim();
     patch.gemini_assistant_prompt = promptDraft.assistant.trim();
   } else {
-    patch[k] = curValue(el);
+    const val = curValue(el);
+    if ((k === "language" || k === "notify_language") && val === "__more__") return;
+    patch[k] = val;
   }
   Object.assign(pendingPatch, patch);
+  applyOptimisticPatch(patch);
   clearTimeout(autoSaveTimer);
   if (immediate) savePatch({}, true);
   else autoSaveTimer = setTimeout(() => savePatch({}, true), 450);
 }
-function flushAutoSave() {
+
+function blurActiveInput() {
+  const ae = document.activeElement;
+  if (ae && ae !== document.body && typeof ae.blur === "function" &&
+      (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT")) {
+    try { ae.blur(); } catch (_) {}
+  }
+}
+
+async function saveCurrentSettings(explicitClick, blurInputs) {
   clearTimeout(autoSaveTimer);
-  if (Object.keys(pendingPatch).length) savePatch({}, true);
+  if (blurInputs) blurActiveInput();
+  if (!S || populating) return true;
+
+  for (const chipId of ["f-about_say", "f-about_avoid"]) {
+    const box = $(chipId);
+    const inp = box && box.querySelector("input.ab-in");
+    if (inp && inp.value.trim()) abCommitInput(box, false);
+  }
+
+  const patch = {};
+  for (const el of fieldEls()) {
+    const k = el.dataset.k;
+    if (!k || el.dataset.t === "secret") continue;
+    if (!isNumberInputValid(el)) continue;
+    if (k === "gemini_persona_prompt") {
+      syncPromptDraft();
+      const pPersona = promptDraft.persona.trim();
+      const pAssist = promptDraft.assistant.trim();
+      if (pPersona !== String(S.gemini_persona_prompt || "")) patch.gemini_persona_prompt = pPersona;
+      if (pAssist !== String(S.gemini_assistant_prompt || "")) patch.gemini_assistant_prompt = pAssist;
+      continue;
+    }
+    const val = curValue(el);
+    if ((k === "language" || k === "notify_language") && val === "__more__") continue;
+    if (val === null) continue;
+    if (JSON.stringify(val) !== JSON.stringify(S[k])) patch[k] = val;
+  }
+
+  const clearedSecrets = [];
+  document.querySelectorAll("[data-secret]").forEach((box) => {
+    if (!box._parts) return;
+    const key = box.dataset.secret;
+    const val = box._parts.input.value.trim();
+    if (val) {
+      patch[key] = val;
+      clearedSecrets.push(box);
+    }
+  });
+
+  let hadDirtyChans = false;
+  if (chans.some((c) => c.dirty || !c.id)) {
+    patch.notify_channels = chans.map(chanPayload);
+    hadDirtyChans = true;
+  }
+
+  if (settingsSub === "adv") {
+    const serial = native.serial || (devices && (devices.connected || [])[0]) || "";
+    if (serial) {
+      for (const sim of currentPhoneSims()) {
+        const subId = Number.isFinite(sim.sub_id) ? sim.sub_id : -1;
+        const key = `${serial}:${subId}`;
+        if (key in simDraft) {
+          const nextNum = String(simDraft[key] || "").trim();
+          const curNum = String(sim.effective_number || "").trim();
+          if (nextNum !== curNum) saveSimNumber(serial, subId, sim.country, nextNum);
+        }
+      }
+    }
+    if (lanNeedPwShown && $("lanPwIn") && $("lanPwIn").value.trim().length >= 8) {
+      $("lanPwSaveBtn").click();
+    }
+  }
+
+  const saveBtn = $("hdrSave");
+  if (explicitClick) {
+    haptic("confirm");
+    if (saveBtn) saveBtn.disabled = true;
+  }
+  try {
+    const ok = await savePatch(patch, true);
+    if (ok) {
+      for (const box of clearedSecrets) {
+        box._parts.input.value = "";
+        box._parts.saveBtn.hidden = true;
+        refreshSecret(box.dataset.secret);
+      }
+      if (hadDirtyChans) {
+        chansFromSettings();
+        renderChannels();
+      }
+      if (explicitClick) toast(t("saved"));
+    }
+    return ok;
+  } finally {
+    if (explicitClick && saveBtn) saveBtn.disabled = false;
+  }
+}
+
+function flushAutoSave() {
+  saveCurrentSettings(false, false);
 }
 
 // Secrets with explicit Save & Remove buttons
@@ -5220,15 +5359,17 @@ form.addEventListener("change", (e) => {
     queueFieldAutoSave(holder, true);
   }
 });
-form.addEventListener("input", (e) => {
-  if (populating) return;
+function onFormTextInput(e) {
+  if (populating || e.isComposing) return;
   const tEl = e.target;
   if (!tEl || tEl.classList.contains("ab-in")) return;
   syncDynamicSettingsUi();
   const holder = tEl.closest("[data-k]");
   if (!holder || ["bool", "radio", "multi", "simlangs"].includes(holder.dataset.t) || tEl.tagName === "SELECT" || tEl.type === "range") return;
   queueFieldAutoSave(holder, false);
-});
+}
+form.addEventListener("input", onFormTextInput);
+form.addEventListener("compositionend", onFormTextInput);
 $("f-language").addEventListener("change", () => {
   if ($("f-language").value === "__more__") {
     $("f-language").value = $("f-language").dataset.prev || (S && S.language) || "en";
@@ -5956,12 +6097,20 @@ setInterval(() => {
 }, 1000);
 
 document.addEventListener("visibilitychange", () => {
-  if (!visible()) { flushAutoSave(); return; }
+  if (!visible()) {
+    if (view === "settings" && settingsSub) saveCurrentSettings(false, true);
+    else flushAutoSave();
+    return;
+  }
   readInitialNativeState();
   renderHero();
   pollLive();
   refreshCalls({ keep: true });
   if (view === "errands") loadErrands();
+});
+window.addEventListener("pagehide", () => {
+  if (view === "settings" && settingsSub) saveCurrentSettings(false, true);
+  else flushAutoSave();
 });
 
 window.__bageoHandleBack = function () {

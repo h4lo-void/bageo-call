@@ -353,6 +353,9 @@ apply_ai() {
     if [ "$NODND" -eq 1 ]; then rm -f "$DIR/spare_mute"; else echo 1 > "$DIR/spare_mute"; fi
   fi
   q cmd appops set "$PKG" ACCESS_NOTIFICATION_POLICY allow
+  q cmd appops set "$PKG" ANSWER_PHONE_CALLS allow
+  q cmd appops set "$PKG" USE_FULL_SCREEN_INTENT allow
+  q dumpsys deviceidle whitelist +"$PKG"
 
   # 1. Bageo is the phone app and the call screener (as service.sh does at boot).
   cur_d=$(dialer)

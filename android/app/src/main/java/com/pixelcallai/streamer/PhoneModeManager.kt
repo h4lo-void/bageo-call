@@ -295,6 +295,8 @@ object PhoneModeManager {
             state.pending -> "the last switch did not finish"
             state.mode == Prefs.PHONE_MODE_NORMAL && defaultDialer(ctx) == ctx.packageName ->
                 "normal mode, but Bageo is still the phone app"
+            state.mode == Prefs.PHONE_MODE_AI && defaultDialer(ctx).let { it.isNotEmpty() && it != ctx.packageName } ->
+                "AI mode, but Bageo is not the phone app"
             state.mode != mirror -> "the module file says ${state.mode}, the app had $mirror"
             else -> null
         }
@@ -304,7 +306,8 @@ object PhoneModeManager {
             Log.w(TAG, "start-up check: $why; a call is on, try again at the next start")
         } else {
             Log.i(TAG, "start-up check: $why; applying ${state.mode} again")
-            val r = switchBlocking(ctx, state.mode, newLocalId())
+            val r = switchBlocking(ctx, state.mode, newModeRequestId(ctx))
+            if (r.ok) adoptMode(ctx, r.mode)
             Log.i(TAG, "start-up re-apply ok=${r.ok} error=${r.error}")
         }
         unreported?.let(onUnreported)
@@ -463,6 +466,9 @@ object PhoneModeManager {
         if (mode == Prefs.PHONE_MODE_NORMAL) {
             LocalAudioGuard(ctx).release()
             unmuteMicrophone(ctx)
+        } else if (mode == Prefs.PHONE_MODE_AI) {
+            DialerRoleHelper.ensureRoles(ctx)
+            CallAudioService.ensureArmed(ctx)
         }
         notifyListeners(mode)
     }

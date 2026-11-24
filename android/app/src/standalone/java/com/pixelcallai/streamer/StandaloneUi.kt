@@ -176,6 +176,16 @@ class StandaloneUi(private val activity: Activity) {
     fun onResume() {
         PhoneModeManager.reconcileLocalMirror(activity)
         PhoneModeManager.addListener(modeListener)
+        if (Prefs.isAiCallEnabled(activity) && hasRequiredPerms()) {
+            val screeningHeld =
+                activity.getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true
+            if (!DialerRoleHelper.isDefaultDialer(activity) || !screeningHeld) {
+                PhoneModeManager.syncFromRoot(activity) {}
+            }
+            if (!isServiceRunning()) {
+                CallAudioService.ensureArmed(activity)
+            }
+        }
         handler.removeCallbacks(pollRunnable)
         handler.post(pollRunnable)
     }

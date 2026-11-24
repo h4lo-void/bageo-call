@@ -34,6 +34,14 @@ class LocalAudioGuard(context: Context) {
     /** Queue a hard mute and return without waiting for AudioManager. */
     fun applyHardMute() = coordinator.requestHardMute(fromHold = false, rootPass = true)
 
+    /**
+     * Immediately silence an incoming AI call (`STREAM_RING` = 0 + mic mute), even inside
+     * the separate `:screening` process or before [CallAudioService] marks the call busy
+     * when Standalone Daily Sound mode is enabled.
+     */
+    fun silenceRingingCall() =
+        coordinator.requestHardMute(fromHold = false, rootPass = true, forceCallMute = true)
+
     fun startHoldLoop() = coordinator.startHoldLoop()
 
     fun stopHoldLoop() = coordinator.stopHoldLoop()
@@ -127,6 +135,7 @@ private class LocalAudioGuardCoordinator(context: Context) {
     private val mutePending = AtomicBoolean(false)
     private val fullPassPending = AtomicBoolean(false)
     private val rootPassPending = AtomicBoolean(false)
+    private val forceCallMutePending = AtomicBoolean(false)
     private val restorePending = AtomicBoolean(false)
     private val ownCallPending = AtomicBoolean(false)
     private val releasePending = AtomicBoolean(false)
@@ -161,7 +170,7 @@ private class LocalAudioGuardCoordinator(context: Context) {
         }
     }
 
-    fun requestHardMute(fromHold: Boolean, rootPass: Boolean) {
+    fun requestHardMute(fromHold: Boolean, rootPass: Boolean, forceCallMute: Boolean = false) {
         // An ordinary phone (normal mode) is never muted.
         if (!Prefs.isAiCallEnabled(appContext)) return
         // Nor is a call the owner dialed by hand (AI mode): they are talking on it.
@@ -169,6 +178,7 @@ private class LocalAudioGuardCoordinator(context: Context) {
         desiredMuted.set(true)
         if (!fromHold) fullPassPending.set(true)
         if (rootPass) rootPassPending.set(true)
+        if (forceCallMute) forceCallMutePending.set(true)
         mutePending.set(true)
         scheduleDrain()
     }
@@ -176,7 +186,7 @@ private class LocalAudioGuardCoordinator(context: Context) {
     fun startHoldLoop() {
         if (holdActive.getAndSet(true)) return
         holdTick.set(0)
-        requestHardMute(fromHold = false, rootPass = true)
+        requestHardMute(fromHold = false, rootPass = true, forceCallMute = true)
         mainHandler.removeCallbacks(holdRunnable)
         mainHandler.postDelayed(holdRunnable, LocalAudioGuard.HOLD_INTERVAL_MS)
         Log.i(TAG, "mute hold loop started intervalMs=${LocalAudioGuard.HOLD_INTERVAL_MS}")
@@ -197,6 +207,7 @@ private class LocalAudioGuardCoordinator(context: Context) {
         mutePending.set(false)
         fullPassPending.set(false)
         rootPassPending.set(false)
+        forceCallMutePending.set(false)
         restorePending.set(true)
         scheduleDrain()
     }
@@ -212,6 +223,7 @@ private class LocalAudioGuardCoordinator(context: Context) {
         mutePending.set(false)
         fullPassPending.set(false)
         rootPassPending.set(false)
+        forceCallMutePending.set(false)
         restorePending.set(false)
         releasePending.set(true)
         scheduleDrain()
@@ -266,16 +278,22 @@ private class LocalAudioGuardCoordinator(context: Context) {
                     mutePending.set(false)
                     fullPassPending.set(false)
                     rootPassPending.set(false)
+                    forceCallMutePending.set(false)
                     break
                 }
                 if (!mutePending.getAndSet(false)) break
 
                 val fullPass = fullPassPending.getAndSet(false)
                 val rootPass = rootPassPending.getAndSet(false) || fullPass
+                val forceCallMute = forceCallMutePending.getAndSet(false)
                 // Restore wins over a mute that was queued but not yet started.
                 if (!desiredMuted.get() || restorePending.get()) continue
                 runTrackedOperation("hard-mute") {
-                    applyHardMuteBlocking(fromHold = !fullPass, rootPass = rootPass)
+                    applyHardMuteBlocking(
+                        fromHold = !fullPass,
+                        rootPass = rootPass,
+                        forceCallMute = forceCallMute,
+                    )
                 }
             }
         } finally {
@@ -335,11 +353,15 @@ private class LocalAudioGuardCoordinator(context: Context) {
         }
     }
 
-    private fun applyHardMuteBlocking(fromHold: Boolean, rootPass: Boolean) {
+    private fun applyHardMuteBlocking(fromHold: Boolean, rootPass: Boolean, forceCallMute: Boolean = false) {
         // Queued before the phone switched to normal mode or while owner took over the call: drop it.
         if (!Prefs.isAiCallEnabled(appContext)) return
         if (BuildConfig.STANDALONE && CallAudioService.isOwnerHandlingCall()) return
-        val callInProgress = holdActive.get() || CallAudioService.isAnyCallBusy()
+        val callInProgress =
+            forceCallMute ||
+                holdActive.get() ||
+                CallAudioService.isAnyCallBusy() ||
+                SilentInCallService.hasRingingOrLiveAiCall()
         val standaloneDailyIdle =
             BuildConfig.STANDALONE && Prefs.isStandaloneDailySound(appContext) && !callInProgress
         if (standaloneDailyIdle) {
@@ -431,8 +453,17 @@ private class LocalAudioGuardCoordinator(context: Context) {
                 applyZenSilence()
             }
             abandonFocus()
-        } else if (holdActive.get() || CallAudioService.isAnyCallBusy()) {
+        } else if (callInProgress) {
             val dailySoundCall = BuildConfig.STANDALONE && Prefs.isStandaloneDailySound(appContext)
+            if (!fromHold) {
+                try {
+                    if (am.getStreamVolume(AudioManager.STREAM_RING) != 0) {
+                        am.setStreamVolume(AudioManager.STREAM_RING, 0, 0)
+                        tryZeroViaSettings(AudioManager.STREAM_RING)
+                    }
+                } catch (_: Exception) {
+                }
+            }
             if (!dailySoundCall) {
                 // Ensure preview media audio is silenced immediately once a call starts.
                 try {

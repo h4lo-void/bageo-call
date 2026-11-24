@@ -83,6 +83,8 @@ rm -f /data/adb/pixelcallai/daemon.pid 2>/dev/null || true
     done
   fi
   cmd appops set "$PKG" ACCESS_NOTIFICATION_POLICY allow >/dev/null 2>&1 || true
+  cmd appops set "$PKG" ANSWER_PHONE_CALLS allow >/dev/null 2>&1 || true
+  cmd appops set "$PKG" USE_FULL_SCREEN_INTENT allow >/dev/null 2>&1 || true
   dumpsys deviceidle whitelist +"$PKG" >/dev/null 2>&1 || true
 
   if [ "$MODE" = "normal" ]; then

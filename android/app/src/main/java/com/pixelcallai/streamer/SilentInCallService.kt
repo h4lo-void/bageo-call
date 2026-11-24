@@ -115,14 +115,15 @@ class SilentInCallService : InCallService() {
             if (Prefs.isAiCallEnabled(this)) Log.i(TAG, "owner call — not muted, AI not attached")
         } else {
             ensureArmed(info.callerId, instanceId)
-            LocalAudioGuard(this).applyHardMute()
+            LocalAudioGuard(this).silenceRingingCall()
             forceMuteCall(call)
             when (state) {
                 Call.STATE_RINGING, Call.STATE_NEW -> {
                     // Do NOT answer here — CallAudioService waits for the agent first.
                     Log.i(TAG, "RINGING — defer answer to CallAudioService (agent gate)")
                     forceMuteCall(call)
-                    LocalAudioGuard(this).applyHardMute()
+                    LocalAudioGuard(this).silenceRingingCall()
+                    signalCallRinging(info.callerId, instanceId)
                 }
                 Call.STATE_ACTIVE -> {
                     forceMuteCall(call)
@@ -150,11 +151,14 @@ class SilentInCallService : InCallService() {
                     selectActiveCall(call, instanceId)
                 }
                 if (state == Call.STATE_ACTIVE || state == Call.STATE_RINGING) {
-                    LocalAudioGuard(this@SilentInCallService).applyHardMute()
-                    ensureArmed(refreshCallerId(call, instanceId), instanceId)
-                }
-                if (state == Call.STATE_ACTIVE) {
-                    signalCallActive(refreshCallerId(call, instanceId), instanceId)
+                    val cid = refreshCallerId(call, instanceId)
+                    LocalAudioGuard(this@SilentInCallService).silenceRingingCall()
+                    ensureArmed(cid, instanceId)
+                    if (state == Call.STATE_RINGING) {
+                        signalCallRinging(cid, instanceId)
+                    } else {
+                        signalCallActive(cid, instanceId)
+                    }
                 }
             }
         })
@@ -461,6 +465,10 @@ class SilentInCallService : InCallService() {
         } catch (e: Exception) {
             Log.w(TAG, "ensureArmed failed: ${e.message}")
         }
+    }
+
+    private fun signalCallRinging(callerId: String?, instanceId: Long) {
+        startCallAudioService(CallAudioService.ACTION_CALL_RINGING, callerId, instanceId)
     }
 
     private fun signalCallActive(callerId: String?, instanceId: Long) {
@@ -1149,9 +1157,38 @@ class SilentInCallService : InCallService() {
         fun currentActiveCallInstanceId(): Long =
             if (activeService == null) NO_CALL_INSTANCE else activeCallInstance.get()
 
+        fun hasRingingCall(): Boolean = activeService != null && ringingCall() != null
+
+        fun hasRingingOrLiveAiCall(): Boolean {
+            if (activeService == null) return false
+            if (BuildConfig.STANDALONE && CallAudioService.isOwnerHandlingCall()) return false
+            return liveCalls.any {
+                it.state != Call.STATE_DISCONNECTED &&
+                    it.state != Call.STATE_DISCONNECTING &&
+                    !isOwnCall(it)
+            }
+        }
+
+        /**
+         * Aggregate Telecom state observed directly by [SilentInCallService], covering
+         * VoWiFi / secondary eSIM calls where `TelephonyManager.callState` can lag or
+         * remain `CALL_STATE_IDLE`. Null when [SilentInCallService] is not currently bound.
+         */
+        fun effectiveTelecomCallState(): Int? {
+            if (activeService == null) return null
+            return when {
+                liveCalls.any(::isEstablishedCall) -> TelephonyManager.CALL_STATE_OFFHOOK
+                ringingCall() != null -> TelephonyManager.CALL_STATE_RINGING
+                else -> TelephonyManager.CALL_STATE_IDLE
+            }
+        }
+
         private fun ringingCall(): Call? =
-            activeCall?.takeIf { it in liveCalls && it.state == Call.STATE_RINGING }
-                ?: liveCalls.firstOrNull { it.state == Call.STATE_RINGING }
+            activeCall?.takeIf {
+                it in liveCalls && (it.state == Call.STATE_RINGING || it.state == Call.STATE_NEW)
+            } ?: liveCalls.firstOrNull {
+                it.state == Call.STATE_RINGING || it.state == Call.STATE_NEW
+            }
 
         private fun selectActiveCall(call: Call, instanceId: Long) {
             if (instanceId == NO_CALL_INSTANCE || call !in liveCalls) return
@@ -1215,17 +1252,16 @@ class SilentInCallService : InCallService() {
             }
         }
 
-        /** Defer-ring path: answer the active call once CallAudioService confirms the agent. */
+        /** Defer-ring path: answer the ringing call once CallAudioService confirms the agent. */
         fun answerActiveIfHeld(): Boolean {
-            val call = activeCall ?: return false
+            if (activeService == null) return false
+            val call = ringingCall() ?: return false
+            val id = callInstances[call] ?: NO_CALL_INSTANCE
+            if (id != NO_CALL_INSTANCE) selectActiveCall(call, id)
             return try {
-                if (call.state == Call.STATE_RINGING || call.state == Call.STATE_NEW) {
-                    call.answer(VideoProfile.STATE_AUDIO_ONLY)
-                    Log.i(TAG, "answerActiveIfHeld issued")
-                    true
-                } else {
-                    false
-                }
+                call.answer(VideoProfile.STATE_AUDIO_ONLY)
+                Log.i(TAG, "answerActiveIfHeld issued via InCallService instance=$id state=${call.state}")
+                true
             } catch (e: Exception) {
                 Log.w(TAG, "answerActiveIfHeld failed: ${e.message}")
                 false

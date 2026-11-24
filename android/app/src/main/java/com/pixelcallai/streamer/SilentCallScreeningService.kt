@@ -83,16 +83,17 @@ class SilentCallScreeningService : CallScreeningService() {
         Log.i(TAG, "screened: silence=true reject=false skipNotification=false (allow-legal)")
 
         try {
-            LocalAudioGuard(this).applyHardMute()
+            LocalAudioGuard(this).silenceRingingCall()
         } catch (e: Exception) {
-            Log.w(TAG, "applyHardMute: ${e.message}")
+            Log.w(TAG, "silenceRingingCall: ${e.message}")
         }
 
-        // Arm streamer early with EXTRA so the agent's hello sees the caller before OFFHOOK.
+        // Arm streamer and signal RINGING early with EXTRA so the agent's answer_plan
+        // starts even before TelephonyManager.callState transitions (or on VoWiFi).
         // Intent targets default process CallAudioService (screening is :screening).
         try {
             val i = Intent(this, CallAudioService::class.java)
-                .setAction(CallAudioService.ACTION_START)
+                .setAction(CallAudioService.ACTION_CALL_RINGING)
             if (caller.isNotBlank()) {
                 i.putExtra(CallAudioService.EXTRA_CALLER_ID, caller)
             }
