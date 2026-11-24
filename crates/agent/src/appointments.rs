@@ -3799,13 +3799,15 @@ pub fn all_events(appt: &Appointment) -> Vec<Earlier> {
 /// The web console's call notes follow the appointment's state (one of the
 /// call's appointments; the others stay as they are).
 async fn update_call_notes(calls: &CallStore, call_id: &str, appt: &Appointment) {
-    let Some(mut notes) = calls.load_notes(call_id).await else {
-        return;
-    };
-    let merged = merged_into(notes.appointment.take(), appt);
-    notes.calendar = Some(merged.calendar_event());
-    notes.appointment = Some(merged);
-    if let Err(e) = calls.save_notes(call_id, &notes).await {
+    let result = calls
+        .update_notes(call_id, |notes| {
+            let merged = merged_into(notes.appointment.take(), appt);
+            notes.calendar = Some(merged.calendar_event());
+            notes.appointment = Some(merged);
+            true
+        })
+        .await;
+    if let Err(e) = result {
         warn!("appointment notes update failed call_id={call_id}: {e:#}");
     }
 }
