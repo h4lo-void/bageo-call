@@ -1376,6 +1376,8 @@ const EXTRA_WORD_FAREWELLS: &[&str] = &[
     "thế nhé", "vậy nhé", "thôi nhé", "thoi nhe", "bye nhé", "bye nhe",
     // "(Have) a good day": "Chúc anh một ngày tốt lành".
     "một ngày tốt lành", "ngày tốt lành",
+    // …a good afternoon / morning / evening: "Chúc anh một buổi chiều tốt lành".
+    "buổi chiều tốt lành", "buổi sáng tốt lành", "buổi tối tốt lành", "chiều tốt lành", "tối tốt lành",
     "sampai jumpa", "sampai ketemu", "selamat tinggal", "dadah", "daah",
     "sampai nanti", "sudah dulu ya", "udah dulu ya", "segitu dulu ya",
     // Russian: "goodbye", "all the best", "have a good day", "see you", "bye-bye".

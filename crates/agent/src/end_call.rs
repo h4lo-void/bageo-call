@@ -7,15 +7,18 @@
 //! - **end_call(reason)**: a Live function, declared on answered persona calls
 //!   (`NON_BLOCKING` when the API takes it). The model calls it once the
 //!   business is done and the caller is ready to finish, after its own closing
-//!   line — the caller need not have said goodbye. The code, not the model,
-//!   decides whether it counts ([`judge`]): never while stalling a sales / scam
-//!   caller, never in the first seconds of the call, never right after a question
-//!   of the caller's the AI has not answered. A refusal is answered so the model
-//!   knows the call goes on.
+//!   line. The code, not the model, decides whether it counts ([`judge`]): never
+//!   while stalling a sales / scam caller, never in the first seconds of the call,
+//!   never right after a question of the caller's the AI has not answered. A
+//!   refusal is answered so the model knows the call goes on.
 //! - Once accepted the line is not cut at once ([`step`]): our last words play
-//!   out, then [`GRACE`] of quiet; the caller speaking again in that time cancels
-//!   it and the call goes on. Our last words asking the caller something ("anything
-//!   else?") withdraw it too: their answer comes first.
+//!   out, then [`GRACE`] of quiet when the caller has already shown they are done
+//!   (their goodbye, their own wrap-up or thanks for a settled matter), or
+//!   [`QUIET_CLOSE`] when they have not: a caller usually answers our goodbye
+//!   with theirs, and that is the moment to close ([`BYE_SETTLE`] after it, so
+//!   words they add are heard first). The caller saying anything else in that
+//!   time cancels it and the call goes on. Our last words asking the caller
+//!   something ("anything else?") withdraw it too: their answer comes first.
 //! - **Cold gap** ([`ColdGap`]): the caller finished a turn and the AI has said
 //!   nothing for [`COLD_GAP`]: one light nudge per caller turn to pick it up in
 //!   the caller's language and the call's talk style. The 15 s quiet-line nudge
@@ -42,6 +45,13 @@ pub const NAME: &str = "end_call";
 pub const MIN_TALK: Duration = Duration::from_secs(8);
 /// Quiet after our last words before the line is closed.
 pub const GRACE: Duration = Duration::from_millis(1500);
+/// Quiet after our last words before the line is closed when the caller has not
+/// shown they are done (no goodbye, wrap-up or thanks yet): the same wait as for
+/// a goodbye of the AI's left unanswered.
+pub const QUIET_CLOSE: Duration = Duration::from_secs(6);
+/// Quiet after the caller's goodbye before the line is closed: their words can
+/// reach us a moment after they stop ("bye… oh, one more thing").
+pub const BYE_SETTLE: Duration = Duration::from_millis(2500);
 /// The model called end_call before its closing line: wait this long for it.
 pub const LINE_WAIT: Duration = Duration::from_secs(6);
 /// The caller's turn ended and the AI has said nothing for this long: nudge.
@@ -200,6 +210,10 @@ pub struct PendingView {
     pub since_accept: Duration,
     /// The caller started speaking again after it was accepted.
     pub caller_spoke: bool,
+    /// The caller is speaking now.
+    pub caller_talking: bool,
+    /// The caller has been quiet [`BYE_SETTLE`] (or never spoke).
+    pub caller_settled: bool,
     /// The model is still producing or our audio is still playing.
     pub ai_busy: bool,
     /// The AI has said its closing line (before or after the call).
@@ -208,6 +222,11 @@ pub struct PendingView {
     pub ai_asked: bool,
     /// Our audio has been played out for [`GRACE`].
     pub quiet_for_grace: bool,
+    /// Our audio has been played out for [`QUIET_CLOSE`].
+    pub quiet_for_close: bool,
+    /// The caller's latest words show they are done: their goodbye, their own
+    /// wrap-up, or thanks for a settled matter ([`crate::closing::ClosingMachine::caller_done`]).
+    pub caller_done: bool,
     /// The call is being stalled (a sales or scam call). The verdict can come
     /// after the end_call was accepted: such a call is never closed by it.
     pub stalling: bool,
@@ -228,13 +247,15 @@ pub enum Step {
 pub fn step(v: &PendingView) -> Step {
     if v.stalling {
         Step::Stalled
-    } else if v.caller_spoke {
+    } else if v.caller_spoke && !v.caller_talking && !v.caller_done && v.caller_settled {
+        // They said something other than goodbye (their words have had time to
+        // come in): the call goes on.
         Step::Cancel
-    } else if v.ai_busy || (!v.ai_spoke && v.since_accept < LINE_WAIT) {
+    } else if v.caller_talking || v.ai_busy || (!v.ai_spoke && v.since_accept < LINE_WAIT) {
         Step::Wait
     } else if v.ai_asked {
         Step::Withdraw
-    } else if v.quiet_for_grace {
+    } else if (v.caller_done && v.quiet_for_grace && v.caller_settled) || v.quiet_for_close {
         Step::HangUp
     } else {
         Step::Wait
@@ -442,6 +463,84 @@ pub fn ends_on_question(turn: &str) -> bool {
     !head.is_empty() && ASK_OPENERS.iter().any(|o| head == *o || head.starts_with(&format!("{o} ")))
 }
 
+/// Words of the AI's that ask the caller to wait now ("one moment", 「稍等」,
+/// "Chị đợi em một tí nhé"): it cannot look anything up on a call, and the caller
+/// is left waiting for nothing. Checking later and getting back to them is fine
+/// and not in here. Whole words, in the languages written with spaces.
+const WAIT_WORDS: &[&str] = &[
+    // English
+    "hold on", "hang on", "one moment", "just a moment", "one sec", "just a sec", "just a second", "give me a moment",
+    "give me a second", "give me a sec", "bear with me", "wait a moment", "wait a second", "please hold",
+    // Spanish
+    "un momento", "un momentito", "un segundito", "espera un", "espere un", "espérame", "espéreme",
+    // French
+    "un instant", "un petit instant", "une petite seconde", "attendez un", "attends un", "patientez", "ne quittez pas",
+    // German
+    "moment mal", "einen moment", "einen augenblick", "warte kurz", "warten sie kurz", "bleiben sie dran", "bleib dran",
+    // Portuguese
+    "um momento", "só um momento", "um minutinho", "espera aí", "espere um", "aguarde",
+    // Italian
+    "attenda", "aspetti un", "aspetta un", "solo un attimo", "un attimo solo", "un attimo per favore", "un attimino",
+    // Vietnamese
+    "đợi một chút", "đợi một tí", "đợi chút", "đợi tí", "đợi em một", "đợi tôi một", "chờ một chút", "chờ một tí", "chờ chút",
+    "chờ tí", "chờ em một", "chờ tôi một", "giữ máy",
+    // Indonesian
+    "tunggu sebentar", "sebentar ya", "mohon tunggu",
+    // Russian
+    "минутку", "одну минуту", "секунду", "одну секунду", "подождите", "подожди",
+    // Turkish
+    "bir dakika", "bir saniye", "bekleyin",
+    // Dutch
+    "momentje", "een moment", "wacht even",
+    // Polish
+    "chwileczkę", "proszę poczekać", "poczekaj",
+    // Hindi
+    "एक मिनट", "रुकिए", "ज़रा रुकिए",
+    // Arabic
+    "لحظة", "انتظر", "انتظري",
+];
+
+/// The same in Chinese, Japanese, Korean and Thai, anywhere in the words.
+const WAIT_ANYWHERE: &[&str] = &[
+    // Chinese (folded to simplified)
+    "稍等", "等我一下", "你等一下", "您等一下", "先等一下", "我查一下", "我帮你查", "让我查",
+    // Japanese
+    "少々お待ち", "お待ちください", "ちょっと待って", "お調べします",
+    // Korean
+    "잠깐만", "잠시만", "기다려",
+    // Thai
+    "รอสักครู่", "รอแป๊บ", "รอเดี๋ยว",
+];
+
+/// The AI's words ask the caller to wait or say it is looking something up
+/// ([`WAIT_WORDS`], [`WAIT_ANYWHERE`]); both sides folded alike (case, accents,
+/// punctuation, one Chinese script).
+pub fn asks_to_wait(said: &str) -> bool {
+    static FOLDED: std::sync::OnceLock<(Vec<String>, Vec<String>)> = std::sync::OnceLock::new();
+    let (words, anywhere) = FOLDED.get_or_init(|| {
+        let words = WAIT_WORDS
+            .iter()
+            .map(|w| crate::urgency::fold_spaced(w))
+            .filter(|w| !w.trim().is_empty())
+            .collect();
+        let anywhere = WAIT_ANYWHERE
+            .iter()
+            .map(|w| crate::urgency::fold_compact(w))
+            .filter(|w| !w.is_empty())
+            .collect();
+        (words, anywhere)
+    });
+    if said.trim().is_empty() {
+        return false;
+    }
+    let spaced = crate::urgency::fold_spaced(said);
+    if words.iter().any(|w| spaced.contains(w.as_str())) {
+        return true;
+    }
+    let compact = crate::urgency::fold_compact(said);
+    anywhere.iter().any(|w| compact.contains(w.as_str()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -636,7 +735,88 @@ mod tests {
             ai_spoke: true,
             ai_asked: false,
             quiet_for_grace: false,
+            quiet_for_close: false,
+            caller_done: true,
+            caller_talking: false,
+            caller_settled: true,
             stalling: false,
+        }
+    }
+
+    /// The AI said its closing line and called end_call, but the caller has not
+    /// said goodbye (seen in Italian, Korean and French calls cut at "matter_done"):
+    /// the line waits for their goodbye, or for a long quiet.
+    #[test]
+    fn without_the_callers_goodbye_the_line_waits_for_a_long_quiet() {
+        let v = PendingView { caller_done: false, quiet_for_grace: true, ..view() };
+        assert_eq!(step(&v), Step::Wait);
+        assert_eq!(step(&PendingView { quiet_for_close: true, ..v }), Step::HangUp);
+        // Their goodbye in that time: the short grace is enough.
+        assert_eq!(step(&PendingView { caller_done: true, ..v }), Step::HangUp);
+        // They speak instead: the call goes on.
+        assert_eq!(step(&PendingView { caller_spoke: true, quiet_for_close: true, ..v }), Step::Cancel);
+        // Our last words still playing, or a question of ours: never closed.
+        assert_eq!(step(&PendingView { ai_busy: true, quiet_for_close: true, ..v }), Step::Wait);
+        assert_eq!(step(&PendingView { ai_asked: true, quiet_for_close: true, ..v }), Step::Withdraw);
+        assert!(QUIET_CLOSE > GRACE);
+    }
+
+    /// The AI asking the caller to wait (seen in a Vietnamese courier call: "Chị
+    /// đợi em một tí nhé") is told in every language; ordinary lines with "moment",
+    /// "wait" or 「等一下」 meaning later are not.
+    #[test]
+    fn asking_the_caller_to_wait_is_told_in_every_language() {
+        for (lang, said) in [
+            ("en", "Okay, hold on a second, let me check."),
+            ("en", "Just a moment please."),
+            ("es", "Un momento, déjame ver."),
+            ("es", "Espere un segundo por favor."),
+            ("fr", "Un instant, je vérifie."),
+            ("fr", "Ne quittez pas, s'il vous plaît."),
+            ("de", "Moment mal, ich schau nach."),
+            ("pt", "Só um momento, deixa eu ver."),
+            ("it", "Solo un attimo, per favore."),
+            ("it", "Attenda in linea, grazie."),
+            ("ja", "少々お待ちください。"),
+            ("ja", "ちょっと待ってね、確認してみます。"),
+            ("ko", "잠깐만요, 확인해 볼게요."),
+            ("vi", "Chị đợi em một tí nhé."),
+            ("vi", "Dạ, anh chờ chút nha, để em xem."),
+            ("zh-TW", "好，請稍等一下喔。"),
+            ("zh-TW", "我查一下喔。"),
+            ("zh-CN", "您稍等，我帮你查一下。"),
+            ("ru", "Минутку, сейчас посмотрю."),
+            ("id", "Tunggu sebentar ya."),
+            ("tr", "Bir dakika, bakayım."),
+        ] {
+            assert!(asks_to_wait(said), "{lang}: {said}");
+        }
+        for (lang, said) in [
+            ("en", "Okay, I'll let Alex know and he'll get back to you."),
+            ("en", "I'm waiting for the parcel, you can leave it at the door."),
+            ("es", "En este momento no estoy en casa, déjelo en portería."),
+            ("es", "Espero el paquete mañana, gracias."),
+            ("fr", "J'attends le colis demain, merci."),
+            ("de", "Im Moment bin ich nicht da, danke, tschüss."),
+            ("pt", "No momento não estou em casa."),
+            ("it", "Al momento non sono a casa, lo lasci al portiere."),
+            ("it", "Domani pomeriggio devo controllare un attimo i miei impegni e ti faccio sapere più tardi."),
+            ("ja", "はい、承知しました。明日の午後なら大丈夫です。"),
+            ("ko", "네, 내일 오후에 집에 있어요."),
+            ("vi", "Dạ, mai chiều em ở nhà ạ."),
+            ("vi", "Em đang đợi gói hàng này."),
+            ("vi", "Chỗ mai mình đi làm rồi, để mình xem lại rồi báo lại em sau nhé."),
+            ("en", "Let me check my schedule and I'll get back to you."),
+            ("ja", "予定を確認して、あとで折り返しますね。"),
+            ("ko", "내일 오후에는 제가 일정을 좀 확인해 봐야 할 것 같아요. 나중에 다시 연락드릴게요."),
+            ("zh-TW", "我晚點看一下行程再跟你說。"),
+            ("zh-TW", "我等一下再打給你。"),
+            ("zh-TW", "好，我會轉告他，謝謝。"),
+            ("ru", "Спасибо, до свидания."),
+            ("id", "Terima kasih, sampai jumpa."),
+            ("any", ""),
+        ] {
+            assert!(!asks_to_wait(said), "{lang}: {said}");
         }
     }
 
@@ -644,10 +824,28 @@ mod tests {
     fn the_caller_speaking_in_the_grace_cancels_the_hangup() {
         let mut v = view();
         v.caller_spoke = true;
+        // Words of theirs that are not a goodbye.
+        v.caller_done = false;
         assert_eq!(step(&v), Step::Cancel);
         // Even once the grace has run.
         v.quiet_for_grace = true;
         assert_eq!(step(&v), Step::Cancel);
+        // Still speaking, or their words not settled yet: wait for them first.
+        assert_eq!(step(&PendingView { caller_talking: true, ..v }), Step::Wait);
+        assert_eq!(step(&PendingView { caller_settled: false, ..v }), Step::Wait);
+    }
+
+    /// The caller answering our goodbye with theirs (Italian, German, Korean,
+    /// Vietnamese courier calls): the line closes once they have finished and
+    /// settled, without the long quiet.
+    #[test]
+    fn the_callers_goodbye_in_the_grace_closes_the_line() {
+        let v = PendingView { caller_spoke: true, caller_done: true, quiet_for_grace: true, ..view() };
+        assert_eq!(step(&v), Step::HangUp);
+        assert_eq!(step(&PendingView { caller_talking: true, ..v }), Step::Wait);
+        assert_eq!(step(&PendingView { caller_settled: false, ..v }), Step::Wait);
+        // Our own goodbye back still plays first.
+        assert_eq!(step(&PendingView { ai_busy: true, ..v }), Step::Wait);
     }
 
     /// The sales / scam verdict can come after an end_call was accepted (the
@@ -790,7 +988,19 @@ mod a6rev_tests {
     }
 
     fn view() -> PendingView {
-        PendingView { since_accept: S, caller_spoke: false, ai_busy: false, ai_spoke: true, ai_asked: false, quiet_for_grace: false, stalling: false }
+        PendingView {
+            since_accept: S,
+            caller_spoke: false,
+            ai_busy: false,
+            ai_spoke: true,
+            ai_asked: false,
+            quiet_for_grace: false,
+            quiet_for_close: false,
+            caller_done: true,
+            caller_talking: false,
+            caller_settled: true,
+            stalling: false,
+        }
     }
 
     /// Statements that say "that is all" in many languages: never a question.
@@ -837,21 +1047,30 @@ mod a6rev_tests {
         }
     }
 
-    /// The caller speaks inside the buffer, whether or not our words are still playing.
+    /// The caller speaks inside the buffer (words that are not a goodbye), whether
+    /// or not our words are still playing.
     #[test]
     fn the_caller_in_the_buffer_cancels_in_every_state() {
         for (busy, quiet, spoke, asked) in [
             (true, false, true, false), (true, true, false, false), (false, false, false, true),
             (false, true, true, true), (false, true, false, false),
         ] {
-            let v = PendingView { caller_spoke: true, ai_busy: busy, quiet_for_grace: quiet, ai_spoke: spoke, ai_asked: asked, ..view() };
+            let v = PendingView {
+                caller_spoke: true,
+                caller_done: false,
+                ai_busy: busy,
+                quiet_for_grace: quiet,
+                ai_spoke: spoke,
+                ai_asked: asked,
+                ..view()
+            };
             assert_eq!(step(&v), Step::Cancel, "{v:?}");
         }
         // And the hangup needs: not busy, quiet for the grace, nobody spoke.
         let ok = PendingView { quiet_for_grace: true, ..view() };
         assert_eq!(step(&ok), Step::HangUp);
         assert_eq!(step(&PendingView { ai_busy: true, ..ok }), Step::Wait);
-        assert_eq!(step(&PendingView { caller_spoke: true, ..ok }), Step::Cancel);
+        assert_eq!(step(&PendingView { caller_spoke: true, caller_done: false, ..ok }), Step::Cancel);
     }
 
     /// A stalled call is refused whatever the caller said or how long it has run.

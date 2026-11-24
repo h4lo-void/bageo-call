@@ -137,6 +137,12 @@ impl ClosingMachine {
         self.state == ClosingState::Closing && self.bye_owed
     }
 
+    /// The caller's latest words are their goodbye (not an announced end whose
+    /// bye is still owed): the AI's own end of the call may close the line at once.
+    pub fn caller_done(&self) -> bool {
+        self.state == ClosingState::Closing && self.caller_closed && !self.bye_owed
+    }
+
     fn go(&mut self, to: ClosingState, trigger: &str) {
         if self.state == to {
             return;
@@ -690,6 +696,8 @@ const FAREWELLS: Lexicon = &[
     ("vi", &[
         "tạm biệt", "tam biet", "hẹn gặp lại", "hen gap lai", "chào nhé", "chao nhe", "một ngày tốt lành",
         "ngày tốt lành",
+        // "Have a good afternoon / morning / evening": 「Chúc anh một buổi chiều tốt lành ạ」.
+        "buổi chiều tốt lành", "buổi sáng tốt lành", "buổi tối tốt lành", "chiều tốt lành", "tối tốt lành",
         // Hanging up out loud; not 「đừng cúp máy」 ("don't hang up").
         "thôi mình cúp máy", "thôi em cúp máy", "thôi mình cúp máy nha", "thôi em cúp máy nha",
         "em xin phép cúp máy", "mình xin phép cúp máy", "con xin phép cúp máy", "tôi xin phép cúp máy",
@@ -2337,6 +2345,28 @@ mod tests {
         }
     }
 
+    /// The AI's own end of the call (end_call) closes the line at once only on the
+    /// caller's goodbye: not while they are still talking, not on the AI's goodbye
+    /// alone, not on an announced end whose bye is still owed.
+    #[test]
+    fn caller_done_only_on_the_callers_goodbye_in_every_language() {
+        for c in CASES {
+            let mut m = mid_call(c.lang);
+            caller(&mut m, c.follow_up);
+            assert!(!m.caller_done(), "{}: still talking", c.lang);
+            m.on_ai_turn("好，那就這樣，掰掰", true, false);
+            assert!(!m.caller_done(), "{}: only the AI said goodbye", c.lang);
+            caller(&mut m, c.bye[0]);
+            assert!(m.caller_done(), "{}: {}", c.lang, c.bye[0]);
+
+            let mut m = mid_call(c.lang);
+            caller(&mut m, c.pre[0]);
+            m.on_ai_turn("好，謝謝，掰掰", true, false);
+            assert!(m.awaits_caller_bye(), "{}: {}", c.lang, c.pre[0]);
+            assert!(!m.caller_done(), "{}: their bye is still owed after {}", c.lang, c.pre[0]);
+        }
+    }
+
     #[test]
     fn opening_greetings_never_close() {
         for c in CASES {
@@ -2567,6 +2597,25 @@ mod tests {
         assert_eq!(m.on_ai_turn("Dạ vâng, cảm ơn cô. Tôi chào cô.", true, false), ClosingEvent::FarewellsExchanged);
     }
 
+    /// "Have a good afternoon / evening" closes a Vietnamese call like "have a good
+    /// day" (a courier's last line in a simulated call, the AI's end_call waited for it).
+    #[test]
+    fn a_vietnamese_good_afternoon_wish_is_a_goodbye() {
+        for line in [
+            "Dạ, em cảm ơn anh. Chúc anh một buổi chiều tốt lành ạ.",
+            "Vâng, cảm ơn chị, chúc chị buổi tối tốt lành nhé.",
+            "Cảm ơn em, chúc em buổi sáng tốt lành.",
+        ] {
+            let mut m = mid_call("vi");
+            let step = caller(&mut m, line);
+            assert_eq!(step.event, ClosingEvent::CallerFarewell, "{line}");
+            assert!(m.caller_done(), "{line}");
+        }
+        // Asking about tomorrow afternoon is not a goodbye.
+        let mut m = mid_call("vi");
+        assert!(!caller(&mut m, "Chiều mai anh có ở nhà không ạ?").ends_call);
+    }
+
     #[test]
     fn vietnamese_chao_after_a_question_waits_and_other_languages_are_unchanged() {
         // From the multilingual call simulations: Hebrew "see you" was no goodbye, so nobody
@@ -2702,27 +2751,53 @@ mod tests {
 
     #[test]
     fn one_judgement_takes_well_under_a_millisecond() {
-        let texts: Vec<String> = CASES
-            .iter()
-            .flat_map(|c| [c.pre[0], c.bye[0], c.opening, c.follow_up])
-            .map(|s| format!("我要寄一個包裹給王先生，地址在台北，電話 0912345678。{s}"))
-            .collect();
-        let mut m = ClosingMachine::new("zh-TW");
-        // Warm up lazy tables before timing the per-judgement loop.
-        let _ = m.on_caller(&texts[0], &texts[0], false, false);
-        let _ = is_backchannel(&texts[0]);
-        let start = std::time::Instant::now();
-        for i in 0..1_000 {
-            let t = &texts[i % texts.len()];
-            let step = m.on_caller(t, t, false, i % 7 == 0);
-            std::hint::black_box(step);
-            std::hint::black_box(is_backchannel(t));
+        use std::time::{Duration, Instant};
+        // The caller's turn as `times` sentences of talk, then each test line.
+        fn texts(times: usize) -> Vec<String> {
+            let talk = "我要寄一個包裹給王先生，地址在台北，電話 0912345678。".repeat(times);
+            CASES
+                .iter()
+                .flat_map(|c| [c.pre[0], c.bye[0], c.opening, c.follow_up])
+                .map(|s| format!("{talk}{s}"))
+                .collect()
         }
-        let took = start.elapsed();
-        // Microseconds in a release build; an unoptimised test build on a busy shared
-        // Windows CI VM is many times slower, so give debug builds room for CPU contention.
-        let limit_ms = if cfg!(debug_assertions) { 2_500 } else { 200 };
-        assert!(took < std::time::Duration::from_millis(limit_ms), "1000 judgements took {took:?}");
+        // The cost of one judgement: the median of several rounds, so one stall of a
+        // busy shared CI machine does not decide it.
+        fn per_judgement(texts: &[String]) -> Duration {
+            const ROUNDS: usize = 7;
+            const N: u32 = 150;
+            let mut rounds: Vec<Duration> = (0..ROUNDS)
+                .map(|_| {
+                    let mut m = ClosingMachine::new("zh-TW");
+                    // Warm up lazy tables before timing.
+                    let _ = m.on_caller(&texts[0], &texts[0], false, false);
+                    let _ = is_backchannel(&texts[0]);
+                    let start = Instant::now();
+                    for i in 0..N as usize {
+                        let t = &texts[i % texts.len()];
+                        std::hint::black_box(m.on_caller(t, t, false, i % 7 == 0));
+                        std::hint::black_box(is_backchannel(t));
+                    }
+                    start.elapsed() / N
+                })
+                .collect();
+            rounds.sort();
+            rounds[ROUNDS / 2]
+        }
+        let short = per_judgement(&texts(1));
+        let long = per_judgement(&texts(4));
+        // Microseconds in a release build. An unoptimised build on a slow shared runner
+        // (GitHub's macOS x64) is many times slower; the limits sit far above any machine
+        // and catch only a judgement that became many times more costly.
+        let limit = if cfg!(debug_assertions) { Duration::from_millis(10) } else { Duration::from_millis(1) };
+        assert!(short < limit, "one judgement took {short:?} (median of 7 rounds, limit {limit:?})");
+        // Four times the talk may cost more, but not out of proportion (a scan of the
+        // whole turn for every word would be about sixteen times): a ratio, the same on
+        // a fast or a slow machine.
+        assert!(
+            long < short * 12 + Duration::from_micros(20),
+            "four times the talk took {long:?} against {short:?} for one sentence"
+        );
     }
 }
 

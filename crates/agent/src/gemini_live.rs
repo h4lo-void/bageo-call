@@ -1438,6 +1438,38 @@ fn looks_like_leaked_internals(text: &str) -> bool {
             .any(|m| text.contains(m))
 }
 
+/// The model's narration about the call instead of words to the caller (seen
+/// right after its last line as it ended a call: "The user confirmed there was no
+/// more information needed…"). Lower-case ASCII; nobody says these to a caller.
+const NARRATION_MARKS: &[&str] = &[
+    "the user ", "the user'", "the user\u{2019}", "the user,", "the user.", "user confirmed", "end_call", "function call",
+    "tool call", "(system", "system note", "internal note",
+];
+
+/// Where the model's narration starts in what the AI said: the start of the
+/// sentence that holds a narration mark ([`NARRATION_MARKS`]). None: no narration.
+fn narration_start(text: &str) -> Option<usize> {
+    // ASCII lower-casing keeps every byte where it was.
+    let lower = text.to_ascii_lowercase();
+    let at = NARRATION_MARKS.iter().filter_map(|m| lower.find(m)).min()?;
+    Some(
+        text[..at]
+            .char_indices()
+            .rev()
+            .find(|&(_, c)| matches!(c, '.' | '!' | '?' | '。' | '！' | '？' | '…' | '\n'))
+            .map_or(0, |(i, c)| i + c.len_utf8()),
+    )
+}
+
+/// The AI's words without the model's narration: it comes after the turn's
+/// last spoken line, so everything from its first sentence on is left out.
+fn without_narration(text: &str) -> &str {
+    match narration_start(text) {
+        Some(i) => text[..i].trim_end(),
+        None => text,
+    }
+}
+
 fn output_transcription_text(v: &Value) -> Option<&str> {
     v.pointer("/serverContent/outputTranscription/text")
         .or_else(|| v.pointer("/outputTranscription/text"))
@@ -2156,6 +2188,9 @@ const PERSONA_POST_ARM_VOICE_MS: u32 = 600;
 /// after it the line stays open until the caller says bye / wraps up, or stays
 /// silent this long (they may be waiting for us to hang up first).
 const PERSONA_BYE_SILENCE: Duration = Duration::from_secs(6);
+/// Notes a call gets at most after the AI asked the caller to wait
+/// ([`crate::end_call::asks_to_wait`]).
+const WAIT_NOTES_MAX: u32 = 2;
 /// Farewells exchanged on the caller's announced end (「係咁先啦」, then our
 /// 「好，拜拜」): how long the line stays open for their own bye, which usually
 /// follows at once. Quiet that long, the call ends.
@@ -3563,7 +3598,45 @@ pub(crate) fn strip_stt_markers(s: &str) -> String {
             _ => {}
         }
     }
-    strip_brace_marks(&out).trim().to_string()
+    strip_text_separators(&strip_brace_marks(&out)).trim().to_string()
+}
+
+/// `s` without the separators and emphasis marks the model writes as text
+/// ("---", "***", "**word**", "=="), never said: a run of two or more of the same
+/// one of - * _ = # ~. A single hyphen or dash stays.
+fn strip_text_separators(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len());
+    let mut changed = false;
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        let mut j = i + 1;
+        if matches!(c, '-' | '*' | '_' | '=' | '#' | '~') {
+            while j < chars.len() && chars[j] == c {
+                j += 1;
+            }
+            if j - i >= 2 {
+                changed = true;
+                i = j;
+                continue;
+            }
+        }
+        out.push(c);
+        i = j;
+    }
+    if !changed {
+        return out;
+    }
+    // One space where a separator sat between two words.
+    let mut tidy = String::with_capacity(out.len());
+    for c in out.chars() {
+        if c == ' ' && (tidy.is_empty() || tidy.ends_with(char::is_whitespace)) {
+            continue;
+        }
+        tidy.push(c);
+    }
+    tidy.trim_end().to_string()
 }
 
 /// `s` without marks like `{pause}` (a word or two of ASCII letters in
@@ -3651,7 +3724,12 @@ pub(crate) fn merge_dialogue_fragments(transcript: &str) -> String {
     // Put into the owner's reading form once the line is whole: a Japanese
     // 「失礼」 fragment is only known to be Japanese once its 「します」 has joined it.
     runs.into_iter()
-        .map(|(l, t)| (l, crate::locale::for_owner(&strip_stt_markers(&t))))
+        .map(|(l, t)| {
+            // The model's own narration after its last line is not something it said.
+            let t = strip_stt_markers(&t);
+            let t = if l == "接聽" { without_narration(&t) } else { t.as_str() };
+            (l, crate::locale::for_owner(t))
+        })
         .filter(|(_, t)| !t.is_empty())
         .map(|(l, t)| format!("{l}：{t}"))
         .collect::<Vec<_>>()
@@ -5999,6 +6077,10 @@ pub async fn run_session(
     // end_call accepted, waiting for our last words and the quiet after them.
     let mut end_call_pending: Option<crate::end_call::Pending> = None;
     let mut cold_gap = crate::end_call::ColdGap::default();
+    // Notes sent after the AI asked the caller to wait ([`crate::end_call::asks_to_wait`]).
+    let mut wait_notes: u32 = 0;
+    // The turn (turns_done then) in which the model last called a function other than end_call.
+    let mut last_tool_turn = None;
     // What the caller has said since the AI last started speaking (end_call's guard).
     let mut caller_turn_text = String::new();
     // What the AI has said since the caller's last turn ended (an end_call waits
@@ -6199,7 +6281,14 @@ pub async fn run_session(
         // the call is only marked so, and the AI goes on as it was).
         if let Some(judged) = stall_engage_now
             .take()
-            .filter(|_| !stall_on && !stall_detected && (!own_matter || stall.as_ref().is_some_and(|c| c.force_start)) && ivr_since.is_none())
+            .filter(|_| {
+                !stall_on
+                    && !stall_detected
+                    && (!own_matter || stall.as_ref().is_some_and(|c| c.force_start))
+                    // A recording found meanwhile wins: it gets the voice-menu handling.
+                    && ivr_since.is_none()
+                    && ivr_enter.is_none()
+            })
         {
             if let Some(c) = stall.as_ref() {
                 if let Some(a) = &appt {
@@ -6360,6 +6449,24 @@ pub async fn run_session(
             if ivr_since.is_none() {
                 let now = tokio::time::Instant::now();
                 ivr_since = Some(now);
+                // Judged a sales / scam call before it was known to be a recording:
+                // nobody is there to keep talking, so the stalling ends here.
+                if stall_on && !stall.as_ref().is_some_and(|c| c.force_start) {
+                    if let Some(c) = stall.as_ref() {
+                        stall_on = false;
+                        stall_engine = None;
+                        c.engaged.store(false, Ordering::Relaxed);
+                        if let Ok(mut j) = c.judgement.lock() {
+                            if let Some(j) = j.as_mut() {
+                                j.released = true;
+                            }
+                        }
+                        info!(
+                            "Persona stall dropped serial={serial} talk_s={} — the caller is a recording ({why})",
+                            session_start.elapsed().as_secs()
+                        );
+                    }
+                }
                 stall_keep_due = None;
                 stall_keep_after_turn = false;
                 repeat_guard.clear();
@@ -6996,10 +7103,15 @@ pub async fn run_session(
             let view = crate::end_call::PendingView {
                 since_accept: p.accepted_at.elapsed(),
                 caller_spoke: activity_open || local_eou_sent > p.eou_at_accept,
+                caller_talking: activity_open,
+                caller_settled: last_caller_voice_at.map_or(true, |t| t.elapsed() >= crate::end_call::BYE_SETTLE),
                 ai_busy: model_generating || !play_head.speech_left(phone_sr).is_zero(),
                 ai_spoke: p.spoke_before || audio_chunks_out > p.audio_at_accept,
                 ai_asked: crate::end_call::ends_on_question(&ai_reply_text),
                 quiet_for_grace: play_head.drained_for(crate::end_call::GRACE, PLAYER_DRAIN_SLACK_BYTES),
+                quiet_for_close: play_head.drained_for(crate::end_call::QUIET_CLOSE, PLAYER_DRAIN_SLACK_BYTES)
+                    && last_caller_voice_at.map_or(true, |t| t.elapsed() >= crate::end_call::QUIET_CLOSE),
+                caller_done: closing_sm.caller_done(),
                 stalling: stall_on || live_is_stall,
             };
             match crate::end_call::step(&view) {
@@ -7034,12 +7146,13 @@ pub async fn run_session(
                     let waited = let_the_phone_finish(&play_head, phone_sr, &cancel).await;
                     signal_force_hangup(&mut hangup_signaled);
                     info!(
-                        "end_call hangup serial={serial} reason={} talk_s={} after_ms={} ai_spoke={} — our last words played, line quiet {}ms (waited {}ms)",
+                        "end_call hangup serial={serial} reason={} talk_s={} after_ms={} ai_spoke={} caller_done={} — our last words played, line quiet {}ms (waited {}ms)",
                         p.reason,
                         session_start.elapsed().as_secs(),
                         view.since_accept.as_millis(),
                         view.ai_spoke,
-                        crate::end_call::GRACE.as_millis(),
+                        view.caller_done,
+                        if view.quiet_for_close { crate::end_call::QUIET_CLOSE } else { crate::end_call::GRACE }.as_millis(),
                         waited.as_millis()
                     );
                     break;
@@ -7449,6 +7562,9 @@ pub async fn run_session(
                                     last_activity_at = now;
                                     for call in tool_calls {
                                         tool_seq += 1;
+                                        if call.name != crate::end_call::NAME {
+                                            last_tool_turn = Some(turns_done);
+                                        }
                                         let key = if call.id.is_empty() {
                                             format!("#{tool_seq}")
                                         } else {
@@ -7668,13 +7784,37 @@ pub async fn run_session(
                                         "Gemini Live unasked turn after propose_appointment serial={serial} n={repeat_drops} — repeat dropped (not played, not transcribed)"
                                     );
                                 }
-                                if !out_leak_turn
-                                    && output_transcription_text(&v).is_some_and(looks_like_leaked_internals)
-                                {
-                                    out_leak_turn = true;
-                                    warn!(
-                                        "Gemini Live output transcript leaked model instructions serial={serial} — dropped for the rest of this turn"
-                                    );
+                                // The model's instructions, or its narration about the call after its
+                                // last line ("The user confirmed…"): left out from there to the end
+                                // of the turn; the words before it in this piece stay.
+                                let mut leak_keep: Option<String> = None;
+                                if !out_leak_turn {
+                                    if let Some(t) = output_transcription_text(&v) {
+                                        let keep = if looks_like_leaked_internals(t) {
+                                            Some(String::new())
+                                        } else {
+                                            narration_start(t).map(|i| t[..i].trim_end().to_string())
+                                        };
+                                        if let Some(keep) = keep {
+                                            out_leak_turn = true;
+                                            // Its transcript is the speech-to-text of its audio: the
+                                            // narration is being spoken too. What is queued is not
+                                            // played and the rest of this turn stays off the line.
+                                            let cut = play_head.ai_audible(Duration::ZERO);
+                                            if cut {
+                                                play_head.request_flush();
+                                            }
+                                            if model_generating || has_audio {
+                                                mute_model_audio = true;
+                                                play_head.set_generating(false);
+                                            }
+                                            warn!(
+                                                "Gemini Live output transcript leaked model instructions or narration serial={serial} kept_chars={} cut_playback={cut} — dropped and muted for the rest of this turn",
+                                                keep.chars().count()
+                                            );
+                                            leak_keep = Some(keep).filter(|k| !k.is_empty());
+                                        }
+                                    }
                                 }
                                 // International call: the model's words during the carrier's
                                 // prompt are not played, so not written down either; nor
@@ -7697,7 +7837,10 @@ pub async fn run_session(
                                     None
                                 };
                                 let v_clean;
-                                let v_tx = if (out_leak_turn || repeat_drop || intl_drop) && output_transcription_text(&v).is_some() {
+                                let v_tx = if let Some(keep) = leak_keep.as_deref().filter(|_| !(repeat_drop || intl_drop)) {
+                                    v_clean = with_output_transcription(&v, keep);
+                                    &v_clean
+                                } else if (out_leak_turn || repeat_drop || intl_drop) && output_transcription_text(&v).is_some() {
                                     v_clean = without_output_transcription(&v);
                                     &v_clean
                                 } else if let Some((raw, fixed)) = &ai_stt_slip {
@@ -8073,15 +8216,15 @@ pub async fn run_session(
                                             s = Said(s)
                                         );
                                     }
-                                    // A recorded voice menu ("查帳單請按1，轉接專人請按9"): nobody to
-                                    // stall; the AI goes quiet and we hang up.
-                                    if persona
-                                        && stall_play
-                                        && ivr_since.is_none()
-                                        && ivr_enter.is_none()
-                                        && crate::stall_review::ivr_cue(&in_tx_window)
-                                    {
-                                        ivr_enter = Some("menu words");
+                                    // A recorded voice menu ("查帳單請按1，轉接專人請按9"), or a recorded
+                                    // message playing again word for word: nobody to stall; the AI
+                                    // goes quiet and we hang up.
+                                    if persona && stall_play && ivr_since.is_none() && ivr_enter.is_none() {
+                                        if crate::stall_review::ivr_cue(&in_tx_window) {
+                                            ivr_enter = Some("menu words");
+                                        } else if crate::stall_review::repeated_recording(&in_tx_window) {
+                                            ivr_enter = Some("message played again");
+                                        }
                                     }
                                     // Sales / scam keywords: once they cross the line the call gets
                                     // a second look (stall_review) while the AI talks on; its verdict
@@ -8880,6 +9023,39 @@ pub async fn run_session(
                                                 ),
                                                 Err(e) => warn!("Persona language drift note send failed serial={serial}: {e:#}"),
                                             }
+                                        }
+                                    }
+                                    // The AI asked the caller to wait or said it would look something up
+                                    // (the prompt says it cannot; the model still slips, in any language):
+                                    // a short note in this pause, asking for no reply, at most twice a
+                                    // call. Not while stalling, nor where a hold-on line is meant (a
+                                    // whitelist urgent call) or the turn really looked something up (a
+                                    // function called in it, like the appointments' calendar check).
+                                    if persona
+                                        && errand.is_none()
+                                        && !stall_on
+                                        && !wrap_up_sent
+                                        && keep.is_none()
+                                        && !model_turn_pending
+                                        && !goodbye_pending
+                                        && ivr_since.is_none()
+                                        && urgent_ctl.is_none()
+                                        && tool_open.is_empty()
+                                        && last_tool_turn.map_or(true, |t| t + 1 < turns_done)
+                                        && wait_notes < WAIT_NOTES_MAX
+                                        && crate::end_call::asks_to_wait(&turn_out_text)
+                                    {
+                                        wait_notes += 1;
+                                        match send_text_before_deadline(
+                                            &mut sink,
+                                            crate::stall_script::client_note(&crate::prompts::no_wait_note(crate::locale::current())),
+                                            tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
+                                            "gemini persona no-wait note send",
+                                        )
+                                        .await
+                                        {
+                                            Ok(()) => info!("no_wait_note n={wait_notes} turn={turns_done} serial={serial}"),
+                                            Err(e) => warn!("Persona no-wait note send failed serial={serial}: {e:#}"),
                                         }
                                     }
                                     turn_out_text.clear();
@@ -11816,6 +11992,47 @@ mod tests {
         }
         // Braces that are not a mark stay.
         assert_eq!(strip_stt_markers("Code {123} und {}"), "Code {123} und {}");
+    }
+
+    /// The model's narration after its last line (seen in a German call ending:
+    /// "…The user confirmed there was no more information needed…") and text
+    /// separators ("---") are not things the AI said: they stay out of the record
+    /// and the summary, which both read the merged dialogue.
+    #[test]
+    fn narration_and_separators_stay_out_of_the_record_in_every_language() {
+        for (raw, want) in [
+            (
+                "接聽：Alles klar, dann tschüss!\n接聽： The\n接聽： user\n接聽： confirmed there was no more information needed, so I end the call.",
+                "接聽：Alles klar, dann tschüss!",
+            ),
+            ("接聽：Thanks, bye! The user's matter is done. Calling end_call.", "接聽：Thanks, bye!"),
+            ("接聽：Vale, hasta luego. The user said goodbye.\n對方：Adiós", "接聽：Vale, hasta luego.\n對方：Adiós"),
+            ("接聽：Merci, au revoir ! ---", "接聽：Merci, au revoir !"),
+            ("接聽：はい、失礼します。---\n接聽：The user confirmed the delivery time.", "接聽：はい、失礼します。"),
+            ("接聽：Dạ, em cảm ơn anh. **The user** confirmed.", "接聽：Dạ, em cảm ơn anh."),
+            ("接聽：好喔，那就這樣，掰掰。 --- (System note: call over)", "接聽：好喔，那就這樣，掰掰。"),
+            ("接聽：Grazie, arrivederci! *** ", "接聽：Grazie, arrivederci!"),
+            // Only narration: nothing is left of that line.
+            ("對方：Okay, bye.\n接聽：The user confirmed everything.", "對方：Okay, bye."),
+        ] {
+            assert_eq!(merge_dialogue_fragments(raw), want, "{raw}");
+        }
+        // Ordinary speech, hyphens and the caller's words stay as they are.
+        for keep in [
+            "接聽：Merci, au revoir.",
+            "接聽：Send it by e-mail, it's a well-known address.",
+            "接聽：Dạ, em cảm ơn anh.",
+            "接聽：好喔，掰掰。",
+            "接聽：Gracias, que tenga buen día.",
+            "對方：The user manual is in the box.",
+        ] {
+            assert_eq!(merge_dialogue_fragments(keep), keep, "{keep}");
+        }
+        // Live: the piece that brings the narration keeps the words before it.
+        let t = "Danke, tschüss! The user confirmed there was no more information needed.";
+        assert_eq!(&t[..narration_start(t).unwrap()], "Danke, tschüss!");
+        assert_eq!(narration_start("The user confirmed."), Some(0));
+        assert_eq!(narration_start("Gracias, adiós."), None);
     }
 
     #[test]

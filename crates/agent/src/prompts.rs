@@ -256,6 +256,8 @@ crate::prompt_book::prompt_texts! {
     EN_OTHER_CALL_LANGUAGE_NOTE = "en/prompts_other_call_language_note";
     ZH_LANGUAGE_DRIFT_NOTE = "zh-TW/prompts_language_drift_note";
     EN_LANGUAGE_DRIFT_NOTE = "en/prompts_language_drift_note";
+    ZH_NO_WAIT_NOTE = "zh-TW/prompts_no_wait_note";
+    EN_NO_WAIT_NOTE = "en/prompts_no_wait_note";
     ZH_LEGACY_PERSONA_V2 = "zh-TW/prompts_legacy_persona_v2";
     EN_EXT_LANGUAGE_LINE = "en/prompts_ext_language_line";
     EN_RENDER_1 = "en/render_1";
@@ -810,6 +812,18 @@ pub fn language_drift_note(pack_lang: Lang, call: Lang) -> String {
     } else {
         let l = crate::urgency::language_name(call);
         EN_LANGUAGE_DRIFT_NOTE.fill(&[("caller_language", &l)])
+    }
+}
+
+/// Told to the model, in the pause after its turn, when that turn asked the
+/// caller to wait or said it would look something up
+/// (`crate::end_call::asks_to_wait`): it can do neither on a call. A direction
+/// only; it asks for no reply.
+pub fn no_wait_note(pack_lang: Lang) -> String {
+    if zh_ins(pack_lang) {
+        zh_text(pack_lang, ZH_NO_WAIT_NOTE.get().to_string())
+    } else {
+        EN_NO_WAIT_NOTE.get().to_string()
     }
 }
 

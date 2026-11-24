@@ -735,6 +735,41 @@ pub fn ivr_cue(text: &str) -> bool {
     p.keys >= 2 || p.purposed
 }
 
+/// A recorded message playing again: its sentences heard twice word for word
+/// (case, accents and punctuation aside). People who repeat themselves say it
+/// again in other words, or one short line; a recording repeats all of it. Two
+/// or more sentences that add up to 60 letters (24 in Chinese, Japanese, Korean,
+/// Thai), or one of 80 (32).
+pub fn repeated_recording(text: &str) -> bool {
+    let dense_script = |c: char| {
+        matches!(c,
+            '\u{3040}'..='\u{30FF}' | '\u{3400}'..='\u{4DBF}' | '\u{4E00}'..='\u{9FFF}' | '\u{AC00}'..='\u{D7AF}'
+            | '\u{0E00}'..='\u{0E7F}')
+    };
+    let mut seen = std::collections::HashSet::new();
+    let mut counted = std::collections::HashSet::new();
+    let (mut sum, mut sum_dense, mut longest, mut longest_dense) = (0usize, 0usize, 0usize, 0usize);
+    for s in text.split(['.', '!', '?', '。', '！', '？', '\n', ';', '；', '…']) {
+        let f = crate::urgency::fold_compact(s);
+        let n = f.chars().count();
+        let dense = f.chars().filter(|&c| dense_script(c)).count() * 2 >= n;
+        if n < if dense { 8 } else { 16 } {
+            continue;
+        }
+        if !seen.insert(f.clone()) && counted.insert(f) {
+            if dense {
+                sum_dense += n;
+                longest_dense = longest_dense.max(n);
+            } else {
+                sum += n;
+                longest = longest.max(n);
+            }
+        }
+    }
+    let two_or_more = counted.len() >= 2;
+    (two_or_more && (sum >= 60 || sum_dense >= 24)) || longest >= 80 || longest_dense >= 32
+}
+
 /// Key presses found in a text: how many, and whether any says what it is for.
 #[derive(Debug, Default, Clone, Copy)]
 struct Presses {
@@ -1266,6 +1301,36 @@ mod tests {
             "Untuk layanan pelanggan, tekan 1",
         ] {
             assert!(ivr_cue(text), "{text}");
+        }
+    }
+
+    /// A recorded message that plays again (seen with an English clinic reminder
+    /// played three times, judged a scam and stalled): the second play tells it,
+    /// in every language, even when the speech-to-text writes a key differently.
+    #[test]
+    fn a_message_played_again_is_a_recording_in_every_language() {
+        let plays = [
+            ("en", "This is a reminder from City Medical Center for Alex. You have an appointment tomorrow at 10 am. To confirm, press 1; to cancel, press 2.", "This is a reminder from City Medical Center for Alex. You have an appointment tomorrow at 10 am. To confirm press one, to cancel press two."),
+            ("es", "Le recordamos que Alex tiene una cita mañana a las diez en la Clínica Central. Para confirmar su cita, marque uno.", "Le recordamos que Alex tiene una cita mañana a las diez en la Clínica Central. Para confirmar su cita, marque uno."),
+            ("fr", "Bonjour, ceci est un rappel du cabinet médical du centre pour Alex. Votre rendez-vous est demain à dix heures.", "Bonjour, ceci est un rappel du cabinet médical du centre pour Alex. Votre rendez-vous est demain à dix heures."),
+            ("ja", "こちらは中央クリニックです。王様の明日午前十時のご予約のお知らせです。確認は一番を押してください。", "こちらは中央クリニックです。王様の明日午前十時のご予約のお知らせです。確認は1を押してください。"),
+            ("vi", "Đây là tin nhắn nhắc lịch từ phòng khám Trung Tâm. Anh Alex có lịch hẹn vào mười giờ sáng mai.", "Đây là tin nhắn nhắc lịch từ phòng khám Trung Tâm. Anh Alex có lịch hẹn vào mười giờ sáng mai."),
+            ("zh-TW", "您好，這裡是中央診所的語音通知。提醒王先生明天上午十點有門診預約，請準時報到。確認請按一，取消請按二。", "您好，這裡是中央診所的語音通知。提醒王先生明天上午十點有門診預約，請準時報到。確認請按1，取消請按2。"),
+        ];
+        for (lang, first, again) in plays {
+            assert!(!repeated_recording(first), "{lang}: one play is not a repeat");
+            assert!(repeated_recording(&format!("{first}\n{again}")), "{lang}: played again");
+        }
+        // People repeating one line, or saying different things, are not a recording.
+        for (lang, said) in [
+            ("en", "Is anyone home tomorrow afternoon?\nSorry, is anyone home tomorrow afternoon?\nIs anyone home tomorrow afternoon?"),
+            ("es", "¿Hay alguien en casa mañana por la tarde?\n¿Hay alguien en casa mañana por la tarde?"),
+            ("fr", "Bonjour, j'ai un colis pour vous. Vous serez là demain ?\nD'accord, je le laisse à la gardienne alors."),
+            ("ja", "明日の午後はご在宅ですか。\n明日の午後はご在宅ですか。"),
+            ("vi", "Alo, chị có nhà không ạ?\nAlo, chị có nhà không ạ?"),
+            ("zh-TW", "喂？喂？聽得到嗎？\n喂？聽得到嗎？\n您好，我是宅配，明天下午在家嗎？"),
+        ] {
+            assert!(!repeated_recording(said), "{lang}: {said}");
         }
     }
 
