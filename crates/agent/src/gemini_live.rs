@@ -1455,24 +1455,46 @@ fn looks_like_leaked_internals(text: &str) -> bool {
 /// The model's narration about the call instead of words to the caller (seen
 /// right after its last line as it ended a call: "The user confirmed there was no
 /// more information needed…"). Lower-case ASCII; nobody says these to a caller.
+/// Tool words and the like count wherever they stand; "The user …" only when a
+/// sentence opens with it ([`NARRATION_OPENERS`]).
 const NARRATION_MARKS: &[&str] = &[
-    "the user ", "the user'", "the user\u{2019}", "the user,", "the user.", "user confirmed", "end_call", "function call",
-    "tool call", "(system", "system note", "internal note",
+    "user confirmed", "end_call", "function call", "tool call", "(system", "system note", "internal note",
 ];
 
+/// The model talking about "the user" in the third person. Said to a caller it
+/// shows up inside an ordinary sentence ("the user name", "the user manual"), so
+/// it is narration only as the first words of a sentence.
+const NARRATION_OPENERS: &[&str] = &["the user ", "the user'", "the user\u{2019}", "the user,", "the user."];
+
+/// Where the sentence holding byte `at` of `text` starts.
+fn sentence_start(text: &str, at: usize) -> usize {
+    text[..at]
+        .char_indices()
+        .rev()
+        .find(|&(_, c)| matches!(c, '.' | '!' | '?' | '。' | '！' | '？' | '…' | '\n'))
+        .map_or(0, |(i, c)| i + c.len_utf8())
+}
+
+/// `at` is the first word of its sentence (only spaces, quotes, bullets or
+/// markdown marks before it).
+fn opens_sentence(text: &str, at: usize) -> bool {
+    text[sentence_start(text, at)..at]
+        .chars()
+        .all(|c| c.is_whitespace() || "*_\"'\u{201c}\u{201d}\u{2018}([#>\u{2022}-`".contains(c))
+}
+
 /// Where the model's narration starts in what the AI said: the start of the
-/// sentence that holds a narration mark ([`NARRATION_MARKS`]). None: no narration.
+/// sentence that holds a narration mark ([`NARRATION_MARKS`], [`NARRATION_OPENERS`]).
+/// None: no narration.
 fn narration_start(text: &str) -> Option<usize> {
     // ASCII lower-casing keeps every byte where it was.
     let lower = text.to_ascii_lowercase();
-    let at = NARRATION_MARKS.iter().filter_map(|m| lower.find(m)).min()?;
-    Some(
-        text[..at]
-            .char_indices()
-            .rev()
-            .find(|&(_, c)| matches!(c, '.' | '!' | '?' | '。' | '！' | '？' | '…' | '\n'))
-            .map_or(0, |(i, c)| i + c.len_utf8()),
-    )
+    let marks = NARRATION_MARKS.iter().filter_map(|m| lower.find(m));
+    let openers = NARRATION_OPENERS
+        .iter()
+        .filter_map(|m| lower.match_indices(m).map(|(i, _)| i).find(|&i| opens_sentence(text, i)));
+    let at = marks.chain(openers).min()?;
+    Some(sentence_start(text, at))
 }
 
 /// The AI's words without the model's narration: it comes after the turn's
@@ -7150,7 +7172,13 @@ pub async fn run_session(
                 quiet_for_grace: play_head.drained_for(crate::end_call::GRACE, PLAYER_DRAIN_SLACK_BYTES),
                 quiet_for_close: play_head.drained_for(crate::end_call::QUIET_CLOSE, PLAYER_DRAIN_SLACK_BYTES)
                     && last_caller_voice_at.map_or(true, |t| t.elapsed() >= crate::end_call::QUIET_CLOSE),
-                caller_done: crate::end_call::caller_done(&closing_sm, caller_spoke),
+                // Their words after the accept count once a piece of their transcript has come
+                // in since: the transcript can trail the voice detection.
+                caller_done: crate::end_call::caller_done(
+                    &closing_sm,
+                    caller_spoke,
+                    closing_sm.caller_updates() > p.transcripts_at_accept,
+                ),
                 stalling: stall_on || live_is_stall,
             };
             match crate::end_call::step(&view) {
@@ -7636,6 +7664,7 @@ pub async fn run_session(
                                                         accepted_at: now,
                                                         audio_at_accept: audio_chunks_out,
                                                         eou_at_accept: local_eou_sent,
+                                                        transcripts_at_accept: closing_sm.caller_updates(),
                                                         spoke_before: spoke,
                                                         reason,
                                                     });
@@ -12204,6 +12233,36 @@ mod tests {
         assert_eq!(&t[..narration_start(t).unwrap()], "Danke, tschüss!");
         assert_eq!(narration_start("The user confirmed."), Some(0));
         assert_eq!(narration_start("Gracias, adiós."), None);
+    }
+
+    /// "the user" inside an ordinary line to the caller is no narration, in any
+    /// language; the model talking about the user, or about its tools, still is.
+    #[test]
+    fn the_user_in_an_ordinary_sentence_is_not_narration() {
+        for said in [
+            "Please type it in the user name field.",
+            "You will find it in the user manual, page two.",
+            "Thanks, I have noted the user, the account holder, as Ms. Lin.",
+            "Gracias. Para entrar, escriba el user name y la clave.",
+            "Merci, vous trouverez ça dans the user guide, page deux.",
+            "Danke, das steht im the user manual auf Seite zwei.",
+            "Sure. Is the user's name on the form correct?",
+        ] {
+            assert_eq!(narration_start(said), None, "{said}");
+            assert_eq!(without_narration(said), said, "{said}");
+        }
+        for (said, kept) in [
+            ("Gracias, adiós. The user said goodbye.", "Gracias, adiós."),
+            ("Merci, au revoir ! The user's matter is done.", "Merci, au revoir !"),
+            ("Danke, tschüss! The user confirmed there was no more information needed.", "Danke, tschüss!"),
+            ("Thanks, bye! \"The user, the caller, is done.\"", "Thanks, bye!"),
+            ("Thanks, bye! Calling end_call now.", "Thanks, bye!"),
+            ("Thanks, bye! I will make a tool call.", "Thanks, bye!"),
+            ("Adiós.\n  * The user. Done.", "Adiós."),
+            ("The user confirmed everything.", ""),
+        ] {
+            assert_eq!(without_narration(said), kept, "{said}");
+        }
     }
 
     #[test]

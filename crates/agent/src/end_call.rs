@@ -54,6 +54,9 @@ pub const QUIET_CLOSE: Duration = Duration::from_secs(6);
 pub const BYE_SETTLE: Duration = Duration::from_millis(2500);
 /// The model called end_call before its closing line: wait this long for it.
 pub const LINE_WAIT: Duration = Duration::from_secs(6);
+/// An accepted end_call that the caller talking or the AI's audio keeps open this
+/// long is called off: the call goes on (a noisy line must not hold it for ever).
+pub const ACCEPT_LIMIT: Duration = Duration::from_secs(30);
 /// The caller's turn ended and the AI has said nothing for this long: nudge.
 pub const COLD_GAP: Duration = Duration::from_millis(2500);
 /// …even when the model has not closed its turn (it may still be thinking
@@ -199,6 +202,9 @@ pub struct Pending {
     pub audio_at_accept: u64,
     /// Caller turns ended when it was accepted.
     pub eou_at_accept: u64,
+    /// Pieces of the caller's transcript judged when it was accepted
+    /// ([`crate::closing::ClosingMachine::caller_updates`]).
+    pub transcripts_at_accept: u64,
     /// The AI had already spoken since the caller's last turn (its closing line).
     pub spoke_before: bool,
     pub reason: &'static str,
@@ -252,6 +258,10 @@ pub fn step(v: &PendingView) -> Step {
         // They said something other than goodbye (their words have had time to
         // come in): the call goes on.
         Step::Cancel
+    } else if v.since_accept >= ACCEPT_LIMIT && (v.caller_talking || v.ai_busy) {
+        // The line has been busy all this time (noise held the caller's voice
+        // detection open, or audio never drained): no hang-up on it.
+        Step::Cancel
     } else if v.caller_talking || v.ai_busy || (!v.ai_spoke && v.since_accept < LINE_WAIT) {
         Step::Wait
     } else if v.ai_asked {
@@ -269,8 +279,12 @@ pub fn step(v: &PendingView) -> Step {
 /// (`spoke_after_accept`) or closed the call themselves (their thanks for a
 /// settled matter, then the AI's closing line with its end_call): no reason to
 /// go on, the line closes after their words.
-pub fn caller_done(closing: &crate::closing::ClosingMachine, spoke_after_accept: bool) -> bool {
-    closing.caller_done() || (closing.caller_nothing_new() && (spoke_after_accept || closing.caller_closing()))
+/// Their voice after the accept (`spoke_after_accept`, our own voice detection)
+/// comes before its transcript: `new_transcript` says a piece of transcript came
+/// in since then, so the "nothing new" is about those words and not the turn before.
+pub fn caller_done(closing: &crate::closing::ClosingMachine, spoke_after_accept: bool, new_transcript: bool) -> bool {
+    closing.caller_done()
+        || (closing.caller_nothing_new() && if spoke_after_accept { new_transcript } else { closing.caller_closing() })
 }
 
 /// One look at the line for the cold-gap nudge.
@@ -1172,7 +1186,7 @@ mod thanks_after_end_call_tests {
         m.on_caller(business, business, false, false);
         m.on_ai_turn(ai, false, false);
         m.on_caller(said, said, crate::locale::caller_wraps_up(said), false);
-        step(&view(caller_done(&m, true)))
+        step(&view(caller_done(&m, true, true)))
     }
 
     #[test]
@@ -1206,8 +1220,54 @@ mod thanks_after_end_call_tests {
         m.on_ai_turn("Con gusto.", false, false);
         m.on_caller("Vale.", "Vale.", false, false);
         // Their "vale" came before the end_call: no goodbye of theirs yet.
-        assert_eq!(caller_done(&m, false), m.caller_done());
-        assert!(!caller_done(&m, false));
+        assert_eq!(caller_done(&m, false, false), m.caller_done());
+        assert!(!caller_done(&m, false, false));
+    }
+
+    /// Their voice came after the accept but its transcript is late: the "nothing
+    /// new" left from the turn before says nothing about it.
+    #[test]
+    fn a_late_transcript_does_not_let_the_turn_before_close_the_line() {
+        for (lang, business, okay, ai, new_question, thanks) in [
+            ("es", "Le dejo el paquete en portería.", "Vale.", "Con gusto.", "Una cosa más: ¿a qué hora cierra la portería?", "Muchas gracias."),
+            ("en", "I'll leave the parcel at the front desk.", "Okay.", "Sounds good.", "Wait, can you also bring it up to the second floor?", "Thanks, bye."),
+            ("ko", "택배는 경비실에 맡겨 둘게요.", "네.", "네, 감사합니다.", "근데 경비실은 몇 시까지 해요?", "네, 감사합니다."),
+            ("fr", "Je laisse le colis chez le gardien.", "D'accord.", "Avec plaisir.", "Encore une chose : il ferme à quelle heure ?", "Merci beaucoup."),
+            ("de", "Ich gebe das Paket beim Nachbarn ab.", "Okay.", "Gern.", "Noch eine Sache: wann ist der Nachbar da?", "Vielen Dank."),
+        ] {
+            let mut m = ClosingMachine::new(lang);
+            m.on_caller(business, business, false, false);
+            m.on_ai_turn("Front desk, please.", false, false);
+            m.on_caller(okay, okay, false, false);
+            assert!(m.caller_nothing_new(), "{lang}: {okay}");
+            // The end_call is accepted here; their next voice has no transcript yet.
+            let at_accept = m.caller_updates();
+            assert!(!caller_done(&m, true, m.caller_updates() > at_accept), "{lang}: stale verdict");
+            // The transcript comes: a new question keeps the call going, thanks close it.
+            m.on_caller(new_question, new_question, false, false);
+            assert!(!caller_done(&m, true, m.caller_updates() > at_accept), "{lang}: {new_question}");
+            m.on_caller(thanks, thanks, crate::locale::caller_wraps_up(thanks), false);
+            assert!(caller_done(&m, true, m.caller_updates() > at_accept), "{lang}: {thanks}");
+        }
+    }
+
+    /// A line the caller's voice or our audio keeps busy does not hold an accepted
+    /// end_call for ever.
+    #[test]
+    fn a_line_busy_for_too_long_calls_the_end_call_off() {
+        let v = PendingView { since_accept: ACCEPT_LIMIT, ..view(true) };
+        for busy in [
+            PendingView { caller_talking: true, ..v },
+            PendingView { ai_busy: true, ..v },
+        ] {
+            assert_eq!(step(&busy), Step::Cancel);
+            let sooner = Duration::from_secs(29);
+            assert_eq!(step(&PendingView { since_accept: sooner, ..busy }), Step::Wait);
+            // A sales or scam call stays stalled, whatever the clock.
+            assert_eq!(step(&PendingView { stalling: true, ..busy }), Step::Stalled);
+        }
+        // A quiet line is closed as before.
+        assert_eq!(step(&PendingView { quiet_for_grace: true, ..v }), Step::HangUp);
     }
 
     /// The caller's thanks for a settled matter, then the AI's closing line that
@@ -1227,8 +1287,8 @@ mod thanks_after_end_call_tests {
             m.on_ai_turn("Front desk, please.", false, false);
             m.on_caller(closing, closing, crate::locale::caller_wraps_up(closing), false);
             m.on_ai_turn(ai, false, false);
-            assert!(caller_done(&m, false), "{lang}: {closing} / {ai}");
-            let v = PendingView { caller_spoke: false, ..view(caller_done(&m, false)) };
+            assert!(caller_done(&m, false, false), "{lang}: {closing} / {ai}");
+            let v = PendingView { caller_spoke: false, ..view(caller_done(&m, false, false)) };
             assert_eq!(step(&v), Step::HangUp, "{lang}");
         }
     }

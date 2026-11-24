@@ -111,6 +111,8 @@ pub struct ClosingMachine {
     /// The caller's words this turn bring nothing new: thanks, short replies,
     /// closing words (「謝謝」"Gracias", "Have a great day"), and no question.
     caller_nothing_new: bool,
+    /// Pieces of the caller's transcript judged ([Self::caller_updates]).
+    caller_updates: u64,
 }
 
 impl ClosingMachine {
@@ -124,6 +126,7 @@ impl ClosingMachine {
             bye_owed: false,
             caller_final: false,
             caller_nothing_new: false,
+            caller_updates: 0,
         }
     }
 
@@ -147,6 +150,13 @@ impl ClosingMachine {
     /// to go on.
     pub fn caller_nothing_new(&self) -> bool {
         self.caller_nothing_new
+    }
+
+    /// How many pieces of the caller's transcript have been judged so far. An
+    /// end_call that notes this when it is accepted knows whether
+    /// [Self::caller_nothing_new] has been refreshed by words said after it.
+    pub fn caller_updates(&self) -> u64 {
+        self.caller_updates
     }
 
     /// The caller's own words have started the closing (their thanks for a
@@ -200,6 +210,7 @@ impl ClosingMachine {
     /// older closing check (bye / wrap-up at the end) says it closes; `stalling`:
     /// a sales / scam caller is being kept on the line.
     pub fn on_caller(&mut self, heard: &str, latest: &str, old_rules: bool, stalling: bool) -> ClosingStep {
+        self.caller_updates += 1;
         // The caller has moved on: late words of the AI's last turn no longer answer them.
         if !is_fluff(latest) {
             self.late_ai = None;
@@ -1962,7 +1973,11 @@ fn ja_closing_request(text: &str) -> Option<Hit> {
     }
     let before = ASK.iter().find_map(|a| ends_with_phrase(t, a))?;
     let apart = t[before.len()..].starts_with(' ');
-    let wraps = before.split(' ').any(|s| WRAP.iter().any(|w| s.starts_with(w))) || WAIT.iter().any(|w| before.contains(w));
+    // A request or a question before the line (「では、お名前を教えてください。」) is still
+    // waiting for its answer: what follows is no last word.
+    let asks = before.split(' ').any(ja_asks);
+    let wraps = !asks
+        && (before.split(' ').any(|s| WRAP.iter().any(|w| s.starts_with(w))) || WAIT.iter().any(|w| before.contains(w)));
     (apart && wraps).then(|| Hit {
         kind: Kind::PreClosing,
         lang: "ja",
@@ -1971,6 +1986,14 @@ fn ja_closing_request(text: &str) -> Option<Hit> {
         apart,
         last: true,
     })
+}
+
+/// One sentence of a Japanese turn (normalized, no punctuation) asks something of
+/// the other side: 「…教えてください」「…いただけますか」「…でしょうか」「…ご在宅ですか」.
+fn ja_asks(sentence: &str) -> bool {
+    const REQUESTS: &[&str] = &["ください", "くださいませ", "いただけ", "もらえ", "お願いできますか"];
+    let s = sentence.trim();
+    s.ends_with('か') || s.ends_with("かな") || s.ends_with("かね") || REQUESTS.iter().any(|r| s.contains(r))
 }
 
 /// "Understood" in Japanese ([`SETTLED`] has 「承知」 as a stem): right before
@@ -7668,6 +7691,36 @@ mod polite_partings {
         let mut m = ClosingMachine::new("ja");
         assert!(!said(&mut m, "もしもし、大和運輸の田中です。失礼します。").ends_call);
         assert_eq!(m.state(), ClosingState::Talking);
+    }
+
+    /// 「では／じゃあ … よろしくお願いします」 after a request or a question is not the
+    /// caller's last word: the AI still owes the answer.
+    #[test]
+    fn a_japanese_request_before_yoroshiku_is_no_closing() {
+        for s in [
+            "では、お名前を教えてください。よろしくお願いします。",
+            "では、折り返しお電話いただけますか。よろしくお願いいたします。",
+            "では、明日の午後はご在宅でしょうか。よろしくお願いします。",
+            "じゃあ、ご住所はどちらですか。よろしくお願いします。",
+            "それでは、少々お待ちください。よろしくお願いします。",
+        ] {
+            let mut m = talked("ja", business_of("ja"));
+            let step = said(&mut m, s);
+            assert!(!step.ends_call, "{s} {step:?}");
+            assert_eq!(m.state(), ClosingState::Talking, "{s}");
+            assert!(!m.caller_nothing_new(), "{s}");
+            assert!(!m.caller_done(), "{s}");
+        }
+        // The wrap-ups that are the caller's last word still are.
+        for s in [
+            "では、管理人室に預けておきますね。よろしくお願いします。",
+            "かしこまりました。それでは、後ほどご連絡をお待ちしております。よろしくお願いいたします。",
+        ] {
+            let mut m = talked("ja", business_of("ja"));
+            said(&mut m, s);
+            assert_eq!(m.state(), ClosingState::PreClosing, "{s}");
+            assert!(m.caller_nothing_new(), "{s}");
+        }
     }
 }
 
