@@ -8307,6 +8307,11 @@ pub async fn run_session(
                                         // The caller's next words start a new utterance.
                                         // Their finished words tell the call's language (lang_lock).
                                         let caller_turn = std::mem::take(&mut caller_recent);
+                                        // Stalling: they are also kept, so a pitch that comes
+                                        // round again is noticed (stall_script).
+                                        if let Some(e) = stall_engine.as_mut() {
+                                            e.on_caller_turn(&caller_turn);
+                                        }
                                         if let Some(now_in) = call_language.caller_turn(&caller_turn) {
                                             info!(
                                                 "call_language now={} serial={serial}",
