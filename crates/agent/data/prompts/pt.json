@@ -40,7 +40,7 @@
     "errands_intro_owner": "Olá, aqui é {owner}",
     "appointments_read_back_example": "\"Então fica para {weekday}, {day} de {month}, às {hour}:{minute}, certo?\"",
     "scenario_cue_mark": "[Nota] ",
-    "scenario_cue_delivery": "Entrega: como de costume; a pagar: valor, remetente; se ele agradecer, despeça-se.",
+    "scenario_cue_delivery": "Entrega: não escolha/aceite local/dia; a pagar: valor, remetente; se agradecer, despeça-se.",
     "scenario_cue_bank_verify": "Banco conferindo compra: valor, loja, hora; nem sim nem não; sem bloqueio; você liga depois.",
     "scenario_cue_important_notice": "Aviso importante: ouça tudo, pergunte o que falta (setor, prazo, número), repita os números.",
     "scenario_cue_schedule_invite": "Marcação: aceite com alegria, diga que confirma depois; sem fechar horário.",

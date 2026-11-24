@@ -45,7 +45,7 @@
     "errands_intro_owner": "{owner}と申します",
     "appointments_read_back_example": "「{month}月{day}日（{weekday}）{part}{hour12}時{mins}でよろしいですか？」",
     "scenario_cue_mark": "[メモ] ",
-    "scenario_cue_delivery": "宅配：いつもの置き方で。代引きは金額と差出人、お礼で締められたら挨拶を返す。",
+    "scenario_cue_delivery": "宅配：置き場所や日時は決めず了承もせず、いつも通りにと伝える。代引きは金額と差出人、お礼で締められたら挨拶を返す。",
     "scenario_cue_bank_verify": "カード会社の確認らしい：金額・店名・時刻を聞き、本人利用とも違うとも覚えがないとも言わず、停止にも同意せず、後で公式窓口に確認すると伝える。",
     "scenario_cue_important_notice": "大事な連絡：最後まで聞き、足りない点（部署・期限・折り返し番号）を一つずつ聞き、数字は復唱。",
     "scenario_cue_schedule_invite": "日程の誘い：明るく受け、後で連絡すると伝え、日時はまだ決めない。",

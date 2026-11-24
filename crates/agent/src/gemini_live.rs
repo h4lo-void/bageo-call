@@ -1459,6 +1459,8 @@ fn looks_like_leaked_internals(text: &str) -> bool {
 /// sentence opens with it ([`NARRATION_OPENERS`]).
 const NARRATION_MARKS: &[&str] = &[
     "user confirmed", "end_call", "function call", "tool call", "(system", "system note", "internal note",
+    // A JSON object the model printed instead of speaking (seen: `{"camera_state": …}`).
+    "{\"", "{ \"",
 ];
 
 /// The model talking about "the user" in the third person. Said to a caller it
@@ -12212,6 +12214,8 @@ mod tests {
             ("接聽：Dạ, em cảm ơn anh. **The user** confirmed.", "接聽：Dạ, em cảm ơn anh."),
             ("接聽：好喔，那就這樣，掰掰。 --- (System note: call over)", "接聽：好喔，那就這樣，掰掰。"),
             ("接聽：Grazie, arrivederci! *** ", "接聽：Grazie, arrivederci!"),
+            ("接聽：네, 감사합니다. {\"camera_state\": \"off\"}", "接聽：네, 감사합니다."),
+            ("接聽：Gracias, adiós. { \"note\": \"done\" }", "接聽：Gracias, adiós."),
             // Only narration: nothing is left of that line.
             ("對方：Okay, bye.\n接聽：The user confirmed everything.", "對方：Okay, bye."),
         ] {

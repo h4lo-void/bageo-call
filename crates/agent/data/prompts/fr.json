@@ -40,7 +40,7 @@
     "errands_intro_owner": "Bonjour, je suis {owner}",
     "appointments_read_back_example": "\"C'est bien {weekday} {day} {month} à {hour} h {minute}, c'est ça ?\"",
     "scenario_cue_mark": "[Note] ",
-    "scenario_cue_delivery": "Colis : comme d'habitude ; à payer : combien, de qui ; s'il remercie, au revoir.",
+    "scenario_cue_delivery": "Colis : lieu/jour, ni choix ni accord ; à payer : combien, de qui ; s'il remercie, au revoir.",
     "scenario_cue_bank_verify": "Banque, un achat : montant, commerce, heure ; ni oui ni non ; aucun blocage ; tu rappelles.",
     "scenario_cue_important_notice": "Avis : écoute tout, demande ce qui manque (service, délai, numéro), répète les chiffres.",
     "scenario_cue_schedule_invite": "Rendez-vous : accueille-le, tu confirmeras plus tard ; rien de fixé.",

@@ -50,7 +50,7 @@
     "errands_intro_owner": "안녕하세요, {owner}입니다",
     "appointments_read_back_example": "\"{month}월 {day}일 {weekday}요일 {part} {hour12}시{mins}, 맞으신가요?\"",
     "scenario_cue_mark": "[메모] ",
-    "scenario_cue_delivery": "택배: 평소처럼 두게 하고, 착불이면 금액·보낸 사람 확인, 감사 인사엔 인사로 답하기.",
+    "scenario_cue_delivery": "택배: 둘 곳·날짜는 정하지도 괜찮다고도 말고 평소대로 하라고 하기, 착불이면 금액·보낸 사람 확인, 감사 인사엔 인사로 답하기.",
     "scenario_cue_bank_verify": "카드사 확인 같아요: 금액·가맹점·시간을 듣고, 본인 사용 여부도 기억 안 난다고도 말하지 말고 정지 동의 없이 나중에 직접 고객센터에 확인한다고 하기.",
     "scenario_cue_important_notice": "중요한 연락: 끝까지 듣고 빠진 것(부서·기한·회신 번호)을 하나씩 묻고 숫자는 복창.",
     "scenario_cue_schedule_invite": "일정 약속: 반갑게 받고 나중에 연락하겠다고 하며 시간은 아직 정하지 않기.",
