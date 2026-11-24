@@ -76,10 +76,12 @@ if (-not (Test-Path $builtSo)) {
     throw "Expected native library missing: $builtSo"
 }
 
-$outDir = Join-Path $androidDir "app\src\standalone\jniLibs\arm64-v8a"
+$outDir = Join-Path $androidDir "rust-jni\arm64-v8a"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 $outSo = Join-Path $outDir "libbageo_agent.so"
 Copy-Item -Force $builtSo $outSo
+$legacyJni = Join-Path $androidDir "app\src\standalone\jniLibs"
+if (Test-Path $legacyJni) { Remove-Item -Recurse -Force $legacyJni }
 
 if (Test-Path $strip) {
     & $strip --strip-unneeded $outSo

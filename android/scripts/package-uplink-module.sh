@@ -69,7 +69,9 @@ if [ ! -f "$APK" ]; then
     exit 1
 fi
 
-# Verify single-dex invariant and native library inclusion inside APK.
+# Verify single-dex invariant and keep native libraries outside base.apk
+# (Android 16 priv-app sets extractNativeLibs=false, so libbageo_agent.so is
+# installed under system/priv-app/<pkg>/lib/arm64/ instead of inside base.apk).
 PYTHON=""
 for candidate in python3 python; do
     if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c "import zipfile" >/dev/null 2>&1; then
@@ -78,18 +80,15 @@ for candidate in python3 python; do
     fi
 done
 if [ -n "$PYTHON" ]; then
-    "$PYTHON" - "$APK" "$STANDALONE" <<'PY'
+    "$PYTHON" - "$APK" <<'PY'
 import sys, zipfile
-apk, standalone = sys.argv[1], sys.argv[2] == "1"
+apk = sys.argv[1]
 with zipfile.ZipFile(apk) as zf:
     names = set(zf.namelist())
 assert "classes.dex" in names, f"classes.dex missing in {apk}"
 assert "classes2.dex" not in names, f"classes2.dex found in {apk} (must stay single-dex)"
-has_so = "lib/arm64-v8a/libbageo_agent.so" in names
-if standalone and not has_so:
-    raise SystemExit(f"lib/arm64-v8a/libbageo_agent.so missing in standalone {apk}")
-if not standalone and has_so:
-    raise SystemExit(f"lib/arm64-v8a/libbageo_agent.so unexpectedly present in bridge {apk}")
+if "lib/arm64-v8a/libbageo_agent.so" in names:
+    raise SystemExit(f"lib/arm64-v8a/libbageo_agent.so must live in priv-app/lib/arm64, not inside {apk}")
 PY
 fi
 
@@ -99,11 +98,19 @@ mkdir -p "$OUT_DIR"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 cp -R "$MODULE_DIR/." "$STAGE/"
-mkdir -p "$STAGE/system/priv-app/com.pixelcallai.streamer"
-cp "$APK" "$STAGE/system/priv-app/com.pixelcallai.streamer/base.apk"
+PKG_DIR="$STAGE/system/priv-app/com.pixelcallai.streamer"
+mkdir -p "$PKG_DIR"
+cp "$APK" "$PKG_DIR/base.apk"
 
 if [ "$STANDALONE" -eq 1 ]; then
-    sh "$REPO_ROOT/scripts/bundle-assets.sh" copy "$REPO_ROOT/assets" "$STAGE/bageo_assets"
+    AGENT_SO="$ANDROID_DIR/rust-jni/arm64-v8a/libbageo_agent.so"
+    if [ ! -f "$AGENT_SO" ]; then
+        echo "libbageo_agent.so missing at $AGENT_SO (run build-rust-android.sh first)" >&2
+        exit 1
+    fi
+    mkdir -p "$PKG_DIR/lib/arm64"
+    cp "$AGENT_SO" "$PKG_DIR/lib/arm64/libbageo_agent.so"
+    sh "$REPO_ROOT/scripts/bundle-assets.sh" copy "$REPO_ROOT/assets" "$PKG_DIR/bageo_assets"
     sed 's/^name=.*/name=Bageo Standalone/' "$STAGE/module.prop" | \
       sed 's/^description=.*/description=All-in-one AI phone assistant running directly on your rooted Pixel without a computer. Rollback: switch to a normal phone in the app, then disable or remove this module and reboot. Do not also install the APK as a normal user app./' \
       > "$STAGE/module.prop.new"
@@ -141,6 +148,23 @@ ZIP_SIZE="$(wc -c < "$ZIP_OUT" | tr -d ' ')"
 if [ "$ZIP_SIZE" -lt 100000 ]; then
     echo "ZIP too small ($ZIP_SIZE bytes); APK not packaged" >&2
     exit 1
+fi
+
+if [ -n "$PYTHON" ]; then
+    "$PYTHON" - "$ZIP_OUT" "$STANDALONE" <<'PY'
+import sys, zipfile
+zip_out, standalone = sys.argv[1], sys.argv[2] == "1"
+with zipfile.ZipFile(zip_out) as zf:
+    names = set(zf.namelist())
+so_path = "system/priv-app/com.pixelcallai.streamer/lib/arm64/libbageo_agent.so"
+asset_path = "system/priv-app/com.pixelcallai.streamer/bageo_assets/ambience_office.wav"
+if standalone:
+    assert so_path in names, f"{so_path} missing in {zip_out}"
+    assert asset_path in names, f"{asset_path} missing in {zip_out}"
+else:
+    assert so_path not in names, f"{so_path} unexpectedly present in {zip_out}"
+    assert asset_path not in names, f"{asset_path} unexpectedly present in {zip_out}"
+PY
 fi
 
 echo "APK: $APK ($(wc -c < "$APK" | tr -d ' ') bytes)"

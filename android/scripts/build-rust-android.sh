@@ -59,10 +59,11 @@ if [ ! -f "$BUILT_SO" ]; then
   exit 1
 fi
 
-OUT_DIR="$ANDROID_DIR/app/src/standalone/jniLibs/arm64-v8a"
+OUT_DIR="$ANDROID_DIR/rust-jni/arm64-v8a"
 mkdir -p "$OUT_DIR"
 OUT_SO="$OUT_DIR/libbageo_agent.so"
 cp -f "$BUILT_SO" "$OUT_SO"
+rm -rf "$ANDROID_DIR/app/src/standalone/jniLibs"
 
 if [ -x "$BIN_DIR/llvm-strip" ]; then
   "$BIN_DIR/llvm-strip" --strip-unneeded "$OUT_SO"

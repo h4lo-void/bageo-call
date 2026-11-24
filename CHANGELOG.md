@@ -1,8 +1,8 @@
-# Bageo v1.7.1-beta
+# Bageo v1.7.1-beta.2
 
-- **Android Standalone Edition (beta test, no computer needed).** Installs as a single phone-only Magisk / KernelSU module (`bageo-phone-standalone-1.7.1-beta.zip`) bundling the full Bageo engine, web console, English voices, and SMS reader directly inside the app; computer, NAS, and Docker editions are unchanged.
-- **手機獨立版（Beta 測試，完全不用電腦）。** 以單一手機專屬模組（`bageo-phone-standalone-1.7.1-beta.zip`）在手機內直接內建完整 Bageo 通話引擎、網頁控制台、英文語音與簡訊讀取，不需任何電腦或主機即可使用；電腦、NAS 與 Docker 版維持不變。
-- **手机独立版（Beta 测试，完全不用电脑）。** 以单一手机专属模块（`bageo-phone-standalone-1.7.1-beta.zip`）在手机内直接内置完整 Bageo 通话引擎、网页控制台、英文语音与短信读取，不需任何电脑或主机即可使用；电脑、NAS 与 Docker 版保持不变。
+- **Android Standalone Edition (beta test, no computer needed).** Installs as a single phone-only Magisk / KernelSU module (`bageo-phone-standalone-1.7.1-beta.2.zip`) bundling the full Bageo engine, web console, English voices, and SMS reader directly inside the app; computer, NAS, and Docker editions are unchanged.
+- **手機獨立版（Beta 測試，完全不用電腦）。** 以單一手機專屬模組（`bageo-phone-standalone-1.7.1-beta.2.zip`）在手機內直接內建完整 Bageo 通話引擎、網頁控制台、英文語音與簡訊讀取，不需任何電腦或主機即可使用；電腦、NAS 與 Docker 版維持不變。
+- **手机独立版（Beta 测试，完全不用电脑）。** 以单一手机专属模块（`bageo-phone-standalone-1.7.1-beta.2.zip`）在手机内直接内置完整 Bageo 通话引擎、网页控制台、英文语音与短信读取，不需任何电脑或主机即可使用；电脑、NAS 与 Docker 版保持不变。
 - **Designed for phone-only daily use.** Answer whitelisted or urgent calls directly on the phone, take over a live AI call anytime in one tap without hanging up, place calls from the built-in dialpad, and sync phone contacts in one tap; includes a Quick Settings tile, Do Not Disturb auto-trigger, optional pinned status notification, and zero-polling standby for battery life.
 - **為手機單機使用重新設計。** 白名單或急事可直接由手機本人接聽、AI 通話中隨時一鍵「我來接」無縫接手不掛斷、內建原生撥號盤並支援一鍵同步手機通訊錄；提供下拉快速設定磚、開啟勿擾自動接聽、可選置頂通知與待機零輪詢省電。
 - **为手机单机使用重新设计。** 白名单或急事可直接由手机本人接听、AI 通话中随时一键“我来接”无缝接手不挂断、内置原生拨号盘并支持一键同步手机通讯录；提供下拉快捷开关、开启勿扰自动接听、可选常驻通知与待机零轮询省电。

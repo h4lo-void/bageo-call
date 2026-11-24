@@ -38,7 +38,9 @@ case "$ID" in ''|*[!A-Za-z0-9-]*) ID=invalid ;; esac
 NODND=0
 case "$ID" in nodnd-*|app-nodnd-*) NODND=1 ;; esac
 STANDALONE_MOD=0
-[ -d "${0%/*}/bageo_assets" ] && STANDALONE_MOD=1
+if [ -d "${0%/*}/system/priv-app/com.pixelcallai.streamer/bageo_assets" ] || [ -d "${0%/*}/bageo_assets" ]; then
+  STANDALONE_MOD=1
+fi
 
 mkdir -p "$DIR" || exit 3
 if ! mkdir "$LOCK" 2>/dev/null; then
