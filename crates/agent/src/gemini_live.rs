@@ -8629,11 +8629,13 @@ pub async fn run_session(
                                     }
                                     // Stalling: the call's situation is in the stall prompt and the AI
                                     // finds its own way, so a hint (stall_script, asks for no reply)
-                                    // goes in only to change course: the AI going round in circles, or
-                                    // a leaving caller to keep. A note every turn slowed every stalled
-                                    // reply. The caller already talking: a course hint waits (a note
-                                    // mid-utterance holds up the reply to it); the keep hint goes out
-                                    // regardless.
+                                    // goes in only to change course: the talk going round in circles,
+                                    // or a leaving caller to keep. A note with every turn of every
+                                    // stalled call slowed its replies; a hint with each reply only
+                                    // while the caller repeats themselves did not (measured on
+                                    // 15-minute calls). The caller already talking: a course hint
+                                    // waits (a note mid-utterance holds up the reply to it); the keep
+                                    // hint goes out regardless.
                                     if keep.is_none()
                                         && persona
                                         && stall_on
