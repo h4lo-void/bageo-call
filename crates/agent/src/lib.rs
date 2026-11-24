@@ -1031,7 +1031,8 @@ pub async fn cli_main() -> Result<()> {
         .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stdout()))
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "agent=info".into()),
+                // The library's events are under `bageo_agent::…`, the binary's under `agent::…`.
+                .unwrap_or_else(|_| "bageo_agent=info,agent=info".into()),
         )
         .init();
     log_text::announce();

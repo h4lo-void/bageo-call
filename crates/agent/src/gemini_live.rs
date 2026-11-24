@@ -1181,7 +1181,9 @@ impl Eq for CallLangPlan {}
 /// Opening: the number is read the way that SIM reads it
 /// ([`crate::phone_region::normalize`]). From another country than the SIM's,
 /// whose language the AI speaks ([`crate::locale::country_lang`]): that
-/// language. Otherwise the SIM's main language (`sim_languages`), else the
+/// language; whose country answers its own way ([`crate::prompts::local_hello`]:
+/// Vietnam, Italy, Thailand…): that way, whatever the SIM's language. Otherwise
+/// the SIM's main language (`sim_languages`), else the
 /// language of the SIM's country (a Japanese SIM opens in Japanese), else
 /// `language`. Chinese never switches between its two variants. SIM unknown: a
 /// `+…` number of another country code than `home_code` ([`opening_lang_for`]).
@@ -1213,7 +1215,18 @@ pub fn call_lang_plan(
     // For the opening only: with no language set for the SIM, its country's.
     // The prompt stays in the setting's language (`prompt_lang` below).
     let sim_main = sim_lang.or_else(|| sim.and_then(country_lang));
+    // A number from another country than the SIM's that answers its own way (a
+    // Vietnamese number on a French SIM): it opens that way, as a Japanese number
+    // opens in Japanese on any SIM. The SIM's language would be neither the
+    // caller's nor, often, the owner's.
+    let caller_hello = match (sim, number.as_ref()) {
+        (Some(sim), Some(n)) if n.country != sim && country_lang(n.country).is_none() => {
+            crate::prompts::local_hello(n.country)
+        }
+        _ => None,
+    };
     let opening = match sim {
+        Some(_) if caller_hello.is_some() => None,
         Some(sim) => {
             let main = sim_main.filter(|l| !(l.is_zh() && lang.is_zh())).unwrap_or(lang);
             let caller = number
@@ -1230,6 +1243,7 @@ pub fn call_lang_plan(
     // than the SIM's counts first, as for an opening language; a local or hidden
     // one takes the SIM's country, unless the owner set a language for that SIM.
     let local_hello = match sim {
+        Some(_) if caller_hello.is_some() => caller_hello,
         Some(sim) if opening.is_none() => {
             match number.as_ref().map(|n| n.country).filter(|c| *c != sim) {
                 Some(c) if country_lang(c).is_some() => None,
@@ -14263,6 +14277,153 @@ mod local_hello_opening {
         let cn = crate::prompts::kick_open_local(Lang::ZhCn, true, it, false);
         // The pack names languages in Traditional Chinese; Simplified is converted.
         assert!(cn.contains(&crate::zh_convert::to_cn(it.name_tw)) && !cn.contains("義") && !cn.contains('{'), "{cn}");
+    }
+}
+
+/// Every country of the data pack: a call on a SIM of it opens in a language of
+/// that country, of the caller's country or the setting's, never a third one, and
+/// only in a Gemini Live language. (A French SIM's 「Allô ?」 and a Vietnamese
+/// SIM's 「A lô?」 were once reported as Spanish "¿Aló?": that was the caller
+/// bot's speech-to-text of a short greeting, the openings were right.)
+#[cfg(test)]
+mod opening_language_by_country {
+    use super::call_lang_plan;
+    use crate::locale::Lang;
+    use std::collections::BTreeMap;
+
+    /// Languages people of a country use on the phone (ISO 639-1; `zh` is
+    /// Mandarin): the official ones and those widely used at work. Written apart
+    /// from the data pack, so a country put in a region of another language shows.
+    const SPOKEN: &[(&str, &[&str])] = &[
+        ("ad", &["ca", "es", "fr"]), ("ae", &["ar"]), ("af", &["ps", "fa"]), ("ag", &["en"]), ("ai", &["en"]),
+        ("al", &["sq"]), ("am", &["hy", "ru"]), ("ar", &["es"]), ("as", &["en", "sm"]), ("at", &["de"]),
+        ("au", &["en"]), ("az", &["az", "ru"]), ("ba", &["bs", "hr", "sr"]), ("bb", &["en"]), ("bd", &["bn"]),
+        ("be", &["nl", "fr", "de"]), ("bg", &["bg"]), ("bh", &["ar"]), ("bl", &["fr"]), ("bm", &["en"]),
+        ("bo", &["es"]), ("br", &["pt"]), ("bs", &["en"]), ("by", &["be", "ru"]), ("ca", &["en", "fr"]),
+        ("ch", &["de", "fr", "it"]), ("cl", &["es"]), ("cn", &["zh"]), ("co", &["es"]), ("cr", &["es"]),
+        ("cu", &["es"]), ("cy", &["el", "tr", "en"]), ("cz", &["cs"]), ("de", &["de"]), ("dk", &["da"]),
+        ("dm", &["en"]), ("do", &["es"]), ("dz", &["ar", "fr"]), ("ec", &["es"]), ("ee", &["et"]),
+        ("eg", &["ar"]), ("es", &["es", "ca", "eu", "gl"]), ("et", &["am", "en"]), ("fi", &["fi", "sv"]),
+        ("fr", &["fr"]), ("gb", &["en"]), ("gd", &["en"]), ("ge", &["ka"]), ("gf", &["fr"]), ("gg", &["en"]),
+        ("gp", &["fr"]), ("gr", &["el"]), ("gt", &["es"]), ("gu", &["en"]), ("hk", &["zh", "en"]),
+        ("hn", &["es"]), ("hr", &["hr"]), ("ht", &["fr", "ht"]), ("hu", &["hu"]), ("id", &["id"]),
+        ("ie", &["en", "ga"]), ("il", &["he", "ar"]), ("im", &["en"]), ("in", &["hi", "en", "bn", "mr", "ta", "te"]),
+        ("iq", &["ar", "ku"]), ("ir", &["fa"]), ("is", &["is"]), ("it", &["it"]), ("je", &["en"]), ("jm", &["en"]),
+        ("jo", &["ar"]), ("jp", &["ja"]), ("ke", &["en", "sw"]), ("kg", &["ky", "ru"]), ("kn", &["en"]),
+        ("kr", &["ko"]), ("kw", &["ar"]), ("ky", &["en"]), ("kz", &["kk", "ru"]), ("la", &["lo"]),
+        ("lb", &["ar", "fr"]), ("lc", &["en"]), ("li", &["de"]), ("lk", &["si", "ta", "en"]), ("lt", &["lt"]),
+        ("lu", &["lb", "fr", "de"]), ("lv", &["lv"]), ("ly", &["ar"]), ("ma", &["ar", "fr"]), ("mc", &["fr"]),
+        ("md", &["ro", "ru"]), ("me", &["sr"]), ("mf", &["fr"]), ("mg", &["mg", "fr"]), ("mk", &["mk"]),
+        ("mm", &["my"]), ("mn", &["mn"]), ("mo", &["zh", "pt"]), ("mp", &["en"]), ("mq", &["fr"]), ("ms", &["en"]),
+        ("mx", &["es"]), ("my", &["ms", "en", "zh"]), ("nc", &["fr"]), ("ni", &["es"]), ("nl", &["nl"]),
+        ("no", &["nb", "nn"]), ("np", &["ne"]), ("nz", &["en"]), ("om", &["ar"]), ("pa", &["es"]), ("pe", &["es"]),
+        ("pf", &["fr"]), ("ph", &["fil", "en"]), ("pk", &["ur", "en"]), ("pl", &["pl"]), ("pm", &["fr"]),
+        ("pr", &["es", "en"]), ("ps", &["ar"]), ("pt", &["pt"]), ("py", &["es"]), ("qa", &["ar"]), ("re", &["fr"]),
+        ("ro", &["ro"]), ("rs", &["sr"]), ("ru", &["ru"]), ("sa", &["ar"]), ("sd", &["ar", "en"]), ("se", &["sv"]),
+        ("sg", &["en", "zh", "ms", "ta"]), ("si", &["sl"]), ("sk", &["sk"]), ("sm", &["it"]), ("sv", &["es"]),
+        ("sx", &["en", "nl"]), ("sy", &["ar"]), ("tc", &["en"]), ("th", &["th"]), ("tn", &["ar", "fr"]),
+        ("tr", &["tr"]), ("tt", &["en"]), ("tw", &["zh"]), ("tz", &["sw", "en"]), ("ua", &["uk"]),
+        ("us", &["en", "es"]), ("uy", &["es"]), ("va", &["it"]), ("vc", &["en"]), ("ve", &["es"]), ("vg", &["en"]),
+        ("vi", &["en"]), ("vn", &["vi"]), ("wf", &["fr"]), ("xk", &["sq", "sr"]), ("ye", &["ar"]), ("yt", &["fr"]),
+        ("za", &["en", "af", "zu", "xh"]),
+    ];
+
+    fn spoken(iso: &str) -> Option<&'static [&'static str]> {
+        SPOKEN.iter().find(|(c, _)| *c == iso).map(|(_, l)| *l)
+    }
+
+    /// `zh-TW` → `zh`, `vi-VN` → `vi`, `cmn` → `zh`.
+    fn primary(code: &str) -> &str {
+        match code.split('-').next().unwrap_or(code) {
+            "cmn" => "zh",
+            p => p,
+        }
+    }
+
+    fn supported(code: &str) -> bool {
+        bageo_packs::data::OFFICIAL_LANGS.iter().any(|o| primary(o) == code)
+    }
+
+    /// The language a persona call opens in: its opening language, else the local
+    /// way of answering, else the setting's.
+    fn opening(caller: &str, sim: &str, lang: Lang) -> &'static str {
+        let home = if lang == Lang::En { "1" } else { "886" };
+        let p = call_lang_plan(caller, Some(sim), lang, home, &BTreeMap::new());
+        match (p.opening, p.local_hello) {
+            (Some(l), _) => primary(l.code()),
+            (None, Some(h)) => primary(h.code),
+            (None, None) => primary(lang.code()),
+        }
+    }
+
+    #[test]
+    fn every_sim_country_opens_in_its_own_the_callers_or_the_settings_language() {
+        let table = crate::packs_store::current();
+        for c in [
+            "tw", "cn", "hk", "us", "gb", "jp", "kr", "es", "mx", "fr", "de", "br", "pt", "it", "ru", "id", "th", "vn",
+            "tr", "in", "ph", "sa", "eg", "ht", "mg",
+        ] {
+            assert!(table.countries.contains_key(c), "{c} is not in the data pack");
+        }
+        let mut bad = Vec::new();
+        for sim in table.countries.keys().map(String::as_str) {
+            let Some(own) = spoken(sim) else {
+                bad.push(format!("{sim}: in the data pack but not in SPOKEN, add its languages"));
+                continue;
+            };
+            // Hidden, dialled inside the country, and with its country code.
+            let mut callers = vec![String::new(), "234567890".to_string()];
+            callers.extend(crate::phone_region::calling_code(sim).map(|cc| format!("+{cc}234567890")));
+            for lang in [Lang::ZhTw, Lang::En] {
+                for caller in &callers {
+                    let got = opening(caller, sim, lang);
+                    let theirs = crate::phone_region::normalize(caller, Some(sim))
+                        .and_then(|n| spoken(n.country))
+                        .is_some_and(|l| l.contains(&got));
+                    if !(own.contains(&got) || theirs || got == primary(lang.code())) || !supported(got) {
+                        bad.push(format!("sim={sim} caller={caller:?} language={} opens in {got}", lang.code()));
+                    }
+                }
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    #[test]
+    fn a_foreign_number_opens_in_its_countrys_language_on_any_sim() {
+        // (caller, SIM, setting, the opening's language)
+        let cases: [(&str, &str, Lang, &str); 22] = [
+            ("+33612345678", "vn", Lang::ZhTw, "fr"),
+            ("+33612345678", "tw", Lang::ZhTw, "fr"),
+            ("+33612345678", "us", Lang::En, "fr"),
+            ("+84912345678", "fr", Lang::ZhTw, "vi"),
+            ("+84912345678", "us", Lang::En, "vi"),
+            ("+84912345678", "tw", Lang::ZhTw, "vi"),
+            ("+81312345678", "us", Lang::ZhTw, "ja"),
+            ("+81312345678", "it", Lang::En, "ja"),
+            ("+12025550143", "jp", Lang::ZhTw, "en"),
+            ("+12025550143", "vn", Lang::ZhTw, "en"),
+            ("+390612345678", "us", Lang::En, "it"),
+            ("+66812345678", "jp", Lang::ZhTw, "th"),
+            ("+50937123456", "tw", Lang::ZhTw, "fr"),
+            // The SIM's own numbers and hidden ones.
+            ("0612345678", "fr", Lang::ZhTw, "fr"),
+            ("0901234567", "vn", Lang::ZhTw, "vi"),
+            ("0901234567", "vn", Lang::En, "vi"),
+            ("", "it", Lang::En, "it"),
+            ("", "ht", Lang::ZhTw, "fr"),
+            ("", "mg", Lang::En, "fr"),
+            // Chinese for a Chinese setting; Malaysia (Chinese callers) leaves the SIM's.
+            ("+886912345678", "vn", Lang::ZhTw, "zh"),
+            ("+60123456789", "fr", Lang::ZhTw, "fr"),
+            ("+60123456789", "vn", Lang::En, "en"),
+        ];
+        for (caller, sim, lang, want) in cases {
+            assert_eq!(opening(caller, sim, lang), want, "caller={caller} sim={sim} language={}", lang.code());
+        }
+        // The local way is said to be from abroad only for a number of another country.
+        let p = call_lang_plan("+84912345678", Some("fr"), Lang::ZhTw, "886", &BTreeMap::new());
+        assert_eq!((p.opening, p.local_hello.map(|h| h.hello), p.sim_local), (None, Some("A lô?"), Some(false)));
     }
 }
 

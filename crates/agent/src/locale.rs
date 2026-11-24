@@ -619,6 +619,10 @@ const COUNTRY_LANGS: &[(&str, Lang)] = &[
     ("wf", Lang::Fr),
     ("be", Lang::Fr),
     ("mc", Lang::Fr),
+    // Haiti and Madagascar: French is official there. The data pack puts them in
+    // East Africa's English region, whose "Hello?" is no language of theirs.
+    ("ht", Lang::Fr),
+    ("mg", Lang::Fr),
     ("de", Lang::De),
     ("at", Lang::De),
     ("ch", Lang::De),
