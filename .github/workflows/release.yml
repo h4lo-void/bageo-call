@@ -28,6 +28,7 @@ permissions:
 
 jobs:
   agent:
+    if: ${{ !contains(github.ref_name, '-beta') }}
     name: agent ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     env:
@@ -172,8 +173,12 @@ jobs:
           PCA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           PCA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          bash scripts/package-uplink-module.sh
-          bash scripts/package-uplink-module.sh --standalone --skip-rust-build
+          if [[ "${GITHUB_REF_NAME:-}" == *-beta* ]]; then
+            bash scripts/package-uplink-module.sh --standalone --skip-rust-build
+          else
+            bash scripts/package-uplink-module.sh
+            bash scripts/package-uplink-module.sh --standalone --skip-rust-build
+          fi
       - name: Verify APK signing
         env:
           PCA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -187,7 +192,13 @@ jobs:
           fi
           TMP_APK=$(mktemp -d)
           trap 'rm -rf "$TMP_APK"' EXIT
-          for ZIP in android/magisk/dist/bageo-phone-module-*.zip android/magisk/dist/bageo-phone-standalone-*.zip; do
+          shopt -s nullglob
+          ZIPS=(android/magisk/dist/bageo-phone-*.zip)
+          if [ "${#ZIPS[@]}" -eq 0 ]; then
+            echo "No phone module zips found in android/magisk/dist" >&2
+            exit 1
+          fi
+          for ZIP in "${ZIPS[@]}"; do
             echo "Verifying $ZIP ..."
             unzip -p "$ZIP" system/priv-app/com.pixelcallai.streamer/base.apk > "$TMP_APK/base.apk"
             CERTS=$("$APKSIGNER" verify --print-certs "$TMP_APK/base.apk")
@@ -216,7 +227,7 @@ jobs:
   # files to the same Release.
   publish:
     needs: [agent, android]
-    if: ${{ !cancelled() && github.event_name == 'push' }}
+    if: ${{ always() && !cancelled() && github.event_name == 'push' && needs.android.result == 'success' && (needs.agent.result == 'success' || (contains(github.ref_name, '-beta') && needs.agent.result == 'skipped')) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -229,8 +240,17 @@ jobs:
       - name: Check what was built
         run: |
           ls -l dist
-          ls dist/bageo-phone-module-*.zip dist/bageo-phone-standalone-*.zip dist/bageo-call-* > /dev/null
+          if [[ "${GITHUB_REF_NAME:-}" == *-beta* ]]; then
+            ls dist/bageo-phone-standalone-*.zip > /dev/null
+            if ls dist/bageo-phone-module-*.zip dist/bageo-call-* >/dev/null 2>&1; then
+              echo "Beta standalone release must contain only bageo-phone-standalone-*.zip" >&2
+              exit 1
+            fi
+          else
+            ls dist/bageo-phone-module-*.zip dist/bageo-phone-standalone-*.zip dist/bageo-call-* > /dev/null
+          fi
       - name: Checksums
+        if: ${{ !contains(github.ref_name, '-beta') }}
         run: cd dist && sha256sum * > SHA256SUMS.txt
       # The Release page shows only the short notes for this version from
       # .github/RELEASE_NOTES.md (first line "# Bageo <tag>", dropped here
@@ -255,4 +275,5 @@ jobs:
           name: Bageo ${{ github.ref_name }}
           body_path: notes.md
           files: dist/*
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: false

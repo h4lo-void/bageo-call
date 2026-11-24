@@ -21,8 +21,9 @@ use crate::config::{EmbeddedOverrides, Settings};
 use crate::settings_store::{self, SettingsStore};
 use crate::{bootstrap_runtime, calendar, lan, locale, mdns, notify, recent_notices, sms_store, AppState};
 
-/// Default loopback bridge port used by the Android app (`ws://127.0.0.1:8765`).
-pub const LOCAL_BRIDGE_PORT: u16 = 8765;
+/// Dedicated loopback bridge port used by Standalone Android (`ws://127.0.0.1:8766`)
+/// so desktop `adb reverse tcp:8765` never collides if the phone is plugged into a PC.
+pub const LOCAL_BRIDGE_PORT: u16 = 8766;
 
 static LAN_NOTIFY_HOOK: std::sync::OnceLock<Arc<Notify>> = std::sync::OnceLock::new();
 
@@ -261,7 +262,7 @@ pub async fn run_embedded(cfg: Arc<EmbeddedControl>) -> Result<()> {
 
     let app = crate::build_app(state.clone(), calls_state, remote, true);
 
-    // Permanent loopback phone-bridge listener (`ws://127.0.0.1:8765`): active
+    // Permanent loopback phone-bridge listener (`ws://127.0.0.1:8766`): active
     // phone calls never drop even if the user toggles LAN sharing on port 8787.
     let bridge_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), LOCAL_BRIDGE_PORT);
     match bind_tcp_reusable(bridge_addr) {
