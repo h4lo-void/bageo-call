@@ -4028,6 +4028,18 @@ fn first_delivery_paused(activity_open: bool, caller_spoke_recently: bool, calls
 /// repeat (it came ~4 s later on the probe; the quiet-line nudge is 15 s away).
 const REPEAT_GUARD_WINDOW: Duration = Duration::from_secs(12);
 
+/// After our closing (an accepted end_call, or the goodbye armed) Gemini often
+/// opens a turn of its own once the server reckons our last line has played,
+/// and says that goodbye again ("Obrigado, vou avisar… Tenha um ótimo dia!"
+/// twice on a real call, ~4 s after the end_call answer, SILENT or not). Once
+/// our last words came after the caller's, that turn is not played and not
+/// written down ([`RepeatGuard`]); the caller speaking again lets the next one
+/// through. Not on an errand (our own call ends on our goodbye) nor while
+/// stalling (the stalling kicks own every turn).
+fn closing_repeat_guard(closing: bool, persona: bool, errand: bool, stalling: bool, ai_spoke_after_caller: bool) -> bool {
+    closing && persona && !errand && !stalling && ai_spoke_after_caller
+}
+
 /// Had the model already begun its reply to the caller's last words when it
 /// called a function? Audio of this turn is not enough: the opening 「喂？」 (or
 /// any earlier line) was sent before the caller spoke, and a function call
@@ -6102,6 +6114,9 @@ pub async fn run_session(
     let mut ai_reply_text = String::new();
     let mut repeat_guard = RepeatGuard::default();
     let mut repeat_drops: u32 = 0;
+    // The repeat guard is armed for our closing (closing_repeat_guard), not for
+    // a propose_appointment: it is disarmed when the closing is called off.
+    let mut closing_guard = false;
     // Sales / scam: the second look at a call the keywords flagged (stall_review)
     // runs on its own task and answers here; its "scam" verdict starts the
     // stalling at the top of the loop. The session is not told the caller's
@@ -7173,6 +7188,12 @@ pub async fn run_session(
                 }
             }
         }
+        // The closing was called off (the caller spoke again, our words asked
+        // something, the call is being stalled): the model's next turn is owed.
+        if closing_guard && !goodbye_pending && end_call_pending.is_none() {
+            closing_guard = false;
+            repeat_guard.clear();
+        }
 
         // Wall-clock max talk time → agent will play goodbye WAV (persona: plain hangup).
         // Not while the phone dials the owner for a whitelist urgent call.
@@ -7608,6 +7629,20 @@ pub async fn run_session(
                                                         spoke_before: spoke,
                                                         reason,
                                                     });
+                                                    // Our last words are under way in this turn: the turn
+                                                    // the model opens on its own after this answer is the
+                                                    // same goodbye again (heard twice on a real call).
+                                                    let line_under_way = spoke && audio_chunks_out > chunks_at_turn_start;
+                                                    if closing_repeat_guard(true, persona, false, stall_on || live_is_stall, line_under_way) {
+                                                        repeat_guard.arm(
+                                                            CallTurn { turns_done, caller_eous: local_eou_sent },
+                                                            turns_done,
+                                                            audio_chunks_out > chunks_at_turn_start,
+                                                            now,
+                                                        );
+                                                        closing_guard = true;
+                                                        info!("Gemini Live repeat guard armed serial={serial} id={key} turns_done={turns_done} (end_call after our last words)");
+                                                    }
                                                 }
                                                 Err(why) => info!(
                                                     "end_call refused serial={serial} id={key} why={} — the call goes on",
@@ -7795,7 +7830,8 @@ pub async fn run_session(
                                 if repeat_drop && !was_dropping {
                                     repeat_drops += 1;
                                     info!(
-                                        "Gemini Live unasked turn after propose_appointment serial={serial} n={repeat_drops} — repeat dropped (not played, not transcribed)"
+                                        "Gemini Live unasked turn after {} serial={serial} n={repeat_drops} — repeat dropped (not played, not transcribed)",
+                                        if closing_guard { "our closing" } else { "propose_appointment" }
                                     );
                                 }
                                 // The model's instructions, or its narration about the call after its
@@ -8518,6 +8554,8 @@ pub async fn run_session(
                                                 m.end_by.as_str()
                                             );
                                             reply_metrics.record_reply(m.timing.reply_ms, serial);
+                                        } else {
+                                            reply_clock.note_unmeasured();
                                         }
                                     }
                                     if server_vad && activity_open {
@@ -8733,6 +8771,16 @@ pub async fn run_session(
                                         info!(
                                             "Gemini Live dropped repeat turn complete serial={serial} — turn checks skipped"
                                         );
+                                        // Our closing still stands: a further turn of the model's own
+                                        // is the goodbye again too.
+                                        if closing_guard && (goodbye_pending || end_call_pending.is_some()) {
+                                            repeat_guard.arm(
+                                                CallTurn { turns_done: turns_done.saturating_sub(1), caller_eous: local_eou_sent },
+                                                turns_done,
+                                                false,
+                                                tokio::time::Instant::now(),
+                                            );
+                                        }
                                     }
                                 } else if gated_turn {
                                     intl_gated_turn = false;
@@ -9165,8 +9213,13 @@ pub async fn run_session(
                                     );
                                     let stt_preview: String =
                                         out_tx_window.chars().take(120).collect();
+                                    // Both ends of a turn come here: generationComplete, then
+                                    // turnComplete once the server reckons its audio has played
+                                    // (seconds later on a long line). The checks below are the
+                                    // same on both.
                                     info!(
-                                        "Gemini Live turnComplete serial={serial} out={audio_chunks_out} goodbye_pending={goodbye_pending} complete_recap={saw_relay_ack} after_caller={model_spoke_after_caller} post_ms={post_ms} activity_open={activity_open} out_stt={stt_preview}",
+                                        "Gemini Live turnComplete serial={serial} out={audio_chunks_out} goodbye_pending={goodbye_pending} complete_recap={saw_relay_ack} after_caller={model_spoke_after_caller} post_ms={post_ms} activity_open={activity_open} event={} out_stt={stt_preview}",
+                                        if turn_complete { "turnComplete" } else { "generationComplete" },
                                         stt_preview = Said(&stt_preview)
                                     );
                                     last_activity_at = tokio::time::Instant::now();
@@ -9225,6 +9278,29 @@ pub async fn run_session(
                                                 "Clarify/recap kick sent serial={serial} (caller spoke, no matter recap; do not goodbye)"
                                             );
                                         }
+                                    }
+                                    // Our closing is under way and this turn said our last words
+                                    // after the caller's: a turn the model opens on its own after it
+                                    // is the goodbye again (RepeatGuard).
+                                    if turn_complete
+                                        && closing_repeat_guard(
+                                            goodbye_pending || end_call_pending.is_some(),
+                                            persona,
+                                            errand.is_some(),
+                                            stall_on || live_is_stall,
+                                            turn_had_audio && model_spoke_after_caller,
+                                        )
+                                    {
+                                        repeat_guard.arm(
+                                            CallTurn { turns_done: turns_done.saturating_sub(1), caller_eous: local_eou_sent },
+                                            turns_done,
+                                            false,
+                                            tokio::time::Instant::now(),
+                                        );
+                                        if !closing_guard {
+                                            info!("Gemini Live repeat guard armed serial={serial} turns_done={turns_done} (our closing line ended)");
+                                        }
+                                        closing_guard = true;
                                     }
                                 }
                             }
@@ -9972,8 +10048,12 @@ pub async fn run_session(
     }
     let replies = reply_clock.summary();
     info!(
-        "Gemini reply latency summary serial={serial} replies={} avg_ms={} median_ms={} max_ms={}",
-        replies.count, replies.avg_ms, replies.median_ms, replies.max_ms
+        "Gemini reply latency summary serial={serial} replies={} avg_ms={} median_ms={} max_ms={} unmeasured={}",
+        replies.count,
+        replies.avg_ms,
+        replies.median_ms,
+        replies.max_ms,
+        reply_clock.unmeasured()
     );
     info!(
         "Gemini Live session end serial={serial} reason={} out={audio_chunks_out} in={audio_chunks_in} eou={local_eou_sent} uplink_frames={uplink_frames} gated_frames={gated_frames} floor={:.0} stall={stall_on} stall_hits={stall_hits:?} own_matter={own_matter} idle_nudges={idle_nudges} rotations={rotations} server_vad={server_vad} barge_in={} barge_ins={barge_ins} backchannels={backchannels} tokens_in={usage_prompt_tokens} tokens_out={usage_response_tokens} talk_s={} (API closed)",
@@ -11909,6 +11989,60 @@ mod tests {
         g.caller_started();
         assert!(!g.is_dropping() && !g.drops(true, 4, false, 2, false, now));
         assert!(!g.reply_owed(), "a new turn of theirs gets its own answer");
+    }
+
+    #[test]
+    fn our_goodbye_is_not_said_twice_after_the_closing() {
+        // A real call (pt): the caller said 「Obrigado. Tchau.」, the AI said its goodbye
+        // and called end_call during it; ~0.5 s after that turn's turnComplete the model
+        // opened a turn of its own and the caller heard the same goodbye again.
+        let now = tokio::time::Instant::now();
+        let s = Duration::from_secs(1);
+        // end_call accepted while turn 4 plays (3 turns done, 5 caller turns).
+        assert!(closing_repeat_guard(true, true, false, false, true));
+        let call = CallTurn { turns_done: 3, caller_eous: 5 };
+        let mut g = RepeatGuard::default();
+        g.arm(call, 3, true, now);
+        assert!(!g.drops(true, 3, true, 5, false, now), "the goodbye itself plays");
+        // Its turnComplete (4 done): armed again there; its late transcript is kept.
+        g.arm(call, 4, false, now + 3 * s);
+        assert!(!g.drops(false, 4, false, 5, false, now + 3 * s));
+        // The model's own turn after it: not played, not written down.
+        assert!(g.drops(true, 4, false, 5, false, now + 4 * s));
+        assert!(g.drops(false, 4, false, 5, false, now + 4 * s));
+        assert!(g.turn_complete());
+        // The closing still stands: armed again after the drop, a further one goes too.
+        g.arm(CallTurn { turns_done: 4, caller_eous: 5 }, 5, false, now + 5 * s);
+        assert!(g.drops(true, 5, false, 5, false, now + 7 * s));
+        assert!(g.turn_complete());
+    }
+
+    #[test]
+    fn the_caller_speaking_after_our_goodbye_is_answered() {
+        let now = tokio::time::Instant::now();
+        let call = CallTurn { turns_done: 3, caller_eous: 5 };
+        let mut g = RepeatGuard::default();
+        // A new turn of theirs ended ("wait, one more thing", 「欸還有」, 「あ、もう一つ」): answered.
+        g.arm(call, 4, false, now);
+        assert!(!g.drops(true, 4, false, 6, false, now));
+        // They are talking now.
+        g.arm(call, 4, false, now);
+        assert!(!g.drops(true, 4, false, 5, true, now));
+        // Only their words came in (no local turn): answered.
+        g.arm(call, 4, false, now);
+        g.caller_words();
+        assert!(!g.drops(true, 4, false, 5, false, now));
+        // The closing was called off (cleared): the next turn plays.
+        g.arm(call, 4, false, now);
+        g.clear();
+        assert!(!g.drops(true, 4, false, 5, false, now));
+        // Never armed while stalling, on an errand, with no closing, before our
+        // last words came after the caller's, or off the persona.
+        assert!(!closing_repeat_guard(true, true, false, true, true));
+        assert!(!closing_repeat_guard(true, true, true, false, true));
+        assert!(!closing_repeat_guard(false, true, false, false, true));
+        assert!(!closing_repeat_guard(true, true, false, false, false));
+        assert!(!closing_repeat_guard(true, false, false, false, true));
     }
 
     #[test]

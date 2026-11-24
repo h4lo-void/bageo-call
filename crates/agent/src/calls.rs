@@ -1882,6 +1882,37 @@ impl CallStore {
         serde_json::from_slice(&data).ok()
     }
 
+    /// Add what finished after the notes were first saved: a calendar suggestion
+    /// (kept only if the notes have none yet) and the dialogue translations (kept
+    /// only if there is any). Everything else in the notes is read back from disk as
+    /// it is now, so a write made meanwhile stays. `Ok(false)`: nothing to add or no
+    /// notes saved yet.
+    pub async fn add_late_notes(
+        &self,
+        id: &str,
+        calendar: Option<crate::calendar::Event>,
+        translations: Vec<Option<String>>,
+    ) -> Result<bool> {
+        let Some(mut notes) = self.load_notes(id).await else {
+            return Ok(false);
+        };
+        let mut changed = false;
+        if notes.calendar.is_none() {
+            if let Some(ev) = calendar {
+                notes.calendar = Some(ev);
+                changed = true;
+            }
+        }
+        if translations.iter().any(|t| t.is_some()) {
+            notes.dialogue_translations = translations;
+            changed = true;
+        }
+        if changed {
+            self.save_notes(id, &notes).await?;
+        }
+        Ok(changed)
+    }
+
     /// In-progress sessions still open in the index (`ringing` / `active`).
     pub async fn live_calls(&self) -> Vec<CallRecord> {
         let idx = self.index.lock().await;
@@ -3088,6 +3119,50 @@ mod tests {
             None
         ));
         assert!(store.save_notes("no-such-call", &notes).await.is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn late_notes_add_the_calendar_without_losing_translations_or_the_summary() {
+        let dir = std::env::temp_dir().join(format!("bageo-calls-late-{}", Uuid::new_v4()));
+        let store = CallStore::new(dir.clone(), true, false);
+        let call = store.start("pixel-1", "+12025550143", 16000, "active").await.unwrap();
+        let id = call.id.clone();
+        store.finalize(call, "ended").await;
+        let ev = crate::calendar::Event {
+            title: "Dentist".into(),
+            start: "2026-11-26T10:00".into(),
+            end: "2026-11-26T11:00".into(),
+            all_day: false,
+        };
+        // No notes yet: nothing to add to.
+        assert!(!store.add_late_notes(&id, Some(ev.clone()), Vec::new()).await.unwrap());
+
+        // The notes are saved at once, without the suggestion and the translations.
+        let notes = CallNotes {
+            summary: "Caller: Ann".into(),
+            dialogue: "Caller: Hola\nAI: Hello".into(),
+            source: "model".into(),
+            ..Default::default()
+        };
+        store.save_notes(&id, &notes).await.unwrap();
+        assert!(store.load_notes(&id).await.unwrap().calendar.is_none());
+
+        // The translation lands first, the calendar suggestion later: both stay.
+        let tr = vec![Some("你好".to_string()), None];
+        assert!(store.add_late_notes(&id, None, tr.clone()).await.unwrap());
+        assert!(store.add_late_notes(&id, Some(ev.clone()), Vec::new()).await.unwrap());
+        let back = store.load_notes(&id).await.unwrap();
+        assert_eq!(back.calendar, Some(ev.clone()));
+        assert_eq!(back.dialogue_translations, tr);
+        assert_eq!(back.summary, "Caller: Ann");
+        assert_eq!(back.dialogue, notes.dialogue);
+        assert_eq!(store.get(&id).await.unwrap().summary.as_deref(), Some("Caller: Ann"));
+
+        // An event already in the notes (an appointment's) is not replaced; nothing new: no write.
+        let other = crate::calendar::Event { title: "Other".into(), ..ev.clone() };
+        assert!(!store.add_late_notes(&id, Some(other), Vec::new()).await.unwrap());
+        assert_eq!(store.load_notes(&id).await.unwrap().calendar, Some(ev));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

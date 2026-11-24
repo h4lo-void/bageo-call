@@ -23,6 +23,9 @@ pub enum EndBy {
     Local,
     /// Gemini's server VAD, ahead of the local one.
     Server,
+    /// Gemini's server VAD, while the local VAD still heard the caller less than
+    /// the server's window ago (noise it took for speech): the number is a lower bound.
+    ServerEstimate,
 }
 
 impl EndBy {
@@ -30,6 +33,7 @@ impl EndBy {
         match self {
             EndBy::Local => "local",
             EndBy::Server => "server",
+            EndBy::ServerEstimate => "server_est",
         }
     }
 }
@@ -58,7 +62,7 @@ pub fn timing_after_local_end(silence_ms: u32, decided_to_audio_ms: u64) -> Repl
 /// VAD ended the turn: the caller stopped `silence_ms` ago (the local count) and
 /// the server waited `window_ms` of that before deciding; the rest is the model.
 /// `None` when the local silence is shorter than the server's window: the two
-/// disagree about when the caller stopped, and the number would mean nothing.
+/// disagree about when the caller stopped (see [`estimate_after_server_end`]).
 pub fn timing_after_server_end(silence_ms: u32, window_ms: u32) -> Option<ReplyTiming> {
     if silence_ms < window_ms {
         return None;
@@ -66,6 +70,15 @@ pub fn timing_after_server_end(silence_ms: u32, window_ms: u32) -> Option<ReplyT
     let reply_ms = u64::from(silence_ms);
     let wait_ms = u64::from(window_ms);
     Some(ReplyTiming { reply_ms, wait_ms, model_ms: reply_ms - wait_ms })
+}
+
+/// The server VAD ended the turn but the local VAD heard the caller less than the
+/// window ago, so the local count cannot say when the caller stopped. The server
+/// needed a full window of silence to decide: the caller waited at least that long
+/// (a lower bound; the model's own time is not known).
+pub fn estimate_after_server_end(window_ms: u32) -> ReplyTiming {
+    let wait_ms = u64::from(window_ms);
+    ReplyTiming { reply_ms: wait_ms, wait_ms, model_ms: 0 }
 }
 
 /// Median of the samples (the mean of the two middle ones for an even count); 0 when empty.
@@ -121,6 +134,9 @@ pub struct ReplyClock {
     armed: Option<Armed>,
     cut_in: bool,
     samples: Vec<u64>,
+    /// Model turns that began with no caller turn to answer or after a cut-in
+    /// (openings, Bageo's own prompts), so were not measured.
+    unmeasured: usize,
 }
 
 impl ReplyClock {
@@ -154,14 +170,27 @@ impl ReplyClock {
     }
 
     /// First audio of a model turn while the local turn is still open: the server
-    /// VAD ended it. `silence_ms` is the local silence so far.
+    /// VAD ended it. `silence_ms` is the local silence so far; when it is shorter
+    /// than the server's window the reply is still counted, as an estimate.
     pub fn audio_after_server_end(&mut self, silence_ms: u32, window_ms: u32) -> Option<Measured> {
         self.armed = None;
         if std::mem::take(&mut self.cut_in) {
             return None;
         }
-        let timing = timing_after_server_end(silence_ms, window_ms)?;
-        Some(self.keep(timing, EndBy::Server))
+        Some(match timing_after_server_end(silence_ms, window_ms) {
+            Some(timing) => self.keep(timing, EndBy::Server),
+            None => self.keep(estimate_after_server_end(window_ms), EndBy::ServerEstimate),
+        })
+    }
+
+    /// A model turn began and no reply was measured for it.
+    pub fn note_unmeasured(&mut self) {
+        self.unmeasured += 1;
+    }
+
+    /// How many model turns were not measured (see [`Self::note_unmeasured`]).
+    pub fn unmeasured(&self) -> usize {
+        self.unmeasured
     }
 
     fn keep(&mut self, timing: ReplyTiming, end_by: EndBy) -> Measured {
@@ -200,8 +229,12 @@ mod tests {
             timing_after_server_end(700, 700),
             Some(ReplyTiming { reply_ms: 700, wait_ms: 700, model_ms: 0 })
         );
-        // The caller was heard again less than the window ago: no usable number.
+        // The caller was heard again less than the window ago: no exact number.
         assert_eq!(timing_after_server_end(300, 700), None);
+        assert_eq!(
+            estimate_after_server_end(700),
+            ReplyTiming { reply_ms: 700, wait_ms: 700, model_ms: 0 }
+        );
     }
 
     #[test]
@@ -268,12 +301,24 @@ mod tests {
         let mut c = ReplyClock::default();
         c.caller_turn_ended(at(0, base), 700);
         // The turn is still open locally when audio comes: the pending local end is stale.
-        assert_eq!(c.audio_after_server_end(300, 700), None);
+        // The local VAD heard noise inside the server's window: still counted, as an estimate.
+        let m = c.audio_after_server_end(300, 700).unwrap();
+        assert_eq!((m.turn, m.end_by), (1, EndBy::ServerEstimate));
+        assert_eq!(m.timing, ReplyTiming { reply_ms: 700, wait_ms: 700, model_ms: 0 });
         assert_eq!(c.audio_after_local_end(at(900, base)), None);
         let m = c.audio_after_server_end(1000, 700).unwrap();
-        assert_eq!((m.turn, m.end_by), (1, EndBy::Server));
+        assert_eq!((m.turn, m.end_by), (2, EndBy::Server));
         assert_eq!(m.timing.model_ms, 300);
+        assert_eq!(c.summary().count, 2);
         c.cut_in();
         assert_eq!(c.audio_after_server_end(1000, 700), None);
+    }
+
+    #[test]
+    fn turns_not_measured_are_counted_apart() {
+        let mut c = ReplyClock::default();
+        c.note_unmeasured();
+        c.note_unmeasured();
+        assert_eq!((c.unmeasured(), c.summary().count), (2, 0));
     }
 }

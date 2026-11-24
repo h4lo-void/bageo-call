@@ -10102,6 +10102,27 @@ const WHISPER_MAX_CALL_MS: u64 = 5 * 60 * 1000;
 /// the saved notes when it arrives.
 const TRANSLATE_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
 
+/// The summary notification waits this long, at most, for the calendar suggestion
+/// (a quick answer rides in it; the call's notes are saved before either).
+const CALENDAR_NOTIFY_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// A calendar suggestion asked for in the background after the call's notes
+/// were saved: waits up to `wait` for it and keeps what it found in `found`
+/// (`task` is empty once it has finished; on a timeout it is still running).
+async fn calendar_ready(
+    task: &mut Option<tokio::task::JoinHandle<Option<calendar::Event>>>,
+    found: &mut Option<calendar::Event>,
+    wait: std::time::Duration,
+) {
+    let Some(handle) = task.as_mut() else {
+        return;
+    };
+    if let Ok(done) = tokio::time::timeout(wait, handle).await {
+        *task = None;
+        *found = done.ok().flatten();
+    }
+}
+
 /// Press-1 hangup: Gemini live STT (+ optional Whisper AI segment) → **summary** → notification.
 /// The notification body is the summary only (not raw fragment dump). Hangup already stopped Live.
 fn spawn_ai_talk_tg_summary(
@@ -10409,8 +10430,13 @@ fn spawn_ai_talk_tg_summary(
         // A date the call fixed (delivery, appointment, callback time) becomes a
         // calendar suggestion; sales calls and failed calls are not asked about.
         // An appointment the AI took is that date already (no second suggestion).
+        // It is asked for in the background (the model may be overloaded: two
+        // fallback models once took 2.5 minutes), so the notes below are saved at
+        // once; the suggestion is added to them later, or dropped after
+        // `calendar::SUGGEST_TOTAL`.
         let mut calendar_event: Option<calendar::Event> = None;
-        if rt.calendar_suggest
+        let calendar_deadline = tokio::time::Instant::now() + calendar::SUGGEST_TOTAL + std::time::Duration::from_secs(2);
+        let mut calendar_task = if rt.calendar_suggest
             && appointment.is_none()
             && !ai_callback
             && note_source == "model"
@@ -10419,11 +10445,20 @@ fn spawn_ai_talk_tg_summary(
             && !late_sales
             && !ai_failed
         {
-            if let Some(ev) = calendar::suggest(&http, &eff, &transcript).await {
-                info!("calendar suggestion serial={serial} start={} all_day={}", ev.start, ev.all_day);
-                calendar_event = Some(ev);
-            }
-        }
+            let http = http.clone();
+            let eff = eff.clone();
+            let transcript = transcript.clone();
+            let serial = serial.clone();
+            Some(tokio::spawn(async move {
+                let ev = calendar::suggest(&http, &eff, &transcript).await;
+                if let Some(ev) = &ev {
+                    info!("calendar suggestion serial={serial} start={} all_day={}", ev.start, ev.all_day);
+                }
+                ev
+            }))
+        } else {
+            None
+        };
 
         // The web console keeps the details; the notification stays short.
         let notes = calls::CallNotes {
@@ -10436,9 +10471,7 @@ fn spawn_ai_talk_tg_summary(
             end_hint: end_hint.clone(),
             source: note_source.to_string(),
             updated_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-            calendar: calendar_event
-                .clone()
-                .or_else(|| appointment.as_ref().map(|a| a.calendar_event())),
+            calendar: appointment.as_ref().map(|a| a.calendar_event()),
             appointment: appointment.clone(),
         };
         match calls.save_notes(&call_id, &notes).await {
@@ -10499,6 +10532,7 @@ fn spawn_ai_talk_tg_summary(
         // The call's page in the web console, where a pending appointment is decided.
         let detail_url = notify::call_detail_url(&eff, &call_id);
         if notify_on && !errand_call {
+            calendar_ready(&mut calendar_task, &mut calendar_event, CALENDAR_NOTIFY_GRACE).await;
             if let Some(ev) = &calendar_event {
                 let label = &locale::notify_words().n_calendar;
                 body.push_str(&format!("\n{label}{}{} ({})", locale::notify_kv_sep(), ev.title, ev.when()));
@@ -10567,28 +10601,38 @@ fn spawn_ai_talk_tg_summary(
             }
             appointments::callback_call_over(&ctx, task_id, callee_answered).await;
         }
-        // Last, so a slow translation holds up nothing and its write comes after
-        // every other write to these notes (the appointments' included).
-        let dialogue_translations = match tokio::time::timeout(TRANSLATE_WAIT, &mut translation).await {
-            Ok(Ok(v)) => v,
-            Ok(Err(e)) => {
-                warn!("dialogue translation task failed serial={serial}: {e}");
-                Vec::new()
-            }
-            Err(_) => {
-                translation.abort();
-                warn!("dialogue translation timed out serial={serial}");
-                Vec::new()
-            }
-        };
-        if dialogue_translations.iter().any(|t| t.is_some()) {
-            if let Some(mut saved) = calls.load_notes(&call_id).await {
-                saved.dialogue_translations = dialogue_translations;
-                match calls.save_notes(&call_id, &saved).await {
-                    Ok(()) => info!("call notes translations added id={call_id}"),
-                    Err(e) => warn!("call notes translations save failed id={call_id}: {e:#}"),
+        // Last, so a slow translation or calendar suggestion holds up nothing and
+        // their one write comes after every other write to these notes (the
+        // appointments' included). It reads the notes back and adds only these two.
+        let calendar_left = calendar_deadline.saturating_duration_since(tokio::time::Instant::now());
+        let (_, dialogue_translations) = tokio::join!(
+            calendar_ready(&mut calendar_task, &mut calendar_event, calendar_left),
+            async {
+                match tokio::time::timeout(TRANSLATE_WAIT, &mut translation).await {
+                    Ok(Ok(v)) => v,
+                    Ok(Err(e)) => {
+                        warn!("dialogue translation task failed serial={serial}: {e}");
+                        Vec::new()
+                    }
+                    Err(_) => {
+                        translation.abort();
+                        warn!("dialogue translation timed out serial={serial}");
+                        Vec::new()
+                    }
                 }
             }
+        );
+        if let Some(task) = calendar_task.take() {
+            task.abort();
+            warn!("calendar suggestion dropped serial={serial}: no answer in time");
+        }
+        match calls.add_late_notes(&call_id, calendar_event.clone(), dialogue_translations).await {
+            Ok(true) => info!(
+                "call notes calendar/translations added id={call_id} calendar={}",
+                calendar_event.is_some()
+            ),
+            Ok(false) => {}
+            Err(e) => warn!("call notes late save failed id={call_id}: {e:#}"),
         }
     });
 }

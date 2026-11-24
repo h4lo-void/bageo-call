@@ -678,17 +678,61 @@ pub async fn suggest(
     suggest_at(http, &endpoint, call).await
 }
 
+/// The whole suggestion, every fallback model included, is given up after this.
+/// It runs after the call's notes are saved, so being slow costs only the card.
+pub const SUGGEST_TOTAL: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// One model's request: a stuck or overloaded one goes on to the next quickly.
+const SUGGEST_MODEL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
+
 async fn suggest_at(
     http: &reqwest::Client,
     endpoint: &crate::summary::Endpoint,
     call: &str,
+) -> Option<Event> {
+    suggest_at_within(http, endpoint, call, SUGGEST_TOTAL, SUGGEST_MODEL_TIMEOUT).await
+}
+
+async fn suggest_at_within(
+    http: &reqwest::Client,
+    endpoint: &crate::summary::Endpoint,
+    call: &str,
+    total: std::time::Duration,
+    per_model: std::time::Duration,
+) -> Option<Event> {
+    match tokio::time::timeout(total, suggest_models(http, endpoint, call, per_model)).await {
+        Ok(found) => found,
+        Err(_) => {
+            tracing::warn!("calendar suggestion gave up after {}s", total.as_secs());
+            None
+        }
+    }
+}
+
+async fn suggest_models(
+    http: &reqwest::Client,
+    endpoint: &crate::summary::Endpoint,
+    call: &str,
+    per_model: std::time::Duration,
 ) -> Option<Event> {
     let active = locale::active();
     let now = chrono::Local::now().naive_local();
     let system = extraction_prompt(active.lang, &active.owner, now);
     let max_tokens = if endpoint.url == crate::summary::GEMINI_OPENAI_URL { 600 } else { 200 };
     for model in &endpoint.models {
-        match crate::summary::chat_at(http, endpoint, model, &system, call, max_tokens).await {
+        let asked = tokio::time::timeout(
+            per_model,
+            crate::summary::chat_at(http, endpoint, model, &system, call, max_tokens),
+        )
+        .await;
+        let asked = match asked {
+            Ok(r) => r,
+            Err(_) => {
+                tracing::warn!("calendar suggestion timed out model={model}");
+                continue;
+            }
+        };
+        match asked {
             Ok(reply) if !reply.trim().is_empty() => match parse_outcome(&reply, now) {
                 ParseOutcome::Event(ev) => return Some(ev),
                 ParseOutcome::NoEvent => return None,
@@ -1086,6 +1130,68 @@ mod tests {
         let ev = suggest_at(&http, &ep_bad, "call").await.unwrap();
         assert_eq!(ev.title, "Dentist");
         assert_eq!(calls.load(Ordering::SeqCst), 2);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn a_slow_model_is_skipped_and_a_hopeless_suggestion_is_given_up() {
+        use axum::{extract::State, routing::post, Json, Router};
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        use std::time::{Duration as Wait, Instant as Clock};
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let app = Router::new()
+            .route(
+                "/chat/completions",
+                post(|State(n): State<Arc<AtomicUsize>>, Json(body): Json<Value>| async move {
+                    n.fetch_add(1, Ordering::SeqCst);
+                    let model = body["model"].as_str().unwrap_or("");
+                    if model.starts_with("slow") {
+                        tokio::time::sleep(Wait::from_secs(30)).await;
+                    }
+                    let tomorrow = (chrono::Local::now().date_naive() + chrono::Duration::days(1)).format("%Y-%m-%d");
+                    let content = format!(r#"{{"event": {{"title": "Dentist", "start": "{tomorrow}T10:00", "end": "", "all_day": false}}}}"#);
+                    Json(serde_json::json!({ "choices": [{ "message": { "content": content } }] }))
+                }),
+            )
+            .with_state(calls.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let http = reqwest::Client::new();
+        let url = format!("http://{addr}/chat/completions");
+        let ep = |models: &[&str]| crate::summary::Endpoint {
+            url: url.clone(),
+            key: String::new(),
+            models: models.iter().map(|m| m.to_string()).collect(),
+        };
+
+        // The first model hangs: it is dropped after its own limit, the second answers.
+        let t0 = Clock::now();
+        let ev = suggest_at_within(&http, &ep(&["slow-a", "ok"]), "call", Wait::from_secs(10), Wait::from_millis(300))
+            .await
+            .unwrap();
+        assert_eq!(ev.title, "Dentist");
+        assert!(t0.elapsed() < Wait::from_secs(5));
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+        // Every model hangs: the total limit ends it, with no suggestion and no waiting for the 30 s.
+        let t0 = Clock::now();
+        let none = suggest_at_within(
+            &http,
+            &ep(&["slow-a", "slow-b", "slow-c"]),
+            "call",
+            Wait::from_millis(500),
+            Wait::from_millis(300),
+        )
+        .await;
+        assert_eq!(none, None);
+        assert!(t0.elapsed() < Wait::from_secs(5));
         server.abort();
     }
 }
