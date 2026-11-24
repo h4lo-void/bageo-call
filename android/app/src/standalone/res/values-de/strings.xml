@@ -17,8 +17,7 @@
     <string name="sa_copy_url">Adresse kopieren</string>
     <string name="sa_copied">Kopiert</string>
     <string name="sa_battery_tip">Bei Dauerstrom empfiehlt sich das 80%-Ladelimit in den Systemeinstellungen zum Schutz des Akkus.</string>
-    <string name="sa_perms_sms">SMS: Bei neuen Nachrichten benachrichtigen</string>
-    <string name="sa_perms_desc">Erforderlich zum Annehmen von Anrufen, Lesen der Nummer und Weiterleiten neuer SMS.</string>
+    <string name="sa_perms_desc">Erforderlich zum Annehmen von Anrufen, Lesen der Nummer und für Benachrichtigungen.</string>
     <string name="sa_save_ok">Datei gespeichert</string>
     <string name="sa_save_fail">Speichern fehlgeschlagen</string>
     <string name="sa_btn_ok">OK</string>

@@ -4,7 +4,9 @@
 package com.pixelcallai.streamer
 
 import android.content.Context
+import android.content.Intent
 import android.media.AudioManager
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -330,6 +332,83 @@ object PhoneModeManager {
         ctx.getSystemService(TelecomManager::class.java)?.defaultDialerPackage.orEmpty()
     } catch (_: Exception) {
         ""
+    }
+
+    /**
+     * Fast non-blocking reconciliation of [Prefs.phoneMode] against `files/mode/state`
+     * written by `mode_daemon.sh`. Ensures that if Android stopped Bageo's process
+     * mid-switch when `ROLE_DIALER` moved back to Google Phone, the next UI/tile/receiver
+     * read immediately sees the completed root mode (`normal` or `ai`).
+     */
+    fun reconcileLocalMirror(context: Context): String {
+        val ctx = context.applicationContext
+        val state = readRootState(ctx)
+        if (state != null && state.current && !state.running && !state.pending) {
+            val current = Prefs.phoneMode(ctx)
+            if (state.mode != current) {
+                Log.i(TAG, "reconcileLocalMirror: updating app mode $current -> ${state.mode}")
+                adoptMode(ctx, state.mode)
+            }
+        }
+        return Prefs.phoneMode(ctx)
+    }
+
+    /**
+     * Launch the phone's real system Phone / Dialer app (e.g. Google Phone) in normal mode,
+     * optionally prefilling [number]. Never launches Bageo itself.
+     */
+    fun openSystemPhoneApp(context: Context, number: String = ""): Boolean {
+        val ctx = context.applicationContext
+        val pm = ctx.packageManager
+        val candidates = linkedSetOf<String>()
+        val def = defaultDialer(ctx)
+        if (def.isNotBlank() && def != ctx.packageName) {
+            candidates.add(def)
+        }
+        candidates.add("com.google.android.dialer")
+        try {
+            val query = pm.queryIntentActivities(Intent(Intent.ACTION_DIAL, Uri.parse("tel:")), 0)
+            for (ri in query) {
+                val pkg = ri.activityInfo?.packageName.orEmpty()
+                if (pkg.isNotBlank() && pkg != ctx.packageName) candidates.add(pkg)
+            }
+        } catch (_: Exception) {
+        }
+
+        val cleanNum = number.trim()
+        for (pkg in candidates) {
+            if (cleanNum.isNotEmpty()) {
+                val dialIntent = Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", cleanNum, null))
+                    .setPackage(pkg)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                try {
+                    ctx.startActivity(dialIntent)
+                    return true
+                } catch (_: Exception) {
+                }
+            }
+            val launchIntent = try {
+                pm.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            } catch (_: Exception) {
+                null
+            }
+            if (launchIntent != null) {
+                try {
+                    ctx.startActivity(launchIntent)
+                    return true
+                } catch (_: Exception) {
+                }
+            }
+            val bareDial = Intent(Intent.ACTION_DIAL)
+                .setPackage(pkg)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                ctx.startActivity(bareDial)
+                return true
+            } catch (_: Exception) {
+            }
+        }
+        return false
     }
 
     /** The module's mode file (no file = ai) as the helper last reported it; null without a state. */

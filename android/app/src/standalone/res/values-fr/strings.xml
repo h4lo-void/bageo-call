@@ -17,8 +17,7 @@
     <string name="sa_copy_url">Copier l\'adresse</string>
     <string name="sa_copied">Copié</string>
     <string name="sa_battery_tip">Si le téléphone reste branché en continu, activez la limite de charge à 80% dans les Paramètres.</string>
-    <string name="sa_perms_sms">SMS : vous avertir à l\'arrivée d\'un message</string>
-    <string name="sa_perms_desc">Nécessaire pour répondre aux appels, lire le numéro et transférer les nouveaux SMS.</string>
+    <string name="sa_perms_desc">Nécessaire pour répondre aux appels, lire le numéro et afficher les notifications.</string>
     <string name="sa_save_ok">Fichier enregistré</string>
     <string name="sa_save_fail">Échec de l\'enregistrement</string>
     <string name="sa_btn_ok">OK</string>

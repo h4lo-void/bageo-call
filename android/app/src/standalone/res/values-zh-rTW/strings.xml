@@ -17,8 +17,7 @@
     <string name="sa_copy_url">複製網址</string>
     <string name="sa_copied">已複製</string>
     <string name="sa_battery_tip">長期插電建議在系統設定開啟「充電上限 80%」，保護電池健康。</string>
-    <string name="sa_perms_sms">簡訊：收到新簡訊時通知你</string>
-    <string name="sa_perms_desc">用來接聽電話、讀取來電號碼與轉送新簡訊。</string>
+    <string name="sa_perms_desc">用來接聽電話、讀取來電號碼與顯示通知。</string>
     <string name="sa_save_ok">已儲存檔案</string>
     <string name="sa_save_fail">無法儲存檔案</string>
     <string name="sa_btn_ok">確定</string>

@@ -4172,6 +4172,369 @@
     "who": "the owner",
     "placeholders": []
   },
+  "m_ai_off_desc": {
+    "where": "Mobile app hero card subtitle when AI answering is off. English: Original phone mode restored; calls ring normally.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_ai_off_tag": {
+    "where": "Mobile app status badge when phone is in normal mode. English: Normal phone",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_ai_on_desc": {
+    "where": "Mobile app hero card subtitle when AI answering is on. English: Incoming calls are answered and screened by AI.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_ai_on_tag": {
+    "where": "Mobile app status badge when AI answering is active. English: Active",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_ai_title": {
+    "where": "Mobile app home hero card title. English: AI answering",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_autosaved": {
+    "where": "Subtle header badge shown after auto-saving a setting. English: Saved",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_btn_allow": {
+    "where": "Short action button to grant a permission. English: Allow",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_btn_set": {
+    "where": "Short action button to configure an item. English: Set",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_callback": {
+    "where": "Button in call detail to call the number back. English: Call back",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_chk_battery": {
+    "where": "Setup item title for battery optimization exemption. English: Unrestricted battery",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_chk_battery_d": {
+    "where": "Setup item description for battery optimization exemption. English: Prevents Android from putting Bageo to sleep while idle.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_chk_dialer": {
+    "where": "Setup item title for default phone app role. English: Default phone app",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_chk_dialer_d": {
+    "where": "Setup item description for default phone app role. English: Set to Bageo while AI answers; restored automatically when off.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_chk_dnd": {
+    "where": "Setup item title for Do Not Disturb access. English: Do Not Disturb access",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_chk_dnd_d": {
+    "where": "Setup item description for Do Not Disturb access. English: Lets Bageo restore your ringer cleanly when switching modes.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_chk_module": {
+    "where": "Setup item title for Magisk/KernelSU system module. English: System module",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_chk_module_d": {
+    "where": "Setup item description when system module is inactive. English: Enable the Bageo module in Magisk or KernelSU and reboot.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_chk_perms": {
+    "where": "Setup item title for phone and microphone permissions. English: Phone & microphone permissions",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_chk_perms_d": {
+    "where": "Setup item description for phone and microphone permissions. English: Needed to answer calls, read caller ID, and show notifications.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_chk_screening": {
+    "where": "Setup item title for call screening role. English: Call screening role",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_chk_screening_d": {
+    "where": "Setup item description for call screening role. English: Keeps incoming calls silent while AI answers.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_daily_sound": {
+    "where": "Daily sound mode switch title. English: Daily sound mode",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_daily_sound_h": {
+    "where": "Daily sound mode switch help text. English: Keep message, media, and alarm sounds audible; mute calls only.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_dial": {
+    "where": "Button to open the dialpad to place a call. English: Make a call",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_dnd_any": {
+    "where": "Switch to trigger DND auto-AI on any DND mode. English: Trigger on any Do Not Disturb mode",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_dnd_auto": {
+    "where": "Auto-switch AI with Do Not Disturb switch title. English: Auto-switch AI with Do Not Disturb",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_dnd_auto_h": {
+    "where": "Auto-switch AI with Do Not Disturb switch help text. English: Turn AI answering on with Do Not Disturb and off when DND ends.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_dnd_settings": {
+    "where": "Button to open Android system Do Not Disturb settings. English: System Do Not Disturb settings",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_empty_calls": {
+    "where": "Empty call list description on the single-phone mobile app. English: When calls come in, summaries, transcripts, and recordings appear here.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_er_need_ai": {
+    "where": "Notice in AI Errands when AI answering mode is currently off. English: Turn on AI answering first so Bageo can place this call.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_er_sim": {
+    "where": "SIM card picker label in AI Errands when dual-SIM is present. English: SIM card",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_er_turn_on": {
+    "where": "Button in AI Errands to enable AI answering mode. English: Turn on AI answering",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_lan_h": {
+    "where": "Help text for same Wi-Fi console access. English: Off by default. Requires a password of at least 8 characters.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_lan_title": {
+    "where": "Switch to allow opening the console from another device on the same Wi-Fi. English: Allow console access on same Wi-Fi",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_open_phone": {
+    "where": "Button to open the system Phone app when AI answering is off. English: Open Phone app",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_perms_card": {
+    "where": "Card title for Android permissions & roles check. English: Permissions & system health",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_persist_notif": {
+    "where": "Ongoing notification switch title. English: Show ongoing notification while AI is active",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_ready_ok": {
+    "where": "Status badge when a permission or role check is satisfied. English: Ready",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_setup_title": {
+    "where": "Setup checklist card title on the mobile app home screen. English: Finish setup to get started",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sg_about": {
+    "where": "Settings menu item 3 title. English: About you & status note",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sg_about_d": {
+    "where": "Settings menu item 3 subtitle. English: Status note, frequent callers, phrases, and info AI can share",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sg_adv": {
+    "where": "Settings menu item 8 title. English: Permissions & advanced",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sg_adv_d": {
+    "where": "Settings menu item 8 subtitle. English: Permissions check, SIM cards, Wi-Fi console, and version",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sg_basics": {
+    "where": "Settings menu item 1 title. English: Basics & voice",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sg_basics_d": {
+    "where": "Settings menu item 1 subtitle. English: Your name, language, identity, AI voice, and API key",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sg_data": {
+    "where": "Settings menu item 7 title. English: Appearance, backup & packs",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sg_data_d": {
+    "where": "Settings menu item 7 subtitle. English: Theme, app language, backups, updates, and voice downloads",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sg_notify": {
+    "where": "Settings menu item 6 title. English: External alerts & calendar",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sg_notify_d": {
+    "where": "Settings menu item 6 subtitle. English: Notification channels, appointment confirmation, and calendar",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sg_phone": {
+    "where": "Settings menu item 5 title. English: Priority calls & phone alerts",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sg_phone_d": {
+    "where": "Settings menu item 5 subtitle. English: Whitelist handling, daily sound, DND sync, and local notifications",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sg_scam": {
+    "where": "Settings menu item 4 title. English: Scam protection & blocked calls",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sg_scam_d": {
+    "where": "Settings menu item 4 subtitle. English: Scam checks, time-wasting mode, and rejection voice",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sg_style": {
+    "where": "Settings menu item 2 title. English: Speaking style & answering",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sg_style_d": {
+    "where": "Settings menu item 2 subtitle. English: Tone slider, ring delay, background sound, and unknown callers",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sims_title": {
+    "where": "Card title for SIM cards in this phone. English: SIM cards in this phone",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_summary_notif": {
+    "where": "Local call summary notification switch title. English: Local call summary notifications",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_summary_notif_h": {
+    "where": "Local call summary notification switch help text. English: Show a notification on this phone with the summary and call-back button.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sync_btn": {
+    "where": "Button to start phone contacts sync. English: Sync contacts",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sync_desc": {
+    "where": "Phone contacts sync card description. English: Import contacts from this phone so caller names show up automatically.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sync_done": {
+    "where": "Toast after syncing phone contacts. English: Synced: {added} added, {merged} updated",
+    "who": "the owner",
+    "placeholders": [
+      "{added}",
+      "{merged}"
+    ]
+  },
+  "m_sync_running": {
+    "where": "Status while syncing phone contacts. English: Syncing…",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sync_starred": {
+    "where": "Checkbox label when syncing phone contacts. English: Add starred contacts to Whitelist",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sync_title": {
+    "where": "Phone contacts sync card title on Contacts tab. English: Phone contacts",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_takeover": {
+    "where": "Button to take over an active AI call on this phone. English: Take over",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_theme_auto": {
+    "where": "System theme option in mobile settings. English: System",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_theme_label": {
+    "where": "Theme selector label in mobile settings. English: Appearance",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_wl_ai": {
+    "where": "Whitelist action option 4. English: Let AI handle all calls normally",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_wl_forward": {
+    "where": "Whitelist action option 3. English: Forward or merge to another number",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_wl_ring": {
+    "where": "Whitelist action option 2. English: Ring this phone directly for Whitelist",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_wl_title": {
+    "where": "Priority & urgent calls handling title in mobile settings. English: Priority & urgent calls",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_wl_urgent": {
+    "where": "Whitelist action option 1. English: AI screens first, pop up takeover when urgent",
+    "who": "the owner",
+    "placeholders": []
+  },
   "mcp_c_confirm": {
     "where": "a label or sentence in the console. English: Yes, but ask me in a chat first",
     "who": "the owner",
@@ -6306,6 +6669,11 @@
     "who": "the owner",
     "placeholders": []
   },
+  "ts_get_art": {
+    "where": "a button in the talk-style mascot box when a region's scene art is not downloaded yet. English: Download local scene",
+    "who": "the owner",
+    "placeholders": []
+  },
   "ts_scene": {
     "where": "a label or sentence in the console. English: Change the view outside the window",
     "who": "the owner",
@@ -6731,11 +7099,6 @@
   },
   "wl_title": {
     "where": "a label or sentence in the console. English: Forward to your phone",
-    "who": "the owner",
-    "placeholders": []
-  },
-  "ts_get_art": {
-    "where": "a button in the talk-style mascot box when a region's scene art is not downloaded yet. English: Download local scene",
     "who": "the owner",
     "placeholders": []
   }

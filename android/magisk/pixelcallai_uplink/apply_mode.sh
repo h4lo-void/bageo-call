@@ -212,10 +212,20 @@ apply_normal() {
   [ $? -eq 0 ] && fail screening screening_failed
   step screening ok
 
-  # 2. Do Not Disturb off (skipped in Daily Sound / no-DND mode). Both commands
-  #    only reach the phone's own Do Not Disturb: a mode that stays on fails here.
+  # 2. Do Not Disturb off (skipped in Daily Sound / no-DND mode unless Bageo itself
+  #    turned DND on earlier). Both commands only reach the phone's own Do Not Disturb:
+  #    a mode that stays on fails here.
   if [ "$NODND" -eq 1 ]; then
+    if [ -f "$DIR/bageo_dnd" ]; then
+      q cmd notification set_dnd off
+      q settings put global zen_mode 0
+      rm -f "$DIR/bageo_dnd" "$DIR/spare_mute"
+    fi
     step dnd ok
+    if [ "$(zen)" = "0" ] && [ "$(o settings get global mode_ringer | tr -d "$STRIP")" = "0" ]; then
+      q cmd audio set-ringer-mode NORMAL
+      q settings put global mode_ringer 2
+    fi
     set_volume 2 "$3" volume_ring
     set_volume 5 "$4" volume_notification
     set_volume 0 "$5" ""
@@ -224,6 +234,7 @@ apply_normal() {
     set_volume 1 "$8" volume_system
     step volume ok
   else
+    rm -f "$DIR/bageo_dnd" "$DIR/spare_mute"
     q cmd notification set_dnd off
     q settings put global zen_mode 0
     until_ok dnd_off || { note_dnd_blocker; fail dnd dnd_failed; }
@@ -268,7 +279,14 @@ apply_normal() {
     q telecom set-default-dialer "$GD"
     until_ok google_ready || dialer_fail
   else
-    # No Google Phone: let go, and Android falls back to the phone's own phone app.
+    # No Google Phone: restore saved original dialer if present, else let go so Android
+    # falls back to the phone's own phone app.
+    orig=$(tr -d "$STRIP" < "$DIR/orig_dialer" 2>/dev/null)
+    if [ -n "$orig" ] && [ "$orig" != "$PKG" ] && echo "$pkgs" | grep -qx "package:$orig"; then
+      q pm enable "$orig"
+      add_holder android.app.role.DIALER "$orig"
+      q telecom set-default-dialer "$orig"
+    fi
     remove_holder android.app.role.DIALER "$PKG"
     until_ok other_ready || dialer_fail
   fi
@@ -337,6 +355,10 @@ apply_ai() {
   q cmd appops set "$PKG" ACCESS_NOTIFICATION_POLICY allow
 
   # 1. Bageo is the phone app and the call screener (as service.sh does at boot).
+  cur_d=$(dialer)
+  if [ -n "$cur_d" ] && [ "$cur_d" != "$PKG" ] && [ "$cur_d" != "null" ]; then
+    echo "$cur_d" > "$DIR/orig_dialer"
+  fi
   T_DIALER=1
   q cmd role add-role-holder android.app.role.DIALER "$PKG"
   q cmd role add-role-holder android.app.role.CALL_SCREENING "$PKG"
@@ -357,6 +379,7 @@ apply_ai() {
   # 3. Do Not Disturb on, ringer and notification volume settings zero (skipped in
   #    Daily Sound / no-DND mode so notification and media audio remain normal).
   if [ "$NODND" -eq 1 ]; then
+    rm -f "$DIR/bageo_dnd"
     step dnd ok
     step volume ok
   else
@@ -365,6 +388,7 @@ apply_ai() {
     q settings put global zen_mode 2
     q cmd notification set_dnd on
     until_ok dnd_on || fail dnd dnd_failed
+    echo 1 > "$DIR/bageo_dnd"
     step dnd ok
     T_VOL=1
     OLD_VOL_RING=$(o settings get system volume_ring | tr -d "$STRIP")

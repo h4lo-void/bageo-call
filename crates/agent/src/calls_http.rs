@@ -382,6 +382,30 @@ async fn ui(headers: HeaderMap, RawQuery(query): RawQuery) -> Response {
     asset_response(&headers, &asset, "text/html; charset=utf-8", "Cookie, Accept-Language, Accept-Encoding")
 }
 
+async fn mobile_ui(headers: HeaderMap, RawQuery(query): RawQuery) -> Response {
+    let text_of = |name: header::HeaderName| headers.get(name).and_then(|v| v.to_str().ok());
+    let code = crate::console_i18n::pick(query.as_deref(), text_of(header::COOKIE), text_of(header::ACCEPT_LANGUAGE));
+    if let Ok(path) = std::env::var("MOBILE_UI_FILE") {
+        if !path.trim().is_empty() {
+            return match tokio::fs::read(path.trim()).await {
+                Ok(bytes) => Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+                    .header(header::CACHE_CONTROL, "no-store")
+                    .body(Body::from(crate::console_i18n::render(&String::from_utf8_lossy(&bytes), code)))
+                    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response()),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("MOBILE_UI_FILE {}: {e}", path.trim()),
+                )
+                    .into_response(),
+            };
+        }
+    }
+    let asset = crate::console_i18n::mobile_page(code);
+    asset_response(&headers, &asset, "text/html; charset=utf-8", "Cookie, Accept-Language, Accept-Encoding")
+}
+
 async fn list(
     State(state): State<CallsState>,
     headers: HeaderMap,
@@ -5580,6 +5604,8 @@ pub(crate) mod tests {
 pub fn router(state: CallsState) -> Router {
     Router::new()
         .route("/", get(ui))
+        .route("/mobile", get(mobile_ui))
+        .route("/mobile/", get(mobile_ui))
         .route("/i18n/{file}", get(i18n_file))
         .route("/manifest.webmanifest", get(|| async { static_file(MANIFEST, "application/manifest+json") }))
         .route("/icon-192.png", get(|| async { static_file(ICON_192, "image/png") }))

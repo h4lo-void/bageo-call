@@ -360,9 +360,8 @@ object Prefs {
     private const val KEY_STANDALONE_DND_AUTO_AI = "STANDALONE_DND_AUTO_AI"
     private const val KEY_STANDALONE_DND_ANY_MODE = "STANDALONE_DND_ANY_MODE"
     private const val KEY_STANDALONE_DND_RULE_ID = "STANDALONE_DND_RULE_ID"
-    private const val KEY_SMS_LAST_INBOX_ID = "SMS_LAST_INBOX_ID"
-    private const val KEY_SMS_PENDING_QUEUE = "SMS_PENDING_QUEUE"
-    private const val KEY_SMS_DEDUP_CACHE = "SMS_DEDUP_CACHE"
+    private const val KEY_STANDALONE_LAST_DND_ACTIVE = "STANDALONE_LAST_DND_ACTIVE"
+    private const val KEY_STANDALONE_MANUAL_MODE_AT = "STANDALONE_MANUAL_MODE_AT"
 
     const val WHITELIST_ACTION_URGENT_PROMPT = "urgent_prompt"
     const val WHITELIST_ACTION_RING_PHONE = "ring_phone"
@@ -417,17 +416,19 @@ object Prefs {
             else -> WHITELIST_ACTION_URGENT_PROMPT
         }
 
-    /** Standalone edition: automatically switch AI on/off with dedicated DND rule. */
+    /** Standalone edition: automatically switch AI on/off with system DND transitions. */
     fun isStandaloneDndAutoAi(ctx: Context): Boolean =
         sp(ctx).getBoolean(KEY_STANDALONE_DND_AUTO_AI, false)
 
     fun setStandaloneDndAutoAi(ctx: Context, enabled: Boolean) {
-        sp(ctx).edit().putBoolean(KEY_STANDALONE_DND_AUTO_AI, enabled).apply()
+        val editor = sp(ctx).edit().putBoolean(KEY_STANDALONE_DND_AUTO_AI, enabled)
+        if (!enabled) editor.remove(KEY_STANDALONE_LAST_DND_ACTIVE)
+        editor.apply()
     }
 
     /** Standalone edition: trigger AI auto-switch on any system DND mode, not only the dedicated rule. */
     fun isStandaloneDndAnyMode(ctx: Context): Boolean =
-        sp(ctx).getBoolean(KEY_STANDALONE_DND_ANY_MODE, false)
+        sp(ctx).getBoolean(KEY_STANDALONE_DND_ANY_MODE, true)
 
     fun setStandaloneDndAnyMode(ctx: Context, enabled: Boolean) {
         sp(ctx).edit().putBoolean(KEY_STANDALONE_DND_ANY_MODE, enabled).apply()
@@ -441,28 +442,24 @@ object Prefs {
         sp(ctx).edit().putString(KEY_STANDALONE_DND_RULE_ID, ruleId.trim()).apply()
     }
 
-    /** Standalone SMS forwarder: last inbox `_id` seen (`-1` until baseline initialized). */
-    fun smsLastInboxId(ctx: Context): Long =
-        sp(ctx).getLong(KEY_SMS_LAST_INBOX_ID, -1L)
+    /** Last system DND active state seen by [DedicatedDndManager] (`null` = not yet observed). */
+    fun lastStandaloneDndActive(ctx: Context): Boolean? =
+        when (sp(ctx).getInt(KEY_STANDALONE_LAST_DND_ACTIVE, -1)) {
+            1 -> true
+            0 -> false
+            else -> null
+        }
 
-    fun setSmsLastInboxId(ctx: Context, id: Long) {
-        sp(ctx).edit().putLong(KEY_SMS_LAST_INBOX_ID, id).apply()
+    fun setLastStandaloneDndActive(ctx: Context, active: Boolean) {
+        sp(ctx).edit().putInt(KEY_STANDALONE_LAST_DND_ACTIVE, if (active) 1 else 0).apply()
     }
 
-    /** Standalone SMS forwarder: persisted JSON array of unacknowledged outbound events. */
-    fun smsPendingQueue(ctx: Context): String? =
-        sp(ctx).getString(KEY_SMS_PENDING_QUEUE, null)
+    /** Epoch ms when the user last manually toggled AI/normal mode on the phone. */
+    fun lastManualModeSwitchAt(ctx: Context): Long =
+        sp(ctx).getLong(KEY_STANDALONE_MANUAL_MODE_AT, 0L)
 
-    fun setSmsPendingQueue(ctx: Context, json: String) {
-        sp(ctx).edit().putString(KEY_SMS_PENDING_QUEUE, json).apply()
-    }
-
-    /** Standalone SMS forwarder: persisted JSON map of recent sender+hash dedup timestamps. */
-    fun smsDedupCache(ctx: Context): String? =
-        sp(ctx).getString(KEY_SMS_DEDUP_CACHE, null)
-
-    fun setSmsDedupCache(ctx: Context, json: String) {
-        sp(ctx).edit().putString(KEY_SMS_DEDUP_CACHE, json).apply()
+    fun markManualModeSwitch(ctx: Context, nowMs: Long = System.currentTimeMillis()) {
+        sp(ctx).edit().putLong(KEY_STANDALONE_MANUAL_MODE_AT, nowMs).apply()
     }
 
     private const val NO_SUB_ID = -1

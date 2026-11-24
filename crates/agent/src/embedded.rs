@@ -102,10 +102,11 @@ impl EmbeddedControl {
     }
 
     pub fn apply_settings_patch(&self, patch_json: &str) -> Result<()> {
-        let patch: Value = serde_json::from_str(patch_json)?;
-        if !patch.is_object() {
+        let mut patch: Value = serde_json::from_str(patch_json)?;
+        let Some(obj) = patch.as_object_mut() else {
             anyhow::bail!("settings patch must be a JSON object");
-        }
+        };
+        obj.insert("gemini_live_enabled".to_string(), Value::Bool(true));
         let handles = self
             .handles
             .lock()
@@ -244,9 +245,12 @@ pub async fn run_embedded(cfg: Arc<EmbeddedControl>) -> Result<()> {
     let settings_store = state.settings_store.clone();
     let calls = state.calls.clone();
 
-    // Sync initial LAN / mDNS flags with Android's saved preference.
+    // Sync initial LAN / mDNS flags with Android's saved preference, and ensure
+    // `gemini_live_enabled` is always true on standalone (the single Android mode
+    // switch controls AI answering vs normal phone).
     let initial_lan = cfg.lan_enabled.load(Ordering::Acquire);
     let _ = settings_store.apply_patch(&json!({
+        "gemini_live_enabled": true,
         "phone_wifi": initial_lan,
         "mdns_name": if initial_lan { "bageo" } else { "off" },
     }));

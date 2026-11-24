@@ -2323,6 +2323,9 @@ impl SettingsStore {
         if let Some(m) = overrides.appointment_mode.take() {
             overrides.appointment_mode = Some(sanitize_appointment_mode(&m));
         }
+        if crate::config::is_embedded() {
+            overrides.gemini_live_enabled = Some(true);
+        }
         let mut rt = RuntimeSettings::from_base(base);
         let summary_provider = overrides
             .summary_provider
@@ -2518,6 +2521,9 @@ impl SettingsStore {
     fn apply_patch_locked(&self, st: &mut StoreState, patch: &Value) -> Result<Arc<RuntimeSettings>> {
         let mut ov = st.overrides.clone();
         patch_overrides(&mut ov, patch);
+        if crate::config::is_embedded() {
+            ov.gemini_live_enabled = Some(true);
+        }
         let mut rt = RuntimeSettings::from_base(&self.base);
         rt.apply(&ov);
         write_overrides(&self.path, &ov)?;

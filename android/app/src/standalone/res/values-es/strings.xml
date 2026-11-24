@@ -17,8 +17,7 @@
     <string name="sa_copy_url">Copiar dirección</string>
     <string name="sa_copied">Copiado</string>
     <string name="sa_battery_tip">Si queda enchufado siempre, activa el límite de carga del 80% en Ajustes para cuidar la batería.</string>
-    <string name="sa_perms_sms">SMS: avisarte cuando llegue un mensaje nuevo</string>
-    <string name="sa_perms_desc">Necesario para responder llamadas, leer el número y reenviar SMS nuevos.</string>
+    <string name="sa_perms_desc">Necesario para responder llamadas, ver el número y mostrar notificaciones.</string>
     <string name="sa_save_ok">Archivo guardado</string>
     <string name="sa_save_fail">No se pudo guardar el archivo</string>
     <string name="sa_btn_ok">Aceptar</string>

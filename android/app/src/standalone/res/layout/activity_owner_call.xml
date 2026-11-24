@@ -2,33 +2,57 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial -->
 <!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/ocRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?android:attr/colorBackground"
+    android:background="@color/bg_page"
     android:gravity="center_horizontal"
     android:orientation="vertical"
-    android:padding="24dp">
+    android:paddingStart="20dp"
+    android:paddingTop="24dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="24dp">
 
     <TextView
         android:id="@+id/ocBadge"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:background="@drawable/pca_card"
-        android:paddingStart="12dp"
-        android:paddingTop="4dp"
-        android:paddingEnd="12dp"
-        android:paddingBottom="4dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_badge_accent"
+        android:paddingStart="14dp"
+        android:paddingTop="5dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="5dp"
+        android:textColor="@color/bg_accent"
         android:textSize="13sp"
         android:textStyle="bold" />
+
+    <FrameLayout
+        android:id="@+id/ocAvatarWrap"
+        android:layout_width="76dp"
+        android:layout_height="76dp"
+        android:layout_marginTop="18dp"
+        android:background="@drawable/bg_avatar_circle">
+
+        <TextView
+            android:id="@+id/ocAvatarText"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:textColor="@color/bg_accent"
+            android:textSize="28sp"
+            android:textStyle="bold" />
+    </FrameLayout>
 
     <TextView
         android:id="@+id/ocTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="14dp"
+        android:ellipsize="end"
         android:gravity="center"
-        android:textColor="?android:attr/textColorPrimary"
+        android:maxLines="2"
+        android:textColor="@color/bg_text"
         android:textSize="28sp"
         android:textStyle="bold" />
 
@@ -36,17 +60,18 @@
         android:id="@+id/ocSubtitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="4dp"
+        android:fontFamily="sans-serif-medium"
         android:gravity="center"
-        android:textColor="?android:attr/textColorSecondary"
-        android:textSize="16sp" />
+        android:textColor="@color/bg_muted"
+        android:textSize="15sp" />
 
     <LinearLayout
         android:id="@+id/ocReasonCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
-        android:background="@drawable/pca_card"
+        android:layout_marginTop="18dp"
+        android:background="@drawable/bg_card"
         android:orientation="vertical"
         android:padding="16dp"
         android:visibility="gone">
@@ -55,11 +80,13 @@
             android:id="@+id/ocReasonText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textSize="16sp" />
+            android:lineSpacingMultiplier="1.25"
+            android:textColor="@color/bg_text"
+            android:textSize="15sp" />
     </LinearLayout>
 
     <View
+        android:id="@+id/ocTopSpacer"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
@@ -76,22 +103,39 @@
             android:id="@+id/ocBtnWlAnswer"
             android:layout_width="match_parent"
             android:layout_height="56dp"
+            android:background="@drawable/bg_btn_accent"
+            android:stateListAnimator="@null"
             android:text="@string/sa_btn_answer"
-            android:textSize="16sp" />
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
 
         <Button
             android:id="@+id/ocBtnWlHandAi"
             android:layout_width="match_parent"
             android:layout_height="52dp"
             android:layout_marginTop="10dp"
-            android:text="@string/sa_btn_hand_ai" />
+            android:background="@drawable/bg_btn_secondary"
+            android:stateListAnimator="@null"
+            android:text="@string/sa_btn_hand_ai"
+            android:textAllCaps="false"
+            android:textColor="@color/bg_text"
+            android:textSize="15sp"
+            android:textStyle="bold" />
 
         <Button
             android:id="@+id/ocBtnWlReject"
             android:layout_width="match_parent"
-            android:layout_height="48dp"
+            android:layout_height="50dp"
             android:layout_marginTop="10dp"
-            android:text="@string/sa_btn_hangup" />
+            android:background="@drawable/bg_btn_danger"
+            android:stateListAnimator="@null"
+            android:text="@string/sa_btn_hangup"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
     <!-- Mode 2: Urgent AI Prompt Takeover -->
@@ -106,15 +150,26 @@
             android:id="@+id/ocBtnUrgentTake"
             android:layout_width="match_parent"
             android:layout_height="56dp"
+            android:background="@drawable/bg_btn_accent"
+            android:stateListAnimator="@null"
             android:text="@string/sa_btn_takeover_now"
-            android:textSize="16sp" />
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
 
         <Button
             android:id="@+id/ocBtnUrgentDecline"
             android:layout_width="match_parent"
             android:layout_height="52dp"
             android:layout_marginTop="10dp"
-            android:text="@string/sa_btn_let_ai_handle" />
+            android:background="@drawable/bg_btn_secondary"
+            android:stateListAnimator="@null"
+            android:text="@string/sa_btn_let_ai_handle"
+            android:textAllCaps="false"
+            android:textColor="@color/bg_text"
+            android:textSize="15sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
     <!-- Mode 3: Owner In-Call -->
@@ -141,25 +196,43 @@
             <Button
                 android:id="@+id/ocBtnSpeaker"
                 android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_marginEnd="6dp"
+                android:layout_height="50dp"
+                android:layout_marginEnd="8dp"
                 android:layout_weight="1"
-                android:text="@string/sa_btn_speaker_off" />
+                android:background="@drawable/bg_btn_secondary"
+                android:stateListAnimator="@null"
+                android:text="@string/sa_btn_speaker_off"
+                android:textAllCaps="false"
+                android:textColor="@color/bg_text"
+                android:textSize="14sp"
+                android:textStyle="bold" />
 
             <Button
                 android:id="@+id/ocBtnMute"
                 android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_marginEnd="6dp"
+                android:layout_height="50dp"
+                android:layout_marginEnd="8dp"
                 android:layout_weight="1"
-                android:text="@string/sa_btn_mute" />
+                android:background="@drawable/bg_btn_secondary"
+                android:stateListAnimator="@null"
+                android:text="@string/sa_btn_mute"
+                android:textAllCaps="false"
+                android:textColor="@color/bg_text"
+                android:textSize="14sp"
+                android:textStyle="bold" />
 
             <Button
                 android:id="@+id/ocBtnKeypad"
                 android:layout_width="0dp"
-                android:layout_height="48dp"
+                android:layout_height="50dp"
                 android:layout_weight="1"
-                android:text="@string/sa_btn_keypad" />
+                android:background="@drawable/bg_btn_secondary"
+                android:stateListAnimator="@null"
+                android:text="@string/sa_btn_keypad"
+                android:textAllCaps="false"
+                android:textColor="@color/bg_text"
+                android:textSize="14sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <Button
@@ -167,8 +240,13 @@
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:layout_marginTop="14dp"
+            android:background="@drawable/bg_btn_danger"
+            android:stateListAnimator="@null"
             android:text="@string/sa_btn_hangup"
-            android:textSize="16sp" />
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
     <!-- Mode 4: Standalone Dialer -->
@@ -182,17 +260,23 @@
         <EditText
             android:id="@+id/ocDialInput"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
+            android:background="@drawable/bg_card"
+            android:fontFamily="sans-serif-medium"
             android:gravity="center"
             android:hint="@string/sa_dial_hint"
             android:inputType="phone"
-            android:textSize="24sp" />
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:textColor="@color/bg_text"
+            android:textColorHint="@color/bg_muted"
+            android:textSize="26sp" />
 
         <LinearLayout
             android:id="@+id/ocSimRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="10dp"
             android:gravity="center"
             android:orientation="horizontal"
             android:visibility="gone" />
@@ -201,37 +285,55 @@
             android:id="@+id/ocDialGrid"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="12dp"
             android:columnCount="3" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="12dp"
             android:orientation="horizontal">
 
             <Button
                 android:id="@+id/ocBtnDialClose"
                 android:layout_width="0dp"
-                android:layout_height="52dp"
-                android:layout_marginEnd="6dp"
-                android:layout_weight="1"
-                android:text="@string/sa_btn_close" />
-
-            <Button
-                android:id="@+id/ocBtnDialBack"
-                android:layout_width="0dp"
-                android:layout_height="52dp"
-                android:layout_marginEnd="6dp"
-                android:layout_weight="1"
-                android:text="@string/sa_btn_backspace" />
+                android:layout_height="54dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="0.9"
+                android:background="@drawable/bg_btn_secondary"
+                android:stateListAnimator="@null"
+                android:text="@string/sa_btn_close"
+                android:textAllCaps="false"
+                android:textColor="@color/bg_text"
+                android:textSize="15sp"
+                android:textStyle="bold" />
 
             <Button
                 android:id="@+id/ocBtnDialPlace"
                 android:layout_width="0dp"
-                android:layout_height="52dp"
-                android:layout_weight="1.4"
-                android:text="@string/sa_btn_dial" />
+                android:layout_height="54dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1.5"
+                android:background="@drawable/bg_btn_accent"
+                android:stateListAnimator="@null"
+                android:text="@string/sa_btn_dial"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/ocBtnDialBack"
+                android:layout_width="0dp"
+                android:layout_height="54dp"
+                android:layout_weight="0.9"
+                android:background="@drawable/bg_btn_secondary"
+                android:stateListAnimator="@null"
+                android:text="@string/sa_btn_backspace"
+                android:textAllCaps="false"
+                android:textColor="@color/bg_text"
+                android:textSize="15sp"
+                android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>

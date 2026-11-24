@@ -23,6 +23,11 @@ class BootReceiver : BroadcastReceiver() {
         ) {
             return
         }
+        val mode = PhoneModeManager.reconcileLocalMirror(context)
+        if (BuildConfig.STANDALONE && mode == Prefs.PHONE_MODE_NORMAL && !Prefs.isStandaloneLanEnabled(context)) {
+            Log.i(TAG, "boot: standalone normal phone mode (LAN off) — leave service stopped")
+            return
+        }
         val svc = Intent(context, CallAudioService::class.java).setAction(CallAudioService.ACTION_START)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

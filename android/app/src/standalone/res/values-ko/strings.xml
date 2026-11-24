@@ -17,8 +17,7 @@
     <string name="sa_copy_url">주소 복사</string>
     <string name="sa_copied">복사됨</string>
     <string name="sa_battery_tip">상시 충전 시 설정에서 80% 충전 제한을 켜면 배터리 수명을 지킬 수 있습니다.</string>
-    <string name="sa_perms_sms">문자: 새 문자가 오면 알림 보내기</string>
-    <string name="sa_perms_desc">전화 받기, 발신 번호 읽기, 새 문자 전달에 필요합니다.</string>
+    <string name="sa_perms_desc">전화 받기, 발신 번호 확인 및 알림 표시에 필요합니다.</string>
     <string name="sa_save_ok">파일을 저장했습니다</string>
     <string name="sa_save_fail">파일을 저장할 수 없습니다</string>
     <string name="sa_btn_ok">확인</string>

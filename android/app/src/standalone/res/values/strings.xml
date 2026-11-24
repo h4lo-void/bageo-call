@@ -17,8 +17,7 @@
     <string name="sa_copy_url">Copy address</string>
     <string name="sa_copied">Copied</string>
     <string name="sa_battery_tip">When plugged in long-term, turn on the 80% charging limit in Settings to protect the battery.</string>
-    <string name="sa_perms_sms">Messages: notify you when a new text arrives</string>
-    <string name="sa_perms_desc">Needed to answer calls, read caller ID, and forward new texts.</string>
+    <string name="sa_perms_desc">Needed to answer calls, read caller ID, and send notifications.</string>
     <string name="sa_save_ok">File saved</string>
     <string name="sa_save_fail">Could not save file</string>
     <string name="sa_btn_ok">OK</string>

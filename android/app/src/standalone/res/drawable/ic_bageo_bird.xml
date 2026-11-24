@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial -->
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="72dp"
+    android:height="72dp"
+    android:viewportWidth="72"
+    android:viewportHeight="72">
+    <!-- Warm soft circle backdrop -->
+    <path
+        android:fillColor="@color/bg_surface2"
+        android:pathData="M36,4 A32,32 0 1,1 35.99,4 Z" />
+    <!-- Bageo bird crest -->
+    <path
+        android:fillColor="#1F2024"
+        android:pathData="M33,14 C34,9 39,9 39,14 C42,10 45,13 42,17 Z" />
+    <!-- Bageo bird body -->
+    <path
+        android:fillColor="#ECC354"
+        android:pathData="M36,16 C23,16 16,26 16,39 C16,50 24,57 36,57 C48,57 56,50 56,39 C56,26 49,16 36,16 Z" />
+    <!-- Belly highlight -->
+    <path
+        android:fillColor="#F7DF8B"
+        android:pathData="M36,36 C28,36 23,41 23,48 C23,53 29,56 36,56 C43,56 49,53 49,48 C49,41 44,36 36,36 Z" />
+    <!-- Headset band -->
+    <path
+        android:strokeColor="#177571"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:pathData="M17,35 C17,21 25,14 36,14 C47,14 55,21 55,35" />
+    <!-- Headset earcup -->
+    <path
+        android:fillColor="#177571"
+        android:pathData="M15,31 C18,31 20,33 20,36 L20,41 C20,44 18,46 15,46 C12,46 11,44 11,41 L11,36 C11,33 12,31 15,31 Z" />
+    <!-- Mic boom -->
+    <path
+        android:strokeColor="#177571"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:pathData="M16,44 Q21,50 29,49" />
+    <!-- Eyes -->
+    <path
+        android:fillColor="#1A1B1E"
+        android:pathData="M29,31 A2.6,2.6 0 1,1 28.99,31 Z" />
+    <path
+        android:fillColor="#1A1B1E"
+        android:pathData="M43,31 A2.6,2.6 0 1,1 42.99,31 Z" />
+    <!-- Beak -->
+    <path
+        android:fillColor="#E07B27"
+        android:pathData="M33,34 L39,34 L36,39 Z" />
+</vector>

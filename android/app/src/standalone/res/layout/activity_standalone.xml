@@ -1,534 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial -->
 <!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
-<!-- Standalone hybrid screen: compact native header + collapsible phone setup drawer + full-screen WebView console. -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Pure mobile App container for Android Standalone edition: full-screen WebView + Bageo splash screen. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/saRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical">
+    android:background="@color/bg_page">
 
-    <!-- Compact top bar -->
-    <LinearLayout
-        android:id="@+id/saTopBar"
+    <WebView
+        android:id="@+id/saWebView"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@color/pca_card_bg"
+        android:layout_height="match_parent"
+        android:background="@color/bg_page"
+        android:overScrollMode="never" />
+
+    <LinearLayout
+        android:id="@+id/saLoading"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/bg_page"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
         android:orientation="vertical"
-        android:paddingStart="14dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="14dp"
-        android:paddingBottom="8dp">
+        android:padding="32dp">
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <View
-                android:id="@+id/saDot"
-                android:layout_width="10dp"
-                android:layout_height="10dp"
-                android:layout_marginEnd="8dp" />
-
-            <TextView
-                android:id="@+id/saHeadline"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textColor="?android:attr/textColorPrimary"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <Switch
-                android:id="@+id/saSwitchAi"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:minHeight="40dp"
-                android:text="@string/mode_switch_label"
-                android:textColor="?android:attr/textColorPrimary"
-                android:textSize="13sp" />
-
-            <Button
-                android:id="@+id/saBtnDialer"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:minHeight="38dp"
-                android:text="@string/sa_btn_dial"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/saBtnSetup"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:minHeight="38dp"
-                android:text="@string/sa_phone_setup_btn"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/saBtnLiveTakeover"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="@string/sa_btn_live_takeover"
-            android:textSize="13sp"
-            android:visibility="gone" />
+        <ImageView
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:contentDescription="Bageo"
+            android:src="@drawable/ic_bageo_bird" />
 
         <TextView
-            android:id="@+id/saModeBanner"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textColor="@color/pca_status_missing"
-            android:textSize="12sp"
-            android:visibility="gone" />
-    </LinearLayout>
+            android:layout_marginTop="14dp"
+            android:letterSpacing="-0.02"
+            android:text="Bageo"
+            android:textColor="@color/bg_text"
+            android:textSize="24sp"
+            android:textStyle="bold" />
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/pca_card_line" />
-
-    <!-- Main area: WebView console + loading overlay + collapsible phone setup drawer -->
-    <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1">
-
-        <WebView
-            android:id="@+id/saWebView"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
-
-        <LinearLayout
-            android:id="@+id/saLoading"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="?android:attr/colorBackground"
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
             android:gravity="center"
-            android:orientation="vertical"
-            android:padding="24dp">
-
-            <ProgressBar
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:indeterminate="true" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:text="@string/sa_starting_title"
-                android:textColor="?android:attr/textColorPrimary"
-                android:textSize="17sp"
-                android:textStyle="bold" />
-
-            <TextView
-                style="@style/PcaBody"
-                android:layout_width="wrap_content"
-                android:layout_marginTop="4dp"
-                android:gravity="center"
-                android:text="@string/sa_starting_desc" />
-        </LinearLayout>
-
-        <ScrollView
-            android:id="@+id/saDrawer"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="?android:attr/colorBackground"
-            android:fillViewport="true"
-            android:visibility="gone">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingStart="20dp"
-                android:paddingTop="16dp"
-                android:paddingEnd="20dp"
-                android:paddingBottom="32dp">
-
-                <TextView
-                    android:id="@+id/saStatusDetail"
-                    style="@style/PcaBody"
-                    android:layout_marginTop="0dp" />
-
-                <LinearLayout
-                    android:id="@+id/saStepsSection"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:id="@+id/saStepsTitle"
-                        style="@style/PcaSectionTitle" />
-
-                    <include
-                        android:id="@+id/saStepModule"
-                        layout="@layout/item_check" />
-
-                    <include
-                        android:id="@+id/saStepPerms"
-                        layout="@layout/item_check" />
-
-                    <include
-                        android:id="@+id/saStepDialer"
-                        layout="@layout/item_check" />
-
-                    <include
-                        android:id="@+id/saStepScreening"
-                        layout="@layout/item_check" />
-
-                    <include
-                        android:id="@+id/saStepDnd"
-                        layout="@layout/item_check" />
-
-                    <include
-                        android:id="@+id/saStepBattery"
-                        layout="@layout/item_check" />
-                </LinearLayout>
-
-                <View style="@style/PcaDivider" />
-
-                <!-- Mobile-specific behavior controls -->
-                <TextView
-                    style="@style/PcaSectionTitle"
-                    android:text="@string/sa_section_mobile" />
-
-                <Switch
-                    android:id="@+id/saSwitchDailySound"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:minHeight="48dp"
-                    android:text="@string/sa_daily_sound_title"
-                    android:textColor="?android:attr/textColorPrimary"
-                    android:textSize="15sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    style="@style/PcaBody"
-                    android:layout_marginTop="2dp"
-                    android:text="@string/sa_daily_sound_hint" />
-
-                <Switch
-                    android:id="@+id/saSwitchPersistentNotif"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:minHeight="48dp"
-                    android:text="@string/sa_persistent_notif_title"
-                    android:textColor="?android:attr/textColorPrimary"
-                    android:textSize="15sp"
-                    android:textStyle="bold" />
-
-                <Switch
-                    android:id="@+id/saSwitchSummaryNotif"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:minHeight="48dp"
-                    android:text="@string/sa_summary_notif_title"
-                    android:textColor="?android:attr/textColorPrimary"
-                    android:textSize="15sp" />
-
-                <Switch
-                    android:id="@+id/saSwitchDndAuto"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:minHeight="48dp"
-                    android:text="@string/sa_dnd_auto_title"
-                    android:textColor="?android:attr/textColorPrimary"
-                    android:textSize="15sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    style="@style/PcaBody"
-                    android:layout_marginTop="2dp"
-                    android:text="@string/sa_dnd_auto_hint" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <CheckBox
-                        android:id="@+id/saChkDndAny"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/sa_dnd_any_mode"
-                        android:textSize="13sp" />
-
-                    <Button
-                        android:id="@+id/saBtnDndSettings"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/sa_dnd_open_settings"
-                        android:textSize="12sp" />
-                </LinearLayout>
-
-                <TextView
-                    style="@style/PcaSectionTitle"
-                    android:layout_marginTop="14dp"
-                    android:text="@string/sa_wl_title" />
-
-                <RadioGroup
-                    android:id="@+id/saWhitelistGroup"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp">
-
-                    <RadioButton
-                        android:id="@+id/saRbUrgentPrompt"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/sa_wl_urgent_prompt" />
-
-                    <RadioButton
-                        android:id="@+id/saRbRingPhone"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/sa_wl_ring_phone" />
-
-                    <RadioButton
-                        android:id="@+id/saRbForwardNumber"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/sa_wl_forward_number" />
-
-                    <RadioButton
-                        android:id="@+id/saRbAiOnly"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/sa_wl_ai_only" />
-                </RadioGroup>
-
-                <TextView
-                    style="@style/PcaSectionTitle"
-                    android:layout_marginTop="14dp"
-                    android:text="@string/sa_contacts_title" />
-
-                <CheckBox
-                    android:id="@+id/saChkStarredWhitelist"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:checked="true"
-                    android:text="@string/sa_contacts_starred_wl" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <Button
-                        android:id="@+id/saBtnSyncContacts"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/sa_contacts_sync_btn" />
-
-                    <TextView
-                        android:id="@+id/saSyncStatus"
-                        style="@style/PcaBody"
-                        android:layout_marginStart="10dp"
-                        android:layout_marginTop="0dp" />
-                </LinearLayout>
-
-                <View style="@style/PcaDivider" />
-
-                <!-- Opt-in same-Wi-Fi access (disabled by default) -->
-                <Switch
-                    android:id="@+id/saSwitchLan"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:minHeight="48dp"
-                    android:text="@string/sa_lan_title"
-                    android:textColor="?android:attr/textColorPrimary"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    style="@style/PcaBody"
-                    android:layout_marginTop="2dp"
-                    android:text="@string/sa_lan_hint" />
-
-                <LinearLayout
-                    android:id="@+id/saLanBox"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:background="@drawable/pca_card"
-                    android:orientation="vertical"
-                    android:padding="14dp"
-                    android:visibility="gone">
-
-                    <TextView
-                        style="@style/PcaBody"
-                        android:layout_marginTop="0dp"
-                        android:text="@string/sa_lan_url_label" />
-
-                    <TextView
-                        android:id="@+id/saLanUrl"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:fontFamily="monospace"
-                        android:textColor="?android:attr/textColorPrimary"
-                        android:textIsSelectable="true"
-                        android:textSize="15sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/saLanMdns"
-                        style="@style/PcaBody"
-                        android:layout_marginTop="2dp"
-                        android:textIsSelectable="true"
-                        android:visibility="gone" />
-
-                    <Button
-                        android:id="@+id/saBtnCopyUrl"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="@string/sa_copy_url" />
-                </LinearLayout>
-
-                <TextView
-                    style="@style/PcaBody"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/sa_battery_tip" />
-
-                <View style="@style/PcaDivider" />
-
-                <!-- Advanced -->
-                <TextView
-                    android:id="@+id/saAdvHeader"
-                    style="@style/PcaFoldHeader" />
-
-                <LinearLayout
-                    android:id="@+id/saAdvBody"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:visibility="gone">
-
-                    <TextView
-                        android:id="@+id/saVersion"
-                        style="@style/PcaBody" />
-
-                    <TextView
-                        android:id="@+id/saDevice"
-                        style="@style/PcaBody" />
-
-                    <TextView
-                        android:id="@+id/saServiceStatus"
-                        style="@style/PcaBody"
-                        android:layout_marginTop="10dp"
-                        android:textStyle="bold" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:orientation="horizontal">
-
-                        <Button
-                            android:id="@+id/saBtnStart"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/btn_start_service" />
-
-                        <Button
-                            android:id="@+id/saBtnStop"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="8dp"
-                            android:layout_weight="1"
-                            android:text="@string/btn_stop_service" />
-                    </LinearLayout>
-
-                    <include
-                        android:id="@+id/saRowPriv"
-                        layout="@layout/item_check" />
-
-                    <include
-                        android:id="@+id/saRowPermCapture"
-                        layout="@layout/item_check" />
-
-                    <include
-                        android:id="@+id/saRowPermModifyPhone"
-                        layout="@layout/item_check" />
-
-                    <include
-                        android:id="@+id/saRowPermInCall"
-                        layout="@layout/item_check" />
-
-                    <include
-                        android:id="@+id/saRowPermRecordAudio"
-                        layout="@layout/item_check" />
-
-                    <include
-                        android:id="@+id/saRowPermPhoneState"
-                        layout="@layout/item_check" />
-
-                    <include
-                        android:id="@+id/saRowPermCallLog"
-                        layout="@layout/item_check" />
-
-                    <include
-                        android:id="@+id/saRowPermAnswerCalls"
-                        layout="@layout/item_check" />
-
-                    <include
-                        android:id="@+id/saRowPermCallPhone"
-                        layout="@layout/item_check" />
-
-                    <include
-                        android:id="@+id/saRowPermSms"
-                        layout="@layout/item_check" />
-
-                    <include
-                        android:id="@+id/saRowPermNotifications"
-                        layout="@layout/item_check" />
-
-                    <include
-                        android:id="@+id/saRowUplink"
-                        layout="@layout/item_check" />
-
-                    <TextView
-                        style="@style/PcaSectionTitle"
-                        android:text="@string/section_about" />
-
-                    <TextView
-                        style="@style/PcaBody"
-                        android:layout_marginTop="8dp"
-                        android:text="@string/about_dedicated" />
-
-                    <TextView
-                        style="@style/PcaBody"
-                        android:layout_marginTop="8dp"
-                        android:text="@string/about_rollback" />
-
-                    <TextView
-                        style="@style/PcaBody"
-                        android:layout_marginTop="8dp"
-                        android:text="@string/about_legal" />
-                </LinearLayout>
-            </LinearLayout>
-        </ScrollView>
-    </FrameLayout>
-</LinearLayout>
+            android:text="@string/sa_starting_title"
+            android:textColor="@color/bg_muted"
+            android:textSize="14sp" />
+
+        <ProgressBar
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginTop="20dp"
+            android:indeterminate="true"
+            android:indeterminateTint="@color/bg_accent" />
+    </LinearLayout>
+</FrameLayout>

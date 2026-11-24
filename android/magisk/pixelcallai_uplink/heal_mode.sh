@@ -56,6 +56,13 @@ if [ "$d" = "$PKG" ]; then
       q cmd role add-role-holder android.app.role.DIALER "$GD"
     q telecom set-default-dialer "$GD"
   else
+    orig=$(tr -d "$STRIP" < "$DIR/orig_dialer" 2>/dev/null)
+    if [ -n "$orig" ] && [ "$orig" != "$PKG" ] && o pm list packages | grep -qx "package:$orig"; then
+      q pm enable "$orig"
+      q cmd role add-role-holder android.app.role.DIALER "$orig" 1 ||
+        q cmd role add-role-holder android.app.role.DIALER "$orig"
+      q telecom set-default-dialer "$orig"
+    fi
     q cmd role remove-role-holder android.app.role.DIALER "$PKG" 1 ||
       q cmd role remove-role-holder android.app.role.DIALER "$PKG"
   fi

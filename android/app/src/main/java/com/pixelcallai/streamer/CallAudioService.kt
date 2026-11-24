@@ -276,6 +276,7 @@ class CallAudioService : Service() {
             ACTION_SWITCH_TO_NORMAL -> {
                 armWatcher()
                 if (BuildConfig.STANDALONE) {
+                    Prefs.markManualModeSwitch(this)
                     PhoneModeManager.requestSwitch(this, Prefs.PHONE_MODE_NORMAL, callBusy = isCallBusy()) { result ->
                         Log.i(TAG, "notif switch normal ok=${result.ok} err=${result.error}")
                     }
@@ -319,7 +320,7 @@ class CallAudioService : Service() {
 
     private fun shouldHideIdleNotification(): Boolean =
         BuildConfig.STANDALONE &&
-            !Prefs.isStandalonePersistentNotif(this) &&
+            (!Prefs.isAiCallEnabled(this) || !Prefs.isStandalonePersistentNotif(this)) &&
             !anyCallBusy &&
             !callActive &&
             !answerScheduled &&
@@ -328,12 +329,27 @@ class CallAudioService : Service() {
     private fun armWatcher() {
         enterForeground()
         if (!Prefs.isAiCallEnabled(this)) {
-            // Normal phone mode: keep the agent connection (status, remote switch) and
-            // the call-state callback (in_call for the agent); touch nothing else.
+            // Normal phone mode: restore mic/audio immediately.
+            audioGuard?.stopHoldLoop()
+            audioGuard?.restore()
             try {
                 (getSystemService(AUDIO_SERVICE) as android.media.AudioManager).isMicrophoneMute = false
             } catch (e: Exception) {
                 Log.w(TAG, "microphone unmute: ${e.message}")
+            }
+            if (BuildConfig.STANDALONE) {
+                unregisterPhoneCallbacks()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                getSystemService(NotificationManager::class.java)?.cancel(NOTIF_ID)
+                if (Prefs.isStandaloneLanEnabled(this)) {
+                    startControlClient()
+                    Log.i(TAG, "standalone normal mode (LAN on): control connected, calls untouched")
+                } else {
+                    stopControlClient()
+                    stopSelf()
+                    Log.i(TAG, "standalone normal mode: service stopped, original phone active")
+                }
+                return
             }
             registerPhoneCallbacks()
             startControlClient()
@@ -1454,16 +1470,10 @@ class CallAudioService : Service() {
                 flushPendingControl()
                 // Text message results the agent may have missed while disconnected.
                 smsSender?.replay()
-                if (BuildConfig.STANDALONE) {
-                    LocalSmsForwarder.onControlOpened()
-                }
             },
         )
         controlClient = client
         client.connect(deviceSerial())
-        if (BuildConfig.STANDALONE) {
-            LocalSmsForwarder.start(this) { msg -> controlClient?.sendEvent(msg) == true }
-        }
         Log.i(
             TAG,
             "control client started urls=${Prefs.connectionCandidates(this).map { Prefs.redactUrl(it) }}",
@@ -1471,9 +1481,6 @@ class CallAudioService : Service() {
     }
 
     private fun stopControlClient() {
-        if (BuildConfig.STANDALONE) {
-            LocalSmsForwarder.stop()
-        }
         controlClient?.close()
         controlClient = null
     }
@@ -1501,7 +1508,6 @@ class CallAudioService : Service() {
             }
             "set_mode" -> handleSetMode(obj)
             "send_sms" -> smsSender?.handle(obj)
-            "incoming_sms_ack" -> if (BuildConfig.STANDALONE) LocalSmsForwarder.onAck(obj)
             "local_notice" -> if (BuildConfig.STANDALONE) showStandaloneSummaryNotification(this, obj)
             "agent_info" -> {
                 Prefs.setConsoleUrl(this, obj.optString("console_url"))
@@ -1563,6 +1569,7 @@ class CallAudioService : Service() {
         Log.i(TAG, "phone mode now $mode")
         if (mode == Prefs.PHONE_MODE_AI) {
             armWatcher()
+            sendStatus()
         } else {
             callStateWatchdogJob?.cancel()
             callStateWatchdogJob = null
@@ -1570,9 +1577,24 @@ class CallAudioService : Service() {
             answerJob = null
             answerScheduled = false
             audioGuard?.stopHoldLoop()
+            audioGuard?.restore()
+            try {
+                (getSystemService(AUDIO_SERVICE) as android.media.AudioManager).isMicrophoneMute = false
+            } catch (_: Exception) {
+            }
+            sendStatus(inCall = false)
+            if (BuildConfig.STANDALONE) {
+                unregisterPhoneCallbacks()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                getSystemService(NotificationManager::class.java)?.cancel(NOTIF_ID)
+                if (!Prefs.isStandaloneLanEnabled(this)) {
+                    stopControlClient()
+                    stopSelf()
+                    return
+                }
+            }
             updateNotification()
         }
-        sendStatus()
     }
 
     /** A call rings or is active on this phone (in either mode). */
@@ -2267,9 +2289,6 @@ class CallAudioService : Service() {
         ownerHandlingCallFlag = false
         wakeController?.releaseNow()
         wakeController = null
-        if (BuildConfig.STANDALONE) {
-            LocalSmsForwarder.stop()
-        }
         stopWatchingSimChanges()
         PhoneModeManager.removeListener(modeListener)
         smsSender?.close()
@@ -2759,9 +2778,28 @@ class CallAudioService : Service() {
 
         fun refreshNotification(ctx: Context) {
             if (!BuildConfig.STANDALONE) return
+            if (!Prefs.isAiCallEnabled(ctx)) return
             try {
                 ctx.startService(Intent(ctx, CallAudioService::class.java).setAction(ACTION_REFRESH_NOTIF))
             } catch (_: Exception) {
+            }
+        }
+
+        fun ensureArmed(ctx: Context) {
+            val app = ctx.applicationContext
+            val svc = Intent(app, CallAudioService::class.java).setAction(ACTION_START)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    app.startForegroundService(svc)
+                } else {
+                    app.startService(svc)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "ensureArmed failed: ${e.message}")
+                try {
+                    app.startService(svc)
+                } catch (_: Exception) {
+                }
             }
         }
 
