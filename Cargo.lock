@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "agent"
-version = "1.7.1-beta.2"
+version = "1.7.1-beta.3"
 dependencies = [
  "anyhow",
  "argon2",
@@ -181,7 +181,7 @@ dependencies = [
 
 [[package]]
 name = "bageo-packs"
-version = "1.7.1-beta.2"
+version = "1.7.1-beta.3"
 dependencies = [
  "chrono",
  "flate2",

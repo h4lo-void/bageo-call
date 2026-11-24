@@ -16,6 +16,7 @@ import android.util.Log
 class TransparentDialerActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        PhoneModeManager.reconcileLocalMirror(this)
         Log.i(TAG, "dialer stub finish action=${intent?.action}")
         if (!Prefs.isAiCallEnabled(this)) {
             // Normal phone mode: hand the dial request to the real phone app and
@@ -69,18 +70,24 @@ class TransparentDialerActivity : Activity() {
         } catch (_: Exception) {
             null
         }
-        val source = intent ?: return
-        if (dialer.isNullOrBlank() || dialer == packageName) return
-        try {
-            startActivity(
-                Intent(source)
-                    .setComponent(null)
-                    .setPackage(dialer)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-        } catch (e: Exception) {
-            Log.w(TAG, "forward to $dialer failed: ${e.message}")
+        val source = intent
+        val number = source?.data?.schemeSpecificPart
+            ?: source?.getStringExtra(Intent.EXTRA_PHONE_NUMBER)
+            ?: ""
+        if (!dialer.isNullOrBlank() && dialer != packageName && source != null) {
+            try {
+                startActivity(
+                    Intent(source)
+                        .setComponent(null)
+                        .setPackage(dialer)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+                return
+            } catch (e: Exception) {
+                Log.w(TAG, "forward to $dialer failed: ${e.message}")
+            }
         }
+        PhoneModeManager.openSystemPhoneApp(this, number)
     }
 
     companion object {

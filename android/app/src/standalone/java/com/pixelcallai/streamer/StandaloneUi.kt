@@ -7,27 +7,27 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.ActivityManager
-import android.app.AlertDialog
 import android.app.NotificationManager
 import android.app.role.RoleManager
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.graphics.drawable.GradientDrawable
+import android.content.res.Configuration
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.Process
 import android.os.SystemClock
 import android.provider.Settings
-import android.text.InputType
 import android.util.Base64
 import android.util.Log
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.webkit.DownloadListener
 import android.webkit.JavascriptInterface
@@ -38,18 +38,15 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Button
-import android.widget.CheckBox
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.RadioGroup
-import android.widget.Switch
-import android.widget.TextView
 import android.widget.Toast
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
@@ -57,55 +54,29 @@ import java.net.URI
 import java.net.URL
 
 /**
- * Standalone hybrid UI: compact native header + collapsible phone setup drawer +
- * full-screen embedded WebView hosting Bageo's full web console on `127.0.0.1:8787`.
+ * Pure mobile App host for Android Standalone edition:
+ * - Full-screen WebView serving `/calls/mobile` (`standalone.html`) with zero desktop/hybrid chrome.
+ * - Direct `@JavascriptInterface` (`window.BageoAndroid`) bridging single-phone AI mode switching,
+ *   Google Phone / native dialpad launch, permission & role setup, native contacts sync,
+ *   local mobile preferences, LAN sharing, haptics, file picker/export, and dynamic system bars.
  */
 class StandaloneUi(private val activity: Activity) {
-    private lateinit var dotView: View
-    private lateinit var headline: TextView
-    private lateinit var switchAi: Switch
-    private lateinit var btnDialer: Button
-    private lateinit var btnSetup: Button
-    private lateinit var btnLiveTakeover: Button
-    private lateinit var modeBanner: TextView
+    private lateinit var rootView: View
     private lateinit var webView: WebView
     private lateinit var loadingOverlay: View
-    private lateinit var drawer: View
-    private lateinit var statusDetail: TextView
-    private lateinit var stepsSection: View
-    private lateinit var stepsTitle: TextView
-    private lateinit var switchDailySound: Switch
-    private lateinit var switchPersistentNotif: Switch
-    private lateinit var switchSummaryNotif: Switch
-    private lateinit var switchDndAuto: Switch
-    private lateinit var chkDndAny: CheckBox
-    private lateinit var btnDndSettings: Button
-    private lateinit var whitelistGroup: RadioGroup
-    private lateinit var chkStarredWhitelist: CheckBox
-    private lateinit var btnSyncContacts: Button
-    private lateinit var syncStatusText: TextView
-    private lateinit var switchLan: Switch
-    private lateinit var lanBox: View
-    private lateinit var lanUrlText: TextView
-    private lateinit var lanMdnsText: TextView
-    private lateinit var btnCopyUrl: Button
-    private lateinit var advHeader: TextView
-    private lateinit var advBody: View
-    private lateinit var serviceStatus: TextView
 
     private val handler = Handler(Looper.getMainLooper())
-    private var bindingAiSwitch = false
-    private var bindingLanSwitch = false
-    private var bindingMobileControls = false
     private var pendingOpenCallId: String? = null
+    private var pendingAutoAiAfterPerms = false
+    private var pendingStarredToWhitelist = true
     private var embeddedSettingsSynced = false
-    private var drawerOpen: Boolean? = null
-    private var advOpen = false
     private var consoleLoaded = false
+    private var pageReady = false
     private var modeErrorCode: String? = null
     private var modeErrorDndMode = ""
     private var grantRequestedAt = 0L
     private var grantRationaleBefore: Map<String, Boolean> = emptyMap()
+    private var backCallback: Any? = null
 
     private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
     private var pendingExport: PendingExport? = null
@@ -118,180 +89,68 @@ class StandaloneUi(private val activity: Activity) {
     )
 
     private val modeListener = PhoneModeManager.Listener {
-        activity.runOnUiThread { if (!activity.isDestroyed) refresh() }
+        activity.runOnUiThread {
+            if (!activity.isDestroyed) pushNativeState()
+        }
     }
 
     private val pollRunnable = object : Runnable {
         override fun run() {
             if (activity.isDestroyed) return
             checkEmbeddedReady()
-            refresh()
+            pushNativeState()
             handler.postDelayed(this, if (consoleLoaded) TICK_MS else POLL_READY_MS)
         }
     }
 
-    private enum class CheckState { OK, MISSING, CHECK }
-
-    private class CheckRow(root: View) {
-        val icon: TextView = root.findViewById(R.id.checkIcon)
-        val title: TextView = root.findViewById(R.id.checkTitle)
-        val status: TextView = root.findViewById(R.id.checkStatus)
-        val detail: TextView = root.findViewById(R.id.checkDetail)
-        val action: Button = root.findViewById(R.id.checkAction)
-    }
-
-    private class PermissionItem(val permission: String, val rowId: Int, val labelRes: Int)
-
-    private val runtimePermissions: List<PermissionItem> by lazy {
+    private val runtimePermissions: List<String> by lazy {
         val items = mutableListOf(
-            PermissionItem(Manifest.permission.RECORD_AUDIO, R.id.saRowPermRecordAudio, R.string.perm_record_audio),
-            PermissionItem(Manifest.permission.READ_PHONE_STATE, R.id.saRowPermPhoneState, R.string.perm_read_phone_state),
-            PermissionItem(Manifest.permission.READ_CALL_LOG, R.id.saRowPermCallLog, R.string.perm_read_call_log),
-            PermissionItem(Manifest.permission.ANSWER_PHONE_CALLS, R.id.saRowPermAnswerCalls, R.string.perm_answer_calls),
-            PermissionItem(Manifest.permission.CALL_PHONE, R.id.saRowPermCallPhone, R.string.perm_call_phone),
-            PermissionItem(Manifest.permission.READ_SMS, R.id.saRowPermSms, R.string.sa_perms_sms),
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.READ_PHONE_NUMBERS,
+            Manifest.permission.READ_CALL_LOG,
+            Manifest.permission.ANSWER_PHONE_CALLS,
+            Manifest.permission.CALL_PHONE,
         )
         if (Build.VERSION.SDK_INT >= 33) {
-            items += PermissionItem(
-                Manifest.permission.POST_NOTIFICATIONS,
-                R.id.saRowPermNotifications,
-                R.string.perm_post_notifications,
-            )
+            items += Manifest.permission.POST_NOTIFICATIONS
         }
         items
     }
 
     private val privilegedPermissions = listOf(
-        PermissionItem("android.permission.CAPTURE_AUDIO_OUTPUT", R.id.saRowPermCapture, R.string.perm_capture_audio_output),
-        PermissionItem("android.permission.MODIFY_PHONE_STATE", R.id.saRowPermModifyPhone, R.string.perm_modify_phone_state),
-        PermissionItem("android.permission.CONTROL_INCALL_EXPERIENCE", R.id.saRowPermInCall, R.string.perm_control_incall),
+        "android.permission.CAPTURE_AUDIO_OUTPUT",
+        "android.permission.MODIFY_PHONE_STATE",
+        "android.permission.CONTROL_INCALL_EXPERIENCE",
     )
 
     @SuppressLint("SetJavaScriptEnabled")
     fun onCreate(savedInstanceState: Bundle?) {
         activity.setContentView(R.layout.activity_standalone)
-        applySystemBarInsets(activity.findViewById(R.id.saRoot))
-
-        dotView = activity.findViewById(R.id.saDot)
-        headline = activity.findViewById(R.id.saHeadline)
-        switchAi = activity.findViewById(R.id.saSwitchAi)
-        btnDialer = activity.findViewById(R.id.saBtnDialer)
-        btnSetup = activity.findViewById(R.id.saBtnSetup)
-        btnLiveTakeover = activity.findViewById(R.id.saBtnLiveTakeover)
-        modeBanner = activity.findViewById(R.id.saModeBanner)
+        rootView = activity.findViewById(R.id.saRoot)
         webView = activity.findViewById(R.id.saWebView)
         loadingOverlay = activity.findViewById(R.id.saLoading)
-        drawer = activity.findViewById(R.id.saDrawer)
-        statusDetail = activity.findViewById(R.id.saStatusDetail)
-        stepsSection = activity.findViewById(R.id.saStepsSection)
-        stepsTitle = activity.findViewById(R.id.saStepsTitle)
-        switchDailySound = activity.findViewById(R.id.saSwitchDailySound)
-        switchPersistentNotif = activity.findViewById(R.id.saSwitchPersistentNotif)
-        switchSummaryNotif = activity.findViewById(R.id.saSwitchSummaryNotif)
-        switchDndAuto = activity.findViewById(R.id.saSwitchDndAuto)
-        chkDndAny = activity.findViewById(R.id.saChkDndAny)
-        btnDndSettings = activity.findViewById(R.id.saBtnDndSettings)
-        whitelistGroup = activity.findViewById(R.id.saWhitelistGroup)
-        chkStarredWhitelist = activity.findViewById(R.id.saChkStarredWhitelist)
-        btnSyncContacts = activity.findViewById(R.id.saBtnSyncContacts)
-        syncStatusText = activity.findViewById(R.id.saSyncStatus)
-        switchLan = activity.findViewById(R.id.saSwitchLan)
-        lanBox = activity.findViewById(R.id.saLanBox)
-        lanUrlText = activity.findViewById(R.id.saLanUrl)
-        lanMdnsText = activity.findViewById(R.id.saLanMdns)
-        btnCopyUrl = activity.findViewById(R.id.saBtnCopyUrl)
-        advHeader = activity.findViewById(R.id.saAdvHeader)
-        advBody = activity.findViewById(R.id.saAdvBody)
-        serviceStatus = activity.findViewById(R.id.saServiceStatus)
 
-        activity.findViewById<TextView>(R.id.saVersion).text =
-            activity.getString(R.string.header_version, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)
-        activity.findViewById<TextView>(R.id.saDevice).text = activity.getString(
-            R.string.header_device,
-            deviceName(),
-            Build.VERSION.RELEASE,
-            Build.VERSION.SDK_INT,
-        )
-        if (Build.VERSION.SDK_INT < 33) {
-            activity.findViewById<View>(R.id.saRowPermNotifications).visibility = View.GONE
-        }
-
-        switchAi.setOnCheckedChangeListener { _, isChecked ->
-            if (bindingAiSwitch) return@setOnCheckedChangeListener
-            bindingAiSwitch = true
-            switchAi.isChecked = !isChecked
-            bindingAiSwitch = false
-            confirmModeSwitch(if (isChecked) Prefs.PHONE_MODE_AI else Prefs.PHONE_MODE_NORMAL)
-        }
-
-        btnSetup.setOnClickListener {
-            drawerOpen = drawer.visibility != View.VISIBLE
-            refresh()
-        }
-
-        btnDialer.setOnClickListener {
-            activity.startActivity(
-                Intent(activity, OwnerCallActivity::class.java)
-                    .putExtra("mode", OwnerCallActivity.MODE_DIALER),
-            )
-        }
-
-        btnLiveTakeover.setOnClickListener {
-            CallAudioService.requestOwnerTakeover(activity)
-            refresh()
-        }
-
-        wireMobileControls()
-
-        switchLan.setOnCheckedChangeListener { _, isChecked ->
-            if (bindingLanSwitch) return@setOnCheckedChangeListener
-            onLanSwitchToggled(isChecked)
-        }
-
-        btnCopyUrl.setOnClickListener {
-            val st = EmbeddedAgent.status()
-            val url = st.lanUrl.ifBlank { st.mdnsUrl }
-            if (url.isNotBlank()) copyToClipboard(url)
-        }
-
-        advHeader.setOnClickListener {
-            advOpen = !advOpen
-            refresh()
-        }
-
-        activity.findViewById<Button>(R.id.saBtnStart).setOnClickListener {
-            if (!ensurePerms()) return@setOnClickListener
-            if (Prefs.isAiCallEnabled(activity)) {
-                DialerRoleHelper.ensureRoles(activity)
-                DialerRoleHelper.requestDialerRole(activity)
-            }
-            startCallService(CallAudioService.ACTION_START)
-            Toast.makeText(activity, R.string.msg_service_started, Toast.LENGTH_SHORT).show()
-            refreshSoon()
-        }
-
-        activity.findViewById<Button>(R.id.saBtnStop).setOnClickListener {
-            activity.startService(
-                Intent(activity, CallAudioService::class.java).setAction(CallAudioService.ACTION_STOP),
-            )
-            Toast.makeText(activity, R.string.msg_service_stopped, Toast.LENGTH_SHORT).show()
-            refreshSoon()
-        }
-
+        applySystemBarInsets(rootView)
+        syncSystemBarsWithSystemNightMode()
+        registerBackNavigation()
         configureWebView()
 
+        PhoneModeManager.reconcileLocalMirror(activity)
+        PhoneModeManager.syncFromRoot(activity) {}
         EmbeddedAgent.ensureStarted(activity)
         handleLaunchIntent(activity.intent)
+
         if (Prefs.isAiCallEnabled(activity)) {
-            if (ensurePerms()) {
+            if (hasRequiredPerms()) {
                 DialerRoleHelper.ensureRoles(activity)
-                startCallService(CallAudioService.ACTION_START)
+                CallAudioService.ensureArmed(activity)
             }
-        } else if (hasRequiredPerms()) {
-            startCallService(CallAudioService.ACTION_START)
+        } else if (Prefs.isStandaloneLanEnabled(activity) && hasRequiredPerms()) {
+            CallAudioService.ensureArmed(activity)
         }
+
         checkEmbeddedReady()
-        refresh()
     }
 
     fun onNewIntent(intent: Intent) {
@@ -315,6 +174,7 @@ class StandaloneUi(private val activity: Activity) {
     }
 
     fun onResume() {
+        PhoneModeManager.reconcileLocalMirror(activity)
         PhoneModeManager.addListener(modeListener)
         handler.removeCallbacks(pollRunnable)
         handler.post(pollRunnable)
@@ -326,12 +186,58 @@ class StandaloneUi(private val activity: Activity) {
     }
 
     fun onDestroy() {
+        unregisterBackNavigation()
         handler.removeCallbacks(pollRunnable)
         fileUploadCallback?.onReceiveValue(null)
         fileUploadCallback = null
         if (::webView.isInitialized) {
             webView.destroy()
         }
+    }
+
+    private fun registerBackNavigation() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val cb = OnBackInvokedCallback {
+                if (!handleBack()) {
+                    activity.finish()
+                }
+            }
+            activity.onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                cb,
+            )
+            backCallback = cb
+        }
+    }
+
+    private fun unregisterBackNavigation() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            (backCallback as? OnBackInvokedCallback)?.let {
+                try {
+                    activity.onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it)
+                } catch (_: Exception) {
+                }
+            }
+            backCallback = null
+        }
+    }
+
+    fun onBackPressed(): Boolean = handleBack()
+
+    private fun handleBack(): Boolean {
+        if (!consoleLoaded || !::webView.isInitialized) return false
+        webView.evaluateJavascript(
+            "(function(){try{return window.__bageoHandleBack?!!window.__bageoHandleBack():false;}catch(e){return false;}})()",
+        ) { raw ->
+            if (raw != "true") {
+                if (webView.canGoBack()) {
+                    webView.goBack()
+                } else {
+                    activity.finish()
+                }
+            }
+        }
+        return true
     }
 
     fun onRequestPermissionsResult(
@@ -358,17 +264,25 @@ class StandaloneUi(private val activity: Activity) {
         }
         if (requestCode == REQ_CONTACTS) {
             if (PhoneContactsSync.hasPermission(activity)) {
-                runContactsSync()
+                runContactsSync(pendingStarredToWhitelist)
             } else {
                 Toast.makeText(activity, R.string.sa_contacts_perm_denied, Toast.LENGTH_SHORT).show()
+                pushContactsSyncResult(PhoneContactsSync.SyncResult(ok = false, error = "no_permission"))
             }
-            refresh()
+            pushNativeState()
             return
         }
-        if (hasRequiredPerms() && !isServiceRunning()) {
-            startCallService(CallAudioService.ACTION_START)
+        if (pendingAutoAiAfterPerms) {
+            pendingAutoAiAfterPerms = false
+            if (hasRequiredPerms()) {
+                startModeSwitch(Prefs.PHONE_MODE_AI)
+                return
+            }
         }
-        refresh()
+        if (Prefs.isAiCallEnabled(activity) && hasRequiredPerms() && !isServiceRunning()) {
+            CallAudioService.ensureArmed(activity)
+        }
+        pushNativeState()
     }
 
     fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -376,8 +290,7 @@ class StandaloneUi(private val activity: Activity) {
             val cb = fileUploadCallback
             fileUploadCallback = null
             if (cb != null) {
-                val uris = parseChooserResult(resultCode, data)
-                cb.onReceiveValue(uris)
+                cb.onReceiveValue(parseChooserResult(resultCode, data))
             }
             return
         }
@@ -392,47 +305,34 @@ class StandaloneUi(private val activity: Activity) {
             finishPendingExport(job, uri)
             return
         }
-        refresh()
-    }
-
-    fun onBackPressed(): Boolean {
-        if (drawer.visibility == View.VISIBLE) {
-            drawerOpen = false
-            refresh()
-            return true
-        }
-        if (consoleLoaded) {
-            webView.evaluateJavascript(
-                "(function(){try{return window.__bageoHandleBack?window.__bageoHandleBack():false;}catch(e){return false;}})()",
-            ) { raw ->
-                val handled = raw == "true"
-                if (!handled) {
-                    if (webView.canGoBack()) {
-                        webView.goBack()
-                    } else {
-                        activity.finish()
-                    }
-                }
-            }
-            return true
-        }
-        return false
+        pushNativeState()
     }
 
     // ---------------------------------------------------------------- WebView & JS Bridge
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView() {
+        webView.setBackgroundColor(activity.getColor(R.color.bg_page))
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
             mediaPlaybackRequiresUserGesture = false
             allowFileAccess = false
             allowContentAccess = false
+            textZoom = 100
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         }
-        webView.addJavascriptInterface(ConsoleJsBridge(), "BageoAndroid")
+        webView.addJavascriptInterface(MobileAppJsBridge(), "BageoAndroid")
         webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                if (!pageReady && url != null && url.contains("/calls/mobile")) {
+                    pageReady = true
+                    hideSplash()
+                    pushNativeState()
+                }
+            }
+
             override fun shouldOverrideUrlLoading(
                 view: WebView?,
                 request: WebResourceRequest?,
@@ -448,7 +348,12 @@ class StandaloneUi(private val activity: Activity) {
                     return false
                 }
                 val scheme = uri.scheme?.lowercase().orEmpty()
-                if (scheme in setOf("http", "https", "mailto", "tel")) {
+                if (scheme == "tel") {
+                    val num = uri.schemeSpecificPart.orEmpty()
+                    openDialerOrPhoneApp(num)
+                    return true
+                }
+                if (scheme in setOf("http", "https", "mailto")) {
                     launch(Intent(Intent.ACTION_VIEW, uri))
                     return true
                 }
@@ -489,6 +394,18 @@ class StandaloneUi(private val activity: Activity) {
         )
     }
 
+    private fun hideSplash() {
+        if (loadingOverlay.visibility != View.VISIBLE) return
+        loadingOverlay.animate()
+            .alpha(0f)
+            .setDuration(180L)
+            .withEndAction {
+                loadingOverlay.visibility = View.GONE
+                loadingOverlay.alpha = 1f
+            }
+            .start()
+    }
+
     private fun checkEmbeddedReady() {
         val st = EmbeddedAgent.status()
         if (st.ready && !embeddedSettingsSynced) {
@@ -496,13 +413,15 @@ class StandaloneUi(private val activity: Activity) {
             val action = Prefs.standaloneWhitelistAction(activity)
             EmbeddedAgent.patchSettings(
                 activity,
-                JSONObject().put("standalone_whitelist_action", action).toString(),
+                JSONObject()
+                    .put("standalone_whitelist_action", action)
+                    .put("gemini_live_enabled", true)
+                    .toString(),
             )
         }
         if (st.ready && !consoleLoaded) {
             consoleLoaded = true
-            loadingOverlay.visibility = View.GONE
-            val baseUrl = EmbeddedAgent.localConsoleUrl(st.uiToken)
+            val baseUrl = EmbeddedAgent.localMobileUrl(st.uiToken)
             val openCall = pendingOpenCallId
             pendingOpenCallId = null
             val url = if (!openCall.isNullOrBlank()) {
@@ -511,6 +430,8 @@ class StandaloneUi(private val activity: Activity) {
                 baseUrl
             }
             webView.loadUrl(url)
+            // Fallback splash dismissal in case onPageFinished is delayed.
+            handler.postDelayed({ if (!activity.isDestroyed) hideSplash() }, 1200L)
         } else if (consoleLoaded && !pendingOpenCallId.isNullOrBlank()) {
             val openCall = pendingOpenCallId!!
             pendingOpenCallId = null
@@ -527,7 +448,295 @@ class StandaloneUi(private val activity: Activity) {
             (port == -1 || port == BuildConfig.CONSOLE_PORT)
     }
 
-    private inner class ConsoleJsBridge {
+    private fun buildNativeStateJson(): JSONObject {
+        val mode = PhoneModeManager.reconcileLocalMirror(activity)
+        val ai = mode == Prefs.PHONE_MODE_AI
+        val switching = PhoneModeManager.isSwitching()
+        val st = EmbeddedAgent.status()
+
+        val roleManager = activity.getSystemService(RoleManager::class.java)
+        val moduleOk = isPrivilegedSystemApp() && privilegedPermissions.all { isGranted(it) }
+        val permsOk = runtimePermissions.all { isGranted(it) }
+        val dialerOk = DialerRoleHelper.isDefaultDialer(activity) ||
+            roleManager?.isRoleHeld(RoleManager.ROLE_DIALER) == true
+        val screeningOk = roleManager?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true
+        val dndOk = activity.getSystemService(NotificationManager::class.java)
+            ?.isNotificationPolicyAccessGranted == true
+        val batteryOk = activity.getSystemService(PowerManager::class.java)
+            ?.isIgnoringBatteryOptimizations(activity.packageName) == true
+        val contactsPerm = PhoneContactsSync.hasPermission(activity)
+        val canInject = isGranted("android.permission.MODIFY_PHONE_STATE")
+        val telephonyOut = try {
+            TelephonyUplinkInjector(activity).isAvailable()
+        } catch (_: Exception) {
+            false
+        }
+
+        val checks = JSONObject()
+            .put("module_ok", moduleOk)
+            .put("perms_ok", permsOk)
+            .put("dialer_ok", dialerOk)
+            .put("screening_ok", screeningOk)
+            .put("dnd_ok", dndOk)
+            .put("battery_ok", batteryOk)
+            .put("contacts_perm", contactsPerm)
+            .put("uplink_ok", canInject && telephonyOut)
+
+        val prefs = JSONObject()
+            .put("daily_sound", Prefs.isStandaloneDailySound(activity))
+            .put("persistent_notif", Prefs.isStandalonePersistentNotif(activity))
+            .put("summary_notif", Prefs.isStandaloneCallSummaryNotif(activity))
+            .put("dnd_auto", Prefs.isStandaloneDndAutoAi(activity))
+            .put("dnd_any", Prefs.isStandaloneDndAnyMode(activity))
+            .put("whitelist_action", Prefs.standaloneWhitelistAction(activity))
+
+        val lan = JSONObject()
+            .put("requested", Prefs.isStandaloneLanEnabled(activity))
+            .put("enabled", st.lanEnabled)
+            .put("password_set", st.passwordSet)
+            .put("lan_ip", st.lanIp)
+            .put("lan_url", st.lanUrl)
+            .put("mdns_url", st.mdnsUrl)
+
+        val errCode = modeErrorCode
+        val errText = if (errCode != null && !switching) {
+            activity.getString(R.string.mode_failed, modeErrorText(errCode))
+        } else {
+            ""
+        }
+
+        val sims = try {
+            SimList.read(activity) ?: JSONArray()
+        } catch (_: Exception) {
+            JSONArray()
+        }
+
+        return JSONObject()
+            .put("mode", mode)
+            .put("ai_enabled", ai)
+            .put("switching", switching)
+            .put("mode_error", errText)
+            .put("live_ai_call", CallAudioService.isLiveAiCallActive())
+            .put("owner_in_call", CallAudioService.isOwnerHandlingCall())
+            .put("call_busy", !PhoneModeManager.isPhoneIdle(activity))
+            .put("service_running", isServiceRunning())
+            .put("version_name", BuildConfig.VERSION_NAME)
+            .put("version_code", BuildConfig.VERSION_CODE)
+            .put("device_name", deviceName())
+            .put("android_release", Build.VERSION.RELEASE)
+            .put("serial", deviceSerial())
+            .put("sims", sims)
+            .put("checks", checks)
+            .put("prefs", prefs)
+            .put("lan", lan)
+    }
+
+    private fun pushNativeState() {
+        if (!consoleLoaded || !pageReady || !::webView.isInitialized || activity.isDestroyed) return
+        val json = buildNativeStateJson().toString()
+        webView.evaluateJavascript(
+            "if(window.__onBageoNativeState)window.__onBageoNativeState($json);",
+            null,
+        )
+    }
+
+    private fun pushContactsSyncResult(res: PhoneContactsSync.SyncResult) {
+        if (!consoleLoaded || !::webView.isInitialized || activity.isDestroyed) return
+        val json = JSONObject()
+            .put("ok", res.ok)
+            .put("added", res.added)
+            .put("merged", res.merged)
+            .put("skipped", res.skipped)
+            .put("error", res.error)
+            .toString()
+        webView.evaluateJavascript(
+            "if(window.__onBageoContactsSynced)window.__onBageoContactsSynced($json);",
+            null,
+        )
+    }
+
+    private inner class MobileAppJsBridge {
+        @JavascriptInterface
+        fun getNativeStateJson(): String = buildNativeStateJson().toString()
+
+        @JavascriptInterface
+        fun setAiMode(enable: Boolean) {
+            activity.runOnUiThread {
+                performHaptic("toggle")
+                Prefs.markManualModeSwitch(activity)
+                if (enable) {
+                    if (!hasRequiredPerms()) {
+                        pendingAutoAiAfterPerms = true
+                        requestMissingRuntimePermissions()
+                        return@runOnUiThread
+                    }
+                    startModeSwitch(Prefs.PHONE_MODE_AI)
+                } else {
+                    startModeSwitch(Prefs.PHONE_MODE_NORMAL)
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun openPhoneApp(number: String) {
+            activity.runOnUiThread {
+                performHaptic("tap")
+                openDialerOrPhoneApp(number)
+            }
+        }
+
+        @JavascriptInterface
+        fun takeoverLiveCall() {
+            activity.runOnUiThread {
+                performHaptic("confirm")
+                CallAudioService.requestOwnerTakeover(activity)
+                pushNativeState()
+            }
+        }
+
+        @JavascriptInterface
+        fun runSetupAction(kind: String) {
+            activity.runOnUiThread {
+                performHaptic("tap")
+                when (kind.trim().lowercase()) {
+                    "perms" -> requestMissingRuntimePermissions()
+                    "dialer" -> {
+                        DialerRoleHelper.requestDialerRole(activity)
+                        refreshSoon()
+                    }
+                    "screening" -> requestScreeningRole()
+                    "dnd" -> launch(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+                    "dnd_rule" -> {
+                        if (!DedicatedDndManager.hasPolicyAccess(activity)) {
+                            launch(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+                        } else {
+                            DedicatedDndManager.openSystemDndSettings(activity)
+                        }
+                    }
+                    "battery" -> requestBatteryExemption()
+                    "app_settings" -> launch(
+                        Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.parse("package:${activity.packageName}"),
+                        ),
+                    )
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun syncContacts(starredToWhitelist: Boolean) {
+            activity.runOnUiThread {
+                performHaptic("tap")
+                pendingStarredToWhitelist = starredToWhitelist
+                if (!PhoneContactsSync.hasPermission(activity)) {
+                    ActivityCompat.requestPermissions(
+                        activity,
+                        arrayOf(Manifest.permission.READ_CONTACTS),
+                        REQ_CONTACTS,
+                    )
+                    return@runOnUiThread
+                }
+                runContactsSync(starredToWhitelist)
+            }
+        }
+
+        @JavascriptInterface
+        fun setMobilePref(key: String, value: String) {
+            val boolVal = value == "true" || value == "1"
+            activity.runOnUiThread {
+                performHaptic("toggle")
+                when (key.trim()) {
+                    "daily_sound" -> {
+                        Prefs.setStandaloneDailySound(activity, boolVal)
+                        if (Prefs.isAiCallEnabled(activity) && !PhoneModeManager.isSwitching()) {
+                            startModeSwitch(Prefs.PHONE_MODE_AI)
+                        }
+                        if (Prefs.isAiCallEnabled(activity)) {
+                            LocalAudioGuard(activity).applyHardMute()
+                        }
+                    }
+                    "persistent_notif" -> {
+                        Prefs.setStandalonePersistentNotif(activity, boolVal)
+                        CallAudioService.refreshNotification(activity)
+                    }
+                    "summary_notif" -> {
+                        Prefs.setStandaloneCallSummaryNotif(activity, boolVal)
+                    }
+                    "dnd_auto" -> {
+                        if (boolVal && !DedicatedDndManager.hasPolicyAccess(activity)) {
+                            launch(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+                        } else {
+                            Prefs.setStandaloneDndAutoAi(activity, boolVal)
+                            if (boolVal) DedicatedDndManager.ensureRule(activity)
+                        }
+                    }
+                    "dnd_any" -> {
+                        Prefs.setStandaloneDndAnyMode(activity, boolVal)
+                    }
+                    "whitelist_action" -> {
+                        val clean = Prefs.normalizeWhitelistAction(value)
+                        Prefs.setStandaloneWhitelistAction(activity, clean)
+                        EmbeddedAgent.patchSettings(
+                            activity,
+                            JSONObject().put("standalone_whitelist_action", clean).toString(),
+                        )
+                    }
+                }
+                pushNativeState()
+            }
+        }
+
+        @JavascriptInterface
+        fun setLanAccess(enabled: Boolean, password: String): String {
+            if (!enabled) {
+                EmbeddedAgent.setLanEnabled(activity, false)
+                activity.runOnUiThread {
+                    if (!Prefs.isAiCallEnabled(activity)) {
+                        activity.startService(
+                            Intent(activity, CallAudioService::class.java).setAction(CallAudioService.ACTION_STOP),
+                        )
+                    }
+                    pushNativeState()
+                    refreshSoon()
+                }
+                return JSONObject().put("ok", true).toString()
+            }
+            val pw = password.trim()
+            val st = EmbeddedAgent.status()
+            if (pw.isNotEmpty()) {
+                if (pw.length < MIN_PASSWORD_LEN) {
+                    return JSONObject().put("ok", false).put("error", "password_too_short").toString()
+                }
+                if (!EmbeddedAgent.setConsolePassword(pw)) {
+                    return JSONObject().put("ok", false).put("error", "save_failed").toString()
+                }
+            } else if (!st.passwordSet) {
+                return JSONObject().put("ok", false).put("error", "need_password").toString()
+            }
+            EmbeddedAgent.setLanEnabled(activity, true)
+            activity.runOnUiThread {
+                if (!Prefs.isAiCallEnabled(activity) && hasRequiredPerms()) {
+                    CallAudioService.ensureArmed(activity)
+                }
+                pushNativeState()
+                refreshSoon()
+            }
+            return JSONObject().put("ok", true).toString()
+        }
+
+        @JavascriptInterface
+        fun syncTheme(theme: String) {
+            activity.runOnUiThread {
+                applySystemBarTheme(theme == "dark")
+            }
+        }
+
+        @JavascriptInterface
+        fun haptic(kind: String) {
+            activity.runOnUiThread { performHaptic(kind) }
+        }
+
         @JavascriptInterface
         fun saveBase64File(base64: String, filename: String, mimeType: String) {
             val cleanName = filename.trim().ifEmpty { "bageo-export.bin" }.replace('/', '_')
@@ -538,9 +747,7 @@ class StandaloneUi(private val activity: Activity) {
                 val tmp = File.createTempFile("exp-", ".tmp", dir)
                 tmp.writeBytes(bytes)
                 activity.runOnUiThread {
-                    launchCreateDocument(
-                        PendingExport(tmp, null, cleanName, cleanMime),
-                    )
+                    launchCreateDocument(PendingExport(tmp, null, cleanName, cleanMime))
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "saveBase64File failed: ${e.message}")
@@ -563,6 +770,74 @@ class StandaloneUi(private val activity: Activity) {
             activity.runOnUiThread { copyToClipboard(text) }
         }
     }
+
+    private fun openDialerOrPhoneApp(number: String) {
+        val clean = number.trim()
+        if (!Prefs.isAiCallEnabled(activity)) {
+            if (PhoneModeManager.openSystemPhoneApp(activity, clean)) {
+                return
+            }
+        }
+        val intent = Intent(activity, OwnerCallActivity::class.java)
+            .putExtra("mode", OwnerCallActivity.MODE_DIALER)
+        if (clean.isNotEmpty()) intent.putExtra("dial_number", clean)
+        launch(intent)
+    }
+
+    private fun runContactsSync(starredToWhitelist: Boolean) {
+        Thread({
+            val res = PhoneContactsSync.syncNow(activity, starredToWhitelist)
+            activity.runOnUiThread {
+                if (activity.isDestroyed) return@runOnUiThread
+                pushContactsSyncResult(res)
+                pushNativeState()
+            }
+        }, "bageo-contacts-sync").start()
+    }
+
+    private fun startModeSwitch(target: String) {
+        modeErrorCode = null
+        modeErrorDndMode = ""
+        PhoneModeManager.requestSwitch(
+            activity,
+            target,
+            callBusy = !PhoneModeManager.isPhoneIdle(activity),
+        ) { result ->
+            activity.runOnUiThread {
+                if (activity.isDestroyed) return@runOnUiThread
+                modeErrorCode = if (result.ok) null else result.error
+                modeErrorDndMode = if (result.ok) "" else result.dndMode
+                if (result.ok && result.mode == Prefs.PHONE_MODE_AI && hasRequiredPerms()) {
+                    DialerRoleHelper.ensureRoles(activity)
+                    CallAudioService.ensureArmed(activity)
+                }
+                pushNativeState()
+                refreshSoon()
+            }
+        }
+        pushNativeState()
+    }
+
+    private fun modeErrorText(code: String): String {
+        if (code == PhoneModeManager.ERR_DND && modeErrorDndMode.isNotEmpty()) {
+            return activity.getString(R.string.mode_err_dnd_mode, modeErrorDndMode)
+        }
+        return activity.getString(
+            when (code) {
+                PhoneModeManager.ERR_IN_CALL -> R.string.mode_err_in_call
+                PhoneModeManager.ERR_BUSY -> R.string.mode_err_busy
+                PhoneModeManager.ERR_NO_ROOT -> R.string.mode_err_no_root
+                PhoneModeManager.ERR_SAVE -> R.string.mode_err_save
+                PhoneModeManager.ERR_DIALER -> R.string.mode_err_dialer
+                PhoneModeManager.ERR_SCREENING -> R.string.mode_err_screening
+                PhoneModeManager.ERR_DND -> R.string.mode_err_dnd
+                PhoneModeManager.ERR_VOLUME -> R.string.mode_err_volume
+                else -> R.string.mode_err_other
+            },
+        )
+    }
+
+    // ---------------------------------------------------------------- Exports & File Picker
 
     private fun startUrlExport(rawUrl: String, filename: String, mimeType: String) {
         val resolved = resolveLocalUrl(rawUrl)
@@ -660,479 +935,18 @@ class StandaloneUi(private val activity: Activity) {
         return WebChromeClient.FileChooserParams.parseResult(resultCode, data)
     }
 
-    // ---------------------------------------------------------------- LAN Toggle + Password Dialog
-
-    private fun onLanSwitchToggled(wantOn: Boolean) {
-        if (!wantOn) {
-            EmbeddedAgent.setLanEnabled(activity, false)
-            refresh()
-            return
-        }
-        val st = EmbeddedAgent.status()
-        if (st.passwordSet) {
-            EmbeddedAgent.setLanEnabled(activity, true)
-            refresh()
-            return
-        }
-        // Revert visual state until password >= 8 chars is confirmed.
-        bindingLanSwitch = true
-        switchLan.isChecked = false
-        bindingLanSwitch = false
-        showSetPasswordDialog()
-    }
-
-    private fun showSetPasswordDialog() {
-        val pad = (20 * activity.resources.displayMetrics.density).toInt()
-        val box = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad / 2, pad, 0)
-        }
-        val body = TextView(activity).apply {
-            setText(R.string.sa_lan_pw_body)
-        }
-        val input = EditText(activity).apply {
-            setHint(R.string.sa_lan_pw_hint)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            setSingleLine(true)
-            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
-        }
-        val err = TextView(activity).apply {
-            setTextColor(activity.getColor(R.color.pca_status_missing))
-            visibility = View.GONE
-            setPadding(0, pad / 3, 0, 0)
-        }
-        box.addView(body)
-        box.addView(input)
-        box.addView(err)
-
-        val dlg = AlertDialog.Builder(activity)
-            .setTitle(R.string.sa_lan_pw_title)
-            .setView(box)
-            .setPositiveButton(R.string.sa_btn_ok, null)
-            .setNegativeButton(android.R.string.cancel, null)
-            .create()
-
-        dlg.setOnShowListener {
-            dlg.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
-                val pw = input.text.toString().trim()
-                if (pw.length < MIN_PASSWORD_LEN) {
-                    err.setText(R.string.sa_lan_pw_short)
-                    err.visibility = View.VISIBLE
-                    return@setOnClickListener
-                }
-                if (!EmbeddedAgent.setConsolePassword(pw)) {
-                    err.setText(R.string.sa_lan_pw_failed)
-                    err.visibility = View.VISIBLE
-                    return@setOnClickListener
-                }
-                if (consoleLoaded) {
-                    webView.evaluateJavascript(
-                        "try{localStorage.setItem('pca.token',${JSONObject.quote(pw)});}catch(e){}",
-                        null,
-                    )
-                }
-                EmbeddedAgent.setLanEnabled(activity, true)
-                dlg.dismiss()
-                refresh()
-            }
-        }
-        dlg.show()
-    }
-
-    // ---------------------------------------------------------------- Status & Setup Checks
-
-    private fun refresh() {
-        val ai = Prefs.isAiCallEnabled(activity)
-        val switching = PhoneModeManager.isSwitching()
-        val missingSteps = bindSteps(ai)
-        val st = EmbeddedAgent.status()
-
-        bindingAiSwitch = true
-        switchAi.isChecked = ai
-        bindingAiSwitch = false
-        switchAi.isEnabled = !switching
-
-        val (colorRes, headlineText, detailText) = when {
-            switching -> Triple(
-                R.color.pca_status_check,
-                activity.getString(R.string.st_switching),
-                activity.getString(R.string.st_switching_d),
-            )
-            !ai -> Triple(
-                R.color.pca_status_ok,
-                activity.getString(R.string.st_normal),
-                activity.getString(R.string.st_normal_d),
-            )
-            missingSteps > 0 -> Triple(
-                R.color.pca_status_missing,
-                activity.getString(R.string.st_steps, missingSteps),
-                activity.getString(R.string.st_steps_d),
-            )
-            !isServiceRunning() || !st.ready -> Triple(
-                R.color.pca_status_check,
-                activity.getString(R.string.sa_starting_title),
-                activity.getString(R.string.sa_starting_desc),
-            )
-            else -> Triple(
-                R.color.pca_status_ok,
-                activity.getString(R.string.st_ai_on),
-                activity.getString(R.string.st_ai_on_d),
-            )
-        }
-        headline.text = headlineText
-        statusDetail.text = detailText
-        setDotColor(activity.getColor(colorRes))
-
-        val code = modeErrorCode
-        if (code != null && !switching) {
-            modeBanner.text = activity.getString(R.string.mode_failed, modeErrorText(code))
-            modeBanner.visibility = View.VISIBLE
-        } else {
-            modeBanner.visibility = View.GONE
-        }
-
-        val setupLabel = activity.getString(R.string.sa_phone_setup_btn)
-        btnSetup.text = if (missingSteps > 0) "$setupLabel ($missingSteps)" else setupLabel
-
-        val open = drawerOpen ?: (missingSteps > 0)
-        drawer.visibility = if (open) View.VISIBLE else View.GONE
-        btnLiveTakeover.visibility = if (CallAudioService.isLiveAiCallActive()) View.VISIBLE else View.GONE
-
-        bindMobileControls()
-        bindLan(st)
-        bindAdvanced()
-    }
-
-    private fun wireMobileControls() {
-        switchDailySound.setOnCheckedChangeListener { _, isChecked ->
-            if (bindingMobileControls) return@setOnCheckedChangeListener
-            Prefs.setStandaloneDailySound(activity, isChecked)
-            if (Prefs.isAiCallEnabled(activity) && !PhoneModeManager.isSwitching()) {
-                startModeSwitch(Prefs.PHONE_MODE_AI)
-            }
-            LocalAudioGuard(activity).applyHardMute()
-        }
-        switchPersistentNotif.setOnCheckedChangeListener { _, isChecked ->
-            if (bindingMobileControls) return@setOnCheckedChangeListener
-            Prefs.setStandalonePersistentNotif(activity, isChecked)
-            CallAudioService.refreshNotification(activity)
-        }
-        switchSummaryNotif.setOnCheckedChangeListener { _, isChecked ->
-            if (bindingMobileControls) return@setOnCheckedChangeListener
-            Prefs.setStandaloneCallSummaryNotif(activity, isChecked)
-        }
-        switchDndAuto.setOnCheckedChangeListener { _, isChecked ->
-            if (bindingMobileControls) return@setOnCheckedChangeListener
-            if (isChecked && !DedicatedDndManager.hasPolicyAccess(activity)) {
-                bindingMobileControls = true
-                switchDndAuto.isChecked = false
-                bindingMobileControls = false
-                launch(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
-                return@setOnCheckedChangeListener
-            }
-            Prefs.setStandaloneDndAutoAi(activity, isChecked)
-            if (isChecked) DedicatedDndManager.ensureRule(activity)
-        }
-        chkDndAny.setOnCheckedChangeListener { _, isChecked ->
-            if (bindingMobileControls) return@setOnCheckedChangeListener
-            Prefs.setStandaloneDndAnyMode(activity, isChecked)
-        }
-        btnDndSettings.setOnClickListener {
-            if (!DedicatedDndManager.hasPolicyAccess(activity)) {
-                launch(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
-            } else {
-                DedicatedDndManager.openSystemDndSettings(activity)
-            }
-        }
-        whitelistGroup.setOnCheckedChangeListener { _, checkedId ->
-            if (bindingMobileControls) return@setOnCheckedChangeListener
-            val action = when (checkedId) {
-                R.id.saRbRingPhone -> Prefs.WHITELIST_ACTION_RING_PHONE
-                R.id.saRbForwardNumber -> Prefs.WHITELIST_ACTION_FORWARD_NUMBER
-                R.id.saRbAiOnly -> Prefs.WHITELIST_ACTION_AI_ONLY
-                else -> Prefs.WHITELIST_ACTION_URGENT_PROMPT
-            }
-            Prefs.setStandaloneWhitelistAction(activity, action)
-            EmbeddedAgent.patchSettings(
-                activity,
-                JSONObject().put("standalone_whitelist_action", action).toString(),
-            )
-        }
-        btnSyncContacts.setOnClickListener {
-            if (!PhoneContactsSync.hasPermission(activity)) {
-                ActivityCompat.requestPermissions(
-                    activity,
-                    arrayOf(Manifest.permission.READ_CONTACTS),
-                    REQ_CONTACTS,
-                )
-                return@setOnClickListener
-            }
-            runContactsSync()
-        }
-    }
-
-    private fun bindMobileControls() {
-        bindingMobileControls = true
-        try {
-            switchDailySound.isChecked = Prefs.isStandaloneDailySound(activity)
-            switchPersistentNotif.isChecked = Prefs.isStandalonePersistentNotif(activity)
-            switchSummaryNotif.isChecked = Prefs.isStandaloneCallSummaryNotif(activity)
-            switchDndAuto.isChecked = Prefs.isStandaloneDndAutoAi(activity)
-            chkDndAny.isChecked = Prefs.isStandaloneDndAnyMode(activity)
-            val checkedId = when (Prefs.standaloneWhitelistAction(activity)) {
-                Prefs.WHITELIST_ACTION_RING_PHONE -> R.id.saRbRingPhone
-                Prefs.WHITELIST_ACTION_FORWARD_NUMBER -> R.id.saRbForwardNumber
-                Prefs.WHITELIST_ACTION_AI_ONLY -> R.id.saRbAiOnly
-                else -> R.id.saRbUrgentPrompt
-            }
-            if (whitelistGroup.checkedRadioButtonId != checkedId) {
-                whitelistGroup.check(checkedId)
-            }
-        } finally {
-            bindingMobileControls = false
-        }
-    }
-
-    private fun runContactsSync() {
-        btnSyncContacts.isEnabled = false
-        syncStatusText.setText(R.string.sa_contacts_syncing)
-        val starredToWhitelist = chkStarredWhitelist.isChecked
-        Thread({
-            val res = PhoneContactsSync.syncNow(activity, starredToWhitelist)
-            activity.runOnUiThread {
-                if (activity.isDestroyed) return@runOnUiThread
-                btnSyncContacts.isEnabled = true
-                if (res.ok) {
-                    syncStatusText.text = activity.getString(
-                        R.string.sa_contacts_sync_done,
-                        res.added,
-                        res.merged,
-                    )
-                    if (consoleLoaded) webView.reload()
-                } else {
-                    syncStatusText.text = activity.getString(
-                        R.string.sa_contacts_sync_fail,
-                        res.error,
-                    )
-                }
-            }
-        }, "bageo-contacts-sync").start()
-    }
-
-    private fun bindLan(st: EmbeddedAgent.Status) {
-        val prefOn = Prefs.isStandaloneLanEnabled(activity)
-        bindingLanSwitch = true
-        switchLan.isChecked = prefOn && st.passwordSet
-        bindingLanSwitch = false
-
-        val showBox = prefOn && st.lanEnabled && st.lanUrl.isNotBlank()
-        lanBox.visibility = if (showBox) View.VISIBLE else View.GONE
-        if (showBox) {
-            lanUrlText.text = st.lanUrl
-            if (st.mdnsUrl.isNotBlank()) {
-                lanMdnsText.text = activity.getString(R.string.sa_lan_mdns_hint, st.mdnsUrl)
-                lanMdnsText.visibility = View.VISIBLE
-            } else {
-                lanMdnsText.visibility = View.GONE
-            }
-        }
-    }
-
-    private fun bindSteps(ai: Boolean): Int {
-        stepsSection.visibility = if (ai) View.VISIBLE else View.GONE
-        if (!ai) return 0
-
-        val roleManager = activity.getSystemService(RoleManager::class.java)
-        val module = isPrivilegedSystemApp() && privilegedPermissions.all { isGranted(it.permission) }
-        val perms = runtimePermissions.all { isGranted(it.permission) }
-        val dialer = DialerRoleHelper.isDefaultDialer(activity) ||
-            roleManager?.isRoleHeld(RoleManager.ROLE_DIALER) == true
-        val screening = roleManager?.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) == true
-        val dnd = activity.getSystemService(NotificationManager::class.java)
-            ?.isNotificationPolicyAccessGranted == true
-        val battery = activity.getSystemService(PowerManager::class.java)
-            ?.isIgnoringBatteryOptimizations(activity.packageName) == true
-
-        row(R.id.saStepModule).bind(
-            state = stepState(module),
-            title = activity.getString(R.string.step_module_title),
-            detail = activity.getString(if (module) R.string.step_module_ok else R.string.step_module_missing),
-        )
-        row(R.id.saStepPerms).bind(
-            state = stepState(perms),
-            title = activity.getString(R.string.step_perms_title),
-            detail = activity.getString(R.string.sa_perms_desc),
-            actionLabel = if (perms) 0 else R.string.btn_allow,
-        ) { requestMissingRuntimePermissions() }
-        row(R.id.saStepDialer).bind(
-            state = stepState(dialer),
-            title = activity.getString(R.string.step_dialer_title),
-            detail = activity.getString(R.string.step_dialer_desc),
-            actionLabel = if (dialer) 0 else R.string.btn_set,
-        ) {
-            DialerRoleHelper.requestDialerRole(activity)
-            refresh()
-        }
-        row(R.id.saStepScreening).bind(
-            state = stepState(screening),
-            title = activity.getString(R.string.step_screening_title),
-            detail = activity.getString(R.string.step_screening_desc),
-            actionLabel = if (screening) 0 else R.string.btn_set,
-        ) { requestScreeningRole() }
-        row(R.id.saStepDnd).bind(
-            state = stepState(dnd),
-            title = activity.getString(R.string.step_dnd_title),
-            detail = activity.getString(R.string.step_dnd_desc),
-            actionLabel = if (dnd) 0 else R.string.btn_open_settings,
-        ) { launch(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) }
-        row(R.id.saStepBattery).bind(
-            state = stepState(battery),
-            title = activity.getString(R.string.step_battery_title),
-            detail = activity.getString(R.string.step_battery_desc),
-            actionLabel = if (battery) 0 else R.string.btn_allow,
-        ) { requestBatteryExemption() }
-
-        val steps = listOf(module, perms, dialer, screening, dnd, battery)
-        val done = steps.count { it }
-        stepsTitle.text = activity.getString(R.string.steps_header, done, steps.size)
-        return steps.size - done
-    }
-
-    private fun bindAdvanced() {
-        advHeader.text = foldTitle(activity.getString(R.string.advanced), advOpen)
-        advBody.visibility = if (advOpen) View.VISIBLE else View.GONE
-        if (!advOpen) return
-
-        serviceStatus.setText(if (isServiceRunning()) R.string.service_running else R.string.service_stopped)
-
-        val sourceDir = activity.applicationInfo.sourceDir.orEmpty()
-        val privileged = isPrivilegedSystemApp()
-        row(R.id.saRowPriv).bind(
-            state = if (privileged) CheckState.OK else CheckState.MISSING,
-            title = activity.getString(R.string.check_priv_title),
-            detail = activity.getString(
-                if (privileged) R.string.check_priv_ok else R.string.check_priv_missing,
-                sourceDir,
-            ),
-        )
-        for (item in privilegedPermissions) {
-            row(item.rowId).bind(
-                state = if (isGranted(item.permission)) CheckState.OK else CheckState.MISSING,
-                title = activity.getString(item.labelRes),
-                detail = item.permission.substringAfterLast('.'),
-            )
-        }
-        for (item in runtimePermissions) {
-            row(item.rowId).bind(
-                state = if (isGranted(item.permission)) CheckState.OK else CheckState.MISSING,
-                title = activity.getString(item.labelRes),
-                detail = item.permission.substringAfterLast('.'),
-            )
-        }
-
-        val canInject = isGranted("android.permission.MODIFY_PHONE_STATE")
-        val telephonyOutput = try {
-            TelephonyUplinkInjector(activity).isAvailable()
-        } catch (_: Exception) {
-            false
-        }
-        row(R.id.saRowUplink).bind(
-            state = when {
-                !canInject -> CheckState.MISSING
-                telephonyOutput -> CheckState.OK
-                else -> CheckState.CHECK
-            },
-            title = activity.getString(R.string.check_uplink_title),
-            detail = activity.getString(
-                when {
-                    !canInject -> R.string.check_uplink_missing
-                    telephonyOutput -> R.string.check_uplink_ok
-                    else -> R.string.check_uplink_idle
-                },
-            ),
-        )
-    }
-
-    // ---------------------------------------------------------------- Helpers
-
-    private fun confirmModeSwitch(target: String) {
-        val toAi = target == Prefs.PHONE_MODE_AI
-        AlertDialog.Builder(activity)
-            .setTitle(if (toAi) R.string.confirm_ai_title else R.string.confirm_normal_title)
-            .setMessage(if (toAi) R.string.confirm_ai_body else R.string.confirm_normal_body)
-            .setPositiveButton(R.string.btn_switch) { _, _ -> startModeSwitch(target) }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    private fun startModeSwitch(target: String) {
-        modeErrorCode = null
-        modeErrorDndMode = ""
-        PhoneModeManager.requestSwitch(activity, target, callBusy = false) { result ->
-            activity.runOnUiThread {
-                if (activity.isDestroyed) return@runOnUiThread
-                modeErrorCode = if (result.ok) null else result.error
-                modeErrorDndMode = if (result.ok) "" else result.dndMode
-                if (result.mode == target && hasRequiredPerms()) {
-                    startCallService(CallAudioService.ACTION_START)
-                }
-                refresh()
-                refreshSoon()
-            }
-        }
-        refresh()
-    }
-
-    private fun modeErrorText(code: String): String {
-        if (code == PhoneModeManager.ERR_DND && modeErrorDndMode.isNotEmpty()) {
-            return activity.getString(R.string.mode_err_dnd_mode, modeErrorDndMode)
-        }
-        return activity.getString(
-            when (code) {
-                PhoneModeManager.ERR_IN_CALL -> R.string.mode_err_in_call
-                PhoneModeManager.ERR_BUSY -> R.string.mode_err_busy
-                PhoneModeManager.ERR_NO_ROOT -> R.string.mode_err_no_root
-                PhoneModeManager.ERR_SAVE -> R.string.mode_err_save
-                PhoneModeManager.ERR_DIALER -> R.string.mode_err_dialer
-                PhoneModeManager.ERR_SCREENING -> R.string.mode_err_screening
-                PhoneModeManager.ERR_DND -> R.string.mode_err_dnd
-                PhoneModeManager.ERR_VOLUME -> R.string.mode_err_volume
-                else -> R.string.mode_err_other
-            },
-        )
-    }
+    // ---------------------------------------------------------------- Permissions, System Bars & Helpers
 
     private fun handleLaunchIntent(intent: Intent?) {
         intent?.getStringExtra("open_call_id")?.trim()?.takeIf { it.isNotBlank() }?.let { callId ->
             pendingOpenCallId = callId
-            drawerOpen = false
             checkEmbeddedReady()
         }
         when (intent?.action) {
             CallAudioService.ACTION_SMOKE_CONNECT,
             CallAudioService.ACTION_START,
-            -> if (ensurePerms()) startCallService(intent.action!!)
+            -> if (hasRequiredPerms()) CallAudioService.ensureArmed(activity)
         }
-    }
-
-    private fun startCallService(action: String) {
-        try {
-            ContextCompat.startForegroundService(
-                activity,
-                Intent(activity, CallAudioService::class.java).setAction(action),
-            )
-        } catch (e: Exception) {
-            Log.w(TAG, "start service $action failed: ${e.message}")
-        }
-    }
-
-    private fun ensurePerms(): Boolean {
-        val missing = requiredPermissions().filter { !isGranted(it) }
-        if (missing.isNotEmpty()) {
-            ActivityCompat.requestPermissions(activity, missing.toTypedArray(), REQ_REQUIRED_PERMS)
-            return false
-        }
-        return true
     }
 
     private fun hasRequiredPerms(): Boolean = requiredPermissions().all { isGranted(it) }
@@ -1142,8 +956,6 @@ class StandaloneUi(private val activity: Activity) {
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.READ_PHONE_STATE,
             Manifest.permission.ANSWER_PHONE_CALLS,
-            Manifest.permission.READ_SMS,
-            Manifest.permission.RECEIVE_SMS,
         )
         if (Build.VERSION.SDK_INT >= 33) {
             need += Manifest.permission.POST_NOTIFICATIONS
@@ -1152,9 +964,9 @@ class StandaloneUi(private val activity: Activity) {
     }
 
     private fun requestMissingRuntimePermissions() {
-        val missing = runtimePermissions.map { it.permission }.filter { !isGranted(it) }
+        val missing = runtimePermissions.filter { !isGranted(it) }
         if (missing.isEmpty()) {
-            refresh()
+            pushNativeState()
             return
         }
         grantRationaleBefore = missing.associateWith { activity.shouldShowRequestPermissionRationale(it) }
@@ -1167,7 +979,7 @@ class StandaloneUi(private val activity: Activity) {
         if (!rm.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING) ||
             rm.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)
         ) {
-            refresh()
+            pushNativeState()
             return
         }
         try {
@@ -1193,7 +1005,6 @@ class StandaloneUi(private val activity: Activity) {
     private fun copyToClipboard(text: String) {
         val cm = activity.getSystemService(ClipboardManager::class.java) ?: return
         cm.setPrimaryClip(ClipData.newPlainText("Bageo", text))
-        Toast.makeText(activity, R.string.sa_copied, Toast.LENGTH_SHORT).show()
     }
 
     private fun launch(intent: Intent, reqCode: Int? = null): Boolean = try {
@@ -1209,7 +1020,7 @@ class StandaloneUi(private val activity: Activity) {
     }
 
     private fun refreshSoon() {
-        handler.postDelayed({ if (!activity.isDestroyed) refresh() }, 700L)
+        handler.postDelayed({ if (!activity.isDestroyed) pushNativeState() }, 650L)
     }
 
     private fun isGranted(perm: String): Boolean =
@@ -1230,71 +1041,61 @@ class StandaloneUi(private val activity: Activity) {
         false
     }
 
-    private fun setDotColor(color: Int) {
-        val gd = (dotView.background as? GradientDrawable) ?: GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            dotView.background = this
-        }
-        gd.setColor(color)
-    }
-
-    private fun stepState(done: Boolean): CheckState = if (done) CheckState.OK else CheckState.MISSING
-
-    private fun foldTitle(title: String, open: Boolean): String =
-        "$title  ${if (open) "\u25BE" else "\u25B8"}"
-
-    private fun row(id: Int): CheckRow {
-        val root = activity.findViewById<View>(id)
-        return (root.tag as? CheckRow) ?: CheckRow(root).also { root.tag = it }
-    }
-
-    private fun CheckRow.bind(
-        state: CheckState,
-        title: String,
-        detail: String,
-        actionLabel: Int = 0,
-        onAction: (() -> Unit)? = null,
-    ) {
-        val color = activity.getColor(
-            when (state) {
-                CheckState.OK -> R.color.pca_status_ok
-                CheckState.MISSING -> R.color.pca_status_missing
-                CheckState.CHECK -> R.color.pca_status_check
-            },
-        )
-        icon.text = when (state) {
-            CheckState.OK -> "\u2713"
-            CheckState.MISSING -> "\u2717"
-            CheckState.CHECK -> "!"
-        }
-        icon.setTextColor(color)
-        this.title.text = title
-        status.setText(
-            when (state) {
-                CheckState.OK -> R.string.status_ok
-                CheckState.MISSING -> R.string.status_missing
-                CheckState.CHECK -> R.string.status_check
-            },
-        )
-        status.setTextColor(color)
-        this.detail.text = detail
-        if (actionLabel != 0 && onAction != null) {
-            action.setText(actionLabel)
-            action.setOnClickListener { onAction() }
-            action.visibility = View.VISIBLE
-        } else {
-            action.setOnClickListener(null)
-            action.visibility = View.GONE
-        }
-    }
-
     private fun deviceName(): String {
         val m = Build.MANUFACTURER.orEmpty().trim()
         val model = Build.MODEL.orEmpty().trim()
         return if (m.isEmpty() || model.startsWith(m, ignoreCase = true)) model else "$m $model"
     }
 
+    private fun deviceSerial(): String {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Build.getSerial()
+            } else {
+                @Suppress("DEPRECATION")
+                Build.SERIAL
+            }
+        } catch (_: SecurityException) {
+            "pixel-${Process.myUid()}"
+        }.ifBlank { "pixel-${Process.myUid()}" }
+    }
+
+    private fun performHaptic(kind: String) {
+        val view = if (::webView.isInitialized) webView else rootView
+        val code = when (kind) {
+            "confirm" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.VIRTUAL_KEY
+            "reject" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) HapticFeedbackConstants.REJECT else HapticFeedbackConstants.LONG_PRESS
+            "toggle" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) HapticFeedbackConstants.TOGGLE_ON else HapticFeedbackConstants.CLOCK_TICK
+            else -> HapticFeedbackConstants.KEYBOARD_TAP
+        }
+        try {
+            view.performHapticFeedback(code)
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun syncSystemBarsWithSystemNightMode() {
+        val night = (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        applySystemBarTheme(night)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun applySystemBarTheme(isDark: Boolean) {
+        val bgColor = Color.parseColor(if (isDark) "#141518" else "#F6F5F1")
+        val navColor = Color.parseColor(if (isDark) "#1B1D21" else "#FFFFFF")
+        try {
+            activity.window.statusBarColor = bgColor
+            activity.window.navigationBarColor = navColor
+            val ctrl = WindowCompat.getInsetsController(activity.window, rootView)
+            ctrl.isAppearanceLightStatusBars = !isDark
+            ctrl.isAppearanceLightNavigationBars = !isDark
+        } catch (_: Exception) {
+        }
+    }
+
     private fun applySystemBarInsets(root: View) {
+        WindowCompat.setDecorFitsSystemWindows(activity.window, false)
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
             val bars = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or
@@ -1310,14 +1111,13 @@ class StandaloneUi(private val activity: Activity) {
         const val ENABLED = true
         private const val TAG = "StandaloneUi"
         private const val MIN_PASSWORD_LEN = 8
-        private const val REQ_REQUIRED_PERMS = 100
         private const val REQ_GRANT_ALL = 101
         private const val REQ_CONTACTS = 102
         private const val REQ_SCREENING_ROLE = 7102
         private const val REQ_FILE_CHOOSER = 7103
         private const val REQ_CREATE_DOC = 7104
-        private const val POLL_READY_MS = 250L
-        private const val TICK_MS = 3_000L
+        private const val POLL_READY_MS = 200L
+        private const val TICK_MS = 2_500L
         private const val INSTANT_DENIAL_MS = 350L
     }
 }

@@ -17,8 +17,7 @@
     <string name="sa_copy_url">Copiar endereço</string>
     <string name="sa_copied">Copiado</string>
     <string name="sa_battery_tip">Se ficar sempre na tomada, ative o limite de carga de 80% nas Configurações para proteger a bateria.</string>
-    <string name="sa_perms_sms">SMS: avisar quando chegar uma nova mensagem</string>
-    <string name="sa_perms_desc">Necessário para atender chamadas, ler o número e encaminhar novos SMS.</string>
+    <string name="sa_perms_desc">Necessário para atender chamadas, ler o número e exibir notificações.</string>
     <string name="sa_save_ok">Arquivo salvo</string>
     <string name="sa_save_fail">Não foi possível salvar</string>
     <string name="sa_btn_ok">OK</string>

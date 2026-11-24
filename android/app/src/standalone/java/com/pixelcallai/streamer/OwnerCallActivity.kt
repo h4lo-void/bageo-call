@@ -13,7 +13,14 @@ import android.os.Looper
 import android.telecom.Call
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
+import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
+import android.view.WindowInsets
 import android.widget.Button
 import android.widget.EditText
 import android.widget.GridLayout
@@ -22,14 +29,18 @@ import android.widget.TextView
 import android.widget.Toast
 
 /**
- * Lockscreen-capable native call UI for Android Standalone edition:
+ * Lockscreen-capable native call & dialpad UI for Android Standalone edition,
+ * styled to match Bageo's warm paper/ink design system:
  * - `incoming_whitelist`: direct ring on THIS phone ([接聽] / [交給 AI 接] / [掛斷])
  * - `urgent_prompt`: urgent AI escalation popup ([立刻接手通話] / [讓 AI 請他留話])
  * - `in_call`: owner active call controls ([擴音] / [靜音] / [鍵盤] / [掛斷])
  * - `dialer`: clean native dialpad with dual-SIM selector ([撥出])
  */
 class OwnerCallActivity : Activity() {
+    private lateinit var rootLayout: View
     private lateinit var badgeText: TextView
+    private lateinit var avatarWrap: View
+    private lateinit var avatarText: TextView
     private lateinit var titleText: TextView
     private lateinit var subtitleText: TextView
     private lateinit var reasonCard: View
@@ -73,7 +84,10 @@ class OwnerCallActivity : Activity() {
         }
         setContentView(R.layout.activity_owner_call)
 
+        rootLayout = findViewById(R.id.ocRoot)
         badgeText = findViewById(R.id.ocBadge)
+        avatarWrap = findViewById(R.id.ocAvatarWrap)
+        avatarText = findViewById(R.id.ocAvatarText)
         titleText = findViewById(R.id.ocTitle)
         subtitleText = findViewById(R.id.ocSubtitle)
         reasonCard = findViewById(R.id.ocReasonCard)
@@ -92,9 +106,27 @@ class OwnerCallActivity : Activity() {
         dialSimContainer = findViewById(R.id.ocSimRow)
         btnDialPlace = findViewById(R.id.ocBtnDialPlace)
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            dialInput.showSoftInputOnFocus = false
+        }
+        applyEdgeToEdgeInsets()
         wireButtons()
         setupDialpads()
         applyIntent(intent)
+    }
+
+    private fun applyEdgeToEdgeInsets() {
+        val padH = dp(20)
+        val baseTop = dp(18)
+        val baseBottom = dp(20)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false)
+            rootLayout.setOnApplyWindowInsetsListener { v, insets ->
+                val bars = insets.getInsets(WindowInsets.Type.systemBars())
+                v.setPadding(padH + bars.left, baseTop + bars.top, padH + bars.right, baseBottom + bars.bottom)
+                insets
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -127,90 +159,169 @@ class OwnerCallActivity : Activity() {
         renderMode()
     }
 
+    private fun tapHaptic(v: View) {
+        v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+    }
+
     private fun wireButtons() {
-        findViewById<Button>(R.id.ocBtnWlAnswer).setOnClickListener {
+        findViewById<Button>(R.id.ocBtnWlAnswer).setOnClickListener { v ->
+            tapHaptic(v)
             CallAudioService.answerWhitelistForOwner(this)
             currentMode = MODE_IN_CALL
             renderMode()
         }
-        findViewById<Button>(R.id.ocBtnWlHandAi).setOnClickListener {
+        findViewById<Button>(R.id.ocBtnWlHandAi).setOnClickListener { v ->
+            tapHaptic(v)
             CallAudioService.handWhitelistToAi(this)
             finish()
         }
-        findViewById<Button>(R.id.ocBtnWlReject).setOnClickListener {
+        findViewById<Button>(R.id.ocBtnWlReject).setOnClickListener { v ->
+            tapHaptic(v)
             CallAudioService.rejectWhitelistForOwner(this)
             finish()
         }
-        findViewById<Button>(R.id.ocBtnUrgentTake).setOnClickListener {
+        findViewById<Button>(R.id.ocBtnUrgentTake).setOnClickListener { v ->
+            tapHaptic(v)
             CallAudioService.requestOwnerTakeover(this, urgentId)
             currentMode = MODE_IN_CALL
             renderMode()
         }
-        findViewById<Button>(R.id.ocBtnUrgentDecline).setOnClickListener {
+        findViewById<Button>(R.id.ocBtnUrgentDecline).setOnClickListener { v ->
+            tapHaptic(v)
             CallAudioService.declineUrgentPrompt(this, urgentId)
             finish()
         }
-        findViewById<Button>(R.id.ocBtnInCallHangup).setOnClickListener {
+        findViewById<Button>(R.id.ocBtnInCallHangup).setOnClickListener { v ->
+            tapHaptic(v)
             CallAudioService.hangupActiveCall(this)
             finish()
         }
-        btnSpeaker.setOnClickListener {
+        btnSpeaker.setOnClickListener { v ->
+            tapHaptic(v)
             val now = SilentInCallService.ownerCallSnapshot()?.speakerOn ?: false
             SilentInCallService.setSpeakerphone(!now)
             updateLiveState()
         }
-        btnMute.setOnClickListener {
+        btnMute.setOnClickListener { v ->
+            tapHaptic(v)
             val now = SilentInCallService.ownerCallSnapshot()?.micMuted ?: false
             SilentInCallService.setOwnerMuted(!now)
             updateLiveState()
         }
-        btnKeypad.setOnClickListener {
+        btnKeypad.setOnClickListener { v ->
+            tapHaptic(v)
             showDtmfPad = !showDtmfPad
             inCallDtmfGrid.visibility = if (showDtmfPad) View.VISIBLE else View.GONE
+            styleToggleButton(btnKeypad, showDtmfPad)
         }
-        findViewById<Button>(R.id.ocBtnDialBack).setOnClickListener {
+        val backBtn = findViewById<Button>(R.id.ocBtnDialBack)
+        backBtn.setOnClickListener { v ->
+            tapHaptic(v)
             val s = dialInput.text.toString()
             if (s.isNotEmpty()) {
                 dialInput.setText(s.dropLast(1))
                 dialInput.setSelection(dialInput.text.length)
             }
         }
-        findViewById<Button>(R.id.ocBtnDialClose).setOnClickListener {
+        backBtn.setOnLongClickListener { v ->
+            v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            dialInput.setText("")
+            true
+        }
+        findViewById<Button>(R.id.ocBtnDialClose).setOnClickListener { v ->
+            tapHaptic(v)
             finish()
         }
-        btnDialPlace.setOnClickListener {
+        btnDialPlace.setOnClickListener { v ->
+            tapHaptic(v)
             placeManualCall()
         }
     }
 
+    private fun styleToggleButton(btn: Button, active: Boolean) {
+        btn.setBackgroundResource(if (active) R.drawable.bg_btn_active else R.drawable.bg_btn_secondary)
+        btn.setTextColor(getColor(if (active) R.color.bg_accent else R.color.bg_text))
+    }
+
     private fun setupDialpads() {
-        val keys = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#")
+        val keys = listOf(
+            "1" to "",
+            "2" to "ABC",
+            "3" to "DEF",
+            "4" to "GHI",
+            "5" to "JKL",
+            "6" to "MNO",
+            "7" to "PQRS",
+            "8" to "TUV",
+            "9" to "WXYZ",
+            "*" to "",
+            "0" to "+",
+            "#" to "",
+        )
         val dialGrid = findViewById<GridLayout>(R.id.ocDialGrid)
         dialGrid.removeAllViews()
         inCallDtmfGrid.removeAllViews()
-        for (k in keys) {
-            dialGrid.addView(makeKeyButton(k) {
-                dialInput.append(k)
+        for ((digit, sub) in keys) {
+            val dialBtn = makeKeyButton(digit, sub, onTap = {
+                dialInput.append(digit)
+            }, onLongZero = if (digit == "0") {
+                { dialInput.append("+") }
+            } else {
+                null
             })
-            inCallDtmfGrid.addView(makeKeyButton(k) {
-                SilentInCallService.sendDtmfBurst(k[0])
-            })
+            dialGrid.addView(dialBtn)
+            inCallDtmfGrid.addView(makeKeyButton(digit, sub, onTap = {
+                SilentInCallService.sendDtmfBurst(digit[0])
+            }))
         }
         populateSimChips()
     }
 
-    private fun makeKeyButton(label: String, onTap: () -> Unit): Button =
-        Button(this).apply {
-            text = label
-            textSize = 20f
-            layoutParams = GridLayout.LayoutParams().apply {
-                width = 0
-                height = GridLayout.LayoutParams.WRAP_CONTENT
-                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
-                setMargins(6, 6, 6, 6)
-            }
-            setOnClickListener { onTap() }
+    private fun makeKeyButton(
+        digit: String,
+        sub: String,
+        onTap: () -> Unit,
+        onLongZero: (() -> Unit)? = null,
+    ): Button = Button(this).apply {
+        isAllCaps = false
+        stateListAnimator = null
+        setBackgroundResource(R.drawable.bg_dial_key)
+        gravity = Gravity.CENTER
+        val ssb = SpannableStringBuilder(digit)
+        if (sub.isNotEmpty()) {
+            ssb.append("\n").append(sub)
+            val start = digit.length + 1
+            ssb.setSpan(RelativeSizeSpan(0.42f), start, ssb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            ssb.setSpan(
+                ForegroundColorSpan(getColor(R.color.bg_muted)),
+                start,
+                ssb.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
         }
+        text = ssb
+        textSize = 22f
+        setTextColor(getColor(R.color.bg_text))
+        setLineSpacing(0f, 0.85f)
+        layoutParams = GridLayout.LayoutParams().apply {
+            width = 0
+            height = dp(58)
+            columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+            val m = dp(5)
+            setMargins(m, m, m, m)
+        }
+        setOnClickListener { v ->
+            tapHaptic(v)
+            onTap()
+        }
+        if (onLongZero != null) {
+            setOnLongClickListener { v ->
+                v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                onLongZero()
+                true
+            }
+        }
+    }
 
     private fun populateSimChips() {
         dialSimContainer.removeAllViews()
@@ -230,10 +341,23 @@ class OwnerCallActivity : Activity() {
             val s = sims.optJSONObject(i) ?: continue
             val sub = s.optInt("sub_id", -1).takeIf { it >= 0 } ?: continue
             val label = s.optString("label").ifBlank { "SIM ${i + 1}" }
+            val active = sub == selectedSubId
             val btn = Button(this).apply {
-                text = if (sub == selectedSubId) "✓ $label" else label
-                textSize = 12f
-                setOnClickListener {
+                isAllCaps = false
+                stateListAnimator = null
+                text = label
+                textSize = 13f
+                setPadding(dp(14), dp(6), dp(14), dp(6))
+                setBackgroundResource(if (active) R.drawable.bg_btn_active else R.drawable.bg_btn_secondary)
+                setTextColor(getColor(if (active) R.color.bg_accent else R.color.bg_text))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    dp(38),
+                ).apply {
+                    if (i > 0) marginStart = dp(8)
+                }
+                setOnClickListener { v ->
+                    tapHaptic(v)
                     selectedSubId = sub
                     populateSimChips()
                 }
@@ -247,6 +371,12 @@ class OwnerCallActivity : Activity() {
         if (raw.isEmpty()) {
             Toast.makeText(this, R.string.sa_dial_empty, Toast.LENGTH_SHORT).show()
             return
+        }
+        if (!Prefs.isAiCallEnabled(this)) {
+            if (PhoneModeManager.openSystemPhoneApp(this, raw)) {
+                finish()
+                return
+            }
         }
         try {
             val tm = getSystemService(TelecomManager::class.java)
@@ -290,6 +420,18 @@ class OwnerCallActivity : Activity() {
         }
     }
 
+    private fun avatarGlyph(name: String, number: String): String {
+        val cleanName = name.trim()
+        if (cleanName.isNotEmpty()) {
+            return cleanName.codePoints().findFirst().orElse('?'.code).let { String(Character.toChars(it)).uppercase() }
+        }
+        val cleanNum = number.trim().trimStart('+')
+        if (cleanNum.isNotEmpty()) {
+            return cleanNum.takeLast(2)
+        }
+        return "•"
+    }
+
     private fun renderMode() {
         incomingWhitelistPanel.visibility = if (currentMode == MODE_INCOMING_WL) View.VISIBLE else View.GONE
         urgentPromptPanel.visibility = if (currentMode == MODE_URGENT) View.VISIBLE else View.GONE
@@ -298,24 +440,36 @@ class OwnerCallActivity : Activity() {
         reasonCard.visibility = if (currentMode == MODE_URGENT && reason.isNotBlank()) View.VISIBLE else View.GONE
         reasonText.text = reason
 
+        val isUrgent = currentMode == MODE_URGENT
+        badgeText.setBackgroundResource(if (isUrgent) R.drawable.bg_badge_warn else R.drawable.bg_badge_accent)
+        badgeText.setTextColor(getColor(if (isUrgent) R.color.bg_warn else R.color.bg_accent))
+
         val displayTitle = callerName.ifBlank { callerId }.ifBlank { getString(R.string.sa_call_unknown) }
         when (currentMode) {
             MODE_INCOMING_WL -> {
+                avatarWrap.visibility = View.VISIBLE
+                avatarText.text = avatarGlyph(callerName, callerId)
                 badgeText.text = getString(R.string.sa_badge_whitelist)
                 titleText.text = displayTitle
                 subtitleText.text = callerId.takeIf { callerName.isNotBlank() }.orEmpty()
             }
             MODE_URGENT -> {
+                avatarWrap.visibility = View.VISIBLE
+                avatarText.text = avatarGlyph(callerName, callerId)
                 badgeText.text = getString(R.string.sa_badge_urgent)
                 titleText.text = displayTitle
                 subtitleText.text = callerId.takeIf { callerName.isNotBlank() }.orEmpty()
             }
             MODE_IN_CALL -> {
+                avatarWrap.visibility = View.VISIBLE
+                avatarText.text = avatarGlyph(callerName, callerId)
                 badgeText.text = getString(R.string.sa_badge_in_call)
                 titleText.text = displayTitle
                 inCallDtmfGrid.visibility = if (showDtmfPad) View.VISIBLE else View.GONE
+                styleToggleButton(btnKeypad, showDtmfPad)
             }
             MODE_DIALER -> {
+                avatarWrap.visibility = View.GONE
                 badgeText.text = getString(R.string.sa_badge_dialer)
                 titleText.text = getString(R.string.sa_dialer_title)
                 subtitleText.text = ""
@@ -340,6 +494,7 @@ class OwnerCallActivity : Activity() {
         if (currentMode == MODE_IN_CALL) {
             if (snap.number.isNotBlank() && callerName.isBlank()) {
                 titleText.text = snap.number
+                avatarText.text = avatarGlyph("", snap.number)
             }
             subtitleText.text = when (snap.state) {
                 Call.STATE_DIALING, Call.STATE_CONNECTING -> getString(R.string.sa_state_dialing)
@@ -350,9 +505,11 @@ class OwnerCallActivity : Activity() {
             btnSpeaker.text = getString(
                 if (snap.speakerOn) R.string.sa_btn_speaker_on else R.string.sa_btn_speaker_off,
             )
+            styleToggleButton(btnSpeaker, snap.speakerOn)
             btnMute.text = getString(
                 if (snap.micMuted) R.string.sa_btn_unmute else R.string.sa_btn_mute,
             )
+            styleToggleButton(btnMute, snap.micMuted)
         }
     }
 
@@ -363,6 +520,8 @@ class OwnerCallActivity : Activity() {
         val secs = elapsedSec % 60L
         return String.format("%02d:%02d", mins, secs)
     }
+
+    private fun dp(v: Int): Int = (v * resources.displayMetrics.density + 0.5f).toInt()
 
     companion object {
         const val MODE_INCOMING_WL = "incoming_whitelist"

@@ -73,6 +73,29 @@ class StandaloneLogicTest {
                 currentMode = Prefs.PHONE_MODE_NORMAL,
             ),
         )
+        // Manual override to NORMAL while DND stays ON (previousDndActive == true -> true) must NOT revert to AI!
+        assertNull(
+            DedicatedDndManager.decideModeTarget(
+                autoEnabled = true,
+                anyDndAllowed = true,
+                interruptionFilter = NotificationManager.INTERRUPTION_FILTER_PRIORITY,
+                ruleMatchesOurs = true,
+                currentMode = Prefs.PHONE_MODE_NORMAL,
+                previousDndActive = true,
+            ),
+        )
+        // Genuine edge OFF -> ON triggers AI
+        assertEquals(
+            Prefs.PHONE_MODE_AI,
+            DedicatedDndManager.decideModeTarget(
+                autoEnabled = true,
+                anyDndAllowed = true,
+                interruptionFilter = NotificationManager.INTERRUPTION_FILTER_PRIORITY,
+                ruleMatchesOurs = false,
+                currentMode = Prefs.PHONE_MODE_NORMAL,
+                previousDndActive = false,
+            ),
+        )
     }
 
     @Test

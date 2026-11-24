@@ -14,6 +14,7 @@ class BageoModeTileService : TileService() {
 
     override fun onStartListening() {
         super.onStartListening()
+        PhoneModeManager.reconcileLocalMirror(this)
         PhoneModeManager.addListener(listener)
         refreshTile()
     }
@@ -25,13 +26,18 @@ class BageoModeTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
+        PhoneModeManager.reconcileLocalMirror(this)
         val isAi = Prefs.isAiCallEnabled(this)
         val target = if (isAi) Prefs.PHONE_MODE_NORMAL else Prefs.PHONE_MODE_AI
+        Prefs.markManualModeSwitch(this)
         PhoneModeManager.requestSwitch(
             this,
             target,
             callBusy = !PhoneModeManager.isPhoneIdle(this),
-        ) {
+        ) { res ->
+            if (res.ok && res.mode == Prefs.PHONE_MODE_AI) {
+                CallAudioService.ensureArmed(this@BageoModeTileService)
+            }
             refreshTile()
         }
         refreshTile(switching = true)

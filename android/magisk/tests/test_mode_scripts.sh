@@ -68,13 +68,16 @@ case "$name" in
         fi ;;
       media_session)
         if [ "$4" = --get ]; then echo "volume is $(rd vol_$3)"; else echo "$5" > "$ST/vol_$3"; fi ;;
+      audio)
+        if [ "$2" = set-ringer-mode ] && [ "$3" = NORMAL ]; then echo 2 > "$ST/ringer"; fi ;;
     esac ;;
   settings)
     case "$1 $2 $3" in
       "get global zen_mode") rd zen ;;
       "get system volume_ring") rd vol_2 ;;
       "get system volume_notification") rd vol_5 ;;
-      "get global mode_ringer") echo 2 ;;
+      "get global mode_ringer") r=$(rd ringer); echo "${r:-2}" ;;
+      "put global mode_ringer") echo "$4" > "$ST/ringer" ;;
       "put global zen_mode") echo "$4" > "$ST/zen" ;;
       "put system volume_ring") echo "$4" > "$ST/vol_2" ;;
       "put system volume_notification") echo "$4" > "$ST/vol_5" ;;
@@ -277,6 +280,13 @@ eq "ring vol unchanged" "$(rd vol_2)" 5; eq "notif vol unchanged" "$(rd vol_5)" 
 setup normal_nodnd; ai_phone; echo 2 > "$ST/zen"; echo 3 > "$ST/vol_2"
 run_apply normal app-nodnd-daily-2
 eq "exit" "$RC" 0; is_normal_phone; eq "owner DND untouched" "$(rd zen)" 2
+
+# Standalone nodnd switch to normal clears Bageo's own DND and un-silences mode_ringer.
+setup normal_nodnd_clears_bageo_dnd; ai_phone; echo 2 > "$ST/zen"; echo 0 > "$ST/ringer"; echo 1 > "$ST/data/bageo_dnd"
+run_apply normal app-nodnd-daily-3 5 4 4 5 5 5
+eq "exit" "$RC" 0; is_normal_phone; eq "Bageo DND cleared" "$(rd zen)" 0
+eq "ringer restored" "$(rd ringer)" 2; eq "ring vol restored" "$(rd vol_2)" 5
+eq "bageo_dnd flag removed" "$([ -e "$ST/data/bageo_dnd" ] && echo present || echo absent)" absent
 
 # Standalone layout detection via system/priv-app/<pkg>/bageo_assets
 setup standalone_privapp_assets; normal_phone; echo 0 > "$ST/zen"

@@ -22,6 +22,8 @@ object DedicatedDndManager {
     private val conditionUri: Uri
         get() = Uri.parse("condition://com.pixelcallai.streamer/dnd-ai")
 
+    private const val MANUAL_SWITCH_COOLDOWN_MS = 10_000L
+
     /** Pure decision helper for unit tests and receiver transitions. */
     internal fun decideModeTarget(
         autoEnabled: Boolean,
@@ -29,12 +31,16 @@ object DedicatedDndManager {
         interruptionFilter: Int,
         ruleMatchesOurs: Boolean,
         currentMode: String,
+        previousDndActive: Boolean? = null,
     ): String? {
         if (!autoEnabled) return null
+        val dndActive = interruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL
+        // When previousDndActive is known and unchanged, do not override a manual switch.
+        if (previousDndActive != null && previousDndActive == dndActive) return null
         val active = if (anyDndAllowed) {
-            interruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL
+            dndActive
         } else {
-            ruleMatchesOurs && interruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL
+            ruleMatchesOurs && dndActive
         }
         val desired = if (active) Prefs.PHONE_MODE_AI else Prefs.PHONE_MODE_NORMAL
         return if (desired != currentMode) desired else null
@@ -123,10 +129,21 @@ object DedicatedDndManager {
 
     fun evaluateAndApply(ctx: Context) {
         if (!Prefs.isStandaloneDndAutoAi(ctx)) return
+        // Only run DND auto-switch when Daily Sound is on (otherwise Bageo itself mutates DND).
+        if (!Prefs.isStandaloneDailySound(ctx)) return
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
         val filter = nm.currentInterruptionFilter
+        val dndNow = filter != NotificationManager.INTERRUPTION_FILTER_ALL
+        val prevDnd = Prefs.lastStandaloneDndActive(ctx)
+        Prefs.setLastStandaloneDndActive(ctx, dndNow)
+        val nowMs = System.currentTimeMillis()
+        if (nowMs - Prefs.lastManualModeSwitchAt(ctx) < MANUAL_SWITCH_COOLDOWN_MS) {
+            Log.i(TAG, "skip DND auto-switch within manual switch cooldown")
+            return
+        }
+        val currentMode = PhoneModeManager.reconcileLocalMirror(ctx)
         val ruleId = Prefs.standaloneDndRuleId(ctx)
-        val ruleActive = ruleId.isNotBlank() && try {
+        val ruleExistsAndEnabled = ruleId.isNotBlank() && try {
             nm.automaticZenRules[ruleId]?.isEnabled == true
         } catch (_: Exception) {
             false
@@ -135,16 +152,20 @@ object DedicatedDndManager {
             autoEnabled = true,
             anyDndAllowed = Prefs.isStandaloneDndAnyMode(ctx),
             interruptionFilter = filter,
-            ruleMatchesOurs = ruleActive,
-            currentMode = Prefs.phoneMode(ctx),
+            ruleMatchesOurs = ruleExistsAndEnabled,
+            currentMode = currentMode,
+            previousDndActive = prevDnd,
         ) ?: return
         val busy = PhoneModeManager.isPhoneIdle(ctx).not()
         if (busy) {
             Log.i(TAG, "skip DND auto-switch to $target while call busy")
             return
         }
-        Log.i(TAG, "DND state changed -> switching phone mode to $target")
+        Log.i(TAG, "DND state edge ($prevDnd -> $dndNow) -> switching phone mode to $target")
         PhoneModeManager.requestSwitch(ctx, target, callBusy = false) { res ->
+            if (res.ok && res.mode == Prefs.PHONE_MODE_AI) {
+                CallAudioService.ensureArmed(ctx)
+            }
             Log.i(TAG, "DND auto-switch to $target ok=${res.ok} err=${res.error}")
         }
     }

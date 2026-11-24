@@ -193,6 +193,14 @@ object EmbeddedAgent {
         }
     }
 
+    fun localMobileUrl(token: String = "", lang: String = ""): String {
+        val params = mutableListOf<String>()
+        if (token.isNotBlank()) params.add("token=${android.net.Uri.encode(token)}")
+        if (lang.isNotBlank()) params.add("lang=${android.net.Uri.encode(lang)}")
+        val qs = if (params.isEmpty()) "" else "?" + params.joinToString("&")
+        return "http://127.0.0.1:${BuildConfig.CONSOLE_PORT}/calls/mobile$qs"
+    }
+
     @JvmStatic
     private external fun nativeStart(
         dataDir: String,

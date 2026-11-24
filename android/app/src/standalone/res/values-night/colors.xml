@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial -->
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
+<resources>
+    <bool name="sa_is_light_theme">false</bool>
+    <color name="bg_page">#141518</color>
+    <color name="bg_surface">#1B1D21</color>
+    <color name="bg_surface2">#24272D</color>
+    <color name="bg_line">#2A2D34</color>
+    <color name="bg_text">#EEEEF0</color>
+    <color name="bg_muted">#8E929C</color>
+    <color name="bg_accent">#45A5A1</color>
+    <color name="bg_accent_soft">#1A3232</color>
+    <color name="bg_primary">#E6E7EB</color>
+    <color name="bg_primary_fg">#141518</color>
+    <color name="bg_good">#4CC38A</color>
+    <color name="bg_good_soft">#183126</color>
+    <color name="bg_warn">#E4A84B</color>
+    <color name="bg_warn_soft">#312617</color>
+    <color name="bg_bad">#E07A72</color>
+    <color name="bg_bad_soft">#341F1E</color>
+    <color name="bg_yellow">#ECC354</color>
+    <color name="bg_ripple">#22FFFFFF</color>
+    <color name="bg_ripple_on_dark">#33000000</color>
+</resources>

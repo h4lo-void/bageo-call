@@ -13,6 +13,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 /// The page, before the languages are put in.
 const TEMPLATE: &str = include_str!("../static/calls.html");
+/// Purpose-built single-phone mobile app page for Android Standalone edition.
+const MOBILE_TEMPLATE: &str = include_str!("../static/standalone.html");
 /// Where the page takes its languages from.
 const MARKER: &str = "__I18N_BOOT__";
 /// The cookie the console writes when its language is chosen.
@@ -170,6 +172,12 @@ pub fn page(code: &str) -> Arc<Asset> {
     cached(&PAGES, exact(code).unwrap_or("en"), |c| render(TEMPLATE, c))
 }
 
+/// The standalone mobile app page in one language.
+pub fn mobile_page(code: &str) -> Arc<Asset> {
+    static MOBILE_PAGES: AssetCache = OnceLock::new();
+    cached(&MOBILE_PAGES, exact(code).unwrap_or("en"), |c| render(MOBILE_TEMPLATE, c))
+}
+
 /// One language's file, for the page to fetch when it is chosen.
 pub fn language_file(code: &str) -> Option<Arc<Asset>> {
     static FILES_CACHE: AssetCache = OnceLock::new();
@@ -245,6 +253,8 @@ mod tests {
         // Every key the markup asks for is in English (the fallback of every language).
         let lost: Vec<_> = markup_keys(TEMPLATE).into_iter().filter(|k| k != "key" && !en.contains_key(k)).collect();
         assert!(lost.is_empty(), "markup keys missing from English: {lost:?}");
+        let mobile_lost: Vec<_> = markup_keys(MOBILE_TEMPLATE).into_iter().filter(|k| k != "key" && !en.contains_key(k)).collect();
+        assert!(mobile_lost.is_empty(), "mobile markup keys missing from English: {mobile_lost:?}");
         // Every English key has translator notes in static/i18n/_meta.json.
         let meta: Map<String, Value> = serde_json::from_str(include_str!("../static/i18n/_meta.json")).expect("_meta.json");
         let no_meta: Vec<_> = en.keys().filter(|k| !meta.contains_key(*k)).collect();
@@ -256,6 +266,45 @@ mod tests {
     fn the_page_has_no_translations_of_its_own() {
         assert_eq!(TEMPLATE.matches(MARKER).count(), 1);
         assert!(!TEMPLATE.contains("I18N[\""), "a language block is back in calls.html");
+        assert_eq!(MOBILE_TEMPLATE.matches(MARKER).count(), 1);
+        assert!(!MOBILE_TEMPLATE.contains("I18N[\""), "a language block is in standalone.html");
+    }
+
+    #[test]
+    fn mobile_page_css_is_logical_and_supports_rtl() {
+        let from = MOBILE_TEMPLATE.find("<style>").expect("mobile <style>");
+        let to = MOBILE_TEMPLATE.find("</style>").expect("mobile </style>");
+        let css = &MOBILE_TEMPLATE[from..to];
+        assert!(css.lines().count() > 100, "mobile style block not found");
+        let mut bad = Vec::new();
+        let mut kept = 0;
+        for (i, line) in css.lines().enumerate() {
+            let low = line.to_ascii_lowercase();
+            let mut hit = ["margin-left", "margin-right", "padding-left", "padding-right", "border-left", "border-right", "-left-radius", "-right-radius"]
+                .iter()
+                .any(|p| low.contains(p));
+            let squeezed = low.replace(": ", ":");
+            hit |= ["text-align:left", "text-align:right", "float:left", "float:right"].iter().any(|p| squeezed.contains(p));
+            for word in ["left:", "right:"] {
+                hit |= low.match_indices(word).any(|(at, _)| at > 0 && matches!(low.as_bytes()[at - 1], b' ' | b';' | b'{'));
+            }
+            if !hit {
+                continue;
+            }
+            match line.find("/* ltr-ok:") {
+                Some(at) if line[at + "/* ltr-ok:".len()..].trim_start().len() > 3 => kept += 1,
+                _ => bad.push(format!("{}: {}", i + 1, line.chars().take(110).collect::<String>())),
+            }
+        }
+        assert!(bad.is_empty(), "left/right written into standalone.html style block: {bad:#?}");
+        assert!(kept <= 8, "too many ltr-ok lines in standalone.html ({kept})");
+        assert!(MOBILE_TEMPLATE.contains("const RTL_LANGS = [\"ar\", \"he\", \"fa\", \"ur\", \"ps\", \"sd\"];"));
+        assert!(MOBILE_TEMPLATE.contains("document.documentElement.dir = RTL_LANGS.includes("));
+        for code in codes() {
+            let p = mobile_page(code);
+            assert!(!p.body.contains(MARKER), "mobile_page {code}");
+            assert!(!p.gzip.is_empty(), "mobile_page gzip {code}");
+        }
     }
 
     /// The style block says "start"/"end", never "left"/"right", so the page turns

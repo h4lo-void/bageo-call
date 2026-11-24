@@ -131,7 +131,7 @@ class AgentControlClient(
                             "hello_ack", "hello_ok", "ack", "pong" -> {
                                 Log.i(TAG, "control TEXT ${obj.optString("type")}")
                             }
-                            "place_call", "blocklist_sync", "answer_plan", "set_mode", "agent_info", "send_sms", "incoming_sms_ack", "local_notice" -> onCommand(obj)
+                            "place_call", "blocklist_sync", "answer_plan", "set_mode", "agent_info", "send_sms", "local_notice" -> onCommand(obj)
                             else -> Log.i(TAG, "control TEXT type=${obj.optString("type")} len=${message.length}")
                         }
                     } catch (e: Exception) {

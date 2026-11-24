@@ -66,16 +66,21 @@ rm -f /data/adb/pixelcallai/daemon.pid 2>/dev/null || true
     MODE=normal
   fi
 
-  for p in RECORD_AUDIO READ_PHONE_STATE READ_PHONE_NUMBERS ANSWER_PHONE_CALLS ACCESS_NOTIFICATION_POLICY \
-      POST_NOTIFICATIONS READ_CALL_LOG CALL_PHONE SEND_SMS RECEIVE_SMS READ_SMS; do
-    pm grant "$PKG" "android.permission.$p" >/dev/null 2>&1 || true
-  done
   STANDALONE_MOD=0
   if [ -d "$MODDIR/system/priv-app/$PKG/bageo_assets" ] || [ -d "$MODDIR/bageo_assets" ]; then
     STANDALONE_MOD=1
   fi
+
+  for p in RECORD_AUDIO READ_PHONE_STATE READ_PHONE_NUMBERS ANSWER_PHONE_CALLS ACCESS_NOTIFICATION_POLICY \
+      POST_NOTIFICATIONS READ_CALL_LOG CALL_PHONE SEND_SMS; do
+    pm grant "$PKG" "android.permission.$p" >/dev/null 2>&1 || true
+  done
   if [ "$STANDALONE_MOD" -eq 1 ]; then
     pm grant "$PKG" android.permission.READ_CONTACTS >/dev/null 2>&1 || true
+  else
+    for p in RECEIVE_SMS READ_SMS; do
+      pm grant "$PKG" "android.permission.$p" >/dev/null 2>&1 || true
+    done
   fi
   cmd appops set "$PKG" ACCESS_NOTIFICATION_POLICY allow >/dev/null 2>&1 || true
   dumpsys deviceidle whitelist +"$PKG" >/dev/null 2>&1 || true
@@ -108,14 +113,17 @@ rm -f /data/adb/pixelcallai/daemon.pid 2>/dev/null || true
     if [ "$STANDALONE_MOD" -ne 1 ] || [ -f /data/adb/pixelcallai/spare_mute ]; then
       settings put global zen_mode 2 >/dev/null 2>&1 || true
       cmd notification set_dnd on >/dev/null 2>&1 || true
+      echo 1 > /data/adb/pixelcallai/bageo_dnd 2>/dev/null || true
       settings put system volume_ring 0 >/dev/null 2>&1 || true
       settings put system volume_notification 0 >/dev/null 2>&1 || true
     fi
   fi
 
-  am start-foreground-service -n "$PKG/.CallAudioService" -a "$PKG.START" >/dev/null 2>&1 || true
+  if [ "$STANDALONE_MOD" -eq 0 ] || [ "$MODE" = "ai" ]; then
+    am start-foreground-service -n "$PKG/.CallAudioService" -a "$PKG.START" >/dev/null 2>&1 || true
+  fi
   CLI=/data/adb/modules/zygisk_vector/cli
-  if [ -x "$CLI" ]; then
+  if [ "$STANDALONE_MOD" -eq 0 ] && [ -x "$CLI" ]; then
     "$CLI" modules enable "$PKG" >/dev/null 2>&1 || true
     "$CLI" scope set "$PKG" com.android.phone/0 >/dev/null 2>&1 || true
   fi

@@ -17,8 +17,7 @@
     <string name="sa_copy_url">アドレスをコピー</string>
     <string name="sa_copied">コピーしました</string>
     <string name="sa_battery_tip">常時充電する場合は、システム設定で「充電の上限 80%」をオンにすると電池を保護できます。</string>
-    <string name="sa_perms_sms">SMS：新着メッセージを通知する</string>
-    <string name="sa_perms_desc">通話の応答、発信者番号の取得、新着 SMS の転送に必要です。</string>
+    <string name="sa_perms_desc">通話の応答、発信者番号の取得、通知の表示に必要です。</string>
     <string name="sa_save_ok">ファイルを保存しました</string>
     <string name="sa_save_fail">ファイルを保存できませんでした</string>
     <string name="sa_btn_ok">OK</string>
