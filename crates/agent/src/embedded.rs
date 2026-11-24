@@ -539,13 +539,23 @@ pub fn format_incoming_sms_notification(
 
 /// Handle `{"type":"incoming_sms", ...}` sent by the phone over `CONTROL_IDLE`.
 /// Stores the message into `SmsStore`, records a recent notice, and pushes it to
-/// configured notification channels.
+/// configured notification channels. The phone app keeps no texts
+/// ([`sms_store::SmsStore::off`]): it is taken (so nothing sends it again) and dropped.
 pub(crate) async fn handle_incoming_sms(state: &AppState, serial: &str, msg: &Value) -> Value {
     let id = msg
         .get("id")
         .and_then(Value::as_str)
         .unwrap_or("")
         .trim();
+    if state.sms.is_off() {
+        return json!({
+            "type": "incoming_sms_ack",
+            "id": id,
+            "ok": true,
+            "stored": false,
+            "notified": false,
+        });
+    }
     if id.is_empty() {
         return json!({
             "type": "incoming_sms_ack",

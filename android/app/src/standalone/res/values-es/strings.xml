@@ -20,8 +20,6 @@
     <string name="sa_dnd_rule_name">Bageo AI Llamadas</string>
     <string name="sa_channel_owner_calls">Llamadas prioritarias y urgentes</string>
     <string name="sa_channel_summaries">Resúmenes de llamadas AI</string>
-    <string name="sa_notif_ai_idle_title">La AI está atendiendo tus llamadas</string>
-    <string name="sa_notif_ai_idle_text">Toca para abrir la consola o cambia abajo</string>
     <string name="sa_notif_ai_call_title">AI en llamada</string>
     <string name="sa_notif_owner_call_title">En llamada (Propietario)</string>
     <string name="sa_notif_urgent_title">Llamada urgente</string>

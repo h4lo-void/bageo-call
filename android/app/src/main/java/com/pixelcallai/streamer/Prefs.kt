@@ -359,6 +359,9 @@ object Prefs {
     private const val KEY_STANDALONE_DND_AUTO_AI = "STANDALONE_DND_AUTO_AI"
     private const val KEY_STANDALONE_DND_ANY_MODE = "STANDALONE_DND_ANY_MODE"
     private const val KEY_STANDALONE_DND_RULE_ID = "STANDALONE_DND_RULE_ID"
+    private const val KEY_STANDALONE_DND_RULE_VERSION = "STANDALONE_DND_RULE_VERSION"
+    private const val KEY_STANDALONE_DND_RULE_MIRRORS = "STANDALONE_DND_RULE_MIRRORS"
+    private const val KEY_STANDALONE_DND_RULE_DISMISSED = "STANDALONE_DND_RULE_DISMISSED"
     private const val KEY_STANDALONE_LAST_DND_ACTIVE = "STANDALONE_LAST_DND_ACTIVE"
     private const val KEY_STANDALONE_MANUAL_MODE_AT = "STANDALONE_MANUAL_MODE_AT"
 
@@ -366,13 +369,6 @@ object Prefs {
     const val WHITELIST_ACTION_RING_PHONE = "ring_phone"
     const val WHITELIST_ACTION_FORWARD_NUMBER = "forward_number"
     const val WHITELIST_ACTION_AI_ONLY = "ai_only"
-
-    /**
-     * Standalone edition: the console opens only inside the app, so it is never shared on
-     * Wi-Fi. Always false; an old saved choice is ignored.
-     */
-    @Suppress("UNUSED_PARAMETER")
-    fun isStandaloneLanEnabled(ctx: Context): Boolean = false
 
     /** Standalone edition: keep daily notification/media sounds intact while AI handles calls (default true). */
     fun isStandaloneDailySound(ctx: Context): Boolean =
@@ -438,6 +434,38 @@ object Prefs {
 
     fun setStandaloneDndRuleId(ctx: Context, ruleId: String) {
         sp(ctx).edit().putString(KEY_STANDALONE_DND_RULE_ID, ruleId.trim()).apply()
+    }
+
+    /** Version of the look and behavior the dedicated rule was last written with (0 = an older app's rule). */
+    fun standaloneDndRuleVersion(ctx: Context): Int =
+        sp(ctx).getInt(KEY_STANDALONE_DND_RULE_VERSION, 0)
+
+    /**
+     * [mirrors]: the rule is the Android 15 mode that can be turned on by hand and silences
+     * nothing, so Bageo keeps it on exactly while the phone is in AI mode.
+     */
+    fun setStandaloneDndRuleVersion(ctx: Context, version: Int, mirrors: Boolean) {
+        sp(ctx).edit()
+            .putInt(KEY_STANDALONE_DND_RULE_VERSION, version)
+            .putBoolean(KEY_STANDALONE_DND_RULE_MIRRORS, mirrors)
+            .apply()
+    }
+
+    fun standaloneDndRuleMirrors(ctx: Context): Boolean =
+        sp(ctx).getBoolean(KEY_STANDALONE_DND_RULE_MIRRORS, false)
+
+    /** The owner deleted the rule in Settings: it is made again only from the console. */
+    fun isStandaloneDndRuleDismissed(ctx: Context): Boolean =
+        sp(ctx).getBoolean(KEY_STANDALONE_DND_RULE_DISMISSED, false)
+
+    fun setStandaloneDndRuleDismissed(ctx: Context, dismissed: Boolean) {
+        val editor = sp(ctx).edit().putBoolean(KEY_STANDALONE_DND_RULE_DISMISSED, dismissed)
+        if (dismissed) {
+            editor.remove(KEY_STANDALONE_DND_RULE_ID)
+                .remove(KEY_STANDALONE_DND_RULE_VERSION)
+                .remove(KEY_STANDALONE_DND_RULE_MIRRORS)
+        }
+        editor.apply()
     }
 
     /** Last system DND active state seen by [DedicatedDndManager] (`null` = not yet observed). */

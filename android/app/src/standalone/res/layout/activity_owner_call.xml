@@ -23,14 +23,14 @@
         android:paddingTop="5dp"
         android:paddingEnd="14dp"
         android:paddingBottom="5dp"
-        android:textColor="@color/bg_accent"
-        android:textSize="13sp"
-        android:textStyle="bold" />
+        android:fontFamily="sans-serif-medium"
+        android:textColor="@color/bg_on_accent_soft"
+        android:textSize="14sp" />
 
     <FrameLayout
         android:id="@+id/ocAvatarWrap"
-        android:layout_width="76dp"
-        android:layout_height="76dp"
+        android:layout_width="88dp"
+        android:layout_height="88dp"
         android:layout_marginTop="18dp"
         android:background="@drawable/bg_avatar_circle">
 
@@ -39,9 +39,9 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:gravity="center"
-            android:textColor="@color/bg_accent"
-            android:textSize="28sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium"
+            android:textColor="@color/bg_on_accent_soft"
+            android:textSize="32sp" />
     </FrameLayout>
 
     <TextView
@@ -52,9 +52,9 @@
         android:ellipsize="end"
         android:gravity="center"
         android:maxLines="2"
+        android:fontFamily="sans-serif-medium"
         android:textColor="@color/bg_text"
-        android:textSize="28sp"
-        android:textStyle="bold" />
+        android:textSize="28sp" />
 
     <TextView
         android:id="@+id/ocSubtitle"
@@ -73,7 +73,7 @@
         android:layout_marginTop="18dp"
         android:background="@drawable/bg_card"
         android:orientation="vertical"
-        android:padding="16dp"
+        android:padding="20dp"
         android:visibility="gone">
 
         <TextView
@@ -107,9 +107,9 @@
             android:stateListAnimator="@null"
             android:text="@string/sa_btn_answer"
             android:textAllCaps="false"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/bg_on_accent"
             android:textSize="16sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium" />
 
         <Button
             android:id="@+id/ocBtnWlHandAi"
@@ -120,9 +120,9 @@
             android:stateListAnimator="@null"
             android:text="@string/sa_btn_hand_ai"
             android:textAllCaps="false"
-            android:textColor="@color/bg_text"
+            android:textColor="@color/bg_on_secondary"
             android:textSize="15sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium" />
 
         <Button
             android:id="@+id/ocBtnWlReject"
@@ -133,9 +133,9 @@
             android:stateListAnimator="@null"
             android:text="@string/sa_btn_hangup"
             android:textAllCaps="false"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/bg_on_bad"
             android:textSize="15sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium" />
     </LinearLayout>
 
     <!-- Mode 2: Urgent AI Prompt Takeover -->
@@ -154,9 +154,9 @@
             android:stateListAnimator="@null"
             android:text="@string/sa_btn_takeover_now"
             android:textAllCaps="false"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/bg_on_accent"
             android:textSize="16sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium" />
 
         <Button
             android:id="@+id/ocBtnUrgentDecline"
@@ -167,9 +167,9 @@
             android:stateListAnimator="@null"
             android:text="@string/sa_btn_let_ai_handle"
             android:textAllCaps="false"
-            android:textColor="@color/bg_text"
+            android:textColor="@color/bg_on_secondary"
             android:textSize="15sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium" />
     </LinearLayout>
 
     <!-- Mode 3: Owner In-Call -->
@@ -203,9 +203,9 @@
                 android:stateListAnimator="@null"
                 android:text="@string/sa_btn_speaker_off"
                 android:textAllCaps="false"
-                android:textColor="@color/bg_text"
+                android:textColor="@color/bg_on_secondary"
                 android:textSize="14sp"
-                android:textStyle="bold" />
+                android:fontFamily="sans-serif-medium" />
 
             <Button
                 android:id="@+id/ocBtnMute"
@@ -217,9 +217,9 @@
                 android:stateListAnimator="@null"
                 android:text="@string/sa_btn_mute"
                 android:textAllCaps="false"
-                android:textColor="@color/bg_text"
+                android:textColor="@color/bg_on_secondary"
                 android:textSize="14sp"
-                android:textStyle="bold" />
+                android:fontFamily="sans-serif-medium" />
 
             <Button
                 android:id="@+id/ocBtnKeypad"
@@ -230,9 +230,9 @@
                 android:stateListAnimator="@null"
                 android:text="@string/sa_btn_keypad"
                 android:textAllCaps="false"
-                android:textColor="@color/bg_text"
+                android:textColor="@color/bg_on_secondary"
                 android:textSize="14sp"
-                android:textStyle="bold" />
+                android:fontFamily="sans-serif-medium" />
         </LinearLayout>
 
         <Button
@@ -244,9 +244,9 @@
             android:stateListAnimator="@null"
             android:text="@string/sa_btn_hangup"
             android:textAllCaps="false"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/bg_on_bad"
             android:textSize="16sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium" />
     </LinearLayout>
 
     <!-- Mode 4: Standalone Dialer -->
@@ -304,9 +304,9 @@
                 android:stateListAnimator="@null"
                 android:text="@string/sa_btn_close"
                 android:textAllCaps="false"
-                android:textColor="@color/bg_text"
+                android:textColor="@color/bg_on_secondary"
                 android:textSize="15sp"
-                android:textStyle="bold" />
+                android:fontFamily="sans-serif-medium" />
 
             <Button
                 android:id="@+id/ocBtnDialPlace"
@@ -318,9 +318,9 @@
                 android:stateListAnimator="@null"
                 android:text="@string/sa_btn_dial"
                 android:textAllCaps="false"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/bg_on_accent"
                 android:textSize="16sp"
-                android:textStyle="bold" />
+                android:fontFamily="sans-serif-medium" />
 
             <Button
                 android:id="@+id/ocBtnDialBack"
@@ -331,9 +331,9 @@
                 android:stateListAnimator="@null"
                 android:text="@string/sa_btn_backspace"
                 android:textAllCaps="false"
-                android:textColor="@color/bg_text"
+                android:textColor="@color/bg_on_secondary"
                 android:textSize="15sp"
-                android:textStyle="bold" />
+                android:fontFamily="sans-serif-medium" />
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>

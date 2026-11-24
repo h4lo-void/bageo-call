@@ -113,6 +113,32 @@ class SilentInCallService : InCallService() {
         if (ownCall || (BuildConfig.STANDALONE && CallAudioService.isOwnerHandlingCall())) {
             // Dialed by hand or taken over by the owner: never muted, no AI.
             if (Prefs.isAiCallEnabled(this)) Log.i(TAG, "owner call — not muted, AI not attached")
+            // Standalone: a call the owner dials (from Bageo's dial pad, contacts, a browser,
+            // maps…) gets the call screen right away. Calls the agent dials are not "own".
+            if (BuildConfig.STANDALONE && ownCall && Prefs.isAiCallEnabled(this)) {
+                CallAudioService.showOwnCallScreen(this, info.callerId)
+            }
+        } else if (!BuildConfig.STANDALONE) {
+            // Bridge: as before the standalone ring signal (NEW counts as a ring here).
+            ensureArmed(info.callerId, instanceId)
+            LocalAudioGuard(this).applyHardMute()
+            forceMuteCall(call)
+            when (state) {
+                Call.STATE_RINGING, Call.STATE_NEW -> {
+                    // Do NOT answer here — CallAudioService waits for the agent first.
+                    Log.i(TAG, "RINGING — defer answer to CallAudioService (agent gate)")
+                    forceMuteCall(call)
+                    LocalAudioGuard(this).applyHardMute()
+                }
+                Call.STATE_ACTIVE -> {
+                    forceMuteCall(call)
+                    selectActiveCall(call, instanceId)
+                    signalCallActive(info.callerId, instanceId)
+                }
+                Call.STATE_CONNECTING, Call.STATE_DIALING -> {
+                    forceMuteCall(call)
+                }
+            }
         } else {
             ensureArmed(info.callerId, instanceId)
             LocalAudioGuard(this).silenceRingingCall()
@@ -158,6 +184,17 @@ class SilentInCallService : InCallService() {
                 if (state == Call.STATE_ACTIVE) {
                     if (call !in liveCalls) return
                     selectActiveCall(call, instanceId)
+                }
+                if (!BuildConfig.STANDALONE) {
+                    // Bridge: as before the standalone ring signal.
+                    if (state == Call.STATE_ACTIVE || state == Call.STATE_RINGING) {
+                        LocalAudioGuard(this@SilentInCallService).applyHardMute()
+                        ensureArmed(refreshCallerId(call, instanceId), instanceId)
+                    }
+                    if (state == Call.STATE_ACTIVE) {
+                        signalCallActive(refreshCallerId(call, instanceId), instanceId)
+                    }
+                    return
                 }
                 if (state == Call.STATE_ACTIVE || state == Call.STATE_RINGING) {
                     val cid = refreshCallerId(call, instanceId)
@@ -1202,8 +1239,14 @@ class SilentInCallService : InCallService() {
         }
 
         private fun ringingCall(): Call? =
-            activeCall?.takeIf { it in liveCalls && isRingingIncoming(it) }
-                ?: liveCalls.firstOrNull(::isRingingIncoming)
+            if (!BuildConfig.STANDALONE) {
+                // Bridge: only RINGING, as before.
+                activeCall?.takeIf { it in liveCalls && it.state == Call.STATE_RINGING }
+                    ?: liveCalls.firstOrNull { it.state == Call.STATE_RINGING }
+            } else {
+                activeCall?.takeIf { it in liveCalls && isRingingIncoming(it) }
+                    ?: liveCalls.firstOrNull(::isRingingIncoming)
+            }
 
         /**
          * A call that rings on this phone. NEW counts only for an incoming call: a call
@@ -1289,6 +1332,22 @@ class SilentInCallService : InCallService() {
         /** Defer-ring path: answer the ringing call once CallAudioService confirms the agent. */
         fun answerActiveIfHeld(): Boolean {
             if (activeService == null) return false
+            if (!BuildConfig.STANDALONE) {
+                // Bridge: the selected call, as before.
+                val held = activeCall ?: return false
+                return try {
+                    if (held.state == Call.STATE_RINGING || held.state == Call.STATE_NEW) {
+                        held.answer(VideoProfile.STATE_AUDIO_ONLY)
+                        Log.i(TAG, "answerActiveIfHeld issued")
+                        true
+                    } else {
+                        false
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "answerActiveIfHeld failed: ${e.message}")
+                    false
+                }
+            }
             val call = ringingCall() ?: return false
             val id = callInstances[call] ?: NO_CALL_INSTANCE
             if (id != NO_CALL_INSTANCE) selectActiveCall(call, id)

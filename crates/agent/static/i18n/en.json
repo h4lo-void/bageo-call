@@ -1368,6 +1368,11 @@
     "m_perms_card": "Permissions & system health",
     "m_theme_label": "Appearance",
     "m_theme_auto": "System",
-    "m_autosaved": "Saved"
+    "m_autosaved": "Saved",
+    "m_chk_sms": "Send booking confirmation texts",
+    "m_chk_sms_d": "Lets Bageo text callers whether their booking went through.",
+    "er_need_phone": "Your phone isn't ready yet. Wait a few seconds; if this stays, reopen the app.",
+    "bk_err_read_failed": "Couldn't read this file. Please pick it again.",
+    "bk_app_note": "Backups are kept inside Bageo and are deleted with the app. To keep one, tap “Download” to save it on your phone."
   }
 }

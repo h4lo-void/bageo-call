@@ -243,7 +243,7 @@ class OwnerCallActivity : Activity() {
 
     private fun styleToggleButton(btn: Button, active: Boolean) {
         btn.setBackgroundResource(if (active) R.drawable.bg_btn_active else R.drawable.bg_btn_secondary)
-        btn.setTextColor(getColor(if (active) R.color.bg_accent else R.color.bg_text))
+        btn.setTextColor(getColor(if (active) R.color.bg_on_accent else R.color.bg_on_secondary))
     }
 
     private fun setupDialpads() {
@@ -352,10 +352,10 @@ class OwnerCallActivity : Activity() {
                 textSize = 13f
                 setPadding(dp(14), dp(6), dp(14), dp(6))
                 setBackgroundResource(if (active) R.drawable.bg_btn_active else R.drawable.bg_btn_secondary)
-                setTextColor(getColor(if (active) R.color.bg_accent else R.color.bg_text))
+                setTextColor(getColor(if (active) R.color.bg_on_accent else R.color.bg_on_secondary))
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dp(38),
+                    dp(48),
                 ).apply {
                     if (i > 0) marginStart = dp(8)
                 }
@@ -445,7 +445,7 @@ class OwnerCallActivity : Activity() {
 
         val isUrgent = currentMode == MODE_URGENT
         badgeText.setBackgroundResource(if (isUrgent) R.drawable.bg_badge_warn else R.drawable.bg_badge_accent)
-        badgeText.setTextColor(getColor(if (isUrgent) R.color.bg_warn else R.color.bg_accent))
+        badgeText.setTextColor(getColor(if (isUrgent) R.color.bg_warn else R.color.bg_on_accent_soft))
 
         val displayTitle = callerName.ifBlank { callerId }.ifBlank { getString(R.string.sa_call_unknown) }
         when (currentMode) {

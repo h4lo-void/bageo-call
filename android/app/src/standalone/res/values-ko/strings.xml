@@ -20,8 +20,6 @@
     <string name="sa_dnd_rule_name">Bageo AI 전화 받기</string>
     <string name="sa_channel_owner_calls">중요 및 긴급 전화</string>
     <string name="sa_channel_summaries">AI 통화 요약</string>
-    <string name="sa_notif_ai_idle_title">AI가 전화를 받고 있습니다</string>
-    <string name="sa_notif_ai_idle_text">눌러서 콘솔 열기 또는 아래 버튼으로 전환</string>
     <string name="sa_notif_ai_call_title">AI 통화 중</string>
     <string name="sa_notif_owner_call_title">통화 중 (본인)</string>
     <string name="sa_notif_urgent_title">긴급 전화</string>

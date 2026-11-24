@@ -7101,5 +7101,30 @@
     "where": "a label or sentence in the console. English: Forward to your phone",
     "who": "the owner",
     "placeholders": []
+  },
+  "m_chk_sms": {
+    "where": "the phone app's permissions card: a permission to allow. English: Send booking confirmation texts",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_chk_sms_d": {
+    "where": "the phone app's permissions card, under the label above. English: Lets Bageo text callers whether their booking went through.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_need_phone": {
+    "where": "the AI errand form in the phone app, when the phone cannot place calls yet. English: Your phone isn't ready yet. Wait a few seconds; if this stays, reopen the app.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "bk_err_read_failed": {
+    "where": "an error after picking a backup file to restore. English: Couldn't read this file. Please pick it again.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "bk_app_note": {
+    "where": "under the backup buttons, only in the phone app. “Download” is the button next to each backup. English: Backups are kept inside Bageo and are deleted with the app. To keep one, tap “Download” to save it on your phone.",
+    "who": "the owner",
+    "placeholders": []
   }
 }

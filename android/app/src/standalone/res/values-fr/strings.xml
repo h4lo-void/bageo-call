@@ -20,8 +20,6 @@
     <string name="sa_dnd_rule_name">Bageo AI Appels</string>
     <string name="sa_channel_owner_calls">Appels prioritaires et urgents</string>
     <string name="sa_channel_summaries">Résumés d\'appels AI</string>
-    <string name="sa_notif_ai_idle_title">L\'AI répond à vos appels</string>
-    <string name="sa_notif_ai_idle_text">Toucher pour ouvrir ou changer ci-dessous</string>
     <string name="sa_notif_ai_call_title">Appel AI en cours</string>
     <string name="sa_notif_owner_call_title">En appel (Vous)</string>
     <string name="sa_notif_urgent_title">Appel urgent</string>

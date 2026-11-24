@@ -8,4 +8,6 @@
     <string name="sa_ai_missed_title">AI konnte nicht annehmen</string>
     <string name="sa_ai_missed_ringing_text">Dein Telefon klingelt, damit du selbst annimmst</string>
     <string name="sa_channel_ai_missed">Anrufe, die die AI nicht annehmen konnte</string>
+    <!-- Shown under the Bageo mode in Settings > Modes and the status bar's Modes panel. -->
+    <string name="sa_dnd_rule_trigger">Wenn an, nimmt zuerst die AI deine Anrufe an</string>
 </resources>

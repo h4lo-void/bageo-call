@@ -20,8 +20,6 @@
     <string name="sa_dnd_rule_name">Bageo AI Answering</string>
     <string name="sa_channel_owner_calls">Priority &amp; urgent calls</string>
     <string name="sa_channel_summaries">AI call summaries</string>
-    <string name="sa_notif_ai_idle_title">AI is answering your calls</string>
-    <string name="sa_notif_ai_idle_text">Tap to open console or switch modes below</string>
     <string name="sa_notif_ai_call_title">AI on call</string>
     <string name="sa_notif_owner_call_title">On call (Owner)</string>
     <string name="sa_notif_urgent_title">Urgent call</string>

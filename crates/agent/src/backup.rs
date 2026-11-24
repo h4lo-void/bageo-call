@@ -290,7 +290,8 @@ struct Layout {
     config: PathBuf,
     calls: PathBuf,
     tasks: PathBuf,
-    sms: PathBuf,
+    /// None in the phone app, which keeps no texts: none go in or come back.
+    sms: Option<PathBuf>,
     contacts: PathBuf,
     errands: PathBuf,
     sims: PathBuf,
@@ -303,7 +304,7 @@ impl Layout {
             config: state.settings_store.storage_path().parent().map(Path::to_path_buf).unwrap_or_else(|| data.join("config")),
             calls: state.store.root().to_path_buf(),
             tasks: state.task_store.root().to_path_buf(),
-            sms: state.sms.dir(),
+            sms: (!state.sms.is_off()).then(|| state.sms.dir()),
             contacts: state.contacts.path().to_path_buf(),
             errands: state.errands.path().to_path_buf(),
             sims: state.errands.sims.path().map(Path::to_path_buf).unwrap_or_else(|| data.join("phone_sims.json")),
@@ -321,7 +322,7 @@ impl Layout {
             (_, "phone_sims.json") => self.sims.clone(),
             (_, "phone-pairing.key") => self.data.join(crate::phone_wifi::KEY_FILE),
             (_, "index.json") => self.calls.join("index.json"),
-            (_, "sms/messages.json") => self.sms.join("messages.json"),
+            (_, "sms/messages.json") => self.sms.as_ref()?.join("messages.json"),
             ("settings" | "numbers", _) => self.config.join(rest),
             ("tasks", _) => self.tasks.join(rest),
             ("calls", _) => self.calls.join(first).join(rest),
@@ -2630,7 +2631,7 @@ async fn merge_records(state: &CallsState, lay: &Layout, stage: &Path, want: &[W
         calls = state.store.merge_records(records).await;
     }
     let texts = stage_path(stage, "sms/messages.json");
-    if want.iter().any(|w| w.rel == "sms/messages.json") && texts.is_file() {
+    if lay.sms.is_some() && want.iter().any(|w| w.rel == "sms/messages.json") && texts.is_file() {
         let list = crate::sms_store::messages_from_json(&std::fs::read(&texts)?).context("texts of the backup")?;
         sms = state.sms.merge(list);
     }

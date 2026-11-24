@@ -67,6 +67,9 @@ object PhoneModeManager {
     /** Ids of switches started on the phone itself; their results are not sent to the agent. */
     const val LOCAL_ID_PREFIX = "app-"
 
+    /** Key of the earpiece volume in the saved normal-phone volumes. */
+    const val KEY_VOICE_CALL = "voice_call"
+
     /**
      * [mode] is the phone's mode after the attempt; [error] is empty when [ok].
      * [dndMode]: with [ERR_DND], the name of the phone's mode that kept Do Not Disturb on
@@ -121,7 +124,7 @@ object PhoneModeManager {
     private val VOLUMES = listOf(
         Volume(AudioManager.STREAM_RING, "ring"),
         Volume(AudioManager.STREAM_NOTIFICATION, "notification"),
-        Volume(AudioManager.STREAM_VOICE_CALL, "voice_call"),
+        Volume(AudioManager.STREAM_VOICE_CALL, KEY_VOICE_CALL),
         Volume(AudioManager.STREAM_MUSIC, "music"),
         Volume(AudioManager.STREAM_ALARM, "alarm"),
         Volume(AudioManager.STREAM_SYSTEM, "system"),
@@ -695,12 +698,15 @@ object PhoneModeManager {
     /** Half of the maximum, when nothing was saved. */
     fun defaultVolume(max: Int): Int = ((max + 1) / 2).coerceAtLeast(1)
 
+    /** One saved normal-phone volume ([KEY_VOICE_CALL], …); null when none was saved. */
+    fun savedNormalVolume(ctx: Context, key: String): Int? = readSavedVolumes(ctx)[key]
+
     /**
      * `files/mode/normal_audio`: one `key=value` line per stream. Saved only while the
      * phone really is a normal phone (the module's mode file says so) and Bageo has
      * nothing turned down: the earpiece Bageo keeps at its lowest during AI calls must
-     * never become the "normal" earpiece volume. A volume at its lowest keeps the value
-     * saved before.
+     * never become the "normal" earpiece volume. An earpiece at its lowest keeps the value
+     * saved before; the other volumes are saved as they are.
      */
     private fun saveNormalVolumes(ctx: Context) {
         val rootMode = readRootMode(ctx)
@@ -715,8 +721,12 @@ object PhoneModeManager {
         val am = ctx.getSystemService(AudioManager::class.java) ?: return
         val previous = readSavedVolumes(ctx)
         val lines = VOLUMES.mapNotNull { v ->
-            chooseSavedVolume(streamVolume(am, v.stream), previous[v.key], streamMin(am, v.stream))
-                ?.let { "${v.key}=$it" }
+            chooseSavedVolume(
+                streamVolume(am, v.stream),
+                previous[v.key],
+                streamMin(am, v.stream),
+                keepPreviousAtMin = v.stream == AudioManager.STREAM_VOICE_CALL,
+            )?.let { "${v.key}=$it" }
         }
         if (lines.isEmpty()) return
         val file = File(appDir(ctx), AUDIO_FILE)
@@ -791,12 +801,13 @@ internal fun pickNormalVolume(current: Int?, saved: Int?, min: Int, max: Int, tr
 }
 
 /**
- * The normal-phone volume to save: the current one, unless it sits at the stream's
- * lowest step [min] and an older value exists (Bageo keeps the earpiece there in AI calls).
+ * The normal-phone volume to save: the current one. With [keepPreviousAtMin] (the
+ * earpiece, which Bageo keeps at its lowest step [min] in AI calls) a current value at
+ * [min] keeps the older one when there is one.
  */
-internal fun chooseSavedVolume(current: Int?, previous: Int?, min: Int): Int? {
+internal fun chooseSavedVolume(current: Int?, previous: Int?, min: Int, keepPreviousAtMin: Boolean = true): Int? {
     if (current == null) return previous
-    if (current <= min && previous != null) return previous
+    if (keepPreviousAtMin && current <= min && previous != null) return previous
     return current
 }
 

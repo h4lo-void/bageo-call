@@ -52,6 +52,14 @@ class LocalAudioGuard(context: Context) {
     fun restore(onFinished: (() -> Unit)? = null) = coordinator.requestRestore(onFinished)
 
     /**
+     * Standalone Daily Sound with no call: put back what a Daily Sound call changed. When
+     * the guard armed in the silent AI mode instead (it saved the volumes after the module
+     * had already turned them to zero), only the microphone and speaker go back and the
+     * saved volumes are forgotten: the module has just set the owner's volumes again.
+     */
+    fun settleForDailySound() = coordinator.requestRestore(null, keepVolumes = true)
+
+    /**
      * A call the owner dialed by hand in AI mode: [restore], then also take back the
      * root microphone mute and raise the earpiece from its minimum, so the owner can
      * hear and be heard. The next [applyHardMute] (call ended) mutes everything again.
@@ -101,6 +109,9 @@ class LocalAudioGuard(context: Context) {
          */
         fun turnOffOwnDndMode(context: Context) {
             if (!appHasOwnDndMode()) return
+            // Standalone: delete that mode instead. Turning it off below never creates it,
+            // but it stays listed in Settings > Modes as "Do Not Disturb (Bageo)".
+            if (BuildConfig.STANDALONE && removeOwnDndMode(context)) return
             try {
                 context.getSystemService(NotificationManager::class.java)
                     ?.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
@@ -109,6 +120,29 @@ class LocalAudioGuard(context: Context) {
                 Log.w("LocalAudioGuard", "own Do Not Disturb mode off failed: ${e.message}")
             }
         }
+
+        /**
+         * Android 15+: delete the mode Android made for an older Bageo that set the phone's
+         * Do Not Disturb itself (id `implicit_<package>`, owned by this app). True when it
+         * is gone or was never there; false when Android refused, so the caller can at
+         * least turn it off.
+         */
+        fun removeOwnDndMode(context: Context): Boolean {
+            if (!appHasOwnDndMode()) return true
+            val nm = context.getSystemService(NotificationManager::class.java) ?: return false
+            return try {
+                if (nm.removeAutomaticZenRule(IMPLICIT_RULE_PREFIX + context.packageName)) {
+                    Log.i("LocalAudioGuard", "removed the Do Not Disturb (Bageo) mode an older version left")
+                }
+                true
+            } catch (e: Exception) {
+                Log.w("LocalAudioGuard", "removing the Do Not Disturb (Bageo) mode failed: ${e.message}")
+                false
+            }
+        }
+
+        /** Android 15's id for the mode it makes when an app sets Do Not Disturb directly. */
+        private const val IMPLICIT_RULE_PREFIX = "implicit_"
 
         private val coordinatorLock = Any()
 
@@ -145,6 +179,8 @@ private class LocalAudioGuardCoordinator(context: Context) {
     private val rootPassPending = AtomicBoolean(false)
     private val forceCallMutePending = AtomicBoolean(false)
     private val restorePending = AtomicBoolean(false)
+    /** The queued restore is [LocalAudioGuard.settleForDailySound] (volumes are not written back). */
+    private val restoreKeepsVolumes = AtomicBoolean(false)
     private val ownCallPending = AtomicBoolean(false)
     private val releasePending = AtomicBoolean(false)
     private val consolePreviewAllowed = AtomicBoolean(false)
@@ -164,6 +200,8 @@ private class LocalAudioGuardCoordinator(context: Context) {
     private var savedRinger: Int? = null
     private var savedInterruption: Int? = null
     private val savedVolumes = mutableMapOf<Int, Int>()
+    /** Earpiece volume saved when the guard last armed, kept after the restore for the owner's own call. */
+    private var earpieceBeforeCall: Int? = null
     private var armed = false
     /** Armed in Standalone Daily Sound mode: only the call's own changes are put back. */
     private var armedDaily = false
@@ -214,7 +252,7 @@ private class LocalAudioGuardCoordinator(context: Context) {
         Log.i(TAG, "mute hold loop stopped")
     }
 
-    fun requestRestore(onFinished: (() -> Unit)?) {
+    fun requestRestore(onFinished: (() -> Unit)?, keepVolumes: Boolean = false) {
         stopHoldLoop()
         onFinished?.let { restoreCallbacks.add(it) }
         // A queued mute that has not started is stale after restore. If a fresh arm
@@ -224,6 +262,8 @@ private class LocalAudioGuardCoordinator(context: Context) {
         fullPassPending.set(false)
         rootPassPending.set(false)
         forceCallMutePending.set(false)
+        // A full restore asked for at the same time wins over a Daily Sound settle.
+        if (!keepVolumes || !restorePending.get()) restoreKeepsVolumes.set(keepVolumes)
         restorePending.set(true)
         scheduleDrain()
     }
@@ -277,7 +317,8 @@ private class LocalAudioGuardCoordinator(context: Context) {
                     continue
                 }
                 if (restorePending.getAndSet(false)) {
-                    runTrackedOperation("restore") { restoreBlocking() }
+                    val keepVolumes = restoreKeepsVolumes.getAndSet(false)
+                    runTrackedOperation("restore") { restoreBlocking(keepVolumes) }
                     if (ownCallPending.getAndSet(false)) {
                         runTrackedOperation("own-call") { unmuteForOwnCallBlocking() }
                     }
@@ -548,7 +589,9 @@ private class LocalAudioGuardCoordinator(context: Context) {
         // Android 15+: the module already turned the phone's Do Not Disturb on (root), and
         // the ringer is silent with its volume at zero. A filter set here would only add
         // Bageo's own mode, which blocks the switch to a normal phone.
-        if (LocalAudioGuard.appHasOwnDndMode()) return
+        // Standalone: the module's script owns the phone's Do Not Disturb on every Android
+        // version; the app only turns its own "Bageo AI" mode on and off.
+        if (BuildConfig.STANDALONE || LocalAudioGuard.appHasOwnDndMode()) return
         try {
             if (nm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 if (!nm.isNotificationPolicyAccessGranted) {
@@ -616,13 +659,18 @@ private class LocalAudioGuardCoordinator(context: Context) {
         }
     }
 
-    private fun restoreBlocking() {
+    private fun restoreBlocking(keepVolumes: Boolean = false) {
         if (!armed) {
             Log.i(TAG, "audio restore skipped (not armed)")
             return
         }
+        earpieceBeforeCall = savedVolumes[AudioManager.STREAM_VOICE_CALL]
         if (armedDaily) {
             restoreDailyCallBlocking()
+            return
+        }
+        if (keepVolumes) {
+            releaseKeepingVolumesBlocking()
             return
         }
         try {
@@ -646,7 +694,10 @@ private class LocalAudioGuardCoordinator(context: Context) {
         }
         try {
             // Android 15+: putting the saved filter back would turn Bageo's own mode on.
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !LocalAudioGuard.appHasOwnDndMode()) {
+            // Standalone never set it (see applyZenSilence).
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !BuildConfig.STANDALONE &&
+                !LocalAudioGuard.appHasOwnDndMode()
+            ) {
                 savedInterruption?.let { nm?.setInterruptionFilter(it) }
             }
         } catch (_: Exception) {
@@ -670,6 +721,35 @@ private class LocalAudioGuardCoordinator(context: Context) {
         armedDaily = false
         armedFlag.set(false)
         Log.i(TAG, "audio state restored")
+    }
+
+    /**
+     * Silent AI mode → Daily Sound: the guard armed after the module had turned the
+     * volumes and the ringer down, so the saved ones are zero. The module has just put the
+     * owner's volumes back; only the microphone and speaker this guard changed go back.
+     */
+    private fun releaseKeepingVolumesBlocking() {
+        try {
+            am.isMicrophoneMute = savedMicMute ?: false
+        } catch (_: Exception) {
+        }
+        try {
+            savedSpeaker?.let {
+                @Suppress("DEPRECATION")
+                am.isSpeakerphoneOn = it
+            }
+        } catch (_: Exception) {
+        }
+        savedMicMute = null
+        savedSpeaker = null
+        savedMode = null
+        savedRinger = null
+        savedInterruption = null
+        savedVolumes.clear()
+        armed = false
+        armedDaily = false
+        armedFlag.set(false)
+        Log.i(TAG, "audio guard released for Daily Sound (volumes left as the module set them)")
     }
 
     /**
@@ -713,7 +793,9 @@ private class LocalAudioGuardCoordinator(context: Context) {
     /**
      * After [restoreBlocking] for the owner's own call: the root mic mutes are not
      * part of the saved state, and the earpiece is kept at its minimum on purpose, so
-     * undo both here (the same controls normal phone mode resets).
+     * undo both here (the same controls normal phone mode resets). The earpiece goes to
+     * the owner's own volume: the one saved before the call, else the one saved for the
+     * normal phone, else half of the maximum.
      */
     private fun unmuteForOwnCallBlocking() {
         try {
@@ -728,7 +810,12 @@ private class LocalAudioGuardCoordinator(context: Context) {
             val min = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) am.getStreamMinVolume(stream) else 1
             val cur = am.getStreamVolume(stream)
             if (cur <= min) {
-                val normal = PhoneModeManager.defaultVolume(am.getStreamMaxVolume(stream))
+                val normal = ownCallEarpieceVolume(
+                    beforeCall = earpieceBeforeCall,
+                    savedNormal = PhoneModeManager.savedNormalVolume(appContext, PhoneModeManager.KEY_VOICE_CALL),
+                    min = min,
+                    max = am.getStreamMaxVolume(stream),
+                )
                 am.setStreamVolume(stream, normal, 0)
                 Log.i(TAG, "own call: voice call volume $cur -> $normal")
             }
@@ -810,4 +897,15 @@ private class LocalAudioGuardCoordinator(context: Context) {
             AudioManager.STREAM_DTMF,
         )
     }
+}
+
+/**
+ * Earpiece volume for a call the owner takes: [beforeCall] (saved when the guard armed),
+ * else [savedNormal] (the normal phone's), each only above the lowest step [min], else half
+ * of [max]. Top level, so it needs nothing from Android.
+ */
+internal fun ownCallEarpieceVolume(beforeCall: Int?, savedNormal: Int?, min: Int, max: Int): Int {
+    val half = ((max + 1) / 2).coerceAtLeast(1)
+    val pick = beforeCall?.takeIf { it > min } ?: savedNormal?.takeIf { it > min } ?: half
+    return pick.coerceIn((min + 1).coerceAtMost(max.coerceAtLeast(1)), max.coerceAtLeast(1))
 }

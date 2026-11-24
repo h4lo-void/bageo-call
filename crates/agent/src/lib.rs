@@ -1276,11 +1276,16 @@ async fn bootstrap_runtime() -> Result<(AppState, CallsState, Arc<control::Contr
     errands::install_sims(phone_sims.clone());
     let errand_store = errands::ErrandStore::open(PathBuf::from(&settings.calls_data_dir).join("errands.json"), phone_sims.clone());
     // Text messages the SMS forwarder hands over, for the console's SMS page.
-    let sms_store = sms_store::SmsStore::open(
-        PathBuf::from(&settings.calls_data_dir).join("sms"),
-        sms_store::now_ms(),
-        settings_store.snapshot().retention_days,
-    );
+    // The phone app has none: the phone's own messages app keeps them.
+    let sms_store = if crate::config::is_embedded() {
+        sms_store::SmsStore::off()
+    } else {
+        sms_store::SmsStore::open(
+            PathBuf::from(&settings.calls_data_dir).join("sms"),
+            sms_store::now_ms(),
+            settings_store.snapshot().retention_days,
+        )
+    };
     {
         let calls = calls.clone();
         let task_store = task_store.clone();

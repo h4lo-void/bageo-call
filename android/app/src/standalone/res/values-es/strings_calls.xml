@@ -8,4 +8,6 @@
     <string name="sa_ai_missed_title">La AI no pudo contestar</string>
     <string name="sa_ai_missed_ringing_text">Tu teléfono está sonando para que contestes</string>
     <string name="sa_channel_ai_missed">Llamadas que la AI no pudo contestar</string>
+    <!-- Shown under the Bageo mode in Settings > Modes and the status bar's Modes panel. -->
+    <string name="sa_dnd_rule_trigger">Al activarlo, la AI contesta primero tus llamadas</string>
 </resources>

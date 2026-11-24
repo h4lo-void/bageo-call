@@ -8,4 +8,6 @@
     <string name="sa_ai_missed_title">AI が応答できませんでした</string>
     <string name="sa_ai_missed_ringing_text">着信音を鳴らしています。ご自身で応答してください</string>
     <string name="sa_channel_ai_missed">AI が応答できなかった着信</string>
+    <!-- Shown under the Bageo mode in Settings > Modes and the status bar's Modes panel. -->
+    <string name="sa_dnd_rule_trigger">オンにすると着信にまず AI が応答します</string>
 </resources>

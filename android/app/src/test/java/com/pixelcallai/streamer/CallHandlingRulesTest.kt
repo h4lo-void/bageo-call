@@ -61,6 +61,23 @@ class CallHandlingRulesTest {
     }
 
     @Test
+    fun a_ring_or_notification_volume_the_owner_set_to_its_lowest_is_saved_as_it_is() {
+        // Only the earpiece keeps the older value; the owner's own low ring volume counts.
+        assertEquals(1, chooseSavedVolume(current = 1, previous = 5, min = 1, keepPreviousAtMin = false))
+        assertEquals(0, chooseSavedVolume(current = 0, previous = 5, min = 0, keepPreviousAtMin = false))
+    }
+
+    @Test
+    fun the_owner_taking_a_call_hears_their_own_earpiece_volume() {
+        // The volume from before the call wins over the saved normal-phone one.
+        assertEquals(6, ownCallEarpieceVolume(beforeCall = 6, savedNormal = 9, min = 1, max = 15))
+        // Bageo kept the earpiece at its lowest before the call: the normal-phone value.
+        assertEquals(9, ownCallEarpieceVolume(beforeCall = 1, savedNormal = 9, min = 1, max = 15))
+        // Nothing known: half of the maximum, never the lowest step.
+        assertEquals(8, ownCallEarpieceVolume(beforeCall = null, savedNormal = 1, min = 1, max = 15))
+    }
+
+    @Test
     fun normal_phone_volumes_use_the_owners_own_values() {
         // Daily Sound: the owner's current ring volume wins over an old saved one.
         assertEquals(6, pickNormalVolume(current = 6, saved = 4, min = 0, max = 7, trustCurrent = true))

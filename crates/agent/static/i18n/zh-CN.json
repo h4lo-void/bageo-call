@@ -1368,6 +1368,11 @@
     "m_perms_card": "本机权限与系统状态",
     "m_theme_label": "外观主题",
     "m_theme_auto": "跟随系统",
-    "m_autosaved": "已保存"
+    "m_autosaved": "已保存",
+    "m_chk_sms": "发送预约确认短信",
+    "m_chk_sms_d": "允许后，Bageo 才能用短信告诉来电者预约有没有成功。",
+    "er_need_phone": "手机还没准备好，请稍等几秒；一直这样就重新打开 App。",
+    "bk_err_read_failed": "读不到这个文件，请重新选一次。",
+    "bk_app_note": "备份存在 Bageo 里，删除 App 就会一起删掉。要留一份，请点“下载”存到手机。"
   }
 }

@@ -1368,6 +1368,11 @@
     "m_perms_card": "Autorisations et état système",
     "m_theme_label": "Apparence",
     "m_theme_auto": "Système",
-    "m_autosaved": "Enregistré"
+    "m_autosaved": "Enregistré",
+    "m_chk_sms": "Envoyer les SMS de confirmation de rendez-vous",
+    "m_chk_sms_d": "Permet à Bageo d’indiquer par SMS à l’appelant si son rendez-vous est confirmé.",
+    "er_need_phone": "Le téléphone n’est pas encore prêt. Attendez quelques secondes ; si cela dure, rouvrez l’app.",
+    "bk_err_read_failed": "Impossible de lire ce fichier. Choisissez-le à nouveau.",
+    "bk_app_note": "Les sauvegardes restent dans Bageo et sont supprimées avec l’app. Pour en garder une, touchez « Télécharger » pour l’enregistrer sur le téléphone."
   }
 }

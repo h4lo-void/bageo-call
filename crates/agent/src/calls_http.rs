@@ -1532,6 +1532,10 @@ async fn notify_send(
     // A text message is kept for the console's SMS page. The forwarder sends
     // one again until a channel took it: the same ref is stored only once.
     let is_sms = body.kind.trim().eq_ignore_ascii_case("sms");
+    // The phone app keeps no texts and forwards none.
+    if is_sms && state.sms.is_off() {
+        return api_error(StatusCode::NOT_FOUND, "not_found", "text messages are not kept here");
+    }
     let repeated = is_sms
         && (!body.from.trim().is_empty() || !body.text.trim().is_empty())
         && state.sms.push(
@@ -5594,6 +5598,22 @@ pub(crate) mod tests {
     }
 }
 
+/// The SMS page's routes; none in the phone app (`texts` false), where the
+/// phone's own messages app keeps the texts.
+fn sms_router(texts: bool) -> Router<CallsState> {
+    if !texts {
+        return Router::new();
+    }
+    Router::new()
+        .route("/api/sms", get(sms_list))
+        .route("/api/sms/clear", post(sms_clear))
+        .route("/api/sms/threads", get(sms_threads))
+        .route("/api/sms/thread", get(sms_thread).delete(sms_thread_delete))
+        .route("/api/sms/send", post(sms_send))
+        .route("/api/sms/{id}/retry", post(sms_retry))
+        .route("/api/sms/{id}", axum::routing::delete(sms_delete))
+}
+
 pub fn router(state: CallsState) -> Router {
     Router::new()
         .route("/", get(ui))
@@ -5627,13 +5647,7 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/notify/test", post(notify_test))
         .route("/api/notify/send", post(notify_send))
         .route("/api/notify/recent", get(notify_recent))
-        .route("/api/sms", get(sms_list))
-        .route("/api/sms/clear", post(sms_clear))
-        .route("/api/sms/threads", get(sms_threads))
-        .route("/api/sms/thread", get(sms_thread).delete(sms_thread_delete))
-        .route("/api/sms/send", post(sms_send))
-        .route("/api/sms/{id}/retry", post(sms_retry))
-        .route("/api/sms/{id}", axum::routing::delete(sms_delete))
+        .merge(sms_router(!state.sms.is_off()))
         .route("/api/devices", get(devices))
         .route("/api/devices/{serial}", axum::routing::delete(device_delete))
         .route("/api/devices/{serial}/mode", post(device_mode))

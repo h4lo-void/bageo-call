@@ -15,7 +15,6 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
-import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -24,6 +23,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.Process
 import android.os.SystemClock
+import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Base64
 import android.util.Log
@@ -50,7 +50,12 @@ import androidx.core.view.WindowInsetsCompat
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
+import java.io.InputStream
+import java.net.URLDecoder
+import java.net.URLEncoder
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -89,6 +94,12 @@ class StandaloneUi(private val activity: Activity) {
 
     private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
     private var pendingExport: PendingExport? = null
+
+    /** Headers (the console password) for the backup file being picked; null: none asked. */
+    private var pendingImportHeaders: String? = null
+
+    /** The console's colours (the phone's own palette when it has one) for the bars and the web view. */
+    private val theme by lazy { ThemeBridge(activity) }
 
     private data class PendingExport(
         val stagedFile: File?,
@@ -167,6 +178,8 @@ class StandaloneUi(private val activity: Activity) {
 
     fun onStart() {
         LocalAudioGuard(activity).setConsolePreviewAllowed(true)
+        // In normal-phone mode the app's call link is up only while the console shows (AI errands).
+        CallAudioService.onConsoleVisible(activity)
         if (::webView.isInitialized) {
             webView.onResume()
             webView.resumeTimers()
@@ -175,6 +188,7 @@ class StandaloneUi(private val activity: Activity) {
 
     fun onStop() {
         LocalAudioGuard(activity).setConsolePreviewAllowed(false)
+        CallAudioService.onConsoleHidden(activity)
         if (::webView.isInitialized) {
             webView.onPause()
             webView.pauseTimers()
@@ -324,6 +338,22 @@ class StandaloneUi(private val activity: Activity) {
             finishPendingExport(job, uri)
             return
         }
+        if (requestCode == REQ_BACKUP_PICK) {
+            val headers = pendingImportHeaders ?: "{}"
+            pendingImportHeaders = null
+            val uri = if (resultCode == Activity.RESULT_OK) data?.data else null
+            if (uri == null) {
+                backupPicked(JSONObject().put("error", "cancel"))
+                return
+            }
+            try {
+                httpExecutor.execute { backupPicked(importBackup(uri, headers)) }
+            } catch (e: Exception) {
+                Log.w(TAG, "backup import not queued: ${e.message}")
+                backupPicked(JSONObject().put("error", "read_failed"))
+            }
+            return
+        }
         pushNativeState()
     }
 
@@ -331,7 +361,8 @@ class StandaloneUi(private val activity: Activity) {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView() {
-        webView.setBackgroundColor(activity.getColor(R.color.bg_page))
+        // The page's own background before it paints: no white flash, same colour as the page.
+        webView.setBackgroundColor(theme.pageColor(isSystemNight()))
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -342,6 +373,7 @@ class StandaloneUi(private val activity: Activity) {
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         }
         webView.addJavascriptInterface(MobileAppJsBridge(), "BageoAndroid")
+        webView.addJavascriptInterface(theme, "BageoTheme")
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
                 view: WebView?,
@@ -505,7 +537,7 @@ class StandaloneUi(private val activity: Activity) {
             return emptyResponse(405)
         }
         var target = consoleTarget(req.url) ?: return emptyResponse(400)
-        val headers = req.requestHeaders ?: emptyMap()
+        val headers = withSystemLanguage(req.requestHeaders ?: emptyMap())
         var hops = 0
         while (true) {
             val res = EmbeddedAgent.http(method, target, headers) ?: return emptyResponse(503)
@@ -521,6 +553,21 @@ class StandaloneUi(private val activity: Activity) {
             }
             return toWebResponse(res, method == "HEAD")
         }
+    }
+
+    /**
+     * The phone's languages when the page did not send any, so the console opens in the
+     * phone's language the first time (before the owner picks one).
+     */
+    private fun withSystemLanguage(given: Map<String, String>): Map<String, String> {
+        if (given.keys.any { it.equals("accept-language", ignoreCase = true) }) return given
+        val tags = try {
+            activity.resources.configuration.locales.toLanguageTags()
+        } catch (_: Exception) {
+            ""
+        }
+        if (tags.isBlank()) return given
+        return LinkedHashMap(given).apply { put("Accept-Language", tags) }
     }
 
     private fun toWebResponse(res: EmbeddedAgent.HttpResult, headOnly: Boolean): WebResourceResponse {
@@ -602,6 +649,7 @@ class StandaloneUi(private val activity: Activity) {
             .put("battery_ok", batteryOk)
             .put("contacts_perm", contactsPerm)
             .put("uplink_ok", canInject && telephonyOut)
+            .put("sms_ok", isGranted(Manifest.permission.SEND_SMS))
 
         val prefs = JSONObject()
             .put("daily_sound", Prefs.isStandaloneDailySound(activity))
@@ -743,6 +791,7 @@ class StandaloneUi(private val activity: Activity) {
                         refreshSoon()
                     }
                     "screening" -> requestScreeningRole()
+                    "sms" -> requestSmsPermission()
                     "dnd" -> launch(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
                     "dnd_rule" -> {
                         if (!DedicatedDndManager.hasPolicyAccess(activity)) {
@@ -828,7 +877,9 @@ class StandaloneUi(private val activity: Activity) {
         @JavascriptInterface
         fun syncTheme(theme: String) {
             activity.runOnUiThread {
-                applySystemBarTheme(theme == "dark")
+                val dark = theme == "dark"
+                applySystemBarTheme(dark)
+                if (::webView.isInitialized) webView.setBackgroundColor(this@StandaloneUi.theme.pageColor(dark))
             }
         }
 
@@ -857,12 +908,58 @@ class StandaloneUi(private val activity: Activity) {
             }
         }
 
+        /**
+         * A one-time download (a backup ticket): fetched from the agent right away, before the
+         * owner picks where to save it (the ticket would run out meanwhile), and offered under
+         * the name the agent gives it ([filename] when it gives none).
+         */
         @JavascriptInterface
         fun downloadUrl(url: String, filename: String) {
-            val cleanName = filename.trim().ifEmpty { "bageo-backup" }.replace('/', '_')
-            activity.runOnUiThread {
-                startUrlExport(url, cleanName, "application/octet-stream")
+            val fallback = filename.trim().ifEmpty { "bageo-backup" }.replace('/', '_')
+            val target = resolveLocalUrl(url)
+            if (target == null) {
+                activity.runOnUiThread { Toast.makeText(activity, R.string.sa_save_fail, Toast.LENGTH_SHORT).show() }
+                return
             }
+            try {
+                httpExecutor.execute { stageDownload(target, fallback) }
+            } catch (e: Exception) {
+                Log.w(TAG, "download not queued: ${e.message}")
+                activity.runOnUiThread { Toast.makeText(activity, R.string.sa_save_fail, Toast.LENGTH_SHORT).show() }
+            }
+        }
+
+        /**
+         * Pick a backup file with the system picker and send it to the agent from here (no
+         * base64 copy through the page). [headersJson]: the page's headers (its password).
+         * The answer comes as `window.__bageoBackupPicked({status, body} | {error})`.
+         */
+        @JavascriptInterface
+        fun importBackupFile(headersJson: String) {
+            activity.runOnUiThread {
+                pendingImportHeaders = headersJson
+                val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "*/*"
+                }
+                if (!launch(pick, REQ_BACKUP_PICK)) {
+                    pendingImportHeaders = null
+                    backupPicked(JSONObject().put("error", "read_failed"))
+                }
+            }
+        }
+
+        /** A web address (calendar, update page) opened in the phone's browser. */
+        @JavascriptInterface
+        fun openExternal(url: String) {
+            val uri = try {
+                Uri.parse(url.trim())
+            } catch (_: Exception) {
+                null
+            } ?: return
+            val scheme = uri.scheme?.lowercase().orEmpty()
+            if ((scheme != "https" && scheme != "http") || isLocalConsoleUri(uri)) return
+            activity.runOnUiThread { launch(Intent(Intent.ACTION_VIEW, uri)) }
         }
 
         @JavascriptInterface
@@ -998,6 +1095,142 @@ class StandaloneUi(private val activity: Activity) {
         }
     }
 
+    /** Fetch [target] into a cache file now (background thread), then ask where to save it. */
+    private fun stageDownload(target: String, fallbackName: String) {
+        var staged: File? = null
+        var name = fallbackName
+        var mime = "application/octet-stream"
+        try {
+            val res = EmbeddedAgent.http("GET", target)
+            if (res != null && res.ok) {
+                name = attachmentName(res.header("content-disposition")) ?: fallbackName
+                mime = res.header("content-type")?.substringBefore(';')?.trim()?.ifEmpty { null } ?: mime
+                val dir = File(activity.cacheDir, "exports").apply { mkdirs() }
+                val file = File.createTempFile("dl-", ".tmp", dir)
+                staged = file
+                file.writeBytes(res.body)
+            } else {
+                Log.w(TAG, "download answered ${res?.status}")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "download failed: ${e.message}")
+            staged?.delete()
+            staged = null
+        }
+        val file = staged
+        activity.runOnUiThread {
+            if (activity.isDestroyed) {
+                file?.delete()
+            } else if (file == null) {
+                Toast.makeText(activity, R.string.sa_save_fail, Toast.LENGTH_SHORT).show()
+            } else {
+                launchCreateDocument(PendingExport(file, null, name, mime))
+            }
+        }
+    }
+
+    /** The file name of a `Content-Disposition` header (`filename*=UTF-8''…` or `filename="…"`). */
+    private fun attachmentName(disposition: String?): String? {
+        if (disposition.isNullOrBlank()) return null
+        val encoded = STAR_NAME_RE.find(disposition)?.groupValues?.get(1)?.trim()
+        val raw = encoded?.let {
+            try {
+                URLDecoder.decode(it.replace("+", "%2B"), "UTF-8")
+            } catch (_: Exception) {
+                null
+            }
+        } ?: PLAIN_NAME_RE.find(disposition)?.groupValues?.get(1)
+        return raw?.trim()?.replace('/', '_')?.replace('\\', '_')?.ifEmpty { null }
+    }
+
+    /** Hand the result of a backup import to the page. */
+    private fun backupPicked(reply: JSONObject) {
+        val js = "if(window.__bageoBackupPicked)window.__bageoBackupPicked($reply);"
+        activity.runOnUiThread {
+            if (!activity.isDestroyed && ::webView.isInitialized) webView.evaluateJavascript(js, null)
+        }
+    }
+
+    /**
+     * Read the picked backup (at most [IMPORT_MAX_BYTES], the agent's limit) and send it to the
+     * agent's import (background thread): `{status, body}` with the agent's answer, or
+     * `{error}`: `too_large`, `read_failed`, `no_answer`.
+     */
+    private fun importBackup(uri: Uri, headersJson: String): JSONObject {
+        val reply = JSONObject()
+        var name = "backup"
+        var size = -1L
+        try {
+            activity.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { c ->
+                if (c.moveToFirst()) {
+                    val ni = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    val si = c.getColumnIndex(OpenableColumns.SIZE)
+                    if (ni >= 0 && !c.isNull(ni)) name = c.getString(ni).orEmpty().ifBlank { name }
+                    if (si >= 0 && !c.isNull(si)) size = c.getLong(si)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "backup file details: ${e.message}")
+        }
+        if (size > IMPORT_MAX_BYTES) return reply.put("error", "too_large")
+        val body: ByteArray = try {
+            activity.contentResolver.openInputStream(uri)?.use { readCapped(it, size, IMPORT_MAX_BYTES) }
+                ?: return reply.put("error", "read_failed")
+        } catch (_: TooLargeException) {
+            return reply.put("error", "too_large")
+        } catch (_: OutOfMemoryError) {
+            return reply.put("error", "too_large")
+        } catch (e: Exception) {
+            Log.w(TAG, "backup file read failed: ${e.message}")
+            return reply.put("error", "read_failed")
+        }
+        val headers = LinkedHashMap<String, String>()
+        try {
+            val given = JSONObject(headersJson)
+            for (key in given.keys()) headers[key] = given.optString(key)
+        } catch (_: Exception) {
+        }
+        headers["content-type"] = activity.contentResolver.getType(uri) ?: "application/octet-stream"
+        headers["x-filename"] = URLEncoder.encode(name, "UTF-8").replace("+", "%20")
+        var res: EmbeddedAgent.HttpResult? = null
+        try {
+            res = EmbeddedAgent.http("POST", "/calls/api/backup/import", headers, body)
+        } catch (_: OutOfMemoryError) {
+            return reply.put("error", "too_large")
+        }
+        val answer = res ?: return reply.put("error", "no_answer")
+        return reply.put("status", answer.status).put("body", String(answer.body, Charsets.UTF_8))
+    }
+
+    private class TooLargeException : IOException("larger than the import limit")
+
+    /** All of [input], at most [max] bytes ([TooLargeException] past that). */
+    private fun readCapped(input: InputStream, knownSize: Long, max: Long): ByteArray {
+        if (knownSize in 0..max) {
+            val bytes = ByteArray(knownSize.toInt())
+            var off = 0
+            while (off < bytes.size) {
+                val n = input.read(bytes, off, bytes.size - off)
+                if (n < 0) break
+                off += n
+            }
+            if (off < bytes.size) return bytes.copyOf(off)
+            if (input.read() < 0) return bytes
+            throw IOException("the file grew while it was read")
+        }
+        val out = ByteArrayOutputStream(64 * 1024)
+        val buf = ByteArray(64 * 1024)
+        var total = 0L
+        while (true) {
+            val n = input.read(buf)
+            if (n < 0) break
+            total += n
+            if (total > max) throw TooLargeException()
+            out.write(buf, 0, n)
+        }
+        return out.toByteArray()
+    }
+
     private fun launchCreateDocument(job: PendingExport) {
         pendingExport?.stagedFile?.delete()
         pendingExport = job
@@ -1092,6 +1325,18 @@ class StandaloneUi(private val activity: Activity) {
         grantRationaleBefore = missing.associateWith { activity.shouldShowRequestPermissionRationale(it) }
         grantRequestedAt = SystemClock.elapsedRealtime()
         ActivityCompat.requestPermissions(activity, missing.toTypedArray(), REQ_GRANT_ALL)
+    }
+
+    /** Sending texts (the reply to a caller's booking); settings when it was turned down for good. */
+    private fun requestSmsPermission() {
+        val perm = Manifest.permission.SEND_SMS
+        if (isGranted(perm)) {
+            pushNativeState()
+            return
+        }
+        grantRationaleBefore = mapOf(perm to activity.shouldShowRequestPermissionRationale(perm))
+        grantRequestedAt = SystemClock.elapsedRealtime()
+        ActivityCompat.requestPermissions(activity, arrayOf(perm), REQ_GRANT_ALL)
     }
 
     private fun requestScreeningRole() {
@@ -1195,15 +1440,17 @@ class StandaloneUi(private val activity: Activity) {
     }
 
     private fun syncSystemBarsWithSystemNightMode() {
-        val night = (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-            Configuration.UI_MODE_NIGHT_YES
-        applySystemBarTheme(night)
+        applySystemBarTheme(isSystemNight())
     }
+
+    private fun isSystemNight(): Boolean =
+        (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
 
     @Suppress("DEPRECATION")
     private fun applySystemBarTheme(isDark: Boolean) {
-        val bgColor = Color.parseColor(if (isDark) "#141518" else "#F6F5F1")
-        val navColor = Color.parseColor(if (isDark) "#1B1D21" else "#FFFFFF")
+        val bgColor = theme.pageColor(isDark)
+        val navColor = theme.navColor(isDark)
         try {
             activity.window.statusBarColor = bgColor
             activity.window.navigationBarColor = navColor
@@ -1241,6 +1488,11 @@ class StandaloneUi(private val activity: Activity) {
         private const val MAX_REDIRECTS = 3
         private const val RESTART_EVERY_MS = 5_000L
         private val CHARSET_RE = Regex("charset=([^;]+)", RegexOption.IGNORE_CASE)
+        private val STAR_NAME_RE = Regex("filename\\*\\s*=\\s*UTF-8''([^;]+)", RegexOption.IGNORE_CASE)
+        private val PLAIN_NAME_RE = Regex("filename\\s*=\\s*\"?([^\";]+)\"?", RegexOption.IGNORE_CASE)
+
+        /** The agent's largest backup import (backup.rs IMPORT_MAX_BYTES). */
+        private const val IMPORT_MAX_BYTES = 200L * 1024 * 1024
 
         /** Set from the parameters of WebResourceResponse, or not for a web view. */
         private val SKIPPED_RESPONSE_HEADERS = setOf("content-type", "content-encoding", "transfer-encoding", "connection")
@@ -1250,6 +1502,7 @@ class StandaloneUi(private val activity: Activity) {
         private const val REQ_SCREENING_ROLE = 7102
         private const val REQ_FILE_CHOOSER = 7103
         private const val REQ_CREATE_DOC = 7104
+        private const val REQ_BACKUP_PICK = 7105
         private const val POLL_READY_MS = 200L
         private const val TICK_MS = 2_500L
         private const val INSTANT_DENIAL_MS = 350L

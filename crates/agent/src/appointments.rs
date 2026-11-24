@@ -5487,6 +5487,76 @@ mod tests {
         assert!(task_json(&rt, &no_appt).get("sms_route").is_none());
     }
 
+    /// The phone app keeps no texts (no SMS page, no forwarded texts) yet the
+    /// caller of an appointment still gets the reply by text from the phone;
+    /// Bageo on a computer keeps its SMS page.
+    #[tokio::test]
+    async fn the_phone_app_keeps_no_texts_but_still_texts_the_booking_reply() {
+        use crate::callback::test_socket::{next_json, phone_socket};
+        let serve = |state: crate::calls_http::CallsState| async move {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let app = crate::calls_http::router(state);
+            tokio::spawn(async move {
+                let _ = axum::serve(listener, app).await;
+            });
+            base
+        };
+        let http = reqwest::Client::new();
+
+        // On a computer the SMS page is there.
+        let pc_root = std::env::temp_dir().join(format!("bageo-appt-pc-{}", uuid::Uuid::new_v4()));
+        let pc = serve(crate::calls_http::tests::quick_state(&pc_root)).await;
+        for path in ["/api/sms", "/api/sms/threads"] {
+            assert_eq!(http.get(format!("{pc}{path}")).send().await.unwrap().status().as_u16(), 200, "computer {path}");
+        }
+
+        // In the phone app it is not.
+        let root = std::env::temp_dir().join(format!("bageo-appt-app-{}", uuid::Uuid::new_v4()));
+        let mut state = crate::calls_http::tests::quick_state(&root);
+        state.sms = crate::sms_store::SmsStore::off();
+        let (sink, mut phone) = phone_socket().await;
+        state.control.register_client("pixel-1".into(), sink).await;
+        state.control.set_supports_sms("pixel-1", true).await;
+        let app = serve(state.clone()).await;
+        for path in ["/api/sms", "/api/sms/threads", "/api/sms/thread?number=0912345678"] {
+            assert_eq!(http.get(format!("{app}{path}")).send().await.unwrap().status().as_u16(), 404, "app {path}");
+        }
+        let send = http.post(format!("{app}/api/sms/send")).json(&json!({"to": "0912345678", "text": "hi"})).send().await.unwrap();
+        assert_eq!(send.status().as_u16(), 404);
+        let forwarded = http
+            .post(format!("{app}/api/notify/send"))
+            .json(&json!({"kind": "sms", "from": "0912345678", "text": "code 123456", "body": "code 123456"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(forwarded.status().as_u16(), 404);
+
+        // A confirmed appointment whose text did not go out: sent again, by the phone.
+        let mut a = appt(&later(2, 15), &later(2, 16), "看房");
+        a.status = CONFIRMED.into();
+        a.sms = "offline".into();
+        a.sim_country = Some("us".into());
+        let task = state.task_store.create(TaskRecord { id: String::new(), ..task_for("+16505550142", &a) }).await.unwrap();
+        let retry = http.post(format!("{app}/api/appointments/{}/retry-sms", task.id)).json(&json!({})).send();
+        let (res, msg) = tokio::join!(retry, async {
+            let m = next_json(&mut phone, std::time::Duration::from_secs(5)).await.expect("send_sms");
+            state
+                .control
+                .handle_sms_result(&json!({"type": "send_sms_result", "id": m["id"].clone(), "ok": true}))
+                .await;
+            m
+        });
+        let res = res.unwrap();
+        assert_eq!(res.status().as_u16(), 200);
+        assert_eq!(res.json::<Value>().await.unwrap()["sms"], "sent");
+        assert_eq!((msg["type"].clone(), msg["to"].clone()), (json!("send_sms"), json!("+16505550142")));
+        assert!(state.sms.list(crate::sms_store::now_ms(), 15, "", None, 20, &|_: &str| String::new()).messages.is_empty());
+        assert!(!root.join("sms").exists(), "no text folder in the phone app");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&pc_root);
+    }
+
     /// Appointments saved by older versions — booked on the call, with a
     /// calendar event and the calendar's own fields (on the demo calendar of
     /// test numbers also `"calendar": "demo"`) — still load and are handled like

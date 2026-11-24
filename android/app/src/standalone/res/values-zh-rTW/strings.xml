@@ -20,8 +20,6 @@
     <string name="sa_dnd_rule_name">Bageo AI 接電話</string>
     <string name="sa_channel_owner_calls">重要來電與急事接聽</string>
     <string name="sa_channel_summaries">AI 通話摘要</string>
-    <string name="sa_notif_ai_idle_title">AI 正在幫你接電話</string>
-    <string name="sa_notif_ai_idle_text">點擊開啟控制台，或使用下方按鈕切換</string>
     <string name="sa_notif_ai_call_title">AI 正在通話中</string>
     <string name="sa_notif_owner_call_title">通話中（本人接聽）</string>
     <string name="sa_notif_urgent_title">緊急來電</string>

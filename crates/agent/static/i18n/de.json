@@ -1368,6 +1368,11 @@
     "m_perms_card": "Berechtigungen & Systemstatus",
     "m_theme_label": "Darstellung",
     "m_theme_auto": "System",
-    "m_autosaved": "Gespeichert"
+    "m_autosaved": "Gespeichert",
+    "m_chk_sms": "Terminbestätigungen per SMS senden",
+    "m_chk_sms_d": "Damit kann Bageo Anrufern per SMS sagen, ob ihr Termin geklappt hat.",
+    "er_need_phone": "Das Handy ist noch nicht bereit. Warte ein paar Sekunden; wenn es so bleibt, öffne die App neu.",
+    "bk_err_read_failed": "Die Datei ließ sich nicht lesen. Wähle sie noch einmal aus.",
+    "bk_app_note": "Backups liegen in Bageo und werden mit der App gelöscht. Um eins zu behalten, tippe auf „Herunterladen“ und speichere es auf dem Handy."
   }
 }

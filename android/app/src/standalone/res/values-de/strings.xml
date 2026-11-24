@@ -20,8 +20,6 @@
     <string name="sa_dnd_rule_name">Bageo AI Anrufe</string>
     <string name="sa_channel_owner_calls">Wichtige &amp; dringende Anrufe</string>
     <string name="sa_channel_summaries">AI-Anrufzusammenfassungen</string>
-    <string name="sa_notif_ai_idle_title">AI nimmt deine Anrufe entgegen</string>
-    <string name="sa_notif_ai_idle_text">Tippen für Konsole oder unten wechseln</string>
     <string name="sa_notif_ai_call_title">AI im Gespräch</string>
     <string name="sa_notif_owner_call_title">Im Gespräch (Du)</string>
     <string name="sa_notif_urgent_title">Dringender Anruf</string>

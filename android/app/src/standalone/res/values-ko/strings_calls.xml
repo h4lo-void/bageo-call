@@ -8,4 +8,6 @@
     <string name="sa_ai_missed_title">AI가 받지 못했어요</string>
     <string name="sa_ai_missed_ringing_text">벨이 울리고 있어요. 직접 받아 주세요</string>
     <string name="sa_channel_ai_missed">AI가 받지 못한 전화</string>
+    <!-- Shown under the Bageo mode in Settings > Modes and the status bar's Modes panel. -->
+    <string name="sa_dnd_rule_trigger">켜면 전화가 올 때 AI가 먼저 받아요</string>
 </resources>

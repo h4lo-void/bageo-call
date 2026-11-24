@@ -31,33 +31,38 @@
 <style>
 :root{
   color-scheme:light;
-  --bg:#f6f5f1;--surface:#ffffff;--surface2:#eeede8;--line:#e6e4dd;--line-strong:#d1cec4;
-  --text:#1c1d20;--muted:#6d6f76;
-  --accent:#177571;--accent-ink:#11615d;--on-accent:#ffffff;--accent-soft:#e6f2f1;
-  --focus:#177571;
-  --nav-active-bg:#e6f2f1;--nav-active-fg:#11615d;
-  --primary-bg:#1f2024;--primary-border:#1f2024;--primary-fg:#ffffff;
-  --ok:#1b7a43;--ok-soft:#e6f4ec;--warn:#9a5b13;--warn-soft:#f8eedb;--bad:#b4342c;--bad-soft:#fbe9e7;
-  --info:#2a58b5;--info-soft:#e7eefb;
-  --bubble-ai:#eaf2f1;--bubble-caller:#eeede8;
-  --card-shadow:0 1px 2px rgba(24,25,28,.04);
-  --radius:16px;--radius-sm:11px;
-  --font:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Noto Sans CJK TC","Noto Sans TC",sans-serif;
+  /* Material 3 colour roles. These are Bageo's own teal; the script at the end of the page swaps in the phone's palette on Android 12+. */
+  --md-primary:#236864;--md-on-primary:#ffffff;--md-primary-container:#d5e6e5;--md-on-primary-container:#121e1d;
+  --md-secondary-container:#dee4e4;--md-on-secondary-container:#171c1d;
+  --md-surface:#fcfcfc;--md-sc-lowest:#ffffff;--md-sc-low:#f3f4f4;--md-sc:#edeeee;--md-sc-high:#e7e9e9;--md-sc-highest:#e1e3e3;
+  --md-on-surface:#1b1c1c;--md-on-surface-variant:#3e4949;--md-outline:#687a7a;--md-outline-variant:#bfc8c8;
+  --md-inverse-surface:#2d3131;--md-inverse-on-surface:#f0f1f1;
+  /* older names used all over the page now point at the roles */
+  --bg:var(--md-surface);--surface:var(--md-sc);--surface2:var(--md-sc-highest);--line:var(--md-outline-variant);--line-strong:var(--md-outline);
+  --text:var(--md-on-surface);--muted:var(--md-on-surface-variant);
+  --accent:var(--md-primary);--accent-ink:var(--md-primary);--on-accent:var(--md-on-primary);--accent-soft:var(--md-primary-container);
+  --focus:var(--md-primary);
+  --nav-active-bg:var(--md-secondary-container);--nav-active-fg:var(--md-on-secondary-container);
+  --primary-bg:var(--md-primary);--primary-border:var(--md-primary);--primary-fg:var(--md-on-primary);
+  --ok:#1b6e3e;--ok-soft:#dcf1e3;--warn:#8a5100;--warn-soft:#ffecc9;--bad:#b3261e;--bad-soft:#fde6e4;--on-bad:#ffffff;
+  --info:#2a56b0;--info-soft:#e3ecfb;
+  --bubble-ai:var(--md-primary-container);--bubble-caller:var(--md-sc-highest);
+  --card-shadow:none;
+  --press:color-mix(in srgb,currentColor 12%,transparent);
+  --radius:20px;--radius-sm:12px;
+  --font:system-ui,-apple-system,Roboto,"Noto Sans",sans-serif;
   --mono:ui-monospace,"SF Mono",Consolas,"Liberation Mono",monospace;
-  --top-h:54px;--tab-h:64px;
+  --top-h:64px;--tab-h:80px;
 }
 :root[data-theme=dark]{
   color-scheme:dark;
-  --bg:#141518;--surface:#1b1d21;--surface2:#24272d;--line:#2a2d34;--line-strong:#393d46;
-  --text:#e6e7eb;--muted:#8c909a;
-  --accent:#45a5a1;--accent-ink:#6cc0bc;--on-accent:#091f1e;--accent-soft:#192b2c;
-  --focus:#45a5a1;
-  --nav-active-bg:#1c2f30;--nav-active-fg:#7ed0cc;
-  --primary-bg:#e6e7eb;--primary-border:#e6e7eb;--primary-fg:#151619;
-  --ok:#55c282;--ok-soft:#162d21;--warn:#dca44c;--warn-soft:#312614;--bad:#e07a72;--bad-soft:#341b19;
-  --info:#8eb0f2;--info-soft:#1a2740;
-  --bubble-ai:#1c2d2e;--bubble-caller:#24272d;
-  --card-shadow:none;
+  --md-primary:#81d5cf;--md-on-primary:#123633;--md-primary-container:#1a4e4b;--md-on-primary-container:#d5e6e5;
+  --md-secondary-container:#334b4c;--md-on-secondary-container:#dee4e4;
+  --md-surface:#1b1c1c;--md-sc-lowest:#101111;--md-sc-low:#222424;--md-sc:#282b2b;--md-sc-high:#313636;--md-sc-highest:#3c4141;
+  --md-on-surface:#e1e3e3;--md-on-surface-variant:#bfc8c8;--md-outline:#829494;--md-outline-variant:#3e4949;
+  --md-inverse-surface:#e1e3e3;--md-inverse-on-surface:#2d3131;
+  --ok:#7ddba0;--ok-soft:#173826;--warn:#f2c06a;--warn-soft:#3d2c0d;--bad:#f2b8b5;--bad-soft:#4f1f1d;--on-bad:#601410;
+  --info:#a6c3f7;--info-soft:#1e2d4b;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{-webkit-text-size-adjust:100%;scroll-padding-top:calc(var(--top-h) + 12px)}
@@ -82,7 +87,7 @@ h1,h2,h3,p{margin:0}
 .app-logo{width:30px;height:30px;flex:0 0 auto;display:block}
 .app-logo svg{width:100%;height:100%;display:block}
 .app-back{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;margin-inline-start:-6px;border-radius:999px;border:0;background:transparent;color:var(--text);cursor:pointer;flex:0 0 auto}
-.app-back:active{background:var(--surface2)}
+.app-back:active{background-image:linear-gradient(var(--press),var(--press))}
 .app-back svg{width:22px;height:22px;display:block}
 [dir=rtl] .app-back svg{transform:scaleX(-1)}
 .app-title{font-size:1.08rem;font-weight:700;letter-spacing:-.015em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0}
@@ -90,7 +95,7 @@ h1,h2,h3,p{margin:0}
 .app-saved.show{opacity:1;transform:scale(1)}
 .app-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto}
 .icon-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:36px;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:.84rem;font-weight:600;cursor:pointer}
-.icon-btn:active{background:var(--surface2)}
+.icon-btn:active{background-image:linear-gradient(var(--press),var(--press))}
 .icon-btn svg{width:17px;height:17px;flex:0 0 auto}
 
 /* ---------- main container & bottom tab bar ---------- */
@@ -111,7 +116,7 @@ body.subpage-open .tabbar{display:none}
 .pad{padding:16px}
 .stack{display:flex;flex-direction:column;gap:12px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 15px;min-height:42px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--surface);cursor:pointer;font-weight:600;font-size:.92rem;text-decoration:none;color:var(--text);text-align:center;transition:background .12s,border-color .12s,opacity .12s}
-.btn:active:not(:disabled){background:var(--surface2);transform:scale(.99)}
+.btn:active:not(:disabled){background-image:linear-gradient(var(--press),var(--press))}
 .btn:disabled{opacity:.45;cursor:default}
 .btn.primary{background:var(--primary-bg);border-color:var(--primary-border);color:var(--primary-fg)}
 .btn.accent{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
@@ -119,7 +124,7 @@ body.subpage-open .tabbar{display:none}
 .btn.sm{min-height:36px;padding:6px 12px;font-size:.85rem;border-radius:9px}
 .btn.xs{min-height:32px;padding:4px 10px;font-size:.8rem;border-radius:8px}
 .btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
-.btn.ghost:active{background:var(--surface2);color:var(--text)}
+.btn.ghost:active{background-image:linear-gradient(var(--press),var(--press))}
 .btn.block{width:100%}
 
 input[type=text],input[type=search],input[type=password],input[type=number],input[type=url],input[type=tel],select,textarea{width:100%;padding:10px 13px;min-height:44px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:16px;transition:border-color .14s}
@@ -221,7 +226,7 @@ pre.block.prose{font:inherit;font-size:.9rem}
 /* ---------- Call List & Detail ---------- */
 .list{display:flex;flex-direction:column;gap:8px}
 .call{display:flex;gap:12px;align-items:flex-start;padding:13px 14px;border-radius:var(--radius);background:var(--surface);border:1px solid var(--line);cursor:pointer;text-align:start;width:100%;box-shadow:var(--card-shadow)}
-.call:active{background:var(--surface2)}
+.call:active{background-image:linear-gradient(var(--press),var(--press))}
 .av{width:40px;height:40px;border-radius:999px;background:var(--surface2);color:var(--accent-ink);font-weight:700;font-size:.95rem;display:grid;place-items:center;flex:0 0 auto;margin-top:1px}
 .call.k-blocked .av,.call.k-failed .av{color:var(--bad);background:var(--bad-soft)}
 .call.k-spam .av{color:var(--info);background:var(--info-soft)}
@@ -299,7 +304,7 @@ audio{width:100%;height:42px;margin-top:10px;display:block}
 .smenu{display:flex;flex-direction:column;overflow:hidden}
 .smenu-row{display:flex;align-items:center;gap:13px;width:100%;padding:14px 16px;border:0;border-top:1px solid var(--line);background:transparent;text-align:start;cursor:pointer;color:var(--text)}
 .smenu-row:first-child{border-top:0}
-.smenu-row:active{background:var(--surface2)}
+.smenu-row:active{background-image:linear-gradient(var(--press),var(--press))}
 .smenu-ic{width:38px;height:38px;border-radius:11px;background:var(--surface2);color:var(--accent-ink);display:grid;place-items:center;flex:0 0 auto}
 .smenu-ic svg{width:20px;height:20px;display:block}
 .smenu-body{flex:1 1 auto;min-width:0}
@@ -362,7 +367,7 @@ audio{width:100%;height:42px;margin-top:10px;display:block}
 .er-to{position:relative}
 .er-sugg{position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:28;background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius-sm);box-shadow:0 10px 28px rgba(0,0,0,.18);max-height:260px;overflow:auto;padding:4px}
 .er-sugg button{display:flex;gap:10px;align-items:baseline;width:100%;text-align:start;padding:10px;border:0;border-radius:8px;background:transparent;color:var(--text);cursor:pointer}
-.er-sugg button:active{background:var(--surface2)}
+.er-sugg button:active{background-image:linear-gradient(var(--press),var(--press))}
 .er-sugg button b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .er-sugg .mono{color:var(--muted);margin-inline-start:auto;white-space:nowrap}
 .er-sugg .none{padding:10px;color:var(--muted);font-size:.88rem}
@@ -403,7 +408,7 @@ audio{width:100%;height:42px;margin-top:10px;display:block}
 
 .ct-item{display:flex;gap:8px;align-items:center}
 .ct-row{flex:1 1 auto;min-width:0;display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:var(--radius);background:var(--surface);border:1px solid var(--line);cursor:pointer;text-align:start;box-shadow:var(--card-shadow)}
-.ct-row:active{background:var(--surface2)}
+.ct-row:active{background-image:linear-gradient(var(--press),var(--press))}
 .ct-row .who{font-weight:650;overflow-wrap:anywhere}
 .ct-row .nums{font-family:var(--mono);font-size:.84rem;color:var(--muted);overflow-wrap:anywhere;margin-top:2px}
 .ct-row .gist{color:var(--muted);font-size:.84rem;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -520,7 +525,155 @@ dialog .terms li+li{margin-top:7px}
 [dir=rtl] #tsBox .bts-svg{transform:scaleX(-1)}
 [dir=rtl] #tsBox .bts-svg text{transform:scaleX(-1);transform-box:fill-box;transform-origin:center}
 [dir=rtl] .sw input,[dir=rtl] .hero-sw,[dir=rtl] input[type=range]{direction:rtl}
-#hdrSave{border-radius:999px;padding-inline:15px;min-height:36px}
+
+/* ======================================================================
+   Material 3 layer: the page follows the phone's colours, shapes and type.
+   Roles (--md-*) are set at the top; the script at the end replaces them
+   with the system palette on Android 12 and newer.
+   ====================================================================== */
+html{font-size:100%}
+body{font:400 1rem/1.5 var(--font)}
+.small{font-size:.875rem}
+input[type=range],input[type=checkbox],input[type=radio]{accent-color:var(--md-primary)}
+
+/* top app bar */
+.app-bar{height:auto;min-height:var(--top-h);background:var(--md-surface);backdrop-filter:none;-webkit-backdrop-filter:none;border-bottom:0;gap:8px;padding-inline:16px}
+.app-logo{width:32px;height:32px}
+.app-back{width:48px;height:48px;margin-inline:-8px 0;color:var(--md-on-surface)}
+.app-back svg{width:24px;height:24px}
+.app-title{font-size:1.375rem;font-weight:500;letter-spacing:0;line-height:1.3}
+.app-actions{gap:4px;margin-inline-end:-4px}
+.app-saved{font-weight:500;padding:4px 12px}
+.icon-btn{min-width:48px;min-height:48px;padding:0 12px;border:0;background:transparent;color:var(--md-on-surface-variant);font-size:.875rem;font-weight:500}
+.icon-btn:has(span){padding:0 20px;background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+.icon-btn svg{width:24px;height:24px}
+.icon-btn:has(span) svg{width:18px;height:18px}
+main{padding-block:8px calc(var(--tab-h) + 24px + env(safe-area-inset-bottom));padding-inline:16px}
+
+/* bottom navigation bar with the pill indicator */
+.tabbar{background:var(--md-sc);border-top:0;backdrop-filter:none;-webkit-backdrop-filter:none;padding-block:12px calc(12px + env(safe-area-inset-bottom));padding-inline:8px;gap:0}
+.tabbar button{min-height:64px;gap:4px;padding:0 2px;border-radius:16px;color:var(--md-on-surface-variant);font-size:.75rem;font-weight:500;line-height:1.25}
+.tabbar button .tab-pill{width:64px;height:32px}
+.tabbar button svg{width:24px;height:24px}
+.tabbar button:active .tab-pill{background:color-mix(in srgb,var(--md-on-surface) 12%,transparent)}
+.tabbar button[aria-current=page]{color:var(--md-on-surface);font-weight:700}
+.tabbar button[aria-current=page] .tab-pill{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+.tabbar button>span:not(.tab-pill):not(.tab-badge):not(.tab-dot){max-width:100%;text-align:center;overflow-wrap:anywhere}
+.tabbar .tab-badge{top:6px;inset-inline-end:calc(50% - 30px);min-width:18px;height:18px;background:var(--bad);color:var(--on-bad)}
+.tabbar .tab-dot{top:9px;inset-inline-end:calc(50% - 24px);background:var(--bad)}
+
+/* cards sit one surface level above the page; no outlines */
+.card{background:var(--md-sc);border:0;border-radius:var(--radius);box-shadow:none}
+.pad{padding:16px}
+.banner{border:0;border-radius:var(--radius);padding:14px 16px;min-height:56px;background:var(--md-sc)}
+.banner.info{background:var(--md-sc);color:var(--text)}
+
+/* buttons: tonal by default, filled for the main action, text for quiet ones */
+.btn{position:relative;min-height:48px;padding:10px 20px;border:0;border-radius:999px;background:var(--md-secondary-container);color:var(--md-on-secondary-container);font-size:.875rem;font-weight:500;line-height:1.25}
+.btn.primary,.btn.accent{background:var(--md-primary);color:var(--md-on-primary)}
+.btn.danger{background:var(--bad-soft);color:var(--bad)}
+.btn.ghost{background:transparent;color:var(--md-primary)}
+.btn:disabled{opacity:1;background:color-mix(in srgb,var(--md-on-surface) 12%,transparent);color:color-mix(in srgb,var(--md-on-surface) 38%,transparent)}
+.btn.sm{min-height:40px;padding:6px 16px;border-radius:999px}
+.btn.xs{min-height:36px;padding:4px 14px;border-radius:999px}
+.btn.sm::after{content:"";position:absolute;inset:-4px 0}
+.btn.xs::after{content:"";position:absolute;inset:-6px 0}
+#hdrSave{border-radius:999px;padding-inline:20px;min-height:40px}
+
+/* text fields: outlined, rounded, 3:1 outline */
+input[type=text],input[type=search],input[type=password],input[type=number],input[type=url],input[type=tel],select,textarea{min-height:52px;padding:12px 16px;border:1px solid var(--md-outline);border-radius:var(--radius-sm);background-color:transparent;color:var(--text)}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:0;border-color:var(--md-primary);box-shadow:0 0 0 1px var(--md-primary)}
+input[type=search]{padding-inline:20px;border-color:transparent;border-radius:999px;background-color:var(--md-sc-high)}
+input[type=search]:focus-visible{border-color:var(--md-primary)}
+[aria-invalid="true"]{border-color:var(--bad)}
+
+/* switches: 52 x 32 track, thumb grows when on */
+.sw{min-height:56px;padding-block:8px}
+.sw b{font-weight:500;font-size:1rem}
+.sw input,.hero-sw{appearance:none;-webkit-appearance:none;flex:0 0 auto;width:52px;height:32px;min-height:0;margin:0;padding:0;border:2px solid var(--md-outline);border-radius:999px;background:var(--md-sc-highest);position:relative;cursor:pointer;transition:background .2s,border-color .2s}
+.sw input::after,.hero-sw::after{content:"";position:absolute;top:50%;inset-inline-start:6px;width:16px;height:16px;margin-top:-8px;border-radius:50%;background:var(--md-outline);box-shadow:none;transition:inset-inline-start .2s,width .2s,height .2s,margin-top .2s,background .2s}
+.sw input:checked,.hero-sw:checked{background:var(--md-primary);border-color:var(--md-primary)}
+.sw input:checked::after,.hero-sw:checked::after{inset-inline-start:22px;width:24px;height:24px;margin-top:-12px;background:var(--md-on-primary)}
+.sw input:disabled,.hero-sw:disabled{opacity:.38}
+.hero-sw{margin-top:0}
+
+/* home: AI answering card, live call, stats */
+.hero{padding:20px;border-radius:28px}
+.hero-head h2{font-size:1.375rem;font-weight:500;letter-spacing:0;line-height:1.3}
+.hero-desc{font-size:.875rem;line-height:1.43}
+.hero-note{min-height:48px;border-radius:16px}
+.hero-acts{grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));margin-top:16px}
+.hero-acts .btn{min-height:48px;border-radius:999px}
+.hero.ai-on{border:0;background:var(--md-primary-container);color:var(--md-on-primary-container);--text:var(--md-on-primary-container);--muted:color-mix(in srgb,var(--md-on-primary-container) 82%,transparent);--accent-ink:var(--md-on-primary-container);--surface2:color-mix(in srgb,var(--md-on-primary-container) 10%,transparent)}
+.hero.ai-on .btn:not(.primary){background:color-mix(in srgb,var(--md-on-primary-container) 12%,transparent);color:var(--md-on-primary-container)}
+.hero.ai-on .tag.accent{background:color-mix(in srgb,var(--md-on-primary-container) 12%,transparent);color:var(--md-on-primary-container)}
+.live-card{padding:14px 16px;border:0;border-radius:var(--radius);background:var(--md-primary-container);color:var(--md-on-primary-container)}
+.setup-card h2,.appts-head h2{font-size:1rem;font-weight:500}
+.chk-row{min-height:56px;padding-block:8px}
+.stats3{gap:8px}
+.stat{padding:14px 16px}
+.stat b{font-size:1.625rem;font-weight:500;letter-spacing:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stat span{font-size:.75rem;font-weight:500}
+
+/* filter chips */
+.chip-bar{gap:8px;padding-block:4px;margin-bottom:8px}
+.fchip{position:relative;min-height:40px;padding:0 16px;border:1px solid var(--md-outline);background:transparent;color:var(--md-on-surface-variant);font-size:.875rem;font-weight:500}
+.fchip::after{content:"";position:absolute;inset:-4px 0}
+.fchip:active{background-image:linear-gradient(var(--press),var(--press))}
+.fchip[aria-selected=true]{border-color:transparent;background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+
+/* call list, tags, avatars */
+.list{gap:8px}
+.call{padding:14px 16px;border:0;border-radius:var(--radius)}
+.av{width:44px;height:44px;background:var(--md-primary-container);color:var(--md-on-primary-container);font-size:1rem;font-weight:500}
+.call-who{font-size:1rem;font-weight:500}
+.call-gist{font-size:.875rem}
+.tag{padding:3px 10px;border-radius:8px;font-size:.75rem;font-weight:500}
+.tag.accent{background:var(--md-primary-container);color:var(--md-on-primary-container)}
+.empty{border-radius:var(--radius)}
+
+/* settings list, groups and sub-pages */
+.smenu{border-radius:var(--radius)}
+.smenu-row{position:relative;min-height:72px;gap:16px;padding:12px 16px;border-top:0}
+.smenu-row+.smenu-row::before{content:"";position:absolute;top:0;inset-inline:72px 16px;height:1px;background:var(--md-outline-variant);opacity:.6}
+.smenu-ic{width:40px;height:40px;border-radius:50%;background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+.smenu-ic svg{width:22px;height:22px}
+.smenu-body b{font-size:1rem;font-weight:500}
+.smenu-body small{font-size:.875rem}
+.field>label,.field>.lbl{font-size:.9375rem;font-weight:500}
+.choice label{min-height:56px;padding:14px 16px;border:1px solid var(--md-outline-variant);border-radius:16px;background:transparent}
+.choice label:has(input:checked){border-color:transparent;background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+.choice label:has(input:checked) small{color:inherit}
+.subbox,.er-pre,.er-fu,.cal,.slrow,.chan{border:0;border-radius:16px;background:var(--md-sc-highest)}
+.er-card.er-live-card{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--md-primary) 60%,transparent)}
+pre.block{border:0;background:var(--md-sc-highest)}
+details.fold>summary{min-height:48px}
+.seg{background:transparent;border:1px solid var(--md-outline);border-radius:999px;padding:0;gap:0;overflow:hidden}
+.seg button{min-height:48px;padding:0 16px;border-radius:0;font-size:.875rem;font-weight:500}
+.seg button+button{border-inline-start:1px solid var(--md-outline)}
+.seg button[aria-selected=true]{background:var(--md-secondary-container);color:var(--md-on-secondary-container);box-shadow:none}
+.trsw{min-height:48px}
+.with-btn{flex-wrap:wrap}
+.with-btn>input,.with-btn>select{min-width:9rem}
+.choice input{width:20px;height:20px}
+.ts-range{min-height:48px}
+.ab-chip-x{position:relative;width:28px;height:28px}
+.ab-chip-x::after{content:"";position:absolute;inset:-10px}
+.cb-list,.er-sugg{border:0;border-radius:var(--radius-sm);background:var(--md-sc-high);box-shadow:0 3px 8px rgba(0,0,0,.2)}
+.cb-list li,.er-sugg button{min-height:48px}
+
+/* snackbar and bottom sheet */
+#toast{top:auto;bottom:calc(var(--tab-h) + 16px + env(safe-area-inset-bottom));padding:14px 20px;border-radius:16px;background:var(--md-inverse-surface);color:var(--md-inverse-on-surface);font-size:.875rem;font-weight:500;text-align:start;transform:translateY(220%);box-shadow:0 3px 8px rgba(0,0,0,.25)}
+#toast.show{transform:translateY(0)}
+#toast.err{background:var(--bad-soft);color:var(--bad)}
+dialog{border-top:0;border-start-start-radius:28px;border-start-end-radius:28px;background:var(--md-sc-high);box-shadow:none}
+dialog::backdrop{background:rgba(0,0,0,.4)}
+dialog form{padding-block:12px 0;padding-inline:24px}
+dialog form::before{content:"";display:block;width:32px;height:4px;margin:0 auto 20px;border-radius:2px;background:var(--md-on-surface-variant);opacity:.4}
+dialog h2{font-size:1.375rem;font-weight:500;line-height:1.3;margin-bottom:12px}
+dialog p{font-size:.875rem;line-height:1.45}
+dialog .dlg-btns{margin-inline:-24px;padding-inline:24px;background:var(--md-sc-high);border-top:0}
+dialog .dlg-btns .btn{min-height:48px}
 </style>
 </head>
 <body>
@@ -709,13 +862,13 @@ dialog .terms li+li{margin-top:7px}
           <button type="button" class="btn sm" id="btnCopyNum" data-i18n="d_copy_number"></button>
           <button type="button" class="btn sm" id="btnAddContact" hidden data-i18n="ct_add_from_call"></button>
           <button type="button" class="btn sm danger" id="btnBlock" data-i18n="d_block"></button>
-          <button type="button" class="btn sm" id="btnJson" data-i18n="d_json"></button>
           <button type="button" class="btn sm danger" id="btnDeleteCall" hidden data-i18n="d_del_call"></button>
         </div>
         <details class="fold" style="margin-top:10px">
           <summary data-i18n="d_tech"></summary>
           <dl class="kv" id="dKv"></dl>
           <div class="chips" id="dEvents" style="margin-top:8px"></div>
+          <button type="button" class="btn sm" id="btnJson" style="margin-top:8px" data-i18n="d_json"></button>
         </details>
       </div>
     </div>
@@ -724,8 +877,7 @@ dialog .terms li+li{margin-top:7px}
   <!-- ======================= TAB 2: AI ERRANDS ======================= -->
   <section id="view-errands" data-view="errands" hidden>
     <div class="banner warn" id="erAiOffBanner" hidden>
-      <span class="grow" data-i18n="m_er_need_ai"></span>
-      <button type="button" class="btn sm primary" id="erTurnOnAiBtn" data-i18n="m_er_turn_on"></button>
+      <span class="grow" data-i18n="er_need_phone"></span>
     </div>
 
     <form class="card pad" id="erForm" autocomplete="off" novalidate style="margin-bottom:14px">
@@ -1401,6 +1553,7 @@ dialog .terms li+li{margin-top:7px}
             <input type="file" id="bkFile" hidden accept=".zip,.json,.bageo,application/zip,application/json" />
           </div>
           <div class="bk-status" id="bkStatus" aria-live="polite"></div>
+          <p class="help" id="bkAppNote" hidden data-i18n="bk_app_note"></p>
           <div class="field">
             <label for="f-backup_schedule" data-i18n="bk_schedule"></label>
             <select id="f-backup_schedule" data-k="backup_schedule" data-t="text">
@@ -1494,6 +1647,10 @@ dialog .terms li+li{margin-top:7px}
           <div class="field"><label for="f-retention_days" data-i18n="f_keep"></label>
             <div class="inline"><input type="number" id="f-retention_days" data-k="retention_days" data-t="int" min="1" max="365" step="1" inputmode="numeric" /><span class="muted" data-i18n="unit_days"></span></div>
             <div class="help" data-i18n="f_keep_h"></div></div>
+          <details class="fold" style="margin-top:10px">
+            <summary data-i18n="raw_health"></summary>
+            <pre class="block" id="sysRaw"></pre>
+          </details>
         </div>
 
         <div class="card pad">
@@ -1503,10 +1660,6 @@ dialog .terms li+li{margin-top:7px}
             <button type="button" class="btn sm" id="btnBgCheck" data-i18n="pk_check"></button>
           </div>
           <div class="help" id="bgVerStatus" aria-live="polite"></div>
-          <details class="fold" style="margin-top:10px">
-            <summary data-i18n="raw_health"></summary>
-            <pre class="block" id="sysRaw"></pre>
-          </details>
         </div>
       </div>
     </form>
@@ -2455,6 +2608,16 @@ function openNativePhone(num) {
   }
   if (clean) location.href = "tel:" + encodeURIComponent(clean);
 }
+// A web address (calendar, update page) in the phone's browser: the app's web view opens no new windows.
+function openExternal(url) {
+  try {
+    if (window.BageoAndroid && typeof window.BageoAndroid.openExternal === "function") {
+      window.BageoAndroid.openExternal(String(url));
+      return;
+    }
+  } catch (_) {}
+  window.open(url, "_blank", "noopener");
+}
 
 function renderHero() {
   const ai = !!native.ai_enabled;
@@ -2595,6 +2758,9 @@ function buildMissingChecks() {
   }
   if (ch.perms_ok === false) {
     list.push({ ok: false, title: t("m_chk_perms"), desc: t("m_chk_perms_d"), act: "perms", btn: t("m_btn_allow") });
+  }
+  if (S && S.appointment_sms && ch.sms_ok === false) {
+    list.push({ ok: false, title: t("m_chk_sms"), desc: t("m_chk_sms_d"), act: "sms", btn: t("m_btn_allow") });
   }
   if (ch.dnd_ok === false) {
     list.push({ ok: false, title: t("m_chk_dnd"), desc: t("m_chk_dnd_d"), act: "dnd", btn: t("m_btn_allow") });
@@ -3439,7 +3605,7 @@ function openCal(app, links, icsPath) {
     return;
   }
   const url = String((links && links[app]) || "");
-  if (/^https:\/\//.test(url)) window.open(url, "_blank", "noopener");
+  if (/^https:\/\//.test(url)) openExternal(url);
   else toast(t("err_no_calendar"), true);
 }
 let calPick = null;
@@ -3775,13 +3941,16 @@ const erTitle = (e) => String(e.name || "").trim() || String(e.number || "") || 
 
 async function erApi(path, opts) {
   const d = await api("/errands" + path, opts);
-  if (d && d.ok === false) throw new ApiError(String(d.error || ""), 400, String(d.error || ""), d);
+  if (d && d.ok === false) throw new ApiError(errCodeText(d.error), 400, String(d.error || ""), d);
   return d;
 }
+// An errand error in words: its own text, else the general one for the code, else "try again".
 function erErrText(e) {
   const code = String((e && e.data && (e.data.error || e.data.code)) || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
-  const key = "er_err_" + code;
-  return code && ((I18N[lang] && I18N[lang][key]) != null || I18N.en[key] != null) ? t(key) : e.message;
+  if (code && hasText("er_err_" + code)) return t("er_err_" + code);
+  if (code && hasText("err_" + code)) return t("err_" + code);
+  if (e && (e.status === 0 || e.status === 401) && e.message) return e.message;
+  return t("err_try_again");
 }
 function erPut(x) {
   if (!x || !x.id) return;
@@ -3805,8 +3974,13 @@ async function loadErrands() {
   renderErrands();
 }
 
+// The phone's call link is up (always in AI answering; in normal-phone mode while the app is
+// open). Unknown yet (the list did not load): not held back, Bageo says if no phone can call.
+function erPhoneReady() { return !devices || !Array.isArray(devices.connected) || devices.connected.length > 0; }
 function erRenderSimField() {
-  $("erAiOffBanner").hidden = !!native.ai_enabled;
+  const ready = erPhoneReady();
+  $("erAiOffBanner").hidden = ready;
+  if (!er.sending) $("erGo").disabled = !ready;
   const realSims = currentPhoneSims().filter((s) => s && Number(s.sub_id) >= 0);
   $("erSimField").hidden = realSims.length <= 1;
   if (realSims.length <= 1) return;
@@ -3821,11 +3995,6 @@ function erRenderSimField() {
   });
   if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
 }
-$("erTurnOnAiBtn").addEventListener("click", () => {
-  if (window.BageoAndroid && typeof window.BageoAndroid.setAiMode === "function") {
-    window.BageoAndroid.setAiMode(true);
-  }
-});
 
 function erDefaultIdentity() { return S && S.errand_identity === "owner" ? "owner" : "assistant"; }
 function erIdentity() {
@@ -3856,7 +4025,7 @@ function erRenderPick() {
 function erSending(on) {
   er.sending = on;
   const b = clear($("erGo"));
-  b.disabled = on;
+  b.disabled = on || !erPhoneReady();
   $("erPreOk").disabled = $("erPreGo").disabled = $("erPreNo").disabled = on;
   if (on) b.append(h("span", { class: "spin" }));
   b.append(h("span", { text: t(on ? "er_starting" : "er_start") }));
@@ -3986,8 +4155,8 @@ $("erForm").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   if (er.sending) return;
   $("erErr").hidden = true;
-  if (!native.ai_enabled) {
-    $("erErr").textContent = t("m_er_need_ai");
+  if (!erPhoneReady()) {
+    $("erErr").textContent = t("er_need_phone");
     $("erErr").hidden = false;
     return;
   }
@@ -5143,6 +5312,8 @@ $("simLangRows").addEventListener("change", () => queueFieldAutoSave($("simLangR
 let chans = [], chanSeq = 0;
 const URL_IS_SECRET = new Set(["discord", "slack", "teams", "googlechat", "rocketchat", "synology", "wecom", "dingtalk", "feishu", "apprise", "webhook"]);
 const CMD_KINDS = new Set(["telegram", "discord", "slack", "matrix"]);
+// Services that need a server of your own: listed under "More options".
+const CHAN_SELF_HOSTED = new Set(["signal", "gotify", "homeassistant", "synology", "nextcloud", "rocketchat", "apprise", "webhook"]);
 const kindInfo = (kind) => ((S && S.notify_kinds) || []).find((k) => k.kind === kind) || { kind, label: kind, url: "", token: "", target: "", url_default: "" };
 function kindLabel(kind) { const key = "nf_" + kind; return (I18N[lang] && I18N[lang][key]) ?? I18N.en[key] ?? kindInfo(kind).label; }
 function chanFieldLabel(kind, f) { const key = `nf_${kind}_${f}`; return (I18N[lang] && I18N[lang][key]) ?? I18N.en[key] ?? (kindInfo(kind)[f] || f); }
@@ -5307,7 +5478,12 @@ function buildMenus() {
   });
   fillSelect($("chanKind"), (sel) => {
     sel.append(h("option", { value: "", text: t("n_pick") }));
-    for (const k of S.notify_kinds || []) sel.append(h("option", { value: k.kind, text: kindLabel(k.kind) }));
+    // In the app: no Bark (iPhone only); services you run yourself under "More options".
+    const kinds = (S.notify_kinds || []).filter((k) => !(window.BageoAndroid && k.kind === "bark"));
+    const opt = (k) => h("option", { value: k.kind, text: kindLabel(k.kind) });
+    for (const k of kinds) if (!CHAN_SELF_HOSTED.has(k.kind)) sel.append(opt(k));
+    const more = kinds.filter((k) => CHAN_SELF_HOSTED.has(k.kind));
+    if (more.length) sel.append(h("optgroup", { label: t("more_opts") }, more.map(opt)));
   });
 }
 
@@ -5606,6 +5782,7 @@ function renderAdvPermsAndSims() {
     const rows = [
       { ok: ch.module_ok !== false, title: t("m_chk_module"), desc: t("m_chk_module_d") },
       { ok: ch.perms_ok !== false, title: t("m_chk_perms"), desc: t("m_chk_perms_d"), act: "perms", btn: t("m_btn_allow") },
+      { ok: ch.sms_ok !== false, title: t("m_chk_sms"), desc: t("m_chk_sms_d"), act: "sms", btn: t("m_btn_allow") },
       { ok: !native.ai_enabled || ch.dialer_ok !== false, title: t("m_chk_dialer"), desc: t("m_chk_dialer_d"), act: "dialer", btn: t("m_btn_set") },
       { ok: !native.ai_enabled || ch.screening_ok !== false, title: t("m_chk_screening"), desc: t("m_chk_screening_d"), act: "screening", btn: t("m_btn_set") },
       { ok: ch.dnd_ok !== false, title: t("m_chk_dnd"), desc: t("m_chk_dnd_d"), act: "dnd", btn: t("m_btn_allow") },
@@ -5693,10 +5870,10 @@ async function bkLoad() {
   try { bk = await api("/backup"); } catch (_) { bk = null; }
   bkRender();
 }
-function bkDownload(ticket) {
+function bkDownload(ticket, name) {
   const path = apiBase + "/backup/download/" + encodeURIComponent(ticket);
   if (window.BageoAndroid && typeof window.BageoAndroid.downloadUrl === "function") {
-    window.BageoAndroid.downloadUrl(path, "");
+    window.BageoAndroid.downloadUrl(path, String(name || ""));
     return;
   }
   const a = h("a", { href: path }); document.body.append(a); a.click(); a.remove();
@@ -5804,9 +5981,42 @@ $("btnBkExport").addEventListener("click", async () => {
   if (!r || !r.items.length) return;
   const body = { items: r.items };
   if (r.password) body.password = r.password;
-  bkGuard(async () => { const d = await api("/backup/export", jsonBody("POST", body)); bkDownload(d.ticket); }, "export");
+  bkGuard(async () => { const d = await api("/backup/export", jsonBody("POST", body)); bkDownload(d.ticket, d.name); }, "export");
 });
-$("btnBkImport").addEventListener("click", () => { if (!bkBusy) $("bkFile").click(); });
+// In the app the phone's file picker hands the file to Bageo directly (a big backup does not
+// go through the page). The answer: {status, body} from Bageo, or {error}.
+const NATIVE_IMPORT = !!(window.BageoAndroid && typeof window.BageoAndroid.importBackupFile === "function");
+let bkPickDone = null;
+window.__bageoBackupPicked = function (r) {
+  const done = bkPickDone;
+  bkPickDone = null;
+  if (done) done(r && typeof r === "object" ? r : {});
+};
+function bkPickNative() {
+  return new Promise((resolve) => {
+    bkPickDone = resolve;
+    try { window.BageoAndroid.importBackupFile(JSON.stringify(token ? { "x-calls-token": token } : {})); }
+    catch (_) { bkPickDone = null; resolve({ error: "read_failed" }); }
+  });
+}
+const BK_PICK_ERR = { too_large: "bk_err_too_large", read_failed: "bk_err_read_failed" };
+async function bkImportNative() {
+  const r = await bkPickNative();
+  if (r.error === "cancel") return;
+  if (r.error) throw new ApiError(t(BK_PICK_ERR[r.error] || "err_try_again"), 400, String(r.error));
+  let data = {};
+  try { data = JSON.parse(r.body || "{}") || {}; } catch (_) {}
+  if (r.status === 401) { await askToken(!!token); return; }
+  const status = Number(r.status) || 500;
+  if (status < 200 || status > 299) throw new ApiError(apiErrorText(data, status), status, data.error || data.detail || "", data);
+  await bkFinish(data);
+}
+$("btnBkImport").addEventListener("click", () => {
+  if (bkBusy) return;
+  if (NATIVE_IMPORT) bkGuard(bkImportNative);
+  else $("bkFile").click();
+});
+$("bkAppNote").hidden = !window.BageoAndroid;
 $("bkFile").addEventListener("change", () => {
   const file = $("bkFile").files[0];
   $("bkFile").value = "";
@@ -5829,7 +6039,7 @@ $("bkList").addEventListener("click", async (ev) => {
   }
   const dl = ev.target.closest("[data-bk-download]");
   if (dl) {
-    api("/backup/file-ticket", jsonBody("POST", { name: dl.dataset.bkDownload })).then((d) => bkDownload(d.ticket)).catch((e) => toast(e.message, true));
+    api("/backup/file-ticket", jsonBody("POST", { name: dl.dataset.bkDownload })).then((d) => bkDownload(d.ticket, d.name || dl.dataset.bkDownload)).catch((e) => toast(e.message, true));
     return;
   }
   const re = ev.target.closest("[data-bk-restore]");
@@ -5884,7 +6094,7 @@ $("btnBgCheck").addEventListener("click", async () => {
     const url = (d && d.url) || "https://github.com/h4lo-void/bageo-call/releases/latest";
     if (d && d.result === "update_available") {
       clear($("bgVerStatus")).append(h("a", { href: url, target: "_blank", rel: "noopener", text: "v" + d.latest }));
-      window.open(url, "_blank", "noopener");
+      openExternal(url);
     } else if (d && d.result === "up_to_date") $("bgVerStatus").textContent = t("pk_r_up_to_date");
     else $("bgVerStatus").textContent = t("pk_r_offline");
   } catch (e) { $("bgVerStatus").textContent = e.message || t("pk_r_offline"); }
@@ -6094,6 +6304,8 @@ setInterval(() => {
     for (const e of er.list) if (ER_ACTIVE.includes(e.status) && erLive.has(e.id)) erPoll(e.id);
     for (const st of erLive.values()) erTickQ(st);
     if (erTicks % 5 === 0 && er.list.some(erOpen)) loadErrands();
+    // The call link comes up a moment after the app opens: look again soon while it is down.
+    if (erTicks % (erPhoneReady() ? 15 : 3) === 0) loadDevices();
   }
 }, 1000);
 
@@ -6107,7 +6319,7 @@ document.addEventListener("visibilitychange", () => {
   renderHero();
   pollLive();
   refreshCalls({ keep: true });
-  if (view === "errands") loadErrands();
+  if (view === "errands") { loadErrands(); loadDevices(); }
 });
 window.addEventListener("pagehide", () => {
   if (view === "settings" && settingsSub) saveCurrentSettings(false, true);
@@ -6146,7 +6358,9 @@ window.__bageoHandleBack = function () {
   readInitialNativeState();
   buildSecrets();
   applyThemeMode(document.documentElement.dataset.themeMode || "auto");
-  const want = rawLang(qs.get("lang")) || rawLang(store.get("pca.lang")) || rawLang(store.get("pca.srvlang")) || BOOT.lang;
+  // Nothing saved yet (first start, or the page moved): the phone's own language.
+  const sysLang = (navigator.languages || [navigator.language]).map(matchLang).find(Boolean) || "";
+  const want = rawLang(qs.get("lang")) || rawLang(store.get("pca.lang")) || rawLang(store.get("pca.srvlang")) || sysLang || BOOT.lang;
   const saved = matchLang(store.get("pca.lang"));
   if (saved) store.set("pca.lang", saved);
   // Show the page at once in a language it already has; another one follows when it arrives
@@ -6161,6 +6375,80 @@ window.__bageoHandleBack = function () {
   loadSettings();
   loadHealth();
   if (want !== lang) chooseLang(want, true);
+})();
+</script>
+<script>
+// Colours from the phone (Android 12+): the app reads the system palette through
+// window.BageoTheme and sets the Material 3 roles. Without it (a browser) the
+// teal colours from the style block stay.
+(function () {
+  "use strict";
+  var bridge = window.BageoTheme;
+  if (!bridge || typeof bridge.colors !== "function") return;
+  var data;
+  try { data = JSON.parse(bridge.colors()); } catch (_) { return; }
+  var pal = data && data.palette;
+  if (!pal) return;
+  // Android shade name -> Material tone (100 is white, 0 is black)
+  var TONES = [[0, 100], [10, 99], [50, 95], [100, 90], [200, 80], [300, 70], [400, 60], [500, 50], [600, 40], [700, 30], [800, 20], [900, 10], [1000, 0]];
+  var HEX = /^#[0-9a-fA-F]{6}$/;
+  var names = ["a1", "a2", "n1", "n2"];
+  for (var i = 0; i < names.length; i++) {
+    var p = pal[names[i]];
+    if (!p) return;
+    for (var j = 0; j < TONES.length; j++) if (!HEX.test(String(p[TONES[j][0]]))) return;
+  }
+  function rgb(hex) { return [1, 3, 5].map(function (k) { return parseInt(hex.slice(k, k + 2), 16); }); }
+  function hex(c) {
+    return "#" + c.map(function (v) { var n = Math.max(0, Math.min(255, Math.round(v))); return (n < 16 ? "0" : "") + n.toString(16); }).join("");
+  }
+  // colour of a palette at a tone; tones between two Android shades are blended
+  function tone(p, t) {
+    for (var k = 0; k < TONES.length - 1; k++) {
+      var hi = TONES[k], lo = TONES[k + 1];
+      if (t <= hi[1] && t >= lo[1]) {
+        var a = rgb(p[hi[0]]), b = rgb(p[lo[0]]);
+        var f = hi[1] === lo[1] ? 0 : (hi[1] - t) / (hi[1] - lo[1]);
+        return hex(a.map(function (v, m) { return v + (b[m] - v) * f; }));
+      }
+    }
+    return p[0];
+  }
+  function roles(dark) {
+    var a1 = pal.a1, a2 = pal.a2, n1 = pal.n1, n2 = pal.n2;
+    var r = dark ? {
+      "primary": tone(a1, 80), "on-primary": tone(a1, 20), "primary-container": tone(a1, 30), "on-primary-container": tone(a1, 90),
+      "secondary-container": tone(a2, 30), "on-secondary-container": tone(a2, 90),
+      "surface": tone(n1, 10), "sc-lowest": tone(n1, 6), "sc-low": tone(n1, 14), "sc": tone(n1, 17), "sc-high": tone(n1, 22), "sc-highest": tone(n1, 27),
+      "on-surface": tone(n1, 90), "on-surface-variant": tone(n2, 80), "outline": tone(n2, 60), "outline-variant": tone(n2, 30),
+      "inverse-surface": tone(n1, 90), "inverse-on-surface": tone(n1, 20)
+    } : {
+      "primary": tone(a1, 40), "on-primary": tone(a1, 100), "primary-container": tone(a1, 90), "on-primary-container": tone(a1, 10),
+      "secondary-container": tone(a2, 90), "on-secondary-container": tone(a2, 10),
+      "surface": tone(n1, 99), "sc-lowest": tone(n1, 100), "sc-low": tone(n1, 96), "sc": tone(n1, 94), "sc-high": tone(n1, 92), "sc-highest": tone(n1, 90),
+      "on-surface": tone(n1, 10), "on-surface-variant": tone(n2, 30), "outline": tone(n2, 50), "outline-variant": tone(n2, 80),
+      "inverse-surface": tone(n1, 20), "inverse-on-surface": tone(n1, 95)
+    };
+    return r;
+  }
+  function block(sel, r) {
+    var out = sel + "{";
+    for (var k in r) out += "--md-" + k + ":" + r[k] + ";";
+    return out + "}";
+  }
+  var light = roles(false), dark = roles(true);
+  var el = document.createElement("style");
+  el.id = "m3-system-colors";
+  el.textContent = block(":root[data-theme=light]", light) + block(":root[data-theme=dark]", dark);
+  document.head.appendChild(el);
+  // keep the browser bar colour in step with the page
+  var root = document.documentElement;
+  function bar() {
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", root.dataset.theme === "dark" ? dark.surface : light.surface);
+  }
+  bar();
+  if (typeof MutationObserver === "function") new MutationObserver(bar).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
 })();
 </script>
 </body>

@@ -30,6 +30,31 @@
             android:launchMode="singleTop"
             android:showOnLockScreen="true" />
 
+        <!--
+          Android's after-call request to the phone app (POST_CALL): taken and closed
+          without a screen. Off by default; Bageo turns it on only in AI mode.
+        -->
+        <activity
+            android:name=".PostCallActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.telecom.action.POST_CALL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Sets up Bageo's own mode when the app's process starts; serves no data. -->
+        <provider
+            android:name=".BageoModesInit"
+            android:authorities="${applicationId}.bageo-modes"
+            android:directBootAware="true"
+            android:exported="false" />
+
         <service
             android:name=".BageoModeTileService"
             android:exported="true"
@@ -48,6 +73,7 @@
             <intent-filter>
                 <action android:name="android.app.action.INTERRUPTION_FILTER_CHANGED" />
                 <action android:name="android.app.action.AUTOMATIC_ZEN_RULE_STATUS_CHANGED" />
+                <action android:name="android.app.action.NOTIFICATION_POLICY_ACCESS_GRANTED_CHANGED" />
             </intent-filter>
         </receiver>
     </application>

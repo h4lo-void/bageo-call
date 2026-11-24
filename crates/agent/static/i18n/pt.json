@@ -1368,6 +1368,11 @@
     "m_perms_card": "Permissões e status do sistema",
     "m_theme_label": "Aparência",
     "m_theme_auto": "Sistema",
-    "m_autosaved": "Salvo"
+    "m_autosaved": "Salvo",
+    "m_chk_sms": "Enviar SMS de confirmação de agendamento",
+    "m_chk_sms_d": "Assim o Bageo pode avisar por SMS quem ligou se o agendamento deu certo.",
+    "er_need_phone": "O celular ainda não está pronto. Espere alguns segundos; se continuar assim, abra o app de novo.",
+    "bk_err_read_failed": "Não deu para ler o arquivo. Escolha de novo.",
+    "bk_app_note": "Os backups ficam dentro do Bageo e são apagados junto com o app. Para guardar um, toque em “Baixar” e salve no celular."
   }
 }
