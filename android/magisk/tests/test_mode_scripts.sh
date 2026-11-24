@@ -324,5 +324,59 @@ rm -f "$ST/inject"
 run_apply normal app-nodnd-daily-8 5 4 4 5 5 5
 eq "exit to normal" "$RC" 0; is_normal_phone; eq "DND off as a normal phone" "$(rd zen)" 0
 
+# ---------------------------------------------------------------- mode_daemon.sh
+# apply_mode.sh run by hand (not through the helper): the helper reports the new mode,
+# its log and pending within a few seconds, so the app does not keep an old mode and let
+# calls ring unseen. The helper runs for real (2 s loop shortened), with toybox's stat -c
+# and mv -T stood in for, and the app's folder in the case folder.
+mkdir "$TMP/dbin"
+printf '#!/bin/sh\nexit 0\n' > "$TMP/dbin/log"
+printf '#!/bin/sh\nexit 0\n' > "$TMP/dbin/chcon"
+cat > "$TMP/dbin/stat" <<'FAKE'
+#!/bin/sh
+# stat -c %u:%g only (the owner); anything else is unknown.
+if [ "$1" = -c ] && [ "$2" = %u:%g ]; then echo "$(id -u):$(id -g)"; exit 0; fi
+exit 1
+FAKE
+cat > "$TMP/dbin/mv" <<'FAKE'
+#!/bin/sh
+# mv -T: the target is a file name, never a folder to move into.
+if [ "$1" = -fT ]; then shift; exec /bin/mv -f "$@"; fi
+exec /bin/mv "$@"
+FAKE
+chmod +x "$TMP/dbin/stat" "$TMP/dbin/mv" "$TMP/dbin/log" "$TMP/dbin/chcon"
+state_has() { grep -qx "$1" "$ST/app/files/mode/state" 2>/dev/null; }
+wait_state() {
+  n=0
+  while [ "$n" -lt 50 ]; do
+    state_has "$1" && return 0
+    n=$((n + 1))
+    sleep 0.1
+  done
+  return 1
+}
+
+setup daemon_follows_hand_run
+mkdir -p "$ST/app/files/mode"
+sed -e "s#/data/adb/pixelcallai#$ST/data#g" -e "s#^APPHOME=.*#APPHOME=$ST/app#" \
+  -e "s#^PATH=.*#PATH=$TMP/dbin:/usr/bin:/bin:/usr/sbin:/sbin#" -e 's#^  sleep 2$#  sleep 0.2#' \
+  "$MOD/mode_daemon.sh" > "$ST/mode_daemon.sh"
+echo normal > "$ST/data/mode"
+sh "$ST/mode_daemon.sh" </dev/null >/dev/null 2>&1 &
+DPID=$!
+wait_state mode=normal; eq "state at start" "$?" 0
+echo ai > "$ST/data/mode"
+printf 'id=byhand-1\nmode=ai\nresult=ok\ndone=1\n' > "$ST/data/last_apply"
+wait_state mode=ai; eq "mode switched by hand reported" "$?" 0
+state_has log.id=byhand-1; eq "its run reported" "$?" 0
+: > "$ST/data/pending"
+wait_state pending=1; eq "pending reported" "$?" 0
+rm -f "$ST/data/pending"
+wait_state pending=0; eq "pending gone reported" "$?" 0
+echo normal > "$ST/data/mode"
+wait_state mode=normal; eq "back to normal reported" "$?" 0
+kill "$DPID" 2>/dev/null
+wait "$DPID" 2>/dev/null
+
 echo "checks passed: $PASS, failed: $FAILS"
 [ "$FAILS" -eq 0 ]

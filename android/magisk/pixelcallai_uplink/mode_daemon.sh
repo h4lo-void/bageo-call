@@ -25,9 +25,11 @@
 #   error=invalid_request   the last request was malformed and was not run
 #   log.<key>=<value>       every line of /data/adb/pixelcallai/last_apply
 #
-# The state is written when this starts, before and after every run, and whenever
-# the folder has no state file (the app was just installed or its data cleared).
-# It belongs to the app and only the app can read it.
+# The state is written when this starts, before and after every run, whenever the
+# folder has no state file (the app was just installed or its data cleared), and
+# whenever the mode, pending or last_apply file or the run lock changed since it was
+# last written (apply_mode.sh run by hand or by another script), so the app never
+# acts on an old mode. It belongs to the app and only the app can read it.
 trap '' HUP
 
 # Run like a root shell from adb: the system shell and toybox. Boot scripts run in the
@@ -63,6 +65,23 @@ trap 'exit 0' INT TERM
 LAST_REQ=
 LAST_EXIT=
 LAST_ERR=
+PUB_SIG=
+
+# QSIG: the files the state reports (mode, pending, last_apply) and whether the run
+# lock is held, read with shell builtins only so the 2 second loop stays cheap.
+quick_sig() {
+  QSIG=
+  for f in mode pending last_apply; do
+    QSIG="$QSIG|$f"
+    [ -f "$DIR/$f" ] || continue
+    QSIG="$QSIG="
+    while IFS= read -r line || [ -n "$line" ]; do
+      QSIG="$QSIG$line;"
+    done < "$DIR/$f"
+  done
+  [ -d "$DIR/apply.lock" ] && QSIG="$QSIG|lock"
+  return 0
+}
 
 # The state lines (see the top of this file). $1 = 1: a run starts now.
 state_lines() {
@@ -107,6 +126,8 @@ app_dir_ok() {
 # is missing.
 publish() {
   app_dir_ok || return 1
+  quick_sig
+  sig=$QSIG
   own=$(stat -c %u:%g "$APPHOME" 2>/dev/null)
   case "$own" in ''|:*|*:|*[!0-9:]*) return 1 ;; esac
   tmp=$DIR/state.tmp
@@ -122,6 +143,7 @@ publish() {
     rm -f "$tmp"
     return 1
   fi
+  PUB_SIG=$sig
   return 0
 }
 
@@ -187,6 +209,9 @@ while :; do
     handle_request
   elif [ -d "$APPDIR" ] && [ ! -f "$APPDIR/state" ]; then
     publish 0
+  else
+    quick_sig
+    [ "$QSIG" != "$PUB_SIG" ] && publish 0
   fi
   sleep 2
 done

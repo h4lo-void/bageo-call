@@ -32,6 +32,8 @@ import android.widget.Toast
  * Lockscreen-capable native call & dialpad UI for Android Standalone edition,
  * styled to match Bageo's warm paper/ink design system:
  * - `incoming_whitelist`: direct ring on THIS phone ([接聽] / [交給 AI 接] / [掛斷])
+ * - `incoming`: a call that rings for the owner through [OwnerRing] ([接聽] / [掛斷]); works
+ *   without CallAudioService
  * - `urgent_prompt`: urgent AI escalation popup ([立刻接手通話] / [讓 AI 請他留話])
  * - `in_call`: owner active call controls ([擴音] / [靜音] / [鍵盤] / [掛斷])
  * - `dialer`: clean native dialpad with dual-SIM selector ([撥出])
@@ -169,7 +171,11 @@ class OwnerCallActivity : Activity() {
     private fun wireButtons() {
         findViewById<Button>(R.id.ocBtnWlAnswer).setOnClickListener { v ->
             tapHaptic(v)
-            CallAudioService.answerWhitelistForOwner(this)
+            if (currentMode == MODE_INCOMING) {
+                OwnerRing.answer(this, openScreen = false)
+            } else {
+                CallAudioService.answerWhitelistForOwner(this)
+            }
             currentMode = MODE_IN_CALL
             renderMode()
         }
@@ -180,7 +186,11 @@ class OwnerCallActivity : Activity() {
         }
         findViewById<Button>(R.id.ocBtnWlReject).setOnClickListener { v ->
             tapHaptic(v)
-            CallAudioService.rejectWhitelistForOwner(this)
+            if (currentMode == MODE_INCOMING) {
+                OwnerRing.decline(this)
+            } else {
+                CallAudioService.rejectWhitelistForOwner(this)
+            }
             finish()
         }
         findViewById<Button>(R.id.ocBtnUrgentTake).setOnClickListener { v ->
@@ -436,7 +446,8 @@ class OwnerCallActivity : Activity() {
     }
 
     private fun renderMode() {
-        incomingWhitelistPanel.visibility = if (currentMode == MODE_INCOMING_WL) View.VISIBLE else View.GONE
+        val ringing = currentMode == MODE_INCOMING_WL || currentMode == MODE_INCOMING
+        incomingWhitelistPanel.visibility = if (ringing) View.VISIBLE else View.GONE
         urgentPromptPanel.visibility = if (currentMode == MODE_URGENT) View.VISIBLE else View.GONE
         inCallPanel.visibility = if (currentMode == MODE_IN_CALL) View.VISIBLE else View.GONE
         dialerPanel.visibility = if (currentMode == MODE_DIALER) View.VISIBLE else View.GONE
@@ -449,12 +460,20 @@ class OwnerCallActivity : Activity() {
 
         val displayTitle = callerName.ifBlank { callerId }.ifBlank { getString(R.string.sa_call_unknown) }
         when (currentMode) {
-            MODE_INCOMING_WL -> {
+            MODE_INCOMING_WL, MODE_INCOMING -> {
                 avatarWrap.visibility = View.VISIBLE
                 avatarText.text = avatarGlyph(callerName, callerId)
-                // A call the AI could not take rings here the same way, without "hand to AI".
-                badgeText.text = getString(if (aiMissed) R.string.sa_ai_missed_title else R.string.sa_badge_whitelist)
-                findViewById<Button>(R.id.ocBtnWlHandAi).visibility = if (aiMissed) View.GONE else View.VISIBLE
+                // A call that rings for the owner (the AI could not take it, or a normal
+                // phone) rings here the same way, without "hand to AI".
+                badgeText.text = getString(
+                    when {
+                        aiMissed -> R.string.sa_ai_missed_title
+                        currentMode == MODE_INCOMING -> R.string.sa_incoming_title
+                        else -> R.string.sa_badge_whitelist
+                    },
+                )
+                val handAi = currentMode == MODE_INCOMING_WL && !aiMissed
+                findViewById<Button>(R.id.ocBtnWlHandAi).visibility = if (handAi) View.VISIBLE else View.GONE
                 titleText.text = displayTitle
                 subtitleText.text = callerId.takeIf { callerName.isNotBlank() }.orEmpty()
             }
@@ -487,13 +506,19 @@ class OwnerCallActivity : Activity() {
         if (currentMode == MODE_DIALER) return
         val snap = SilentInCallService.ownerCallSnapshot()
         if (snap == null) {
-            if (currentMode == MODE_IN_CALL) {
+            if (currentMode == MODE_IN_CALL || currentMode == MODE_INCOMING) {
                 finish()
             }
             return
         }
         if (snap.state == Call.STATE_DISCONNECTED || snap.state == Call.STATE_DISCONNECTING) {
             finish()
+            return
+        }
+        if (currentMode == MODE_INCOMING && snap.state == Call.STATE_ACTIVE) {
+            // Answered elsewhere (a headset button, the notification): show the call controls.
+            currentMode = MODE_IN_CALL
+            renderMode()
             return
         }
         if (currentMode == MODE_IN_CALL) {
@@ -530,6 +555,7 @@ class OwnerCallActivity : Activity() {
 
     companion object {
         const val MODE_INCOMING_WL = "incoming_whitelist"
+        const val MODE_INCOMING = OwnerRing.SCREEN_INCOMING
         const val MODE_URGENT = "urgent_prompt"
         const val MODE_IN_CALL = "in_call"
         const val MODE_DIALER = "dialer"

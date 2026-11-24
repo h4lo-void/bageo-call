@@ -10,4 +10,9 @@
     <string name="sa_channel_ai_missed">AI 沒接起來的來電</string>
     <!-- Shown under the Bageo mode in Settings > Modes and the status bar's Modes panel. -->
     <string name="sa_dnd_rule_trigger">開啟後來電先由 AI 接聽</string>
+    <!-- A call that rings for the owner (the AI did not take it, or a normal phone). -->
+    <string name="sa_channel_incoming">來電</string>
+    <string name="sa_incoming_title">來電</string>
+    <string name="sa_missed_title">未接來電</string>
+    <string name="sa_channel_missed">未接來電</string>
 </resources>

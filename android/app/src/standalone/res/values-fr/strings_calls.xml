@@ -10,4 +10,9 @@
     <string name="sa_channel_ai_missed">Appels que l\'AI n\'a pas pu prendre</string>
     <!-- Shown under the Bageo mode in Settings > Modes and the status bar's Modes panel. -->
     <string name="sa_dnd_rule_trigger">Une fois activé, l\'AI répond d\'abord à vos appels</string>
+    <!-- A call that rings for the owner (the AI did not take it, or a normal phone). -->
+    <string name="sa_channel_incoming">Appels entrants</string>
+    <string name="sa_incoming_title">Appel entrant</string>
+    <string name="sa_missed_title">Appel manqué</string>
+    <string name="sa_channel_missed">Appels manqués</string>
 </resources>

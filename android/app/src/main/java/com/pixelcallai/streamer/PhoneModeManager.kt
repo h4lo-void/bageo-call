@@ -357,6 +357,7 @@ object PhoneModeManager {
      * read immediately sees the completed root mode (`normal` or `ai`).
      */
     fun reconcileLocalMirror(context: Context): String {
+        if (BuildConfig.STANDALONE) return reconcileStandalone(context, "start")
         val ctx = context.applicationContext
         val state = readRootState(ctx)
         if (state != null && state.current && !state.running && !state.pending) {
@@ -367,6 +368,60 @@ object PhoneModeManager {
             }
         }
         return Prefs.phoneMode(ctx)
+    }
+
+    /**
+     * Standalone: a quick look (two small reads, no root, no script) at whether the app's
+     * mode still matches the phone, made when the app's process starts, when the call
+     * service is started and when a call rings. It compares the module's mode as its
+     * helper last reported it (`state`, settled since this boot) and which app holds the
+     * phone app role: an AI phone has Bageo as the phone app, so the module's AI wins when
+     * Bageo is (or may be) the phone app, and the module's normal always wins. A phone
+     * switched behind the app's back (the root script run by hand) then follows at once,
+     * so a call does not ring unseen while the app thinks it is a normal phone.
+     * [bageoIsPhoneApp]: known by the caller (a call reached Bageo's in-call service), or
+     * null to ask Android. Never during a switch or while a call rings for the owner.
+     */
+    fun reconcileStandalone(context: Context, where: String, bageoIsPhoneApp: Boolean? = null): String {
+        val ctx = context.applicationContext
+        val app = Prefs.phoneMode(ctx)
+        val state = readRootState(ctx)
+        val settled = state?.takeIf { it.current && !it.running && !it.pending }?.mode
+        val role = bageoIsPhoneApp ?: defaultDialer(ctx).takeIf { it.isNotEmpty() }?.let { it == ctx.packageName }
+        val fix = decideModeFix(app, settled, role, busy = isSwitching() || OwnerRing.isHandedToOwner())
+        val mode = when (fix) {
+            ModeFix.ADOPT_AI -> Prefs.PHONE_MODE_AI
+            ModeFix.ADOPT_NORMAL -> Prefs.PHONE_MODE_NORMAL
+            ModeFix.KEEP -> null
+        }
+        if (mode != null) {
+            Log.w(TAG, "mode check ($where): module $settled, Bageo phone app=$role, app had $app; app now $mode")
+            adoptModeLight(ctx, mode)
+        } else if ((settled != null && settled != app) || (app == Prefs.PHONE_MODE_NORMAL && role == true)) {
+            Log.w(TAG, "mode check ($where): module ${settled ?: "unknown"}, Bageo phone app=$role, app $app; kept")
+        }
+        return Prefs.phoneMode(ctx)
+    }
+
+    /**
+     * The app's copy of the mode becomes [mode] without running the module's script (the
+     * phone already is that). Nothing here blocks: an AI phone gets its call service
+     * started, and the listeners and the microphone are handled on a thread of their own.
+     */
+    private fun adoptModeLight(ctx: Context, mode: String) {
+        if (!Prefs.setPhoneMode(ctx, mode)) {
+            Log.w(TAG, "mode check: cannot save $mode")
+            return
+        }
+        if (mode == Prefs.PHONE_MODE_NORMAL) {
+            LocalAudioGuard(ctx).release()
+        } else {
+            CallAudioService.ensureArmed(ctx)
+        }
+        Thread({
+            if (mode == Prefs.PHONE_MODE_NORMAL) unmuteMicrophone(ctx)
+            notifyListeners(mode)
+        }, "phone-mode-check").apply { isDaemon = true }.start()
     }
 
     /**
@@ -783,6 +838,24 @@ object PhoneModeManager {
  */
 internal fun formatModeRequestId(noDnd: Boolean, suffix: String = UUID.randomUUID().toString()): String =
     if (noDnd) "${PhoneModeManager.LOCAL_ID_PREFIX}nodnd-$suffix" else "${PhoneModeManager.LOCAL_ID_PREFIX}$suffix"
+
+/** What the standalone mode check ([PhoneModeManager.reconcileStandalone]) does. */
+internal enum class ModeFix { KEEP, ADOPT_AI, ADOPT_NORMAL }
+
+/**
+ * The standalone mode check's decision. [moduleMode]: the module's mode, settled since this
+ * boot (null: unknown, or a switch is unfinished). [bageoIsPhoneApp]: null when unknown.
+ * [busy]: a switch runs or a call rings for the owner. The module's normal always wins;
+ * its AI wins unless another app is the phone app (then the phone still rings as a
+ * normal phone, and the next full start-up check sorts it out).
+ */
+internal fun decideModeFix(appMode: String, moduleMode: String?, bageoIsPhoneApp: Boolean?, busy: Boolean): ModeFix =
+    when {
+        busy || moduleMode == null || moduleMode == appMode -> ModeFix.KEEP
+        moduleMode == Prefs.PHONE_MODE_NORMAL -> ModeFix.ADOPT_NORMAL
+        moduleMode == Prefs.PHONE_MODE_AI && bageoIsPhoneApp != false -> ModeFix.ADOPT_AI
+        else -> ModeFix.KEEP
+    }
 
 /** Daily Sound requests (`nodnd-`, `app-nodnd-`), as apply_mode.sh reads the id. */
 internal fun isNoDndId(id: String): Boolean =

@@ -119,8 +119,6 @@ class CallAudioService : Service() {
     @Volatile private var lastRingingSignalAt = 0L
     /** [ensureHeavyInit] ran. */
     private var heavyInitDone = false
-    /** Number of a call the AI could not take and handed to the owner; cleared once answered. */
-    @Volatile private var aiMissedCaller: String? = null
     /** Ringing call waiting for the agent's `answer_plan`. */
     @Volatile private var pendingAnswerPlan: CompletableDeferred<AnswerPlan>? = null
     /** The agent did not come up in time: this ringing call is left ringing, not answered. */
@@ -254,6 +252,11 @@ class CallAudioService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
+        if (BuildConfig.STANDALONE && action != ACTION_STOP && !Prefs.isAiCallEnabled(this)) {
+            // The phone may have become an AI phone behind the app's back (the module's
+            // script run by hand): follow it before a normal phone stops here (quick reads only).
+            PhoneModeManager.reconcileStandalone(this, "service start ${action ?: "sticky"}")
+        }
         if (isPlainStart(action) && isStandaloneQuietNormal() && !callActive && !ownerHandlingCallFlag) {
             // Normal phone: an outside start (app screen, boot, sticky restart) has nothing
             // to do. Enter the foreground as Android requires, then stop at once.
@@ -964,8 +967,6 @@ class CallAudioService : Service() {
                     answerScheduled = false
                     answerJob?.cancel()
                     answerJob = null
-                    // The owner answered: the call the AI could not take is not missed.
-                    aiMissedCaller = null
                     stopLocalRingtone()
                     cancelOwnerCallNotification()
                     audioGuard?.stopHoldLoop()
@@ -1034,10 +1035,6 @@ class CallAudioService : Service() {
                 if (BuildConfig.STANDALONE) {
                     stopLocalRingtone()
                     cancelOwnerCallNotification()
-                    aiMissedCaller?.let { caller ->
-                        aiMissedCaller = null
-                        showAiMissedNotice(caller)
-                    }
                     ownerHandlingCallFlag = false
                     pendingUrgentPromptId = null
                     activeTakeoverCaller = ""
@@ -1252,8 +1249,10 @@ class CallAudioService : Service() {
 
     /**
      * Standalone: the AI could not take the ringing call (agent not up, or answering
-     * failed). Its ring was silenced for the AI, so it goes back to the owner: Bageo
-     * rings, the call screen opens, and the notification says the AI did not answer.
+     * failed). Its ring was silenced for the AI, so it goes back to the owner through
+     * [OwnerRing] (shared with SilentInCallService's own hand-over, so it rings once):
+     * Bageo rings, the call screen opens, the notification says the AI did not answer,
+     * and a call the owner does not take gets a missed-call notice.
      */
     private fun handRingingCallToOwner(why: String, tellAgent: Boolean) {
         if (!BuildConfig.STANDALONE) return
@@ -1272,7 +1271,8 @@ class CallAudioService : Service() {
             Log.i(TAG, "Telecom already has the call up ($why) — not handed to the owner")
             return
         }
-        val caller = SilentInCallService.ringingCallInfo()?.callerId.orEmpty().ifBlank { currentCallerId() }
+        val ringing = SilentInCallService.ringingCallInfo()
+        val caller = ringing?.callerId.orEmpty().ifBlank { currentCallerId() }
         answerJob?.cancel()
         answerJob = null
         answerRetryJob?.cancel()
@@ -1286,21 +1286,16 @@ class CallAudioService : Service() {
         activeTakeoverCaller = caller
         activeTakeoverCallerName = ""
         activeUrgentReason = ""
-        aiMissedCaller = caller
         audioGuard?.stopHoldLoop()
-        audioGuard?.restoreForOwnCall()
-        SilentInCallService.unmuteOwnCall()
         // Only an agent that took the ring hears that it ended (a queued message would
         // reach a later call otherwise).
         if (tellAgent) sendIncomingCancel()
-        startLocalRingtone()
-        notifyAndLaunchOwnerUi(
-            mode = "incoming_whitelist",
-            callerId = caller,
-            callerName = "",
-            reason = "",
-            urgentId = "",
+        OwnerRing.handToOwner(
+            this,
+            ringing?.instanceId ?: currentCallInstanceForTelephony(),
+            caller,
             aiMissed = true,
+            why = why,
         )
         updateNotification()
         Log.w(TAG, "AI did not answer ($why) — call handed to the owner (ringing)")
@@ -1335,48 +1330,6 @@ class CallAudioService : Service() {
             !anyCallBusy &&
             effectiveCallState() == TelephonyManager.CALL_STATE_IDLE &&
             !SilentInCallService.hasLiveCalls()
-
-    /** After the call the AI could not take ended unanswered: a missed-call notice. */
-    private fun showAiMissedNotice(callerId: String) {
-        val nm = getSystemService(NotificationManager::class.java) ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            nm.createNotificationChannel(
-                NotificationChannel(
-                    AI_MISSED_CHANNEL_ID,
-                    standaloneString("sa_channel_ai_missed", "AI 沒接起來的來電"),
-                    NotificationManager.IMPORTANCE_DEFAULT,
-                ),
-            )
-        }
-        val openPi = PendingIntent.getActivity(
-            this,
-            300,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val builder = NotificationCompat.Builder(this, AI_MISSED_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_missed_call)
-            .setContentTitle(standaloneString("sa_ai_missed_title", "AI 沒接起來"))
-            .setContentText(callerId.ifBlank { standaloneString("sa_call_unknown", "未知來電") })
-            .setContentIntent(openPi)
-            .setAutoCancel(true)
-        if (callerId.isNotBlank()) {
-            val dialIntent = Intent().apply {
-                setClassName(this@CallAudioService, "com.pixelcallai.streamer.OwnerCallActivity")
-                putExtra("mode", "dialer")
-                putExtra("dial_number", callerId)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            }
-            val dialPi = PendingIntent.getActivity(
-                this,
-                301,
-                dialIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-            builder.addAction(android.R.drawable.ic_menu_call, standaloneString("sa_btn_callback", "回撥"), dialPi)
-        }
-        nm.notify(NOTIF_AI_MISSED_ID, builder.build())
-    }
 
     /**
      * `incoming` → agent `answer_plan`: how long to ring (the agent starts the AI
@@ -2714,7 +2667,8 @@ class CallAudioService : Service() {
         anyCallBusy = false
         stopLocalRingtone()
         if (instance === this) instance = null
-        ownerHandlingCallFlag = false
+        // A call ringing for (or answered by) the owner through OwnerRing keeps the AI off it.
+        if (!OwnerRing.isHandedToOwner()) ownerHandlingCallFlag = false
         wakeController?.releaseNow()
         wakeController = null
         stopWatchingSimChanges()
@@ -3101,7 +3055,6 @@ class CallAudioService : Service() {
         callerName: String,
         reason: String,
         urgentId: String,
-        aiMissed: Boolean = false,
     ): Intent = Intent().apply {
         setClassName(this@CallAudioService, "com.pixelcallai.streamer.OwnerCallActivity")
         putExtra("mode", mode)
@@ -3109,7 +3062,6 @@ class CallAudioService : Service() {
         putExtra("caller_name", callerName)
         putExtra("reason", reason)
         putExtra("urgent_id", urgentId)
-        putExtra("ai_missed", aiMissed)
         addFlags(
             Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP or
@@ -3123,10 +3075,9 @@ class CallAudioService : Service() {
         callerName: String,
         reason: String,
         urgentId: String,
-        aiMissed: Boolean = false,
     ) {
         try {
-            startActivity(ownerCallIntent(mode, callerId, callerName, reason, urgentId, aiMissed))
+            startActivity(ownerCallIntent(mode, callerId, callerName, reason, urgentId))
         } catch (e: Exception) {
             Log.w(TAG, "launchOwnerCallUi failed: ${e.message}")
         }
@@ -3138,7 +3089,6 @@ class CallAudioService : Service() {
         callerName: String,
         reason: String,
         urgentId: String,
-        aiMissed: Boolean = false,
     ) {
         val nm = getSystemService(NotificationManager::class.java)
         val chId = "bageo_owner_calls"
@@ -3151,7 +3101,7 @@ class CallAudioService : Service() {
                 ),
             )
         }
-        val intent = ownerCallIntent(mode, callerId, callerName, reason, urgentId, aiMissed)
+        val intent = ownerCallIntent(mode, callerId, callerName, reason, urgentId)
         val fullScreenPi = PendingIntent.getActivity(
             this,
             200,
@@ -3160,13 +3110,11 @@ class CallAudioService : Service() {
         )
         val display = callerName.ifBlank { callerId }.ifBlank { "來電" }
         val titlePrefix = when {
-            aiMissed -> standaloneString("sa_ai_missed_title", "AI 沒接起來")
             mode == "urgent_prompt" -> standaloneString("sa_notif_urgent_title", "緊急來電")
             else -> standaloneString("sa_notif_whitelist_title", "重要來電")
         }
         val title = "$titlePrefix: $display"
         val body = when {
-            aiMissed -> standaloneString("sa_ai_missed_ringing_text", "已改成響鈴，請你自己接")
             mode == "urgent_prompt" && reason.isNotBlank() -> reason
             else -> callerId.ifBlank { display }
         }
@@ -3198,14 +3146,11 @@ class CallAudioService : Service() {
                 standaloneString("sa_btn_answer", "接聽"),
                 serviceActionPi(ACTION_WHITELIST_ANSWER, 203),
             )
-            // The AI just could not take this call: no "hand to AI" button then.
-            if (!aiMissed) {
-                b.addAction(
-                    android.R.drawable.ic_menu_manage,
-                    standaloneString("sa_btn_hand_ai", "交給 AI"),
-                    serviceActionPi(ACTION_WHITELIST_HAND_AI, 204),
-                )
-            }
+            b.addAction(
+                android.R.drawable.ic_menu_manage,
+                standaloneString("sa_btn_hand_ai", "交給 AI"),
+                serviceActionPi(ACTION_WHITELIST_HAND_AI, 204),
+            )
             b.addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
                 standaloneString("sa_btn_hangup", "掛斷"),
@@ -3213,7 +3158,7 @@ class CallAudioService : Service() {
             )
         }
         nm.notify(NOTIF_OWNER_CALL_ID, b.build())
-        launchOwnerCallUi(mode, callerId, callerName, reason, urgentId, aiMissed)
+        launchOwnerCallUi(mode, callerId, callerName, reason, urgentId)
     }
 
     private fun cancelOwnerCallNotification() {
@@ -3259,7 +3204,6 @@ class CallAudioService : Service() {
         private const val NOTIF_ID = 42
         private const val NOTIF_INFO_ID = 43
         private const val NOTIF_OWNER_CALL_ID = 44
-        private const val NOTIF_AI_MISSED_ID = 45
         private const val LIVE_CALL_CHANNEL_ID = "bageo_live_call"
         /** Group of the call notification alone, so Android never bundles it with the summaries. */
         private const val LIVE_CALL_GROUP = "bageo_live_call"
@@ -3267,7 +3211,6 @@ class CallAudioService : Service() {
         internal const val CONSOLE_LINK_LINGER_MS = 120_000L
         /** Console gone but the link still needed (AI call in progress): look again this often. */
         private const val CONSOLE_LINK_RECHECK_MS = 15_000L
-        private const val AI_MISSED_CHANNEL_ID = "bageo_ai_missed"
         private const val NOTIF_SUMMARY_BASE_ID = 1000
         private val nextSummaryNotifId = java.util.concurrent.atomic.AtomicInteger(0)
 
@@ -3278,6 +3221,24 @@ class CallAudioService : Service() {
         private var ownerHandlingCallFlag = false
 
         fun isOwnerHandlingCall(): Boolean = BuildConfig.STANDALONE && ownerHandlingCallFlag
+
+        /**
+         * Standalone: [OwnerRing] gave a ringing call to the owner (true), or that call and
+         * every other one ended (false). While set, the AI stays off the call.
+         */
+        fun setOwnerHandlingCall(on: Boolean) {
+            if (BuildConfig.STANDALONE) ownerHandlingCallFlag = on
+        }
+
+        /**
+         * Standalone: this service has taken the ringing call (it waits for the agent or
+         * answers it) or the AI is on a call. [SilentInCallService] gives a ringing call to
+         * the owner when this stays false.
+         */
+        fun isRingTakenByService(): Boolean =
+            instance?.let { it.answerScheduled || it.callActive } == true
+
+        fun isRunning(): Boolean = instance != null
 
         /** The console is on screen ([onConsoleVisible] / [onConsoleHidden]). */
         @Volatile
