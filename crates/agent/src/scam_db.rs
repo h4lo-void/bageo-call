@@ -1009,7 +1009,55 @@ fn parse_scam_bundle(gz: &[u8]) -> Result<InstalledScams, Vec<bageo_packs::Issue
     let cc_str = serde_json::to_string(&sb.countries).map_err(|e| scam_issue(bageo_packs::rule::FORMAT, e.to_string()))?;
     let mut parsed = parse(&db_str).map_err(|e| scam_issue(bageo_packs::rule::FORMAT, e))?;
     merge_countries(&mut parsed, &cc_str).map_err(|e| scam_issue(bageo_packs::rule::FORMAT, e))?;
+    supplement_otp_demands(&mut parsed);
     Ok(InstalledScams { version: sb.version, db: parsed })
+}
+
+/// Ensure Vietnamese verification-code demands (`mã xác minh`) and Indonesian OTP
+/// extraction phrases (`sebutkan otp`, `nomor otp`, `kode rahasia`, …) are present
+/// as hard scam triggers even before an external scam-pack update is downloaded.
+fn supplement_otp_demands(db: &mut ScamDb) {
+    let Some(typology) = db
+        .keywords
+        .iter()
+        .find(|k| k.hard && (k.text.contains("otp") || k.text.contains("驗證碼")))
+        .map(|k| k.typology.clone())
+        .or_else(|| db.typologies.iter().find(|t| t.hard).map(|t| t.id.clone()))
+    else {
+        return;
+    };
+    const EXTRA_HARD: &[(&str, &str)] = &[
+        ("vi", "đọc mã xác minh"),
+        ("vi", "gửi mã xác minh"),
+        ("vi", "cung cấp mã xác minh"),
+        ("vi", "nhập mã xác minh"),
+        ("vi", "cho xin mã xác minh"),
+        ("id", "sebutkan otp"),
+        ("id", "sebutkan kode otp"),
+        ("id", "sebutkan nomor otp"),
+        ("id", "kirimkan kode otp"),
+        ("id", "beritahu kode otp"),
+        ("id", "kasih kode otp"),
+        ("id", "minta kode otp"),
+        ("id", "berikan kode rahasia"),
+    ];
+    for &(lang, phrase) in EXTRA_HARD {
+        let kw = Keyword::new(phrase, 2, &typology, true, lang, Match::Word);
+        if let Some(&idx) = db.by_text.get(&(kw.lang.clone(), kw.text.clone())) {
+            db.keywords[idx].hard = true;
+            if db.keywords[idx].weight < 2 {
+                db.keywords[idx].weight = 2;
+            }
+        } else {
+            db.insert_keyword(kw);
+        }
+    }
+    for &(lang, phrase) in &[("vi", "mã xác minh"), ("id", "nomor otp"), ("id", "kode rahasia")] {
+        let kw = Keyword::new(phrase, 2, &typology, false, lang, Match::Word);
+        if !db.by_text.contains_key(&(kw.lang.clone(), kw.text.clone())) {
+            db.insert_keyword(kw);
+        }
+    }
 }
 
 pub fn builtin_scams() -> &'static InstalledScams {
@@ -5348,5 +5396,18 @@ mod added_countries_5_tests {
             }
         }
         assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    #[test]
+    fn vietnamese_and_indonesian_otp_demands_trigger_hard_engagement() {
+        for demand in [
+            "Anh đọc mã xác minh vừa gửi qua tin nhắn giúp em nhé",
+            "Vui lòng cung cấp mã xác minh để hủy giao dịch",
+            "Tolong sebutkan kode OTP yang masuk ke nomor Anda sekarang",
+            "Mohon sebutkan OTP untuk pembatalan transaksi ini",
+        ] {
+            let (engaged, score, hits) = live(demand);
+            assert!(engaged && hits.iter().any(|h| is_hard(h)), "missed OTP demand (score={score} hits={hits:?}): {demand}");
+        }
     }
 }

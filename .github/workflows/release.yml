@@ -50,6 +50,11 @@ jobs:
       # on a newer Ubuntu image does not link on ubuntu-22.04.)
       - name: Test
         run: cargo test -p agent
+      - name: Configure reproducible path remapping
+        shell: bash
+        run: |
+          cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+          echo "RUSTFLAGS=--remap-path-prefix=${GITHUB_WORKSPACE}=/bageo --remap-path-prefix=${cargo_home}=/cargo" >> "$GITHUB_ENV"
       - name: Build
         run: cargo build --release -p agent
       # The tray / menu bar status program (desktop/), for Windows and macOS.

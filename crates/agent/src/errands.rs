@@ -2708,8 +2708,14 @@ pub fn errand_prompt_with(s: &Script, redial: bool) -> String {
         (Lang::De, false) => DE_ERRANDS_CHECK_OWNER.get().to_string(),
         (Lang::Pt, true) => PT_ERRANDS_CHECK_ASSISTANT.fill(&[("owner", &owner)]),
         (Lang::Pt, false) => EN_ERRANDS_ERRAND_PROMPT_WITH_3.get().to_string(),
-        (Lang::En | Lang::Ext(_), true) => EN_ERRANDS_CHECK_ASSISTANT.fill(&[("owner", &owner)]),
-        (Lang::En | Lang::Ext(_), false) => EN_ERRANDS_CHECK_OWNER.get().to_string(),
+        (Lang::En, true) => EN_ERRANDS_CHECK_ASSISTANT.fill(&[("owner", &owner)]),
+        (Lang::En, false) => EN_ERRANDS_CHECK_OWNER.get().to_string(),
+        (Lang::Ext(_), true) => format!(
+            "say briefly in natural {language} (never in English) that you will ask {owner} right now, then call `ask_owner`"
+        ),
+        (Lang::Ext(_), false) => format!(
+            "say briefly in natural {language} (never in English) to give you a second while you check, then call `ask_owner`"
+        ),
     };
     let example_question = match s.owner_lang {
         Lang::ZhTw => ZH_ERRANDS_EXAMPLE_QUESTION.get(),
@@ -2725,7 +2731,8 @@ pub fn errand_prompt_with(s: &Script, redial: bool) -> String {
     // A read-back is a question with the time said in full: a real call took
     // a fast 「四點半可以」 (transcribed 「字點看可以」) for four o'clock and
     // closed with 「好的，四點可以過去拿，謝謝您！」 — no question, no check.
-    let readback = match s.lang {
+    let readback_ext;
+    let readback: &str = match s.lang {
         Lang::ZhTw => ZH_ERRANDS_READBACK.get(),
         Lang::ZhCn => ZH_ERRANDS_READBACK_CN.get(),
         Lang::Ja => JA_ERRANDS_READBACK.get(),
@@ -2734,7 +2741,13 @@ pub fn errand_prompt_with(s: &Script, redial: bool) -> String {
         Lang::Fr => FR_ERRANDS_READBACK.get(),
         Lang::De => DE_ERRANDS_ERRAND_PROMPT_WITH_2.get(),
         Lang::Pt => PT_ERRANDS_READBACK.get(),
-        Lang::En | Lang::Ext(_) => EN_ERRANDS_ERRAND_PROMPT_WITH_4.get(),
+        Lang::En => EN_ERRANDS_ERRAND_PROMPT_WITH_4.get(),
+        Lang::Ext(_) => {
+            readback_ext = format!(
+                "Before wrapping up a booking or appointment, repeat the full day, time, and count back in natural {language} as a yes/no question (never in English) and wait for confirmation."
+            );
+            &readback_ext
+        }
     };
     // How the AI says who calls: always the owner, never a name from the matter.
     let intro = match (s.lang, assistant) {
@@ -2752,8 +2765,14 @@ pub fn errand_prompt_with(s: &Script, redial: bool) -> String {
         (Lang::De, false) => DE_ERRANDS_INTRO_OWNER.fill(&[("owner", &owner)]),
         (Lang::Pt, true) => PT_ERRANDS_INTRO_ASSISTANT.fill(&[("owner", &owner)]),
         (Lang::Pt, false) => PT_ERRANDS_INTRO_OWNER.fill(&[("owner", &owner)]),
-        (Lang::En | Lang::Ext(_), true) => EN_ERRANDS_INTRO_ASSISTANT.fill(&[("owner", &owner)]),
-        (Lang::En | Lang::Ext(_), false) => EN_ERRANDS_INTRO_OWNER.fill(&[("owner", &owner)]),
+        (Lang::En, true) => EN_ERRANDS_INTRO_ASSISTANT.fill(&[("owner", &owner)]),
+        (Lang::En, false) => EN_ERRANDS_INTRO_OWNER.fill(&[("owner", &owner)]),
+        (Lang::Ext(_), true) => format!(
+            "Greet and introduce yourself naturally in {language} (never in English) as calling on behalf of {owner} — never invent another caller name from the task."
+        ),
+        (Lang::Ext(_), false) => format!(
+            "Greet and introduce yourself naturally in {language} (never in English) as {owner} — never invent another caller name from the task."
+        ),
     };
     let whose = if assistant { EN_ERRANDS_WHOSE_ASSISTANT.get() } else { EN_ERRANDS_WHOSE_OWNER.get() };
     let voicemail = if redial {
@@ -6145,5 +6164,46 @@ mod tests {
         assert!(!result_input(&Errand { task: "Ask Sam if he is coming to dinner".into(), ..e.clone() }, "", "tw").contains("usually confirm"));
         assert!(!result_input(&Errand { number: "+390612345678".into(), ..e.clone() }, "", "tw").contains("usually confirm"));
         assert!(result_prompt("Alex", Lang::En, chrono::Local::now()).contains("how places there usually confirm"));
+    }
+
+    #[test]
+    fn extended_language_errand_prompts_name_target_language_without_english_spoken_lines() {
+        let en_intro_asst = EN_ERRANDS_INTRO_ASSISTANT.fill(&[("owner", &"Alex")]);
+        let en_intro_owner = EN_ERRANDS_INTRO_OWNER.fill(&[("owner", &"Alex")]);
+        let en_check_asst = EN_ERRANDS_CHECK_ASSISTANT.fill(&[("owner", &"Alex")]);
+        let en_check_owner = EN_ERRANDS_CHECK_OWNER.get();
+        let en_readback = EN_ERRANDS_ERRAND_PROMPT_WITH_4.get();
+
+        for (code, lang_name) in [
+            ("it", "Italian"),
+            ("th", "Thai"),
+            ("ar", "Arabic"),
+            ("vi", "Vietnamese"),
+            ("ru", "Russian"),
+        ] {
+            let ext = Lang::Ext(locale::Ext::from_code(code).expect(code));
+            for identity in ["assistant", "owner"] {
+                let p = errand_prompt(&Script {
+                    owner: "Alex",
+                    lang: ext,
+                    owner_lang: Lang::ZhTw,
+                    identity,
+                    name: "Trattoria",
+                    number: "+390612345678",
+                    task: "Book a table for 4 tomorrow at 19:30",
+                    note: "",
+                    answers: &[],
+                    earlier: None,
+                    local: "",
+                });
+                assert!(p.contains(lang_name) && p.contains("(never in English)"), "{code} {identity}: {p}");
+                assert!(!p.contains(&en_intro_asst) && !p.contains(&en_intro_owner), "{code} {identity} leaked English intro");
+                assert!(!p.contains(&en_check_asst) && !p.contains(en_check_owner), "{code} {identity} leaked English check");
+                assert!(!p.contains(en_readback), "{code} {identity} leaked English readback");
+                for bad in SCRIPTED {
+                    assert!(!p.to_lowercase().contains(bad), "{code} {identity} scripted word {bad}");
+                }
+            }
+        }
     }
 }

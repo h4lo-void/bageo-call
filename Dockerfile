@@ -27,6 +27,7 @@ ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 #   docker build --build-arg BAGEO_BUILD_ID=$(git rev-parse --short=7 HEAD) .
 ARG BAGEO_BUILD_ID=
 ENV BAGEO_BUILD_ID=${BAGEO_BUILD_ID}
+ENV RUSTFLAGS="--remap-path-prefix=/src=/bageo --remap-path-prefix=/usr/local/cargo=/cargo"
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/src/target \

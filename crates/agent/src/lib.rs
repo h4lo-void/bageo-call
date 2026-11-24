@@ -68,6 +68,8 @@ mod locales_store;
 mod phone_region;
 mod phone_wifi;
 mod place_habits;
+mod secret_seal;
+mod wifi_tls;
 mod preflight;
 mod prompt_book;
 mod prompts;
@@ -1141,9 +1143,12 @@ pub async fn cli_main() -> Result<()> {
     } else {
         info!("web console: http://{}:{}/", if listen.ip().is_unspecified() { "localhost".to_string() } else { listen.ip().to_string() }, listen.port());
     }
-    axum::serve(
+    wifi_tls::serve_dual(
         listener,
-        app.into_make_service_with_connect_info::<lan::ConnAddrs>(),
+        app,
+        wifi_tls::current(),
+        false,
+        std::future::pending(),
     )
     .await?;
     Ok(())
@@ -1254,6 +1259,7 @@ async fn bootstrap_runtime() -> Result<(AppState, CallsState, Arc<control::Contr
     let task_store = TaskStore::new(PathBuf::from(&settings.calls_data_dir).join("tasks"));
     // The key phones use over Wi-Fi, kept next to the call records (phone_wifi).
     phone_wifi::init(std::path::Path::new(&settings.calls_data_dir));
+    wifi_tls::init(std::path::Path::new(&settings.calls_data_dir));
     // The owner's contacts (names for caller IDs), next to the call records.
     let contacts = contacts::ContactStore::open(PathBuf::from(&settings.calls_data_dir).join("contacts.json"));
     contacts::install(contacts.clone());
@@ -1862,9 +1868,20 @@ fn agent_info_wifi_urls(
     mdns_host: &str,
     key: impl FnOnce() -> String,
 ) -> Vec<String> {
+    agent_info_wifi_urls_pinned(entry, lan_ip, mdns_host, key, None, false)
+}
+
+fn agent_info_wifi_urls_pinned(
+    entry: Option<(std::net::IpAddr, u16)>,
+    lan_ip: impl FnOnce(std::net::IpAddr) -> Option<std::net::Ipv4Addr>,
+    mdns_host: &str,
+    key: impl FnOnce() -> String,
+    tls_pin: Option<&str>,
+    tls_only: bool,
+) -> Vec<String> {
     match entry {
         Some((listen, port)) => match lan_ip(listen) {
-            Some(ip) => phone_wifi::wifi_urls(Some(ip), port, mdns_host, &key()),
+            Some(ip) => phone_wifi::wifi_urls_pinned(Some(ip), port, mdns_host, &key(), tls_pin, tls_only),
             None => Vec::new(),
         },
         None => Vec::new(),
@@ -1934,7 +1951,17 @@ async fn phone_pairing_claim(
     let on = state.settings_store.snapshot().phone_wifi;
     // Wrong codes count per source (a proxy on this computer names its client).
     let from = lan::try_key(&ext, &headers).unwrap_or_else(|| peer.ip());
-    let res = claim_answer(on, &headers, &body, from, phone_wifi::codes(), phone_wifi::pairing(), phone_wifi::entry_port());
+    let pin = wifi_tls::cert_pin_sha256();
+    let res = claim_answer_with_tls(
+        on,
+        &headers,
+        &body,
+        from,
+        phone_wifi::codes(),
+        phone_wifi::pairing(),
+        phone_wifi::entry_port(),
+        pin.as_deref(),
+    );
     if res.status().is_success() {
         info!("phone pairing: a phone at {} paired with a pairing code", peer.ip());
     } else {
@@ -1946,6 +1973,7 @@ async fn phone_pairing_claim(
 /// [`phone_pairing_claim`]'s answer. Errors carry a `code`: `bad_request` (no
 /// JSON or no code), `phone_wifi_off`, `no_code` (none in use: expired, used
 /// or voided), `wrong_code`, `too_many_tries`.
+#[cfg(test)]
 fn claim_answer(
     phone_wifi_on: bool,
     headers: &axum::http::HeaderMap,
@@ -1955,25 +1983,59 @@ fn claim_answer(
     pairing: &phone_wifi::Pairing,
     entry_port: Option<u16>,
 ) -> axum::response::Response {
+    claim_answer_with_tls(phone_wifi_on, headers, body, from, codes, pairing, entry_port, None)
+}
+
+fn claim_answer_with_tls(
+    phone_wifi_on: bool,
+    headers: &axum::http::HeaderMap,
+    body: &[u8],
+    from: std::net::IpAddr,
+    codes: &phone_wifi::PairCodes,
+    pairing: &phone_wifi::Pairing,
+    entry_port: Option<u16>,
+    tls_pin: Option<&str>,
+) -> axum::response::Response {
     let json_type = headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .is_some_and(|v| v.split(';').next().unwrap_or("").trim().eq_ignore_ascii_case("application/json"));
-    let code = serde_json::from_slice::<Value>(body)
-        .ok()
+    let parsed = serde_json::from_slice::<Value>(body).ok().filter(|_| json_type);
+    let code = parsed
+        .as_ref()
         .and_then(|v| v.get("code").and_then(Value::as_str).map(|c| c.trim().to_string()))
         .filter(|c| !c.is_empty());
-    let Some(code) = code.filter(|_| json_type) else {
-        return calls_http::api_error(StatusCode::BAD_REQUEST, "bad_request", "send JSON with the pairing code: {\"code\": \"123456\"}");
+    let cnonce = parsed
+        .as_ref()
+        .and_then(|v| v.get("cnonce").and_then(Value::as_str).map(|s| s.trim().to_string()))
+        .filter(|s| !s.is_empty() && s.len() <= 128);
+    let code_mac = parsed
+        .as_ref()
+        .and_then(|v| v.get("code_mac").and_then(Value::as_str).map(|s| s.trim().to_string()))
+        .filter(|s| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit()));
+    let mac_req = match (cnonce.as_deref(), code_mac.as_deref(), tls_pin) {
+        (Some(n), Some(m), Some(p)) => Some((n, m, p)),
+        _ => None,
     };
+    if code.is_none() && mac_req.is_none() {
+        return calls_http::api_error(StatusCode::BAD_REQUEST, "bad_request", "send JSON with the pairing code: {\"code\": \"123456\"}");
+    }
     if !phone_wifi_on {
         return calls_http::api_error(StatusCode::CONFLICT, "phone_wifi_off", "phones over Wi-Fi are turned off");
     }
-    match codes.claim_from(&code, from, std::time::Instant::now()) {
-        Ok(()) => {
-            let mut body = json!({"ok": true, "token": pairing.key(), "path": "/ws"});
+    match codes.claim_authenticated(code.as_deref(), mac_req, from, std::time::Instant::now()) {
+        Ok(matched_code) => {
+            let token = pairing.key();
+            let mut body = json!({"ok": true, "token": token, "path": "/ws"});
             if let Some(port) = entry_port {
                 body["ws_port"] = json!(port);
+            }
+            if let Some(pin) = tls_pin {
+                body["tls_pin"] = json!(pin);
+                body["wss"] = json!(true);
+                if let Some(n) = cnonce.as_deref() {
+                    body["proof"] = json!(wifi_tls::claim_response_proof(&matched_code, n, pin, &token));
+                }
             }
             Json(body).into_response()
         }
@@ -2026,12 +2088,13 @@ fn spawn_phone_wifi(state: AppState, main_addr: SocketAddr) {
                         // Pairing codes need no key (they are how a phone gets one).
                         .merge(Router::new().route(PAIRING_CLAIM_PATH, post(phone_pairing_claim)).with_state(state.clone()));
                         let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+                        let tls = wifi_tls::current();
+                        let require_tls = wifi_tls::tls_only();
                         let task = tokio::spawn(async move {
-                            let served = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
-                                .with_graceful_shutdown(async {
-                                    let _ = stopped.await;
-                                })
-                                .await;
+                            let served = wifi_tls::serve_dual(listener, app, tls, require_tls, async {
+                                let _ = stopped.await;
+                            })
+                            .await;
                             if let Err(e) = served {
                                 warn!("phone Wi-Fi: the Wi-Fi entry stopped ({e})");
                             }
@@ -3000,11 +3063,14 @@ async fn send_agent_info(state: &AppState, sink: &WsSink, link: PhoneLink) {
         msg.insert("console_url".into(), json!(url));
     }
     if link.trusted && !link.proxied {
-        let urls = agent_info_wifi_urls(
+        let pin = wifi_tls::cert_pin_sha256();
+        let urls = agent_info_wifi_urls_pinned(
             wifi_entry(&state.settings, &rt),
             mdns::answer_ip,
             &mdns::parse_name_setting(&rt.mdns_name),
             || phone_wifi::pairing().key(),
+            pin.as_deref(),
+            wifi_tls::tls_only(),
         );
         msg.insert("wifi".into(), json!({ "urls": urls }));
     }

@@ -101,4 +101,26 @@ class IpPairingTest {
         assertEquals(listOf(ip), ConnectionPlan.networkUrls(ip, listOf(ip)))
         assertEquals(listOf(usb, ip) + wifi, ConnectionPlan.candidates(usb, usb, ConnectionPlan.networkUrls(ip, wifi)))
     }
+
+    @Test
+    fun pinned_wss_urls_and_channel_bound_macs_verify_and_reject_mitm() {
+        val a = Address("192.168.1.20", 8788)
+        val pin = "A1B2C3D4".repeat(8)
+        val expectedPin = pin.lowercase()
+        assertEquals("https://192.168.1.20:8788/api/phone-pairing/claim", IpPairing.httpsClaimUrl(a))
+        val wss = IpPairing.wsUrl(a, "/ws", "k3y", pin)
+        assertEquals("wss://192.168.1.20:8788/ws?token=k3y&pin=$expectedPin", wss)
+        assertEquals(expectedPin, TlsPinning.extractPin(wss))
+        assertNull(TlsPinning.extractPin("ws://192.168.1.20:8788/ws?token=k3y&pin=$expectedPin"))
+        assertNull(TlsPinning.extractPin("wss://192.168.1.20:8788/ws?token=k3y&pin=short"))
+
+        val reqMac = TlsPinning.claimRequestMac("654321", "cnonce01", expectedPin)
+        val mitmMac = TlsPinning.claimRequestMac("654321", "cnonce01", "f".repeat(64))
+        org.junit.Assert.assertNotEquals(reqMac, mitmMac)
+
+        val validProof = TlsPinning.hmacSha256Hex("654321", "bageo-claim-ack-v1:cnonce01:$expectedPin:tok_xyz")
+        org.junit.Assert.assertTrue(TlsPinning.verifyClaimProof("654321", "cnonce01", expectedPin, "tok_xyz", validProof))
+        org.junit.Assert.assertFalse(TlsPinning.verifyClaimProof("000000", "cnonce01", expectedPin, "tok_xyz", validProof))
+        org.junit.Assert.assertFalse(TlsPinning.verifyClaimProof("654321", "cnonce01", "f".repeat(64), "tok_xyz", validProof))
+    }
 }

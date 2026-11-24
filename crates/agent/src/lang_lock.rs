@@ -337,13 +337,24 @@ mod tests {
     #[test]
     fn latin_words_of_a_language_without_a_word_list_lock_the_call_as_other() {
         for s in [
-            "Hän on töissä ja minä olen kotona, se on ihan hyvä.",
-            "Jag är i stan och kommer hem i kväll, det är inte så långt.",
-            "Dobrý den, mám pro vás balík, jste doma?",
+            "Jeg er på jobb nå og kommer hjem i kveld, det er ikke så langt.",
+            "Habari za asubuhi, mimi niko nyumbani leo na nitakuja jioni.",
+            "Aš esu namuose šiandien ir grįšiu vakare po darbo.",
         ] {
             let mut c = CallLanguage::new(Lang::En, Lang::En);
             assert_eq!(c.caller_turn(s), Some(Spoken::Other), "{s}");
             assert_eq!(c.ai_turn("Sure, just leave it with the front desk, thank you.", true), None, "{s}");
+        }
+        // Languages that now carry word lists (sv, fi, cs) lock to their exact language.
+        crate::locales_store::testing::use_builtin();
+        for (code, s) in [
+            ("sv", "Hej, jag har ett paket till dig idag, är du hemma nu?"),
+            ("fi", "Hei, olen kuriiri ja minulla on paketti sinulle tänään."),
+            ("cs", "Dobrý den, jsem kurýr a mám pro vás dnes balíček."),
+        ] {
+            let mut c = CallLanguage::new(Lang::En, Lang::En);
+            let want = Lang::Ext(crate::locale::Ext::from_code(code).unwrap());
+            assert_eq!(c.caller_turn(s), Some(Spoken::Lang(want)), "{code}: {s}");
         }
     }
 }
@@ -602,6 +613,21 @@ mod close_latin_languages {
                 ["Вибачте, я не розумію, можна українською, будь ласка?", "Добре, залиште посилку біля дверей, я її потім заберу."],
                 "uk",
             ),
+            (
+                "ar",
+                AR_SAID,
+                [FA_SAID, FA_SAID],
+                "fa",
+            ),
+            (
+                "ar",
+                AR_SAID,
+                [
+                    "السلام علیکم، میں کورئیر کمپنی سے بات کر رہا ہوں، آپ گھر پر ہیں؟",
+                    "جی شکریہ، میں آپ کا پارسل آج گھر کے دروازے پر رکھ دیتا ہوں۔",
+                ],
+                "ur",
+            ),
         ] {
             let (changes, lang) = run(from, first, &turns);
             assert_eq!(changes, vec![None, to(code)], "{from} -> {code}");
@@ -616,9 +642,9 @@ mod close_latin_languages {
     fn a_translated_call_holds_on_words_that_do_not_tell_another_language() {
         crate::locales_store::testing::use_builtin();
         for (from, first, turns) in [
-            // Arabic letters: Persian and Urdu keep an Arabic call.
+            // One Persian turn then one Urdu turn (not two of the same language), or Pashto, keep an Arabic call.
             ("ar", AR_SAID, [FA_SAID, "السلام علیکم، میں کورئیر کمپنی سے بات کر رہا ہوں، آپ گھر پر ہیں؟"]),
-            ("ar", AR_SAID, [FA_SAID, FA_SAID]),
+            ("ar", AR_SAID, ["سلام، زه د پوست له شرکت څخه زنګ وهم، ستاسو لپاره بسته لرم", "سلام، زه د پوست له شرکت څخه زنګ وهم، ستاسو لپاره بسته لرم"]),
             // An English word, a name, a short reply in an Italian call.
             ("it", IT_SAID, ["Sì, perfetto, mi mandi tutto per email, grazie, okay?", "Pronto, sono Budi Santoso, il corriere, ho un pacco per lei."]),
             ("it", IT_SAID, ["Iya, terima kasih.", "Iya, terima kasih."]),

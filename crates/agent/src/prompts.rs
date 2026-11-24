@@ -832,7 +832,7 @@ pub struct Ctx<'a> {
     /// What the owner says about themselves (the "About you" settings); None =
     /// nothing to add. Goes in with the owner's notes, also with an own prompt.
     pub about: Option<&'a About>,
-    /// Tell the model about the Taiwan carriers' international-call warning.
+    /// Tell the model about carriers' international-call warning.
     pub carrier_note: bool,
     /// Switch to the caller's language when it differs.
     pub auto_language: bool,
@@ -906,6 +906,75 @@ pub fn sanitize_knowledge(text: &str) -> String {
         .filter(|c| *c == '\n' || *c == '\t' || !c.is_control())
         .collect();
     cleaned.trim().chars().take(KNOWLEDGE_MAX_CHARS).collect()
+}
+
+fn is_contacts_only_heading(line: &str) -> bool {
+    matches!(
+        line.trim().to_lowercase().as_str(),
+        "[contacts only]"
+            | "[contacts-only]"
+            | "[contacts]"
+            | "[private]"
+            | "【僅限聯絡人】"
+            | "【只給聯絡人】"
+            | "【私密】"
+            | "【私人】"
+            | "【仅限联系人】"
+            | "【只给联系人】"
+    )
+}
+
+fn is_public_heading(line: &str) -> bool {
+    matches!(
+        line.trim().to_lowercase().as_str(),
+        "[public]" | "[everyone]" | "[all callers]" | "【公開】" | "【所有人】" | "【公开】"
+    )
+}
+
+/// Split `knowledge_notes` into `(public_notes, contacts_only_notes)`.
+/// Lines after a `[Contacts only]` / `[private]` / `【僅限聯絡人】` heading (until a
+/// `[Public]` / `【公開】` heading) are withheld from unknown callers and given only
+/// when the caller matches a saved contact.
+pub fn split_knowledge(text: &str) -> (String, String) {
+    let cleaned = sanitize_knowledge(text);
+    if cleaned.is_empty() {
+        return (String::new(), String::new());
+    }
+    let mut pub_lines = Vec::new();
+    let mut priv_lines = Vec::new();
+    let mut in_private = false;
+    for line in cleaned.lines() {
+        if is_contacts_only_heading(line) {
+            in_private = true;
+            continue;
+        }
+        if is_public_heading(line) {
+            in_private = false;
+            continue;
+        }
+        if in_private {
+            priv_lines.push(line);
+        } else {
+            pub_lines.push(line);
+        }
+    }
+    (
+        pub_lines.join("\n").trim().to_string(),
+        priv_lines.join("\n").trim().to_string(),
+    )
+}
+
+/// Format a `knowledge_block` in `lang` for `owner` from cleaned `kb`; empty when `kb` is blank.
+pub fn knowledge_block_for(lang: Lang, owner: &str, kb: &str) -> String {
+    let kb = sanitize_knowledge(kb);
+    if kb.is_empty() {
+        return String::new();
+    }
+    let owner = owner_label(lang, owner);
+    pack(lang)
+        .knowledge_block
+        .replace("{kb}", &kb)
+        .replace("{owner}", &owner)
 }
 
 /// Longest "work or daily life" text kept (setting `about_work`).
@@ -1305,21 +1374,44 @@ pub fn build_parts(ctx: &Ctx) -> (String, String) {
                 .replace(&p.end_default, &p.end_stall)
         ),
     };
-    let status = gl::sanitize_owner_status(ctx.status);
+    let stalling = ctx.stall == StallPrompt::Full;
+    // Once a call is confirmed sales / scam (StallPrompt::Full), withhold the
+    // owner's real status, knowledge notes, and personal life details so a
+    // 30-minute stall session never leaks real background to a scammer.
+    let status = if stalling {
+        String::new()
+    } else {
+        gl::sanitize_owner_status(ctx.status)
+    };
     let status_block = if status.is_empty() {
         String::new()
     } else {
         p.status_block.replace("{status}", &status)
     };
-    let kb = sanitize_knowledge(ctx.knowledge);
+    let kb = if stalling {
+        String::new()
+    } else {
+        sanitize_knowledge(ctx.knowledge)
+    };
     let kb_block = if kb.is_empty() {
         String::new()
     } else {
         p.knowledge_block.replace("{kb}", &kb)
     };
-    let about_block = ctx
-        .about
-        .map(|a| about_block(ctx.lang, ctx.assistant, ctx.owner, a, ctx.knowledge))
+    let stall_about;
+    let about_ref = match (stalling, ctx.about) {
+        (true, Some(a)) => {
+            stall_about = About {
+                say: a.say.clone(),
+                avoid: a.avoid.clone(),
+                ..About::default()
+            };
+            Some(&stall_about)
+        }
+        (_, other) => other,
+    };
+    let about_block = about_ref
+        .map(|a| about_block(ctx.lang, ctx.assistant, ctx.owner, a, &kb))
         .unwrap_or_default();
     let stall_block = if ctx.stall == StallPrompt::Full { p.stall_block.as_str() } else { "" };
     // Not in the stalling prompt: there the AI keeps the caller talking and
@@ -1402,7 +1494,7 @@ pub fn dialect_note(region: Region, lang: Lang) -> String {
 pub struct Scope<'a> {
     /// The call's region ([crate::country_profile::resolve]); None = no regional part.
     pub region: Option<Region>,
-    /// Keep the note on the Taiwan carriers' international-call warning: only a
+    /// Keep the note on carriers' international-call warning: only a
     /// call that can get it (a number from abroad on a SIM whose carrier plays
     /// it, or the SIM unknown).
     pub carrier_note: bool,
@@ -1767,7 +1859,11 @@ mod tests {
                     let p = build(&c);
                     assert!(!p.contains('{') && !p.contains('}'), "{lang:?} {assistant} {stall:?}: {p}");
                     assert!(p.contains("Alex"), "{lang:?}");
-                    assert!(p.contains("waiting for a parcel") && p.contains("Open 9 to 6."), "{lang:?}");
+                    if stall == StallPrompt::Full {
+                        assert!(!p.contains("waiting for a parcel") && !p.contains("Open 9 to 6."), "{lang:?}");
+                    } else {
+                        assert!(p.contains("waiting for a parcel") && p.contains("Open 9 to 6."), "{lang:?}");
+                    }
                 }
             }
             let p = pack(lang);
@@ -2897,5 +2993,64 @@ mod tests {
             us.starts_with("[Who you are] You are from United States; use the local speaking style and accent. You are Alex"),
             "{us}"
         );
+    }
+
+    #[test]
+    fn stalling_prompt_withholds_status_knowledge_and_personal_about_in_multiple_languages() {
+        let a = about(|a| {
+            a.callers = "family".into();
+            a.work = "cardiologist at Harbor Clinic".into();
+            a.parcel = "blue lockbox by side gate".into();
+            a.extra = "flying to Osaka until Thursday".into();
+            a.say = strs(&["fair enough"]);
+            a.avoid = strs(&["no problem"]);
+        });
+        let leaked = Box::leak(Box::new(a));
+        let aliases: &'static [String] = Box::leak(vec!["Lex".to_string()].into_boxed_slice());
+        for lang in [Lang::ZhTw, Lang::En, Lang::Ja, Lang::Es] {
+            let mut normal = ctx(lang, false, StallPrompt::ListenFirst);
+            normal.status = "in surgery until 17:00";
+            normal.knowledge = "Studio door code hint: ask front desk.";
+            normal.about = Some(leaked);
+            normal.aliases = aliases;
+            let p_normal = build(&normal);
+            assert!(p_normal.contains("in surgery until 17:00"), "{lang:?}");
+            assert!(p_normal.contains("Studio door code hint"), "{lang:?}");
+            assert!(p_normal.contains("cardiologist at Harbor Clinic"), "{lang:?}");
+
+            let mut stall = normal.clone();
+            stall.stall = StallPrompt::Full;
+            let p_stall = build(&stall);
+            for secret in [
+                "in surgery until 17:00",
+                "Studio door code hint",
+                "cardiologist at Harbor Clinic",
+                "blue lockbox by side gate",
+                "flying to Osaka until Thursday",
+            ] {
+                assert!(!p_stall.contains(secret), "{lang:?} leaked {secret:?} in stall prompt: {p_stall}");
+            }
+            // Speech style phrases and aliases remain available in persona stalling.
+            assert!(p_stall.contains("fair enough") && p_stall.contains("no problem"), "{lang:?}");
+            assert!(p_stall.contains("Lex"), "{lang:?}");
+        }
+    }
+
+    #[test]
+    fn split_knowledge_separates_public_and_contacts_only_sections() {
+        let raw = "Open 09:00-18:00.\nLeave parcels at reception.\n[Contacts only]\nHome Wi-Fi guest room is upstairs.\n[Public]\nClosed on Sundays.";
+        let (pub_en, priv_en) = split_knowledge(raw);
+        assert_eq!(pub_en, "Open 09:00-18:00.\nLeave parcels at reception.\nClosed on Sundays.");
+        assert_eq!(priv_en, "Home Wi-Fi guest room is upstairs.");
+
+        let raw_zh = "包裹請放管理室\n【僅限聯絡人】\n下週二出差不在家\n【公開】\n營業時間九點到六點";
+        let (pub_zh, priv_zh) = split_knowledge(raw_zh);
+        assert_eq!(pub_zh, "包裹請放管理室\n營業時間九點到六點");
+        assert_eq!(priv_zh, "下週二出差不在家");
+
+        let raw_cn = "快递放前台\n【仅限联系人】\n周四去外地";
+        let (pub_cn, priv_cn) = split_knowledge(raw_cn);
+        assert_eq!(pub_cn, "快递放前台");
+        assert_eq!(priv_cn, "周四去外地");
     }
 }

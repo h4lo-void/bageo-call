@@ -166,6 +166,10 @@ class AgentControlClient(
                     } catch (_: Exception) {
                     }
                 }
+
+                override fun onSetSSLParameters(sslParameters: javax.net.ssl.SSLParameters) {
+                    TlsPinning.configureSslParameters(sslParameters, url)
+                }
             }
             client = ws
         }
@@ -173,6 +177,7 @@ class AgentControlClient(
             ws.connectionLostTimeout = 30
         } catch (_: Exception) {
         }
+        TlsPinning.attachIfPinned(ws, ws.uri.toString())
         ws.connect()
     }
 

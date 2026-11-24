@@ -21,22 +21,26 @@ phone module together.
   (`AGENT_PORT` and port 80 for `http://bageo.local/`), but refuses other
   devices until you set a console password (in the console or via
   `CALLS_UI_TOKEN`); phones paired once over USB connect over Wi-Fi on
-  `PHONE_WIFI_PORT` (`8788`) using a pairing key.
+  `PHONE_WIFI_PORT` (`8788`) using `wss://` with SHA-256 leaf-certificate
+  pinning and a pairing key (`PHONE_WIFI_TLS_ONLY=true` disables the legacy
+  `ws://` fallback), and IP pairing trades the 6-digit code over `https://`
+  using a channel-bound HMAC.
 - Set `AGENT_HOST=127.0.0.1` to listen on this computer only. When you set
   `AGENT_HOST=0.0.0.0`, always set both `CALLS_UI_TOKEN` (web console and API)
   and `DEVICE_TOKEN` (phones over Wi-Fi).
 - The web console uses one shared password (`ui_password` set in the browser or
-  `CALLS_UI_TOKEN`), no user accounts and no HTTPS. Do not expose it to the
+  `CALLS_UI_TOKEN`) and no user accounts. Do not expose it directly to the
   internet; reach it from outside through a VPN.
 - Since 1.0 Bageo can place calls (AI errands, AI call-backs) and send texts
   from your SIM. Treat the console password (`CALLS_UI_TOKEN`) like the PIN of
   your phone.
-- `data/calls/config/settings.json` holds your API keys and notification
-  tokens in plain text; recordings and transcripts are other people's personal
-  data. Automatic and manual backup files (`data/calls/backups/` or your
-  chosen folder) also include keys, passwords and connections unless encrypted
-  with a backup password (`.bageo`). Protect the `data/` folder and its
-  backups accordingly.
+- `data/calls/config/settings.json` seals saved API keys, passwords and
+  notification tokens at rest with `XChaCha20-Poly1305` (`enc:v1:…`) using a
+  local key file (`data/calls/config/.settings.key`, mode `0600` on Unix) or
+  `BAGEO_MASTER_KEY` from the environment. Recordings and transcripts are other
+  people's personal data, and unencrypted backup files (`data/calls/backups/` or
+  your chosen folder) include keys unless encrypted with a backup password
+  (`.bageo`). Protect the `data/` folder and its backups accordingly.
 - The phone module installs a privileged system app. Install only builds you
   trust.
 

@@ -199,6 +199,7 @@ struct SrcBubblesDoc {
 }
 
 const MAX_SOURCE_BYTES: usize = 256 * 1024;
+const MAX_AGGREGATE_SOURCE_BYTES: usize = 2 * 1024 * 1024;
 
 pub(crate) fn sorted_paths(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     let mut v = fs::read_dir(dir)?.map(|e| e.map(|e| e.path())).collect::<Result<Vec<_>, _>>()?;
@@ -207,6 +208,15 @@ pub(crate) fn sorted_paths(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
 }
 
 fn read_json<T: DeserializeOwned>(path: &Path, file: &str, issues: &mut Vec<Issue>) -> Option<(String, T)> {
+    read_json_limit(path, file, MAX_SOURCE_BYTES, issues)
+}
+
+fn read_json_limit<T: DeserializeOwned>(
+    path: &Path,
+    file: &str,
+    max_bytes: usize,
+    issues: &mut Vec<Issue>,
+) -> Option<(String, T)> {
     let bytes = match fs::read(path) {
         Ok(b) => b,
         Err(e) => {
@@ -214,8 +224,13 @@ fn read_json<T: DeserializeOwned>(path: &Path, file: &str, issues: &mut Vec<Issu
             return None;
         }
     };
-    if bytes.len() > MAX_SOURCE_BYTES {
-        issues.push(Issue::new(file, "", rule::LENGTH, format!("{} bytes, the limit for a source file is {MAX_SOURCE_BYTES}", bytes.len())));
+    if bytes.len() > max_bytes {
+        issues.push(Issue::new(
+            file,
+            "",
+            rule::LENGTH,
+            format!("{} bytes, the limit for {file} is {max_bytes}", bytes.len()),
+        ));
         return None;
     }
     match serde_json::from_slice::<T>(&bytes) {
@@ -279,7 +294,12 @@ pub fn load_sources(dir: &Path) -> Result<Sources, Vec<Issue>> {
 
     let ml_path = dir.join("regions_multilang.json");
     if ml_path.is_file() {
-        if let Some((_, doc)) = read_json::<SrcMultilangDoc>(&ml_path, "regions_multilang.json", &mut issues) {
+        if let Some((_, doc)) = read_json_limit::<SrcMultilangDoc>(
+            &ml_path,
+            "regions_multilang.json",
+            MAX_AGGREGATE_SOURCE_BYTES,
+            &mut issues,
+        ) {
             if doc.schema != 1 {
                 issues.push(Issue::new("regions_multilang.json", "schema", rule::FORMAT, format!("schema {} is not 1", doc.schema)));
             } else {
@@ -288,9 +308,31 @@ pub fn load_sources(dir: &Path) -> Result<Sources, Vec<Issue>> {
         }
     }
 
+    let ml_dir = dir.join("multilang");
+    if ml_dir.is_dir() {
+        if let Ok(paths) = sorted_paths(&ml_dir) {
+            for p in paths.iter().filter(|p| p.extension().and_then(|e| e.to_str()) == Some("json")) {
+                let name = name_of(p);
+                let file = format!("multilang/{name}");
+                if let Some((_, doc)) = read_json::<SrcMultilangDoc>(p, &file, &mut issues) {
+                    if doc.schema != 1 {
+                        issues.push(Issue::new(&file, "schema", rule::FORMAT, format!("schema {} is not 1", doc.schema)));
+                    } else {
+                        s.multilang.extend(doc.entries);
+                    }
+                }
+            }
+        }
+    }
+
     let bub_path = dir.join("bubbles.json");
     if bub_path.is_file() {
-        if let Some((_, doc)) = read_json::<SrcBubblesDoc>(&bub_path, "bubbles.json", &mut issues) {
+        if let Some((_, doc)) = read_json_limit::<SrcBubblesDoc>(
+            &bub_path,
+            "bubbles.json",
+            MAX_AGGREGATE_SOURCE_BYTES,
+            &mut issues,
+        ) {
             if doc.schema != 1 {
                 issues.push(Issue::new("bubbles.json", "schema", rule::FORMAT, format!("schema {} is not 1", doc.schema)));
             } else {
@@ -648,4 +690,47 @@ pub fn build_at(s: &Sources, version: u64, commit: &str, built_at: &str) -> Resu
         )]);
     }
     Ok(bundle)
+}
+
+#[cfg(test)]
+mod source_limit_tests {
+    use super::*;
+
+    #[test]
+    fn suriname_is_recognised_and_large_multilang_or_shards_load() {
+        assert!(crate::data::is_country("sr"), "Suriname ISO code sr must be valid");
+        let dir = std::env::temp_dir().join(format!("bageo-packs-ml-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("regions")).unwrap();
+        fs::create_dir_all(dir.join("multilang")).unwrap();
+
+        // Build a > 256 KiB regions_multilang.json plus a shard in multilang/*.json.
+        let cell = || Text { en: "casual".into(), zh: "自然".into() };
+        let five_cells = || [cell(), cell(), cell(), cell(), cell()];
+        let make_entry = |r: String| MultilangEntry {
+            region: r,
+            lang: "en".into(),
+            hello: Hello { hello: "Hello?".into(), hello_again: "Hello?".into() },
+            habits: Text { en: "x".repeat(420), zh: "習慣".into() },
+            talk_style: TalkStyle { persona: five_cells(), assistant: five_cells() },
+        };
+        let entries: Vec<MultilangEntry> = (0..450).map(|i| make_entry(format!("r{i:03}"))).collect();
+        let big = serde_json::to_vec(&serde_json::json!({ "schema": 1, "entries": entries })).unwrap();
+        assert!(big.len() > MAX_SOURCE_BYTES, "test fixture must exceed 256 KiB: {}", big.len());
+        fs::write(dir.join("regions_multilang.json"), &big).unwrap();
+        let shard_entry = make_entry("sr".into());
+        fs::write(
+            dir.join("multilang").join("01-extra.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "schema": 1,
+                "entries": [shard_entry]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let loaded = load_sources(&dir).expect("large regions_multilang.json + shard should load");
+        assert_eq!(loaded.multilang.len(), 451);
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
