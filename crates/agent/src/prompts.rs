@@ -1637,10 +1637,12 @@ mod tests {
         assert!(zh.contains("你的下一句就整句改用他的語言") && zh.contains("你不要自己換語言"), "{zh}");
         // A stray foreign word is no switch.
         assert!(zh.contains("整句明顯換成另一種語言才跟著換") && zh.contains("夾幾個外文詞"), "{zh}");
+        // One odd line mid-call is likely misheard.
+        assert!(zh.contains("中途只冒一句多半是聽錯"), "{zh}");
         // The fixed rules still hold, said in the caller's language.
         assert!(zh.contains("不給個資") && zh.contains("銀行核對刷卡") && zh.contains("自己翻成他的語言講"), "{zh}");
         let en = pack(Lang::En).auto_language_note.as_str();
-        assert!(en.contains("[Caller speaks another language]") && en.contains("A stray word is no switch"), "{en}");
+        assert!(en.contains("[Caller speaks another language]") && en.contains("A stray word or one odd line is no switch"), "{en}");
         assert!(en.contains("never switch on your own or mix languages"), "{en}");
         assert!(en.contains("local, hidden or foreign number") && en.contains("your very next sentence is in their language"), "{en}");
         assert!(en.contains("never answer in English again") && en.contains("a bank checking a card charge"), "{en}");

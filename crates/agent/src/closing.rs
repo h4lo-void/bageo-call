@@ -105,6 +105,9 @@ pub struct ClosingMachine {
     /// Farewells exchanged on the caller's announced end, their own bye not
     /// said yet.
     bye_owed: bool,
+    /// The caller's announced end is one people hang up on ([FINAL_WRAPUPS]):
+    /// no bye of theirs is owed after it.
+    caller_final: bool,
 }
 
 impl ClosingMachine {
@@ -116,6 +119,7 @@ impl ClosingMachine {
             caller_closed: false,
             late_ai: None,
             bye_owed: false,
+            caller_final: false,
         }
     }
 
@@ -174,6 +178,7 @@ impl ClosingMachine {
             .as_ref()
             .is_some_and(|h| h.ambiguous && !self.greeting_bye_counts(h));
         let hit = raw_hit.filter(|h| !h.ambiguous || self.greeting_bye_counts(h));
+        let hit = hit.or_else(|| if self.substance { ja_closing_request(heard) } else { None });
         // Opening greetings and guarded greeting-byes (e.g. Turn 1 "ciao" or
         // "お忙しいところ失礼いたします") never close even if the older check fires.
         let old_rules = old_rules && !opening_only && !suppressed_ambiguous;
@@ -193,6 +198,7 @@ impl ClosingMachine {
         match kind {
             Some(Kind::Farewell) => {
                 self.caller_closed = true;
+                self.caller_final = false;
                 self.bye_owed = false;
                 self.go(ClosingState::Closing, tag("caller_farewell"));
                 ClosingStep { event: ClosingEvent::CallerFarewell, ends_call: true }
@@ -202,10 +208,12 @@ impl ClosingMachine {
                 let exchange = (self.state == ClosingState::PreClosing && !self.caller_closed)
                     || self.state == ClosingState::Closing;
                 self.caller_closed = true;
+                self.caller_final = hit.as_ref().is_some_and(|h| h.last);
                 if exchange {
                     self.go(ClosingState::Closing, tag("caller_closing_reply"));
-                    // Announced, not said: their bye usually still follows.
-                    self.bye_owed = true;
+                    // Announced, not said: their bye usually still follows
+                    // (not after 「那就先這樣」 or 「では、お願いします」).
+                    self.bye_owed = !self.caller_final;
                 } else {
                     self.go(ClosingState::PreClosing, tag("caller_preclosing"));
                 }
@@ -224,6 +232,7 @@ impl ClosingMachine {
                 let mut event = ClosingEvent::None;
                 if self.state != ClosingState::Talking && !is_fluff(latest) && !greeting_only(latest) {
                     self.caller_closed = false;
+                    self.caller_final = false;
                     self.go(ClosingState::Talking, tag("caller_new_content"));
                     event = ClosingEvent::CallerResumed;
                 }
@@ -300,7 +309,7 @@ impl ClosingMachine {
             }
             (true, ClosingState::PreClosing) if self.caller_closed => {
                 self.go(ClosingState::Closing, if late { "ai_late_farewell_reply" } else { "ai_farewell_reply" });
-                self.bye_owed = true;
+                self.bye_owed = !self.caller_final;
                 ClosingEvent::FarewellsExchanged
             }
             (false, ClosingState::PreClosing) if !self.caller_closed => {
@@ -323,6 +332,9 @@ impl ClosingMachine {
     fn greeting_bye_counts(&self, h: &Hit) -> bool {
         if h.lang == "ja" && ja_opening_apology(&h.before) && !cue_before(&h.before) {
             return false;
+        }
+        if h.lang == "ja" && self.substance && ja_parting(h) {
+            return true;
         }
         if h.lang == "vi" && self.substance && vi_parting(&h.before) {
             return true;
@@ -495,6 +507,9 @@ const PRE_CLOSINGS: Lexicon = &[
         // Getting back to them later, as 折り返し does: 「また後ほどこちらからご連絡いたしますね」.
         "後ほどご連絡いたします", "後ほどご連絡します", "こちらからご連絡いたします", "こちらからご連絡します",
         "改めてご連絡いたします", "改めてご連絡します", "またご連絡いたします", "また連絡します",
+        // 「では、お願いします」: leaving the matter in their hands ends the call.
+        "ではお願いします", "ではお願いいたします", "じゃあお願いします", "ではよろしくお願いします",
+        "ではよろしくお願いいたします", "じゃあよろしくお願いします",
     ]),
     ("ko", &[
         "나중에다시연락드릴게요", "다시연락드릴게요", "연락드릴게요", "연락드리겠습니다", "나끊는다", "그럼이만", "이만줄일게요",
@@ -643,6 +658,7 @@ const FAREWELLS: Lexicon = &[
         "have a great rest of your day", "have a good rest of your day", "enjoy the rest of your day",
         "cheers mate", "lovely ta", "ta ta", "see you", "see ya", "catch you later",
         "catch ya later", "ta ra", "slán", "slan", "slán go fóill", "slan go foill",
+        "have a nice day", "have a good one", "have a nice one",
     ]),
     ("zh-TW", &[
         "掰掰", "掰", "拜拜", "再見", "再會", "掰囉", "掰掰囉", "掛囉", "掛啦", "先掛了", "我掛了", "我先掛了", "那我掛了",
@@ -661,6 +677,7 @@ const FAREWELLS: Lexicon = &[
     ("ko", &[
         "들어가세요", "수고하세요", "끊겠습니다", "끊을게요", "끊을게", "먼저끊을게", "잘가", "잘가요", "잘가세요",
         "응끊어", "어끊어", "그래끊어", "안녕히계세요", "안녕히가세요", "다음에봬요",
+        "수고하십시오", "들어가십시오",
         // 「그럼 수요일에 뵙겠습니다」: seeing them on the day ends the call (처음 뵙겠습니다 opens one).
         "에뵙겠습니다", "그때뵙겠습니다", "그럼뵙겠습니다", "또뵙겠습니다", "에봬요", "그때봬요",
     ]),
@@ -668,16 +685,21 @@ const FAREWELLS: Lexicon = &[
         "chao", "chau", "hasta luego", "hasta pronto", "cuídate", "cuidate", "cuídese", "cuidese",
         "un abrazo", "un beso", "besos", "adiós", "adios", "nos vemos",
         "que le vaya bien", "que te vaya bien", "que tenga buen día", "que tenga buen dia", "que tengas buen día", "que tengas buen dia",
+        "que tenga un buen día", "que tenga un buen dia", "que tenga un lindo día", "que tenga un lindo dia",
+        "que pase un buen día", "que pase un buen dia", "hasta la próxima", "hasta la proxima",
     ]),
     ("fr", &[
         "au revoir", "bonne journée", "bonne journee", "bonne soirée", "bonne soiree", "à bientôt",
         "a bientot", "bisous", "bises", "à plus", "je raccroche", "bonne continuation", "à tout à l'heure", "a tout a l heure",
         "à très vite", "a tres vite", "allez salut",
+        "bonne fin de journée", "bonne fin de journee", "bon après midi", "bon apres midi", "bonne après midi",
+        "bonne apres midi", "à demain", "a demain",
     ]),
     ("de", &[
         "auf wiederhören", "auf wiederhoren", "wiederhören", "schönen tag noch", "schönen tag", "tschüss",
         "tschüs", "tschuss", "baba", "pfiat di", "pfiat eich", "gute nacht", "schönen abend noch", "schonen abend noch",
         "machs gut", "machen sie es gut",
+        "auf wiedersehen", "wiedersehen", "bis bald", "bis dann",
         // Austrian and Swiss goodbyes.
         "schönen feierabend", "schonen feierabend", "tschö", "pfiati", "uf wiederluege", "wiederluege",
     ]),
@@ -688,6 +710,8 @@ const FAREWELLS: Lexicon = &[
         "continuação de um bom dia", "continuação de bom dia", "continuacao de um bom dia", "tenha um bom dia",
         "boa continuação",
         "até já", "ate ja", "passe bem",
+        "tenha um ótimo dia", "tenha um otimo dia", "tenha uma boa tarde", "tenha uma boa noite", "até a próxima",
+        "ate a proxima",
     ]),
     ("th", &[
         "บ๊ายบาย", "บายบาย", "ไว้คุยกันใหม่", "แล้วคุยกันใหม่", "แล้วพบกันใหม่", "พบกันใหม่", "ไปก่อนนะ", "วางสายนะ",
@@ -1565,6 +1589,17 @@ pub(crate) fn zh_bye_ends(text: &str) -> Option<String> {
     None
 }
 
+/// Pre-closings people hang up on without another bye (their end of
+/// [PRE_CLOSINGS] entries): after them no bye of the caller's is waited for.
+const FINAL_WRAPUPS: Lexicon = &[
+    ("zh-TW", &["先這樣", "先這樣子", "那就這樣", "好就這樣"]),
+    ("zh-CN", &["先这样", "那就这样", "好就这样"]),
+    ("ja", &[
+        "ではお願いします", "ではお願いいたします", "じゃあお願いします", "ではよろしくお願いします",
+        "ではよろしくお願いいたします", "じゃあよろしくお願いします",
+    ]),
+];
+
 /// A closing found at the end of what was said.
 #[derive(Debug, Clone)]
 struct Hit {
@@ -1574,6 +1609,10 @@ struct Hit {
     ambiguous: bool,
     /// What was said before it (normalized).
     before: String,
+    /// Said as words of its own: at the start or after a pause or punctuation.
+    apart: bool,
+    /// A pre-closing of [FINAL_WRAPUPS].
+    last: bool,
 }
 
 /// The closing what was said ends on, if any: a farewell, a greeting-goodbye or
@@ -1735,7 +1774,10 @@ fn classify_with(text: &str, extra: &ExtraWords) -> Option<Hit> {
                     return None;
                 }
             }
-            return Some(Hit { kind, lang, ambiguous, before: before.to_string() });
+            let word = &t[before.len()..];
+            let apart = before.is_empty() || word.starts_with(' ');
+            let last = kind == Kind::PreClosing && ends_with_any(word.trim_start(), FINAL_WRAPUPS).is_some();
+            return Some(Hit { kind, lang, ambiguous, before: before.to_string(), apart, last });
         }
         t = match id_time_after_bye(t) {
             Some(rest) => rest,
@@ -1794,6 +1836,46 @@ fn ja_opening_apology(before: &str) -> bool {
     ];
     let compact: String = before.chars().filter(|c| !c.is_whitespace()).collect();
     OPENERS.iter().any(|p| compact.contains(p))
+}
+
+/// 「…管理人室に預けておきますね。失礼します。」: after real talk, 「失礼します」 said as
+/// a sentence of its own is the Japanese goodbye, cue or not right before it.
+/// Not alone, not after an opening apology, a question (…か) or 「ちょっと／少々」
+/// (excuse me a moment).
+fn ja_parting(h: &Hit) -> bool {
+    const MOMENT: &[&str] = &["ちょっと", "少々", "一旦", "いったん"];
+    let b = h.before.trim_end();
+    h.apart && !b.is_empty() && !b.ends_with('か') && !ja_opening_apology(b) && !MOMENT.iter().any(|m| b.ends_with(m))
+}
+
+/// 「かしこまりました。それでは、後ほどご連絡をお待ちしております。よろしくお願いいたします。」:
+/// 「よろしくお願いします」 as a sentence of its own, in a turn that wraps up (a
+/// sentence opening with 「それでは／では／じゃあ」, or 「お待ちしております」), is the
+/// caller's last word: a pre-closing that owes no bye. Not a question, and not on its
+/// own ("yes, please", 「田中です、よろしくお願いします」).
+fn ja_closing_request(text: &str) -> Option<Hit> {
+    const ASK: &[&str] = &["よろしくお願いいたします", "よろしくお願い致します", "よろしくお願いします"];
+    const WRAP: &[&str] = &["それでは", "それじゃ", "では", "じゃあ"];
+    const WAIT: &[&str] = &["お待ちしております", "お待ちしています"];
+    if ends_as_question(text) {
+        return None;
+    }
+    let all = norm(text);
+    let mut t = all.as_str();
+    while let Some((rest, Peel::Particle)) = peel(t) {
+        t = rest;
+    }
+    let before = ASK.iter().find_map(|a| ends_with_phrase(t, a))?;
+    let apart = t[before.len()..].starts_with(' ');
+    let wraps = before.split(' ').any(|s| WRAP.iter().any(|w| s.starts_with(w))) || WAIT.iter().any(|w| before.contains(w));
+    (apart && wraps).then(|| Hit {
+        kind: Kind::PreClosing,
+        lang: "ja",
+        ambiguous: false,
+        before: before.to_string(),
+        apart,
+        last: true,
+    })
 }
 
 /// "Understood" in Japanese ([`SETTLED`] has 「承知」 as a stem): right before
@@ -2224,7 +2306,7 @@ mod tests {
         },
         Case {
             lang: "zh-TW",
-            pre: ["好喔，那就先這樣囉", "那我不耽誤你時間了"],
+            pre: ["那我不耽誤你時間了", "好喔，那就先這樣囉"],
             bye: ["好，謝謝喔，掰掰～掰掰！", "好啦，多謝，再會"],
             opening: "喂，你好",
             follow_up: "啊對了再問一下，明天幾點會到？",
@@ -2238,7 +2320,7 @@ mod tests {
         },
         Case {
             lang: "zh-CN",
-            pre: ["行，那就先这样啊", "回头微信说"],
+            pre: ["回头微信说", "行，那就先这样啊"],
             bye: ["好嘞，拜拜", "那我先挂了啊"],
             opening: "喂，您好",
             follow_up: "哎对了，还有个事，快递放哪里？",
@@ -7394,5 +7476,97 @@ mod parting_wish_gaps_tests {
             }
         }
         assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+}
+
+/// Polite partings that end the caller's side of a call, in each language
+/// (a real Japanese call: 「…預けておきますね。失礼します。」 was not taken as one).
+#[cfg(test)]
+mod polite_partings {
+    use super::*;
+
+    fn said(m: &mut ClosingMachine, s: &str) -> ClosingStep {
+        m.on_caller(s, s, false, false)
+    }
+
+    fn talked(lang: &'static str, business: &str) -> ClosingMachine {
+        let mut m = ClosingMachine::new(lang);
+        said(&mut m, business);
+        assert_eq!(m.state(), ClosingState::Talking, "{business}");
+        m
+    }
+
+    /// (language, the caller's business, their parting, the AI's goodbye)
+    const PARTINGS: &[(&str, &str, &str, &str)] = &[
+        ("ja", "大和運輸の田中です。お荷物のお届けに参りました。", "では、管理人室に預けておきますね。失礼します。", "はい、ありがとうございます。失礼いたします。"),
+        ("ja", "大和運輸の田中です。お荷物のお届けに参りました。", "かしこまりました。それでは、後ほどご連絡をお待ちしております。よろしくお願いいたします。", "はい、ありがとうございます。失礼いたします。"),
+        ("ja", "大和運輸の田中です。お荷物のお届けに参りました。", "はい、承知しました。失礼いたします。", "はい、ありがとうございます。失礼いたします。"),
+        ("ja", "大和運輸の田中です。お荷物のお届けに参りました。", "では、お願いします。", "はい、ありがとうございます。失礼いたします。"),
+        ("ja", "大和運輸の田中です。お荷物のお届けに参りました。", "じゃあ、よろしくお願いします。", "はい、ありがとうございます。失礼いたします。"),
+        ("ko", "택배 기사입니다. 집에 안 계시면 경비실에 맡길게요.", "네, 그럼 경비실에 맡겨 둘게요. 수고하세요.", "네, 감사합니다. 안녕히 계세요."),
+        ("ko", "택배 기사입니다. 집에 안 계시면 경비실에 맡길게요.", "네, 들어가세요.", "네, 감사합니다. 안녕히 계세요."),
+        ("ko", "택배 기사입니다. 집에 안 계시면 경비실에 맡길게요.", "알겠습니다, 수고하십시오.", "네, 감사합니다. 안녕히 계세요."),
+        ("zh-TW", "我是快遞，你的包裹我放一樓管理室。", "好，那就先這樣。", "好，謝謝你，掰掰。"),
+        ("zh-TW", "我是快遞，你的包裹我放一樓管理室。", "嗯，那就這樣囉。", "好，謝謝你，掰掰。"),
+        ("zh-CN", "我是快递，你的包裹我放一楼管理室。", "行，那先这样吧。", "好的，谢谢，再见。"),
+        ("es", "Le llamo de la mensajería, tengo un paquete para el señor.", "Vale, lo dejo en portería. Hasta luego.", "Muchas gracias, adiós."),
+        ("es", "Le llamo de la mensajería, tengo un paquete para el señor.", "Perfecto, que le vaya bien.", "Muchas gracias, adiós."),
+        ("es", "Le llamo de la mensajería, tengo un paquete para el señor.", "Gracias, que tenga un buen día.", "Muchas gracias, adiós."),
+        ("pt", "Aqui é da transportadora, tenho uma encomenda para o senhor.", "Tá bom, deixo na portaria. Até logo.", "Obrigado, tchau."),
+        ("pt", "Aqui é da transportadora, tenho uma encomenda para o senhor.", "Obrigado, tenha um ótimo dia.", "Obrigado, tchau."),
+        ("fr", "Bonjour, j'ai un colis pour monsieur, je peux le laisser au gardien ?", "D'accord, je le laisse au gardien. Bonne journée.", "Merci beaucoup, au revoir."),
+        ("fr", "Bonjour, j'ai un colis pour monsieur, je peux le laisser au gardien ?", "Merci, bonne fin de journée.", "Merci beaucoup, au revoir."),
+        ("de", "Guten Tag, ich habe ein Paket für Sie.", "Gut, ich gebe es beim Nachbarn ab. Auf Wiedersehen.", "Vielen Dank, tschüss."),
+        ("de", "Guten Tag, ich habe ein Paket für Sie.", "Alles klar, bis bald.", "Vielen Dank, tschüss."),
+        ("en", "Hi, I have a package for the owner, can I leave it at the front desk?", "Okay, I'll leave it at the front desk. Have a nice day.", "Thank you, bye."),
+    ];
+
+    fn business_of(lang: &str) -> &'static str {
+        PARTINGS.iter().find(|p| p.0 == lang).map(|p| p.1).unwrap()
+    }
+
+    fn lang_of(lang: &str) -> &'static str {
+        PARTINGS.iter().find(|p| p.0 == lang).map(|p| p.0).unwrap()
+    }
+
+    #[test]
+    fn polite_partings_end_the_callers_side_in_every_language() {
+        for &(lang, business, parting, ai_bye) in PARTINGS {
+            let mut m = talked(lang_of(lang), business);
+            let step = said(&mut m, parting);
+            assert!(step.ends_call || step.event == ClosingEvent::CallerPreClosing, "{lang}: {parting} {step:?}");
+            m.on_ai_turn(ai_bye, true, false);
+            // The AI's end_call may close the line at once: no bye of theirs is waited for.
+            assert!(m.caller_done(), "{lang}: {parting}");
+            assert!(!m.awaits_caller_bye(), "{lang}: {parting}");
+        }
+    }
+
+    #[test]
+    fn everyday_lines_with_those_words_end_nothing() {
+        for (lang, s) in [
+            ("ja", "すみません、ちょっと、失礼します。"),
+            ("ja", "失礼します。"),
+            ("ja", "はい、お願いします。"),
+            ("ja", "明日の件、よろしくお願いします。"),
+            ("ja", "夜分に失礼します。"),
+            ("zh-TW", "你先這樣放著就好，我等一下下去拿"),
+            ("zh-TW", "我們先這樣處理好不好"),
+            ("es", "Trabajo hasta tarde, no estoy en casa."),
+            ("fr", "Le colis arrive demain matin."),
+            ("de", "Das Paket kommt bis Freitag."),
+            ("pt", "A encomenda chega amanhã de tarde."),
+            ("ko", "네, 알겠습니다."),
+            ("en", "I had a nice day at the office."),
+        ] {
+            let mut m = talked(lang_of(lang), business_of(lang));
+            let step = said(&mut m, s);
+            assert!(!step.ends_call, "{lang}: {s}");
+            assert_eq!(m.state(), ClosingState::Talking, "{lang}: {s}");
+        }
+        // At the very start, 「…です。失礼します。」 is no goodbye.
+        let mut m = ClosingMachine::new("ja");
+        assert!(!said(&mut m, "もしもし、大和運輸の田中です。失礼します。").ends_call);
+        assert_eq!(m.state(), ClosingState::Talking);
     }
 }
