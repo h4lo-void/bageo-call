@@ -833,6 +833,7 @@ class TelephonyUplinkInjector(
  */
 class RootFifoUplinkInjector : UplinkInjector {
     private val helperPaths = listOf(
+        "/data/adb/modules/bageo_ai_call_agent/inject",
         "/data/adb/modules/pixelcallai_uplink/inject",
         "/data/local/tmp/pixelcallai_uplink",
     )
@@ -843,6 +844,7 @@ class RootFifoUplinkInjector : UplinkInjector {
     override fun isAvailable(): Boolean {
         availableCached?.let { return it }
         val ok = helperPaths.any { pathExistsExecutable(it) } ||
+            pathExistsExecutable("/data/adb/modules/bageo_ai_call_agent") ||
             pathExistsExecutable("/data/adb/modules/pixelcallai_uplink")
         availableCached = ok
         return ok

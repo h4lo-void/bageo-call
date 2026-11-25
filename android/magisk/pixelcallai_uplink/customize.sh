@@ -49,3 +49,14 @@ fi
 
 ui_print "- priv-app APK: ${APK_SIZE} bytes"
 ui_print "- rollback: touch \$MODDIR/disable && reboot"
+
+# pixelcallai_uplink (computer-linked) and bageo_ai_call_agent (phone-only)
+# install the same app. Keep only the module being installed: the other one
+# is removed at the next reboot.
+SELF_ID=$(sed -n 's/^id=//p' "$MODPATH/module.prop" | tr -d '\r' | head -n 1)
+for OTHER in pixelcallai_uplink bageo_ai_call_agent; do
+  [ "$OTHER" = "$SELF_ID" ] && continue
+  [ -d "/data/adb/modules/$OTHER" ] || continue
+  touch "/data/adb/modules/$OTHER/remove"
+  ui_print "- replacing $OTHER: removed at the next reboot"
+done

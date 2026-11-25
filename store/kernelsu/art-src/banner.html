@@ -1,0 +1,69 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!-- Bageo AI Call Agent store banner, 1280x640. Open with ?lang=en or ?lang=zh-CN. -->
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1280px;height:640px;font-family:-apple-system,"SF Pro Display","Helvetica Neue","PingFang SC",sans-serif;background:linear-gradient(135deg,#FFD85E 0%,#FFC23A 100%);position:relative;overflow:hidden;color:#1B1B1F}
+.dots{position:absolute;inset:0;background-image:radial-gradient(rgba(27,27,31,.07) 2px,transparent 2px);background-size:26px 26px}
+.left{position:absolute;left:68px;top:64px;width:660px}
+.brand{display:flex;align-items:center;gap:22px}
+.brand svg{width:112px;height:112px;filter:drop-shadow(0 8px 18px rgba(0,0,0,.18))}
+.name{font-size:28px;font-weight:700;letter-spacing:.5px;opacity:.75}
+h1{font-size:62px;line-height:1.02;font-weight:800;letter-spacing:-1px;margin-top:6px}
+.tag{margin-top:32px;font-size:38px;font-weight:800;line-height:1.22}
+.free{margin-top:26px;display:inline-flex;align-items:center;gap:12px;background:#0E8F8F;color:#fff;border-radius:16px;padding:13px 20px;font-size:26px;font-weight:800}
+.free span{font-size:21px;font-weight:600;color:#FFE79A}
+.chips{margin-top:22px;display:flex;flex-wrap:wrap;gap:12px;width:740px}
+.chip{background:#1B1B1F;color:#FFF;border-radius:999px;padding:10px 18px;font-size:20px;font-weight:700;white-space:nowrap}
+.phone{position:absolute;right:80px;top:30px;width:340px;height:576px;background:#101014;border-radius:46px;padding:14px;box-shadow:0 30px 60px rgba(0,0,0,.35);transform:rotate(4deg)}
+.screen{width:100%;height:100%;background:#F7F4EC;border-radius:34px;overflow:hidden;position:relative}
+.bar{background:#0E8F8F;color:#fff;padding:22px 20px 13px}
+.bar .who{font-size:15px;opacity:.85}
+.bar .num{font-size:24px;font-weight:700;margin-top:2px}
+.bar .st{margin-top:10px;display:inline-block;background:#FFCF4A;color:#1B1B1F;font-weight:700;font-size:14px;padding:5px 10px;border-radius:8px}
+.msgs{padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.m{max-width:86%;padding:8px 12px;border-radius:15px;font-size:14px;line-height:1.3}
+.c{background:#E4E1D8;align-self:flex-start;border-bottom-left-radius:4px}
+.a{background:#1B1B1F;color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+.lbl{font-size:11px;font-weight:700;opacity:.6;margin-bottom:2px}
+.timer{position:absolute;left:14px;right:14px;bottom:16px;background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 4px 14px rgba(0,0,0,.08);font-size:15px;line-height:1.35}
+.timer b{font-size:23px;color:#C2410C}
+.timer .s{display:block;opacity:.7}
+</style></head><body>
+<div class="dots"></div>
+<div class="left">
+  <div class="brand"><svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="8" width="240" height="240" rx="56" fill="#FFCF4A"/><g fill="#0E8F8F"><rect x="52" y="204" width="136" height="16" rx="8"/><rect x="44" y="204" width="34" height="30" rx="11"/><rect x="162" y="204" width="34" height="30" rx="11"/></g><g stroke="#E08A00" stroke-width="7" stroke-linecap="round"><line x1="104" y1="186" x2="104" y2="203"/><line x1="128" y1="186" x2="128" y2="203"/></g><polygon points="70,150 22,176 30,192 84,176" fill="#1B1B1F"/><ellipse cx="112" cy="142" rx="56" ry="50" fill="#1B1B1F"/><circle cx="146" cy="88" r="38" fill="#1B1B1F"/><polygon points="158,60 166,30 172,56 184,36 184,64 198,50 190,76" fill="#1B1B1F"/><g transform="rotate(-24 100 150)"><ellipse cx="100" cy="150" rx="42" ry="25" fill="#34343B"/><ellipse cx="88" cy="160" rx="18" ry="7" fill="#FFFFFF"/></g><g fill="#FFF4D8" stroke="#1B1B1F" stroke-width="3" stroke-linejoin="round"><polygon points="178,74 216,84 180,92"/><polygon points="180,94 208,102 176,106"/></g><circle cx="158" cy="80" r="8" fill="#FF8A1F"/><circle cx="159" cy="80" r="3.5" fill="#1B1B1F"/><g fill="none" stroke="#1B1B1F" stroke-width="5" stroke-linecap="round"><path d="M222 80 q7 13 0 26"/><path d="M233 71 q13 22 0 44"/></g></svg><div><div class="name" data-t="name"></div><h1>AI Call Agent</h1></div></div>
+  <div class="tag" data-h="tag"></div>
+  <div class="free"><b data-t="free"></b><span data-t="freesub"></span></div>
+  <div class="chips"><span class="chip" data-t="k1"></span><span class="chip" data-t="k2"></span><span class="chip" data-t="k3"></span><span class="chip" data-t="k4"></span></div>
+</div>
+<div class="phone"><div class="screen">
+  <div class="bar"><div class="who" data-t="who"></div><div class="num">+1 555-0142</div><span class="st" data-t="st"></span></div>
+  <div class="msgs">
+    <div class="m c"><div class="lbl" data-t="caller"></div><span data-t="m1"></span></div>
+    <div class="m a"><div class="lbl">Bageo AI</div><span data-t="m2"></span></div>
+    <div class="m c"><div class="lbl" data-t="caller"></div><span data-t="m3"></span></div>
+    <div class="m a"><div class="lbl">Bageo AI</div><span data-t="m4"></span></div>
+  </div>
+  <div class="timer"><span data-t="busy"></span> <b>27:05</b><span class="s" data-t="nothing"></span></div>
+</div></div>
+<script>
+const T={
+ "en":{name:"Bageo",tag:"AI answers your calls.<br>Right on your phone.",free:"No API fees",freesub:"with a free Google AI Studio key",
+  k1:"No PC needed",k2:"Stalls scammers",k3:"Calls for you",k4:"79 languages",
+  who:"Unknown caller",st:"Scam detected · AI stalling",caller:"Caller",
+  m1:"This is your bank. Read me the code we just sent.",m2:"Oh no! Which card? The blue one or the old red one…",
+  m3:"Sir, just the 6-digit code, please.",m4:"Hang on, my glasses… is it the number on the back?",
+  busy:"Kept them busy",nothing:"No personal details given"},
+ "zh-CN":{name:"Bageo · 八哥",tag:"AI 帮你接电话<br>手机装上就能用",free:"免 API 费用",freesub:"用 Google AI Studio 免费额度",
+  k1:"不用电脑",k2:"拖住诈骗",k3:"帮你打电话",k4:"79 种语言",
+  who:"未知来电",st:"识别为诈骗 · AI 拖住中",caller:"来电者",
+  m1:"我是银行的，把刚发给你的验证码念给我。",m2:"哎呀！哪张卡？蓝色那张还是旧的红色那张……",
+  m3:"先生，就那 6 位验证码。",m4:"等等，我找一下老花镜……是卡背面那串数字吗？",
+  busy:"已经拖了",nothing:"没给任何个人资料"}
+};
+const L=T[new URLSearchParams(location.search).get("lang")]||T.en;
+document.querySelectorAll("[data-t]").forEach(e=>{e.textContent=L[e.dataset.t];});
+document.querySelectorAll("[data-h]").forEach(e=>{e.innerHTML=L[e.dataset.h];});
+</script>
+</body></html>

@@ -111,9 +111,12 @@ if [ "$STANDALONE" -eq 1 ]; then
     mkdir -p "$PKG_DIR/lib/arm64"
     cp "$AGENT_SO" "$PKG_DIR/lib/arm64/libbageo_agent.so"
     sh "$REPO_ROOT/scripts/bundle-assets.sh" copy "$REPO_ROOT/assets" "$PKG_DIR/bageo_assets"
-    sed 's/^name=.*/name=Bageo Standalone/' "$STAGE/module.prop" | \
-      sed 's/^description=.*/description=All-in-one AI phone assistant running directly on your rooted Pixel without a computer. Rollback: switch to a normal phone in the app, then disable or remove this module and reboot. Do not also install the APK as a normal user app./' \
-      > "$STAGE/module.prop.new"
+    # The phone-only edition is its own module: store ID bageo_ai_call_agent on
+    # modules.kernelsu.org. customize.sh removes pixelcallai_uplink if present.
+    sed -e 's/^id=.*/id=bageo_ai_call_agent/' \
+      -e 's/^name=.*/name=Bageo AI Call Agent/' \
+      -e 's/^description=.*/description=Phone only: runs all of Bageo on this phone, no computer needed. To remove: switch to a normal phone in the app, then disable or remove this module and reboot. Do not also install the APK as a normal user app./' \
+      "$STAGE/module.prop" > "$STAGE/module.prop.new"
     mv "$STAGE/module.prop.new" "$STAGE/module.prop"
 fi
 

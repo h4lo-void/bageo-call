@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/KernelSU-Modules/tools/main/schemas/module.schema.json
+# Store listing for modules.kernelsu.org. Kept here to submit to the KernelSU
+# module repository in 2027, once the GitHub account is one year old.
+# Version and download come from the release ZIP's module.prop, never from here.
+schemaVersion: 1
+id: bageo_ai_call_agent
+name: Bageo AI Call Agent
+summary: "AI answers your phone calls, right on your rooted phone. No PC, no API fees with a free Google AI Studio key. Stalls scammers and makes calls for you. AI 帮你接电话：手机装上就能用，不用电脑，免 API 费用。"
+description: store/kernelsu/README.md
+license: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+homepage: https://github.com/h4lo-void/bageo-call
+support: https://github.com/h4lo-void/bageo-call/issues
+tags: [ai, phone, call-screening, anti-scam, spam-blocker, assistant, gemini, voice, dialer, privacy]
+icon: store/kernelsu/assets/icon.png
+metamodule: false
+authors:
+  - name: h4lo-void
+    url: https://github.com/h4lo-void
+compatibility:
+  androidMinApi: 29
+  architectures: [arm64-v8a]
+release:
+  assetPattern: "bageo-phone-standalone-*.zip"
+
