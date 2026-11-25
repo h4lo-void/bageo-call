@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v1.7.0"><img src="https://img.shields.io/badge/release-v1.7.0-brightgreen.svg" alt="Versão v1.7.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.0.0"><img src="https://img.shields.io/badge/release-v2.0.0-brightgreen.svg" alt="Versão v2.0.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="Licença: AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/commercial-dual%20license-gold.svg" alt="Licença comercial disponível"></a>
 </p>
@@ -42,6 +42,21 @@
     </td>
   </tr>
 </table>
+
+## Edição só celular: sem computador, sem custo de API
+
+<p align="center">
+  <a href="store/kernelsu/README.md"><img src="store/kernelsu/assets/banner.en.png" width="760" alt="Bageo AI Call Agent: a edição do Bageo só para o celular"></a>
+</p>
+
+**Bageo AI Call Agent** é a edição do Bageo só para o celular: o Bageo inteiro roda em um Android com root, sem precisar deixar um computador ligado. Ela usa uma chave Gemini gratuita do Google AI Studio, então não há custo de API; nos nossos testes, a cota gratuita deu para 10 ligações ou mais por dia (o limite gratuito é definido pelo Google e pode mudar). Baixe `bageo-phone-standalone-<versão>.zip` em [Releases](https://github.com/h4lo-void/bageo-call/releases) e instale no KernelSU ou no Magisk. [Leia a apresentação completa](store/kernelsu/README.md).
+
+| Arquivo de instalação | Para que serve | ID do módulo |
+|---|---|---|
+| `bageo-phone-standalone-<versão>.zip` | **Bageo AI Call Agent**: só o celular, sem computador. O Bageo inteiro roda no celular. | `bageo_ai_call_agent` |
+| `bageo-phone-module-<versão>.zip` | Para usar com um computador: vai junto com o instalador do Windows, macOS ou Linux, ou com o Docker. | `pixelcallai_uplink` (o gerenciador mostra **Bageo Uplink (for Bageo on a computer)**) |
+
+Instale apenas um dos dois. Ao instalar um, o outro é removido automaticamente na próxima reinicialização.
 
 <p align="center"><sub>O nome vem de bāgē (八哥), o mainá-de-crista, uma ave que aprende a falar como as pessoas com quem convive.</sub></p>
 
@@ -216,9 +231,9 @@ Todos os recursos em detalhes: [Recursos](docs/en/FEATURES.md).
 ## O que você precisa
 
 1. **Um celular Android reserva** com o seu SIM, com root pelo Magisk ou KernelSU, Android 10 ou mais novo. Testado: Google Pixel 7, 7a, 8 e 9.
-2. **Um computador** ligado enquanto as ligações devem ser atendidas: Windows 10/11, macOS, Linux ou Docker.
+2. **Um computador** ligado enquanto as ligações devem ser atendidas: Windows 10/11, macOS, Linux ou Docker. Com a edição só para o celular, você não precisa de computador.
 3. **Um cabo USB** (Wi-Fi também funciona).
-4. **Uma chave de API do Gemini** do [Google AI Studio](https://aistudio.google.com/apikey). O Google cobra por uso.
+4. **Uma chave de API do Gemini** do [Google AI Studio](https://aistudio.google.com/apikey), gratuita. Dentro da cota gratuita você não paga nada (nos nossos testes, deu para 10 ligações ou mais por dia). O Google só cobra por uso se você passar da cota gratuita ou mudar para um plano pago.
 
 ## Início rápido
 
@@ -282,9 +297,8 @@ lados não ouve nada. Veja
 <details>
 <summary><strong>Quanto custa manter funcionando?</strong></summary>
 
-O Bageo é gratuito para uso pessoal e de código aberto sob `AGPL-3.0-only` (quem o operar como serviço hospedado de código fechado ou comercial precisa de uma [Licença Comercial](COMMERCIAL_LICENSE.md)). O Google cobra por uso o áudio do Gemini Live
-de cada ligação que a IA atende, recebida ou feita; os resumos são pedidos
-pequenos de texto ao modelo mais barato do Gemini. As prévias de voz e o aviso
+O Bageo é gratuito para uso pessoal e de código aberto sob `AGPL-3.0-only` (quem o operar como serviço hospedado de código fechado ou comercial precisa de uma [Licença Comercial](COMMERCIAL_LICENSE.md)). As ligações que a IA atende, recebidas ou feitas, usam o áudio do Gemini Live;
+os resumos são pedidos pequenos de texto ao modelo mais barato do Gemini. Com uma chave Gemini gratuita do Google AI Studio você não paga nada dentro da cota gratuita (nos nossos testes, deu para 10 ligações ou mais por dia); o Google só cobra por uso se você passar da cota gratuita ou mudar para um plano pago. As prévias de voz e o aviso
 de número bloqueado são pré-gravados e não custam nada. Some o seu plano de
 celular e a energia do computador, e defina um orçamento na sua conta do Google
 se quiser um limite.

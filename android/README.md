@@ -12,16 +12,23 @@ Bageo agent on your computer and plays the AI's reply back into the call.
 | `magisk/pixelcallai_uplink/` | The module. It installs the app as a *privileged system app*, because Android only lets privileged apps record call audio and write audio into a call; a normal install cannot do the job. Its root helper also carries out the switch between AI mode and a normal phone. |
 
 The phone does no AI work itself. The package name and module id keep the project's
-earlier working name, so phones already running the module update in place.
+earlier working name, so phones already running the computer edition of the module
+update in place. The phone-only edition has its own module id (see below).
 
-**Version 1.7.0:** app `versionName` `1.7.0`, `versionCode` 34; module `version`
-`v1.7.0`, `versionCode` 26 (`module.prop`); release files
-`bageo-phone-module-1.7.0.zip` (bridge edition paired with a computer) and
-`bageo-phone-standalone-1.7.0.zip` (all-in-one standalone edition running Bageo
-directly inside the Android app via `libbageo_agent.so`, bundled `bageo_assets`,
-and an embedded `WebView` console). A SIM is always picked by its subscription id
-(`sub_id`). Both editions share `com.pixelcallai.streamer` and module id
-`pixelcallai_uplink`.
+**Version 2.0.0:** app `versionName` `2.0.0`, `versionCode` 38; module `version`
+`v2.0.0`, `versionCode` 30 (`module.prop`); release files
+`bageo-phone-module-2.0.0.zip` (**Bageo Uplink**, the bridge edition paired with a
+computer, module id `pixelcallai_uplink`) and
+`bageo-phone-standalone-2.0.0.zip` (**Bageo AI Call Agent**, the all-in-one
+phone-only edition running Bageo directly inside the Android app via
+`libbageo_agent.so`, bundled `bageo_assets`, and an embedded `WebView` console;
+module id `bageo_ai_call_agent`). A SIM is always picked by its subscription id
+(`sub_id`). Both editions install the same app `com.pixelcallai.streamer`; when you
+install one, the root manager removes the other at the next reboot, and the app and
+its settings stay. The source folder stays `magisk/pixelcallai_uplink/`; the module
+id is switched only when the phone-only edition is packed (see
+`scripts/package-uplink-module.sh --standalone`). The phone-only edition needs no
+computer and no API fees with a free Gemini key from Google AI Studio.
 
 > **Use a dedicated phone.** The module takes over the phone app, disables Google
 > Dialer, turns on Do Not Disturb and sets the ringer volume to zero. The phone is not
@@ -255,7 +262,7 @@ reported as a code:
 | `in_call` | A call rings or is active. |
 | `busy` | Another switch is still running. |
 | `invalid_mode` | The request named neither `ai` nor `normal`. |
-| `no_root` | The module's helper did not take the request: the module is not running. Enable **Bageo Uplink** in Magisk or KernelSU and reboot. |
+| `no_root` | The module's helper did not take the request: the module is not running. Enable **Bageo Uplink** (computer edition) or **Bageo AI Call Agent** (phone-only edition) in Magisk or KernelSU and reboot. |
 | `dialer_failed`, `screening_failed`, `dnd_failed`, `volume_failed`, `save_failed` | That step did not take effect. With `dnd_failed` on the way to a normal phone, the app names the mode that kept Do Not Disturb on (`dnd_mode` below) and does not retry by itself. |
 | `failed` | Any other failure, for example the request could not be written or the helper gave no usable answer. |
 
@@ -335,12 +342,16 @@ To remove Bageo:
 1. Switch the phone to a [normal phone](#normal-phone-mode). That re-enables Google
    Dialer, turns Do Not Disturb off and restores the volumes, so steps 3 and 4 below
    are then already done.
-2. In the Magisk or KernelSU app, disable or remove the **Bageo Uplink** module and
+2. In the Magisk or KernelSU app, disable or remove the Bageo module (**Bageo Uplink**
+   for the computer edition, **Bageo AI Call Agent** for the phone-only edition) and
    reboot. If the phone does not boot far enough for that, use the root manager's
    safe mode, or from `adb shell` / recovery with root:
 
    ```text
+   # computer edition (Bageo Uplink)
    touch /data/adb/modules/pixelcallai_uplink/disable
+   # phone-only edition (Bageo AI Call Agent)
+   touch /data/adb/modules/bageo_ai_call_agent/disable
    reboot
    ```
 
@@ -576,7 +587,7 @@ adb logcat -s CallAudioService BridgeClient AgentControlClient TelephonyUplink V
 | A text from the agent is not sent | Look for `SmsSender`. `no_permission`: the module did not grant `SEND_SMS` (reboot, or switch to AI mode once). `no_service` / `radio_off` / `generic_failure`: no signal, airplane mode, or the carrier refused it (for example, the SIM has no balance or the line is suspended). |
 | The agent's call-back or errand never dials | Look for `OutboundCallHelper` and the `place_call_failed` reason: `busy` (the phone was ringing or on a call; the agent retries later), `ai_call_disabled` (normal phone mode), `dial_helper_failed` (Android refused the call). |
 | An errand call is hung up the moment it connects | It went out on another SIM than the agent asked for (`wrong_sim`), usually after a SIM swap. Call the phone once so the agent learns its SIMs again. |
-| The module made the phone fail to boot | Use the root manager's safe mode, or create `/data/adb/modules/pixelcallai_uplink/disable` from recovery, then reboot. |
+| The module made the phone fail to boot | Use the root manager's safe mode, or create `/data/adb/modules/pixelcallai_uplink/disable` (computer edition) or `/data/adb/modules/bageo_ai_call_agent/disable` (phone-only edition) from recovery, then reboot. |
 
 ## Legal
 
