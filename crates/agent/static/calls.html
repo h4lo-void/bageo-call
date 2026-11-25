@@ -391,8 +391,10 @@ audio{width:100%;height:40px;margin-top:10px;display:block}
 .slrow{grid-template-columns:minmax(0,20rem) minmax(0,14rem) auto}
 .chan{border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px;background:var(--surface)}
 .chan.offc{opacity:.75}
-.chan-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.chan-head .kind{font-weight:600}
+.chan-head{display:flex;gap:10px;align-items:center}
+.chan-title{flex:1 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
+.chan-head .kind{font-weight:600;min-width:0;overflow-wrap:break-word}
+.chan-head>.btn{flex:0 0 auto;white-space:nowrap}
 .chan-head .sw{padding:0;margin-inline-start:auto;align-items:center;gap:8px}
 .chan-head .sw span{font-size:.87rem;color:var(--muted)}
 .chan-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}
@@ -424,11 +426,13 @@ audio{width:100%;height:40px;margin-top:10px;display:block}
 .item .sdot.bad{background:var(--bad)}
 .item b{display:block;font-weight:600}
 .item .d{color:var(--muted);font-size:.86rem}
-.sim-list{display:flex;flex-direction:column;gap:6px;margin-top:8px}
-.sim-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:.86rem}
+.sim-list{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.sim-row{display:flex;flex-direction:column;align-items:flex-start;gap:4px;font-size:.86rem}
 .sim-row .sim-badge{font-size:.73rem;font-weight:600;padding:1px 6px;border-radius:5px;background:var(--surface2);color:var(--muted);letter-spacing:.02em;white-space:nowrap}
-.sim-row .sim-num{font-family:var(--mono);color:var(--text);font-size:.88rem}
-.sim-row .sim-in{width:auto;flex:1 1 10.5rem;max-width:14rem;min-height:30px;padding:3px 9px;font-family:var(--mono);font-size:.85rem}
+.sim-line{display:flex;gap:6px;align-items:center;align-self:stretch;min-width:0}
+.sim-line .btn{flex:0 0 auto;white-space:nowrap}
+.sim-row .sim-num{font-family:var(--mono);color:var(--text);font-size:.88rem;min-width:0;overflow-wrap:anywhere}
+.sim-row .sim-in{width:auto;flex:1 1 auto;min-width:0;max-width:14rem;min-height:30px;padding:3px 9px;font-family:var(--mono);font-size:.85rem}
 .wide{grid-column:1/-1}
 .cu{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;padding-bottom:14px;margin-bottom:4px;border-bottom:1px solid var(--line)}
 .cu .qr{width:120px;height:120px;image-rendering:pixelated;border-radius:8px;flex:0 0 auto;border:1px solid var(--line)}
@@ -522,8 +526,8 @@ dialog .terms li+li{margin-top:8px}
 .er-pre{margin-top:16px;padding:12px 14px;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface2)}
 .er-pre .help{margin:4px 0 0}
 .er-pre .er-pre-note{margin:8px 0 0}
-.er-pre .er-pre-in{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.er-pre .er-pre-in input{flex:1 1 14rem;min-width:0}
+.er-pre .er-pre-in{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.er-pre .er-pre-in input{align-self:stretch;min-width:0}
 .er-pre .er-pre-opt{margin-top:12px}
 .er-count{font-variant-numeric:tabular-nums;white-space:nowrap}
 .er-list-head{margin:6px 0 10px}
@@ -4823,8 +4827,9 @@ function chanCard(c) {
   const hint = tCode("hint_", c.kind);
   card.append(
     h("div", { class: "chan-head" },
-      h("span", { class: "kind", text: kindLabel(c.kind) }),
-      c.id ? null : h("span", { class: "tag warn", text: t("n_new") }),
+      h("div", { class: "chan-title" },
+        h("span", { class: "kind", text: kindLabel(c.kind) }),
+        c.id ? null : h("span", { class: "tag warn", text: t("n_new") })),
       h("label", { class: "sw" }, h("span", { text: t("n_enabled") }), sw),
       h("button", { type: "button", class: "btn sm ghost", title: t("n_delete"), "aria-label": t("n_delete"), text: t("ct_delete"), onclick: () => { chans = chans.filter((x) => x !== c); renderChannels(); updateDirty(); } })),
     fields);
@@ -7204,11 +7209,12 @@ function phoneSimBlock(serial) {
     if (!editing) {
       wrap.append(h("div", { class: "sim-row" },
         badge,
-        h("span", { class: "sim-num", text: eff }),
-        h("button", {
-          type: "button", class: "btn xs ghost", text: t("ph_sim_edit"),
-          onclick: () => { simEdit[key] = true; simDraft[key] = eff; renderSystem(); },
-        })));
+        h("div", { class: "sim-line" },
+          h("span", { class: "sim-num", text: eff }),
+          h("button", {
+            type: "button", class: "btn xs ghost", text: t("ph_sim_edit"),
+            onclick: () => { simEdit[key] = true; simDraft[key] = eff; renderSystem(); },
+          }))));
     } else {
       const inp = h("input", {
         type: "tel", class: "sim-in", maxlength: "24", autocomplete: "off", spellcheck: "false",
@@ -7221,15 +7227,16 @@ function phoneSimBlock(serial) {
       });
       wrap.append(h("div", { class: "sim-row" },
         badge,
-        inp,
-        h("button", {
-          type: "button", class: "btn xs", disabled: !!simBusy[key], text: t("ph_sim_save"),
-          onclick: () => saveSimNumber(serial, subId, sim.country, inp.value),
-        }),
-        eff ? h("button", {
-          type: "button", class: "btn xs ghost", text: t("cancel"),
-          onclick: () => { delete simEdit[key]; delete simDraft[key]; renderSystem(); },
-        }) : null));
+        h("div", { class: "sim-line" },
+          inp,
+          h("button", {
+            type: "button", class: "btn xs", disabled: !!simBusy[key], text: t("ph_sim_save"),
+            onclick: () => saveSimNumber(serial, subId, sim.country, inp.value),
+          }),
+          eff ? h("button", {
+            type: "button", class: "btn xs ghost", text: t("cancel"),
+            onclick: () => { delete simEdit[key]; delete simDraft[key]; renderSystem(); },
+          }) : null)));
     }
   }
   return wrap;
