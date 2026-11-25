@@ -3550,7 +3550,6 @@ $("btnBlock").addEventListener("click", async () => {
 // received (the SMS forwarder hands them over) and the replies sent from here.
 const SMS_PAGE = 50;
 const SMS_MAX_PAGE = 200; // the most one request returns
-const SMS_SEEN = "pca.smsSeen"; // conversation key → when it was last looked at (ms)
 const SMS_GROUP_MS = 5 * 60 * 1000; // bubbles this close together share one time line
 const sms = {
   threads: [], total: 0, lines: [], q: "", state: "idle", error: "", seq: 0,
@@ -3564,26 +3563,23 @@ const sms = {
 let smsTicks = 0;
 
 // ---- read and unread
-function smsSeen() {
-  try {
-    const v = JSON.parse(store.get(SMS_SEEN) || "null");
-    return v && typeof v === "object" ? v : null;
-  } catch (_) { return null; }
-}
-const smsSaveSeen = (seen) => store.set(SMS_SEEN, JSON.stringify(seen));
-const smsUnread = (th, seen) => !!seen && Number(th.last_in_at || 0) > Number(seen[th.key] || 0);
-function smsMarkSeen(key, at) {
-  const seen = smsSeen();
-  if (!seen) return; // the first list marks everything as read
-  if (Number(seen[key] || 0) >= Number(at || 0)) return;
-  // The time of the newest message seen (the phone's clock, like last_in_at).
-  seen[key] = Number(at) || 0;
-  smsSaveSeen(seen);
+// Bageo keeps what is read, so every browser and phone shows the same.
+store.set("pca.smsSeen", null); // where this browser kept it before
+const smsUnread = (th) => Number(th.unread || 0) > 0;
+// The conversation on screen: what comes in there is read as it arrives.
+const smsOnScreen = () => (view === "sms" && visible() && sms.open && !sms.open.isNew && sms.convo ? sms.convo.key : "");
+// up_to: the newest message on screen; one that comes in meanwhile stays unread.
+function smsMarkRead(key, upTo) {
+  const th = sms.threads.find((x) => x.key === key);
+  if (th) th.unread = 0;
+  for (const m of sms.msgs) if (m.id <= upTo) m.unread = false;
+  // When it fails, the next list shows the conversation unread again.
+  api("/sms/thread/read?number=" + encodeURIComponent(key), jsonBody("POST", { up_to: upTo })).catch(() => {});
 }
 function smsDot() {
   if (sms.state !== "ok" || sms.q) return; // a search shows only part of the list
-  const seen = smsSeen();
-  $("navSms").hidden = !sms.threads.some((th) => smsUnread(th, seen));
+  const cur = smsOnScreen();
+  $("navSms").hidden = !sms.threads.some((th) => th.key !== cur && smsUnread(th));
 }
 
 // ---- the list of conversations
@@ -3599,22 +3595,6 @@ async function loadSmsThreads() {
     sms.total = Number(d.total) || 0;
     sms.q = q;
     sms.state = "ok";
-    if (!q) {
-      let seen = smsSeen();
-      if (!seen) {
-        // The first time: what is there already counts as read.
-        seen = {};
-        for (const th of sms.threads) seen[th.key] = Number(th.last_in_at) || 0;
-        smsSaveSeen(seen);
-      } else {
-        const keys = new Set(sms.threads.map((th) => th.key));
-        const gone = Object.keys(seen).filter((k) => !keys.has(k));
-        if (gone.length) { for (const k of gone) delete seen[k]; smsSaveSeen(seen); }
-      }
-    }
-    // The conversation in front is read.
-    const cur = sms.convo && view === "sms" && visible() ? sms.threads.find((th) => th.key === sms.convo.key) : null;
-    if (cur) smsMarkSeen(cur.key, cur.last_in_at);
   } catch (e) {
     if (seq !== sms.seq || sms.state === "ok") return; // keep what is shown
     sms.state = "error";
@@ -3687,10 +3667,9 @@ function smsRenderThreads() {
       : h("div", { class: "th-empty" }, h("b", { text: t("sms_empty_t") }), t("sms_empty_d")));
     return;
   }
-  const seen = smsSeen();
   const cur = sms.open && !sms.open.isNew && sms.convo ? sms.convo.key : "";
   for (const th of sms.threads) {
-    const unread = th.key !== cur && smsUnread(th, seen);
+    const unread = th.key !== cur && smsUnread(th);
     const prev = (th.last_dir === "out" ? t("sms_you") : "") + smsOneLine(th.last_text);
     box.append(h("button", {
       type: "button", class: "th" + (unread ? " unread" : ""),
@@ -3768,8 +3747,9 @@ async function smsLoadConvo(o) {
     }
     sms.convo = d;
     if (view === "sms" && visible()) {
-      const newest = sms.msgs.reduce((a, m) => (m.dir === "in" ? Math.max(a, Number(m.at_ms) || 0) : a), 0);
-      smsMarkSeen(d.key, newest);
+      const th = sms.threads.find((x) => x.key === d.key);
+      const upTo = sms.msgs.reduce((a, m) => (m.dir === "in" ? Math.max(a, Number(m.id) || 0) : a), 0);
+      if (upTo && (sms.msgs.some((m) => m.unread) || (th && smsUnread(th)))) smsMarkRead(d.key, upTo);
       smsDot();
     }
     smsRenderConvo(false, older ? "keep" : o && o.scroll);

@@ -79,6 +79,11 @@ pub struct SmsMessage {
     /// Why a sent message failed (the phone's code), else "".
     #[serde(default)]
     pub error: String,
+    /// A received message nobody has opened in the console yet. Kept with the
+    /// message, so every browser and phone shows the same; a file written
+    /// before this existed has none, which reads as read.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unread: bool,
 }
 
 impl SmsMessage {
@@ -152,6 +157,8 @@ pub struct Thread {
     pub count: usize,
     /// When the newest received message arrived (0: none received).
     pub last_in_at: u64,
+    /// Received messages not opened yet.
+    pub unread: usize,
 }
 
 /// The messages in memory, oldest first. Nothing here reads the clock or the
@@ -263,6 +270,7 @@ impl SmsBook {
             sub_id: new.sub_id,
             status: String::new(),
             error: String::new(),
+            unread: true,
         });
         self.prune(now_ms, keep_days);
         Pushed::Stored(id)
@@ -285,6 +293,7 @@ impl SmsBook {
             sub_id: new.sub_id,
             status: STATUS_SENDING.to_string(),
             error: String::new(),
+            unread: false,
         });
         self.prune(now_ms, keep_days);
         id
@@ -320,7 +329,7 @@ impl SmsBook {
             let key = key_of(m);
             let hit = !needle.is_empty() && (fold(&m.text).contains(&needle) || fold(m.peer()).contains(&needle));
             let entry = by_key.entry(key.clone()).or_insert_with(|| {
-                (Thread { key, number: String::new(), last: m.clone(), count: 0, last_in_at: 0 }, false)
+                (Thread { key, number: String::new(), last: m.clone(), count: 0, last_in_at: 0, unread: 0 }, false)
             });
             let (t, found) = entry;
             t.count += 1;
@@ -329,6 +338,7 @@ impl SmsBook {
             }
             if !m.is_out() {
                 t.last_in_at = t.last_in_at.max(m.at_ms);
+                t.unread += usize::from(m.unread);
             }
             *found |= hit;
         }
@@ -347,6 +357,20 @@ impl SmsBook {
     /// Every message of the conversation key, oldest first.
     pub fn thread(&self, key: &str, key_of: &dyn Fn(&SmsMessage) -> String) -> Vec<SmsMessage> {
         self.messages.iter().filter(|m| key_of(m) == key).cloned().collect()
+    }
+
+    /// Mark the received messages of the conversation key read, those up to
+    /// the id up_to (all when None): one that came in after the owner looked
+    /// stays unread. How many changed.
+    pub fn mark_read(&mut self, key: &str, up_to: Option<u64>, key_of: &dyn Fn(&SmsMessage) -> String) -> usize {
+        let mut changed = 0;
+        for m in self.messages.iter_mut().filter(|m| m.unread && up_to.map_or(true, |u| m.id <= u)) {
+            if key_of(&*m) == key {
+                m.unread = false;
+                changed += 1;
+            }
+        }
+        changed
     }
 
     /// Remove the conversation key; how many messages that was.
@@ -683,6 +707,16 @@ impl SmsStore {
         book.thread(key, key_of)
     }
 
+    /// [SmsBook::mark_read], saved when something changed.
+    pub fn mark_read(&self, key: &str, up_to: Option<u64>, key_of: &dyn Fn(&SmsMessage) -> String) -> usize {
+        let mut book = self.lock();
+        let changed = book.mark_read(key, up_to, key_of);
+        if changed > 0 {
+            self.save(&book);
+        }
+        changed
+    }
+
     /// Remove a conversation; how many messages that was.
     pub fn delete_thread(&self, key: &str, key_of: &dyn Fn(&SmsMessage) -> String) -> usize {
         let mut book = self.lock();
@@ -820,6 +854,34 @@ mod tests {
 
     fn out_to<'a>(to: &'a str, text: &'a str) -> NewOut<'a> {
         NewOut { to, text, from: "0912000111", serial: "TESTSERIAL01", device: "Pixel Test", sub_id: Some(1) }
+    }
+
+    #[test]
+    fn received_messages_stay_unread_until_their_conversation_is_read() {
+        let dir = temp_dir("unread");
+        let store = SmsStore::open(dir.clone(), NOW, KEEP);
+        let Pushed::Stored(first) = store.push(NOW, KEEP, sms("0912345678", "first")) else { panic!("stored") };
+        store.push(NOW + 1, KEEP, sms("+16505550142", "someone else"));
+        store.push_out(NOW + 2, KEEP, out_to("0912345678", "my reply"));
+        let unread = |s: &SmsStore| {
+            let (_, threads) = s.threads(NOW + 10, KEEP, "", &key_tw, &|_: &SmsMessage| String::new());
+            let mut v: Vec<(String, usize)> = threads.into_iter().map(|t| (t.key, t.unread)).collect();
+            v.sort();
+            v
+        };
+        let both = |a: usize, b: usize| vec![("+16505550142".to_string(), a), ("+886912345678".to_string(), b)];
+        assert_eq!(unread(&store), both(1, 1), "a sent one is not unread");
+        // What came in after the owner looked stays unread.
+        store.push(NOW + 3, KEEP, sms("+886912345678", "second"));
+        assert_eq!(store.mark_read("+886912345678", Some(first), &key_tw), 1);
+        assert_eq!(unread(&store), both(1, 1));
+        assert_eq!(store.mark_read("+886912345678", None, &key_tw), 1);
+        assert_eq!(store.mark_read("+886912345678", None, &key_tw), 0, "nothing left");
+        assert_eq!(unread(&SmsStore::open(dir.clone(), NOW + 10, KEEP)), both(1, 0), "saved");
+        // A file from before the mark existed: everything in it reads as read.
+        let old: Vec<SmsMessage> = serde_json::from_str(r#"[{"id": 1, "at_ms": 1, "from": "0912345678", "text": "old"}]"#).unwrap();
+        assert!(!old[0].unread);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
