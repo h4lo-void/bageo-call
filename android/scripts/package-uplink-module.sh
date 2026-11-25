@@ -115,7 +115,7 @@ if [ "$STANDALONE" -eq 1 ]; then
     # modules.kernelsu.org. customize.sh removes pixelcallai_uplink if present.
     sed -e 's/^id=.*/id=bageo_ai_call_agent/' \
       -e 's/^name=.*/name=Bageo AI Call Agent/' \
-      -e 's/^description=.*/description=AI answers your phone calls right on your rooted phone. No computer needed. To remove: switch to a normal phone in the app, then disable or remove this module and reboot. Do not also install the APK as a normal user app./' \
+      -e 's/^description=.*/description=Phone only: runs all of Bageo on this phone, no computer needed. To remove: switch to a normal phone in the app, then disable or remove this module and reboot. Do not also install the APK as a normal user app./' \
       "$STAGE/module.prop" > "$STAGE/module.prop.new"
     mv "$STAGE/module.prop.new" "$STAGE/module.prop"
 fi

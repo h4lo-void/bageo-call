@@ -45,7 +45,9 @@ Google sets the free limit and may change it. On the free tier Google may use wh
 2. Open **Bageo** and enter your Gemini key and your name.
 3. Turn on **AI answers**, then call your number from another phone.
 
-If the Bageo app is already installed as a normal app, uninstall it before step 1. If you use Bageo with a computer, this module replaces the computer-linked phone module (`pixelcallai_uplink`) automatically. Do not install both.
+If the Bageo app is already installed as a normal app, uninstall it before step 1. If the computer-linked phone module (`pixelcallai_uplink`) is installed, this module replaces it automatically. Do not install both.
+
+Download **bageo-phone-standalone**, not bageo-phone-module (that one is for Bageo on a computer).
 
 ## Turn it off
 
@@ -128,7 +130,9 @@ Bageo 让 AI 替你接打到你自己号码的电话。它完全在一台已 roo
 2. 打开 **Bageo**，填入 Gemini 密钥和你的名字。
 3. 打开 **AI 接听**，用另一部手机打给自己试试。
 
-如果手机上装过一般版的 Bageo App，请在第 1 步之前先卸载。如果你在用电脑版 Bageo，本模块会自动替换电脑连动版的手机模块（`pixelcallai_uplink`），两个不要同时装。
+如果手机上装过一般版的 Bageo App，请在第 1 步之前先卸载。如果已经装了电脑连动版的手机模块（`pixelcallai_uplink`），本模块会自动替换它，两个不要同时装。
+
+要下载的是 **bageo-phone-standalone**，不是 bageo-phone-module（那个要配合电脑用）。
 
 ## 关闭与卸载
 
