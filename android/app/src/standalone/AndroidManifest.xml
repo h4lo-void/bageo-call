@@ -8,6 +8,10 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- Whitelist and urgent calls open the call screen over the lock screen. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- A call that rings for the owner vibrates when the phone's ringer says so. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application>
         <meta-data android:name="xposedmodule" tools:node="remove" />
@@ -21,12 +25,45 @@
             android:windowSoftInputMode="adjustResize"
             tools:replace="android:excludeFromRecents" />
 
+        <!-- Also before the first unlock: a call that rings for the owner shows here. -->
         <activity
             android:name=".OwnerCallActivity"
             android:exported="false"
+            android:directBootAware="true"
             android:excludeFromRecents="true"
             android:launchMode="singleTop"
             android:showOnLockScreen="true" />
+
+        <!-- Answer and decline on the notification of a call that rings for the owner. -->
+        <receiver
+            android:name=".OwnerRingActionReceiver"
+            android:exported="false"
+            android:directBootAware="true" />
+
+        <!--
+          Android's after-call request to the phone app (POST_CALL): taken and closed
+          without a screen. Off by default; Bageo turns it on only in AI mode.
+        -->
+        <activity
+            android:name=".PostCallActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.telecom.action.POST_CALL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Sets up Bageo's own mode when the app's process starts; serves no data. -->
+        <provider
+            android:name=".BageoModesInit"
+            android:authorities="${applicationId}.bageo-modes"
+            android:directBootAware="true"
+            android:exported="false" />
 
         <service
             android:name=".BageoModeTileService"
@@ -46,6 +83,7 @@
             <intent-filter>
                 <action android:name="android.app.action.INTERRUPTION_FILTER_CHANGED" />
                 <action android:name="android.app.action.AUTOMATIC_ZEN_RULE_STATUS_CHANGED" />
+                <action android:name="android.app.action.NOTIFICATION_POLICY_ACCESS_GRANTED_CHANGED" />
             </intent-filter>
         </receiver>
     </application>

@@ -67,6 +67,9 @@ object PhoneModeManager {
     /** Ids of switches started on the phone itself; their results are not sent to the agent. */
     const val LOCAL_ID_PREFIX = "app-"
 
+    /** Key of the earpiece volume in the saved normal-phone volumes. */
+    const val KEY_VOICE_CALL = "voice_call"
+
     /**
      * [mode] is the phone's mode after the attempt; [error] is empty when [ok].
      * [dndMode]: with [ERR_DND], the name of the phone's mode that kept Do Not Disturb on
@@ -121,7 +124,7 @@ object PhoneModeManager {
     private val VOLUMES = listOf(
         Volume(AudioManager.STREAM_RING, "ring"),
         Volume(AudioManager.STREAM_NOTIFICATION, "notification"),
-        Volume(AudioManager.STREAM_VOICE_CALL, "voice_call"),
+        Volume(AudioManager.STREAM_VOICE_CALL, KEY_VOICE_CALL),
         Volume(AudioManager.STREAM_MUSIC, "music"),
         Volume(AudioManager.STREAM_ALARM, "alarm"),
         Volume(AudioManager.STREAM_SYSTEM, "system"),
@@ -131,6 +134,9 @@ object PhoneModeManager {
         Thread(r, "phone-mode").apply { isDaemon = true }
     }
     private val busy = AtomicBoolean(false)
+    /** The mode the running switch goes to; null when no switch runs. */
+    @Volatile
+    private var switchTarget: String? = null
     private val listeners = CopyOnWriteArraySet<Listener>()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var retryRunnable: Runnable? = null
@@ -162,6 +168,13 @@ object PhoneModeManager {
 
     /** A switch (or the start-up check) is running. */
     fun isSwitching(): Boolean = busy.get()
+
+    /**
+     * A switch to [mode] is running now. While the phone goes to a normal phone, the
+     * app's copy of the mode still says AI until the script is done: nothing may mute
+     * the phone or take the phone app role back then.
+     */
+    fun isSwitchingTo(mode: String): Boolean = switchTarget == mode
 
     fun isValidMode(mode: String): Boolean =
         mode == Prefs.PHONE_MODE_AI || mode == Prefs.PHONE_MODE_NORMAL
@@ -295,6 +308,8 @@ object PhoneModeManager {
             state.pending -> "the last switch did not finish"
             state.mode == Prefs.PHONE_MODE_NORMAL && defaultDialer(ctx) == ctx.packageName ->
                 "normal mode, but Bageo is still the phone app"
+            state.mode == Prefs.PHONE_MODE_AI && defaultDialer(ctx).let { it.isNotEmpty() && it != ctx.packageName } ->
+                "AI mode, but Bageo is not the phone app"
             state.mode != mirror -> "the module file says ${state.mode}, the app had $mirror"
             else -> null
         }
@@ -304,7 +319,8 @@ object PhoneModeManager {
             Log.w(TAG, "start-up check: $why; a call is on, try again at the next start")
         } else {
             Log.i(TAG, "start-up check: $why; applying ${state.mode} again")
-            val r = switchBlocking(ctx, state.mode, newLocalId())
+            val r = switchBlocking(ctx, state.mode, newModeRequestId(ctx))
+            if (r.ok) adoptMode(ctx, r.mode)
             Log.i(TAG, "start-up re-apply ok=${r.ok} error=${r.error}")
         }
         unreported?.let(onUnreported)
@@ -341,6 +357,7 @@ object PhoneModeManager {
      * read immediately sees the completed root mode (`normal` or `ai`).
      */
     fun reconcileLocalMirror(context: Context): String {
+        if (BuildConfig.STANDALONE) return reconcileStandalone(context, "start")
         val ctx = context.applicationContext
         val state = readRootState(ctx)
         if (state != null && state.current && !state.running && !state.pending) {
@@ -351,6 +368,60 @@ object PhoneModeManager {
             }
         }
         return Prefs.phoneMode(ctx)
+    }
+
+    /**
+     * Standalone: a quick look (two small reads, no root, no script) at whether the app's
+     * mode still matches the phone, made when the app's process starts, when the call
+     * service is started and when a call rings. It compares the module's mode as its
+     * helper last reported it (`state`, settled since this boot) and which app holds the
+     * phone app role: an AI phone has Bageo as the phone app, so the module's AI wins when
+     * Bageo is (or may be) the phone app, and the module's normal always wins. A phone
+     * switched behind the app's back (the root script run by hand) then follows at once,
+     * so a call does not ring unseen while the app thinks it is a normal phone.
+     * [bageoIsPhoneApp]: known by the caller (a call reached Bageo's in-call service), or
+     * null to ask Android. Never during a switch or while a call rings for the owner.
+     */
+    fun reconcileStandalone(context: Context, where: String, bageoIsPhoneApp: Boolean? = null): String {
+        val ctx = context.applicationContext
+        val app = Prefs.phoneMode(ctx)
+        val state = readRootState(ctx)
+        val settled = state?.takeIf { it.current && !it.running && !it.pending }?.mode
+        val role = bageoIsPhoneApp ?: defaultDialer(ctx).takeIf { it.isNotEmpty() }?.let { it == ctx.packageName }
+        val fix = decideModeFix(app, settled, role, busy = isSwitching() || OwnerRing.isHandedToOwner())
+        val mode = when (fix) {
+            ModeFix.ADOPT_AI -> Prefs.PHONE_MODE_AI
+            ModeFix.ADOPT_NORMAL -> Prefs.PHONE_MODE_NORMAL
+            ModeFix.KEEP -> null
+        }
+        if (mode != null) {
+            Log.w(TAG, "mode check ($where): module $settled, Bageo phone app=$role, app had $app; app now $mode")
+            adoptModeLight(ctx, mode)
+        } else if ((settled != null && settled != app) || (app == Prefs.PHONE_MODE_NORMAL && role == true)) {
+            Log.w(TAG, "mode check ($where): module ${settled ?: "unknown"}, Bageo phone app=$role, app $app; kept")
+        }
+        return Prefs.phoneMode(ctx)
+    }
+
+    /**
+     * The app's copy of the mode becomes [mode] without running the module's script (the
+     * phone already is that). Nothing here blocks: an AI phone gets its call service
+     * started, and the listeners and the microphone are handled on a thread of their own.
+     */
+    private fun adoptModeLight(ctx: Context, mode: String) {
+        if (!Prefs.setPhoneMode(ctx, mode)) {
+            Log.w(TAG, "mode check: cannot save $mode")
+            return
+        }
+        if (mode == Prefs.PHONE_MODE_NORMAL) {
+            LocalAudioGuard(ctx).release()
+        } else {
+            CallAudioService.ensureArmed(ctx)
+        }
+        Thread({
+            if (mode == Prefs.PHONE_MODE_NORMAL) unmuteMicrophone(ctx)
+            notifyListeners(mode)
+        }, "phone-mode-check").apply { isDaemon = true }.start()
     }
 
     /**
@@ -415,11 +486,23 @@ object PhoneModeManager {
     private fun readRootMode(ctx: Context): String? = readRootState(ctx)?.mode
 
     private fun switchBlocking(ctx: Context, target: String, id: String, allowRetry: Boolean = false): Result {
+        switchTarget = target
+        try {
+            return switchBlockingInner(ctx, target, id, allowRetry)
+        } finally {
+            switchTarget = null
+        }
+    }
+
+    private fun switchBlockingInner(ctx: Context, target: String, id: String, allowRetry: Boolean): Result {
         val before = Prefs.phoneMode(ctx)
         if (!isPhoneIdle(ctx)) return Result(false, before, ERR_IN_CALL)
         if (scriptRunning(ctx)) return Result(false, before, ERR_BUSY)
         if (target == Prefs.PHONE_MODE_AI && before == Prefs.PHONE_MODE_NORMAL) saveNormalVolumes(ctx)
-        val volumes = if (target == Prefs.PHONE_MODE_NORMAL) normalVolumes(ctx) else emptyList()
+        val noDnd = isNoDndId(id)
+        // A switch to AI in Daily Sound gets them too: when the phone leaves the silent AI
+        // mode for Daily Sound, the script turns the ring and notification volumes back on.
+        val volumes = if (target == Prefs.PHONE_MODE_NORMAL || noDnd) normalVolumes(ctx, noDnd) else emptyList()
         // Android 15+: turn Bageo's own Do Not Disturb mode off now, before the script checks
         // that Do Not Disturb went off (the audio guard's release below is only queued).
         if (target == Prefs.PHONE_MODE_NORMAL) LocalAudioGuard.turnOffOwnDndMode(ctx)
@@ -463,6 +546,9 @@ object PhoneModeManager {
         if (mode == Prefs.PHONE_MODE_NORMAL) {
             LocalAudioGuard(ctx).release()
             unmuteMicrophone(ctx)
+        } else if (mode == Prefs.PHONE_MODE_AI) {
+            DialerRoleHelper.ensureRoles(ctx)
+            CallAudioService.ensureArmed(ctx)
         }
         notifyListeners(mode)
     }
@@ -639,33 +725,63 @@ object PhoneModeManager {
 
     // ------------------------------------------------------------- volumes
 
-    /** Normal-mode volumes for the script: saved value, or half of the maximum (0 = skip). */
-    private fun normalVolumes(ctx: Context): List<Int> {
+    /**
+     * Normal-mode volumes for the script: saved value, or half of the maximum (0 = skip).
+     * In Daily Sound ([noDnd]) the phone kept its own volumes in AI mode, so the current
+     * ones are the owner's, unless Bageo has one turned down right now.
+     */
+    private fun normalVolumes(ctx: Context, noDnd: Boolean): List<Int> {
         val am = ctx.getSystemService(AudioManager::class.java) ?: return emptyList()
         val saved = readSavedVolumes(ctx)
+        val trustCurrent = BuildConfig.STANDALONE && noDnd && !LocalAudioGuard(ctx).isMutingNow()
         return VOLUMES.map { v ->
             val max = try {
                 am.getStreamMaxVolume(v.stream)
             } catch (_: Exception) {
                 0
             }
-            // A saved zero would leave the phone silent: a normal phone rings.
-            if (max <= 0) 0 else (saved[v.key]?.takeIf { it > 0 } ?: defaultVolume(max)).coerceIn(1, max)
+            pickNormalVolume(
+                current = streamVolume(am, v.stream),
+                saved = saved[v.key],
+                min = streamMin(am, v.stream),
+                max = max,
+                trustCurrent = trustCurrent,
+            )
         }
     }
 
     /** Half of the maximum, when nothing was saved. */
     fun defaultVolume(max: Int): Int = ((max + 1) / 2).coerceAtLeast(1)
 
-    /** `files/mode/normal_audio`: one `key=value` line per stream. */
+    /** One saved normal-phone volume ([KEY_VOICE_CALL], …); null when none was saved. */
+    fun savedNormalVolume(ctx: Context, key: String): Int? = readSavedVolumes(ctx)[key]
+
+    /**
+     * `files/mode/normal_audio`: one `key=value` line per stream. Saved only while the
+     * phone really is a normal phone (the module's mode file says so) and Bageo has
+     * nothing turned down: the earpiece Bageo keeps at its lowest during AI calls must
+     * never become the "normal" earpiece volume. An earpiece at its lowest keeps the value
+     * saved before; the other volumes are saved as they are.
+     */
     private fun saveNormalVolumes(ctx: Context) {
+        val rootMode = readRootMode(ctx)
+        if (rootMode != null && rootMode != Prefs.PHONE_MODE_NORMAL) {
+            Log.i(TAG, "normal-phone volumes not saved: the module's mode file says $rootMode")
+            return
+        }
+        if (LocalAudioGuard(ctx).isMutingNow()) {
+            Log.i(TAG, "normal-phone volumes not saved: Bageo has the volumes turned down")
+            return
+        }
         val am = ctx.getSystemService(AudioManager::class.java) ?: return
+        val previous = readSavedVolumes(ctx)
         val lines = VOLUMES.mapNotNull { v ->
-            try {
-                "${v.key}=${am.getStreamVolume(v.stream)}"
-            } catch (_: Exception) {
-                null
-            }
+            chooseSavedVolume(
+                streamVolume(am, v.stream),
+                previous[v.key],
+                streamMin(am, v.stream),
+                keepPreviousAtMin = v.stream == AudioManager.STREAM_VOICE_CALL,
+            )?.let { "${v.key}=$it" }
         }
         if (lines.isEmpty()) return
         val file = File(appDir(ctx), AUDIO_FILE)
@@ -680,6 +796,18 @@ object PhoneModeManager {
             tmp.delete()
             Log.w(TAG, "cannot save the normal-phone volumes: ${e.message}")
         }
+    }
+
+    private fun streamVolume(am: AudioManager, stream: Int): Int? = try {
+        am.getStreamVolume(stream)
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun streamMin(am: AudioManager, stream: Int): Int = try {
+        am.getStreamMinVolume(stream)
+    } catch (_: Exception) {
+        0
     }
 
     private fun readSavedVolumes(ctx: Context): Map<String, Int> = try {
@@ -710,6 +838,51 @@ object PhoneModeManager {
  */
 internal fun formatModeRequestId(noDnd: Boolean, suffix: String = UUID.randomUUID().toString()): String =
     if (noDnd) "${PhoneModeManager.LOCAL_ID_PREFIX}nodnd-$suffix" else "${PhoneModeManager.LOCAL_ID_PREFIX}$suffix"
+
+/** What the standalone mode check ([PhoneModeManager.reconcileStandalone]) does. */
+internal enum class ModeFix { KEEP, ADOPT_AI, ADOPT_NORMAL }
+
+/**
+ * The standalone mode check's decision. [moduleMode]: the module's mode, settled since this
+ * boot (null: unknown, or a switch is unfinished). [bageoIsPhoneApp]: null when unknown.
+ * [busy]: a switch runs or a call rings for the owner. The module's normal always wins;
+ * its AI wins unless another app is the phone app (then the phone still rings as a
+ * normal phone, and the next full start-up check sorts it out).
+ */
+internal fun decideModeFix(appMode: String, moduleMode: String?, bageoIsPhoneApp: Boolean?, busy: Boolean): ModeFix =
+    when {
+        busy || moduleMode == null || moduleMode == appMode -> ModeFix.KEEP
+        moduleMode == Prefs.PHONE_MODE_NORMAL -> ModeFix.ADOPT_NORMAL
+        moduleMode == Prefs.PHONE_MODE_AI && bageoIsPhoneApp != false -> ModeFix.ADOPT_AI
+        else -> ModeFix.KEEP
+    }
+
+/** Daily Sound requests (`nodnd-`, `app-nodnd-`), as apply_mode.sh reads the id. */
+internal fun isNoDndId(id: String): Boolean =
+    id.startsWith("nodnd-") || id.startsWith("${PhoneModeManager.LOCAL_ID_PREFIX}nodnd-")
+
+/**
+ * One normal-mode volume for the script. A current value counts only when
+ * [trustCurrent] and above the stream's lowest step [min]; then the saved one; then half
+ * of the maximum. Never zero (a normal phone rings); 0 only for a stream the phone lacks.
+ */
+internal fun pickNormalVolume(current: Int?, saved: Int?, min: Int, max: Int, trustCurrent: Boolean): Int {
+    if (max <= 0) return 0
+    val fromCurrent = current?.takeIf { trustCurrent && it > min }
+    val half = ((max + 1) / 2).coerceAtLeast(1)
+    return (fromCurrent ?: saved?.takeIf { it > 0 } ?: half).coerceIn(1, max)
+}
+
+/**
+ * The normal-phone volume to save: the current one. With [keepPreviousAtMin] (the
+ * earpiece, which Bageo keeps at its lowest step [min] in AI calls) a current value at
+ * [min] keeps the older one when there is one.
+ */
+internal fun chooseSavedVolume(current: Int?, previous: Int?, min: Int, keepPreviousAtMin: Boolean = true): Int? {
+    if (current == null) return previous
+    if (keepPreviousAtMin && current <= min && previous != null) return previous
+    return current
+}
 
 internal fun resolveOutcome(
     target: String,

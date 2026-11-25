@@ -10,7 +10,8 @@
 # switch. It runs outside the app, so it finishes even when Android stops the app on
 # the way: taking the phone-app role away from Bageo can do that, which is why that
 # step comes last. The numbers are the volumes to set in normal mode (worked out by
-# the app; 0 = leave that one alone).
+# the app; 0 = leave that one alone). A Daily Sound switch to AI (`app-nodnd-` id) gets
+# them too: leaving the silent AI mode, it turns the ring and notification volumes back on.
 #
 #   /data/adb/pixelcallai/mode        the mode, written first; service.sh reads it at boot
 #   /data/adb/pixelcallai/pending     exists until every step has worked; the app asks
@@ -353,6 +354,9 @@ apply_ai() {
     if [ "$NODND" -eq 1 ]; then rm -f "$DIR/spare_mute"; else echo 1 > "$DIR/spare_mute"; fi
   fi
   q cmd appops set "$PKG" ACCESS_NOTIFICATION_POLICY allow
+  q cmd appops set "$PKG" ANSWER_PHONE_CALLS allow
+  q cmd appops set "$PKG" USE_FULL_SCREEN_INTENT allow
+  q dumpsys deviceidle whitelist +"$PKG"
 
   # 1. Bageo is the phone app and the call screener (as service.sh does at boot).
   cur_d=$(dialer)
@@ -379,7 +383,21 @@ apply_ai() {
   # 3. Do Not Disturb on, ringer and notification volume settings zero (skipped in
   #    Daily Sound / no-DND mode so notification and media audio remain normal).
   if [ "$NODND" -eq 1 ]; then
-    rm -f "$DIR/bageo_dnd"
+    # The phone was the silent AI phone (Bageo turned Do Not Disturb on): turn it off
+    # now. Only removing the marker left Do Not Disturb on for good, because the later
+    # switch to a normal phone turns it off only when the marker is there.
+    if [ -f "$DIR/bageo_dnd" ]; then
+      q cmd notification set_dnd off
+      q settings put global zen_mode 0
+      until_ok dnd_off || { note_dnd_blocker; fail dnd dnd_failed; }
+      if [ "$(o settings get global mode_ringer | tr -d "$STRIP")" = "0" ]; then
+        q cmd audio set-ringer-mode NORMAL
+        q settings put global mode_ringer 2
+      fi
+      set_volume 2 "$3" volume_ring
+      set_volume 5 "$4" volume_notification
+      rm -f "$DIR/bageo_dnd"
+    fi
     step dnd ok
     step volume ok
   else
@@ -399,7 +417,7 @@ apply_ai() {
   fi
 }
 
-if [ "$MODE" = normal ]; then apply_normal "$@"; else apply_ai; fi
+if [ "$MODE" = normal ]; then apply_normal "$@"; else apply_ai "$@"; fi
 echo "$MODE" > "$DIR/mode"
 if [ "$(tr -d "$STRIP" < "$DIR/mode")" = "$MODE" ]; then step save ok; else fail save save_failed; fi
 rm -f "$DIR/pending"

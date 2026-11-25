@@ -179,10 +179,10 @@ class TelephonyUplinkInjector(
     private val joinLock = Any()
 
     override fun isAvailable(): Boolean {
-        logTelephonyDevices()
+        val changed = logTelephonyDevices()
         val tel = telephonyOutput()
         if (tel == null) {
-            Log.w(TAG, "TYPE_TELEPHONY output device not found")
+            if (changed) Log.w(TAG, "TYPE_TELEPHONY output device not found")
             return false
         }
         return true
@@ -407,17 +407,26 @@ class TelephonyUplinkInjector(
             .firstOrNull { it.type == AudioDeviceInfo.TYPE_TELEPHONY }
     }
 
-    private fun logTelephonyDevices() {
-        try {
+    /**
+     * Logs the output devices only when they differ from the last report (the app's
+     * screen asks every few seconds). True when this call logged.
+     */
+    private fun logTelephonyDevices(): Boolean {
+        return try {
             val outs = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
             val tel = outs.filter { it.type == AudioDeviceInfo.TYPE_TELEPHONY }
-            Log.i(
-                TAG,
-                "outputs=${outs.size} TYPE_TELEPHONY=${tel.size} " +
-                    tel.joinToString { "id=${it.id}:${it.productName}" },
-            )
+            val summary = "outputs=${outs.size} TYPE_TELEPHONY=${tel.size} " +
+                tel.joinToString { "id=${it.id}:${it.productName}" }
+            if (summary == lastDeviceSummary) {
+                false
+            } else {
+                lastDeviceSummary = summary
+                Log.i(TAG, summary)
+                true
+            }
         } catch (e: Exception) {
             Log.w(TAG, "list devices failed: ${e.message}")
+            false
         }
     }
 
@@ -756,6 +765,9 @@ class TelephonyUplinkInjector(
 
     companion object {
         private const val TAG = "TelephonyUplink"
+        /** Last device list written to the log (shared by every instance). */
+        @Volatile
+        private var lastDeviceSummary: String? = null
         private const val JOIN_JUMP = 2500
         private const val JOIN_SAMPLES = 32 // ~2 ms @ 16 kHz
         /** Queue empty this long → start writing keepalive zeros. */

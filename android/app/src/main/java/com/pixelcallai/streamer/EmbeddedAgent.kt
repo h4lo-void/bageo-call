@@ -7,9 +7,17 @@ import android.content.Context
 import android.util.Log
 import org.json.JSONObject
 import java.io.File
+import java.net.URI
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 /**
  * JNI bridge to the in-process Rust Bageo agent (`libbageo_agent.so`, standalone flavor only).
+ *
+ * The agent opens no console port: the app hands it each console request with [http].
+ * Its only socket is the phone bridge on loopback ([BuildConfig.BRIDGE_WS_URL]), which
+ * takes a connection only with [bridgeKey] in [BRIDGE_KEY_HEADER] ([bridgeHeaders]).
+ * Text crosses JNI as UTF-8 bytes.
  *
  * Keeps all calls guarded by [BuildConfig.STANDALONE] so the lightweight `bridge` flavor
  * never attempts to load a native library.
@@ -20,33 +28,16 @@ object EmbeddedAgent {
     private const val PRIV_APP_ASSETS_DIR = "/system/priv-app/com.pixelcallai.streamer/bageo_assets"
     private const val MODULE_ASSETS_DIR = "/data/adb/modules/pixelcallai_uplink/bageo_assets"
 
+    /** Header the phone bridge checks on every connection. */
+    const val BRIDGE_KEY_HEADER = "x-bageo-bridge-key"
+
     data class Status(
         val running: Boolean,
         val ready: Boolean,
-        val lanEnabled: Boolean,
-        val lanRequested: Boolean,
-        val passwordSet: Boolean,
-        val uiToken: String,
-        val port: Int,
-        val lanIp: String,
-        val lanUrl: String,
-        val mdnsUrl: String,
         val activeCalls: Int,
     ) {
         companion object {
-            fun empty(port: Int = BuildConfig.CONSOLE_PORT): Status = Status(
-                running = false,
-                ready = false,
-                lanEnabled = false,
-                lanRequested = false,
-                passwordSet = false,
-                uiToken = "",
-                port = port,
-                lanIp = "",
-                lanUrl = "",
-                mdnsUrl = "",
-                activeCalls = 0,
-            )
+            fun empty(): Status = Status(running = false, ready = false, activeCalls = 0)
 
             fun fromJson(raw: String): Status {
                 return try {
@@ -54,14 +45,6 @@ object EmbeddedAgent {
                     Status(
                         running = obj.optBoolean("running", false),
                         ready = obj.optBoolean("ready", false),
-                        lanEnabled = obj.optBoolean("lan_enabled", false),
-                        lanRequested = obj.optBoolean("lan_requested", false),
-                        passwordSet = obj.optBoolean("password_set", false),
-                        uiToken = obj.optString("ui_token", ""),
-                        port = obj.optInt("port", BuildConfig.CONSOLE_PORT),
-                        lanIp = obj.optString("lan_ip", ""),
-                        lanUrl = obj.optString("lan_url", ""),
-                        mdnsUrl = obj.optString("mdns_url", ""),
                         activeCalls = obj.optInt("active_calls", 0),
                     )
                 } catch (_: Exception) {
@@ -71,9 +54,20 @@ object EmbeddedAgent {
         }
     }
 
+    /** The agent's answer to one [http] request. Header names are lower case. */
+    class HttpResult(
+        val status: Int,
+        val headers: List<Pair<String, String>>,
+        val body: ByteArray,
+    ) {
+        val ok: Boolean get() = status in 200..299
+
+        fun header(name: String): String? =
+            headers.firstOrNull { it.first.equals(name, ignoreCase = true) }?.second
+    }
+
     private val lock = Any()
     @Volatile private var libraryLoaded = false
-    @Volatile private var started = false
 
     private fun ensureLoaded(): Boolean {
         if (!BuildConfig.STANDALONE) return false
@@ -120,54 +114,29 @@ object EmbeddedAgent {
         return File(de.filesDir, "assets").apply { mkdirs() }
     }
 
+    /**
+     * Starts the agent, or finds it running. An agent that stopped (it could not start,
+     * or its phone bridge closed) is started again, so calling this again is the retry.
+     */
     fun ensureStarted(ctx: Context): Boolean {
         if (!BuildConfig.STANDALONE) return false
-        if (started) return true
         if (!ensureLoaded()) return false
         return synchronized(lock) {
-            if (started) return@synchronized true
             val data = dataDir(ctx).absolutePath
             val assets = assetsDir(ctx).absolutePath
-            val lan = Prefs.isStandaloneLanEnabled(ctx)
-            val ok = try {
-                nativeStart(data, assets, BuildConfig.CONSOLE_PORT, lan)
+            try {
+                nativeStart(data.toByteArray(Charsets.UTF_8), assets.toByteArray(Charsets.UTF_8))
             } catch (t: Throwable) {
                 Log.e(TAG, "nativeStart failed: ${t.message}")
                 false
             }
-            if (ok) {
-                started = true
-                Log.i(TAG, "embedded agent started port=${BuildConfig.CONSOLE_PORT} lan=$lan")
-            }
-            ok
-        }
-    }
-
-    fun setLanEnabled(ctx: Context, enabled: Boolean): Boolean {
-        if (!ensureStarted(ctx)) return false
-        Prefs.setStandaloneLanEnabled(ctx, enabled)
-        return try {
-            nativeSetLanEnabled(enabled)
-        } catch (t: Throwable) {
-            Log.w(TAG, "nativeSetLanEnabled failed: ${t.message}")
-            false
-        }
-    }
-
-    fun setConsolePassword(password: String): Boolean {
-        if (!BuildConfig.STANDALONE || !ensureLoaded()) return false
-        return try {
-            nativeSetUiPassword(password)
-        } catch (t: Throwable) {
-            Log.w(TAG, "nativeSetUiPassword failed: ${t.message}")
-            false
         }
     }
 
     fun patchSettings(ctx: Context, patchJson: String): Boolean {
         if (!ensureStarted(ctx)) return false
         return try {
-            nativePatchSettings(patchJson)
+            nativePatchSettings(patchJson.toByteArray(Charsets.UTF_8))
         } catch (t: Throwable) {
             Log.w(TAG, "nativePatchSettings failed: ${t.message}")
             false
@@ -177,47 +146,110 @@ object EmbeddedAgent {
     fun status(): Status {
         if (!BuildConfig.STANDALONE || !libraryLoaded) return Status.empty()
         return try {
-            Status.fromJson(nativeStatusJson())
+            Status.fromJson(String(nativeStatusJson() ?: return Status.empty(), Charsets.UTF_8))
         } catch (t: Throwable) {
             Log.w(TAG, "nativeStatusJson failed: ${t.message}")
             Status.empty()
         }
     }
 
-    fun localConsoleUrl(token: String = ""): String {
-        val base = "http://127.0.0.1:${BuildConfig.CONSOLE_PORT}/calls/?embed=android"
-        return if (token.isNotBlank()) {
-            "$base&token=${android.net.Uri.encode(token)}"
-        } else {
-            base
+    /** The phone bridge key of the running agent (empty when none). Changes on each start. */
+    fun bridgeKey(): String {
+        if (!BuildConfig.STANDALONE || !libraryLoaded) return ""
+        return try {
+            String(nativeBridgeKey() ?: return "", Charsets.UTF_8).trim()
+        } catch (t: Throwable) {
+            Log.w(TAG, "nativeBridgeKey failed: ${t.message}")
+            ""
         }
     }
 
-    fun localMobileUrl(token: String = "", lang: String = ""): String {
-        val params = mutableListOf<String>()
-        if (token.isNotBlank()) params.add("token=${android.net.Uri.encode(token)}")
-        if (lang.isNotBlank()) params.add("lang=${android.net.Uri.encode(lang)}")
-        val qs = if (params.isEmpty()) "" else "?" + params.joinToString("&")
-        return "http://127.0.0.1:${BuildConfig.CONSOLE_PORT}/calls/mobile$qs"
+    /**
+     * Headers for a WebSocket to [url]: the bridge key when [url] is the standalone phone
+     * bridge on loopback, else null (the `bridge` flavor and other addresses send none).
+     */
+    fun bridgeHeaders(url: String): Map<String, String>? {
+        if (!BuildConfig.STANDALONE) return null
+        val (host, port) = try {
+            val u = URI(url.trim())
+            (u.host.orEmpty().lowercase()) to u.port
+        } catch (_: Exception) {
+            return null
+        }
+        val bridge = try {
+            URI(BuildConfig.BRIDGE_WS_URL).port
+        } catch (_: Exception) {
+            return null
+        }
+        if (port != bridge || (host != "127.0.0.1" && host != "localhost")) return null
+        val key = bridgeKey()
+        return if (key.isEmpty()) null else mapOf(BRIDGE_KEY_HEADER to key)
+    }
+
+    /**
+     * One console request handled inside the app, with no network: [target] is the path
+     * with its query (e.g. `/calls/api/list?limit=20`). Blocks until the agent answers,
+     * so call it from a background thread. Null when the agent library is not loaded.
+     */
+    fun http(
+        method: String,
+        target: String,
+        headers: Map<String, String> = emptyMap(),
+        body: ByteArray? = null,
+    ): HttpResult? {
+        if (!BuildConfig.STANDALONE || !libraryLoaded) return null
+        val headerLines = buildString {
+            for ((name, value) in headers) {
+                val n = name.trim()
+                if (n.isEmpty() || n.contains(':') || n.contains('\n')) continue
+                append(n).append(": ").append(value.replace('\r', ' ').replace('\n', ' ')).append('\n')
+            }
+        }
+        val raw = try {
+            nativeHttp(
+                method.toByteArray(Charsets.UTF_8),
+                target.toByteArray(Charsets.UTF_8),
+                headerLines.toByteArray(Charsets.UTF_8),
+                body ?: ByteArray(0),
+            )
+        } catch (t: Throwable) {
+            Log.w(TAG, "nativeHttp failed: ${t.message}")
+            null
+        } ?: return null
+        return decode(raw)
+    }
+
+    /** `[head length: 4 bytes big-endian][head: "status\nname: value\n…"][body]`. */
+    private fun decode(raw: ByteArray): HttpResult? {
+        if (raw.size < 4) return null
+        val headLen = ByteBuffer.wrap(raw, 0, 4).order(ByteOrder.BIG_ENDIAN).int
+        if (headLen < 0 || headLen > raw.size - 4) return null
+        val lines = String(raw, 4, headLen, Charsets.UTF_8).split('\n')
+        val status = lines.firstOrNull()?.trim()?.toIntOrNull() ?: return null
+        val headers = lines.drop(1).mapNotNull { line ->
+            val idx = line.indexOf(':')
+            if (idx <= 0) null else line.substring(0, idx).trim().lowercase() to line.substring(idx + 1).trim()
+        }
+        return HttpResult(status, headers, raw.copyOfRange(4 + headLen, raw.size))
     }
 
     @JvmStatic
-    private external fun nativeStart(
-        dataDir: String,
-        assetsDir: String,
-        port: Int,
-        lanEnabled: Boolean,
-    ): Boolean
+    private external fun nativeStart(dataDir: ByteArray, assetsDir: ByteArray): Boolean
 
     @JvmStatic
-    private external fun nativeSetLanEnabled(enabled: Boolean): Boolean
+    private external fun nativePatchSettings(patchJson: ByteArray): Boolean
 
     @JvmStatic
-    private external fun nativeSetUiPassword(password: String): Boolean
+    private external fun nativeStatusJson(): ByteArray?
 
     @JvmStatic
-    private external fun nativePatchSettings(patchJson: String): Boolean
+    private external fun nativeBridgeKey(): ByteArray?
 
     @JvmStatic
-    private external fun nativeStatusJson(): String
+    private external fun nativeHttp(
+        method: ByteArray,
+        target: ByteArray,
+        headers: ByteArray,
+        body: ByteArray,
+    ): ByteArray?
 }

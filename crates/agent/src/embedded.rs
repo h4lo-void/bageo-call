@@ -3,6 +3,14 @@
 
 //! Embedded standalone runtime support (Android all-in-one mode) and `incoming_sms`
 //! control-channel handling.
+//!
+//! The standalone edition opens no console port. The app hands each console
+//! request straight to the agent's routes ([`EmbeddedControl::http`], called over
+//! JNI), so only the Bageo app itself can read calls or change settings. The one
+//! socket left is the phone bridge on loopback ([`LOCAL_BRIDGE_PORT`]) that the app's
+//! own call service uses; it serves only the phone WebSocket and refuses every
+//! request without the key made at start ([`BRIDGE_KEY_HEADER`]), which lives in
+//! memory only and reaches the app over JNI.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
@@ -11,29 +19,35 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
+use axum::body::Body;
+use axum::extract::{ConnectInfo, Request, State};
+use axum::handler::Handler;
+use axum::http::{header, HeaderName, HeaderValue, Method, StatusCode, Uri};
+use axum::middleware::Next;
+use axum::response::{IntoResponse, Response};
+use axum::routing::{any_service, get, MethodRouter};
 use axum::Router;
 use serde_json::{json, Value};
-use tokio::sync::{oneshot, Notify};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::calls::CallStore;
 use crate::config::{EmbeddedOverrides, Settings};
 use crate::settings_store::{self, SettingsStore};
-use crate::{bootstrap_runtime, calendar, lan, locale, mdns, notify, recent_notices, sms_store, AppState};
+use crate::{bootstrap_runtime, calendar, lan, locale, notify, recent_notices, sms_store, AppState};
 
-/// Dedicated loopback bridge port used by Standalone Android (`ws://127.0.0.1:8766`)
-/// so desktop `adb reverse tcp:8765` never collides if the phone is plugged into a PC.
+/// Loopback port of the phone bridge used by Standalone Android (`ws://127.0.0.1:8766`),
+/// apart from the desktop `adb reverse tcp:8765` so the two never collide when the
+/// phone is plugged into a PC.
 pub const LOCAL_BRIDGE_PORT: u16 = 8766;
 
-static LAN_NOTIFY_HOOK: std::sync::OnceLock<Arc<Notify>> = std::sync::OnceLock::new();
+/// Header carrying the bridge key on every request to [`LOCAL_BRIDGE_PORT`].
+pub const BRIDGE_KEY_HEADER: &str = "x-bageo-bridge-key";
 
-/// Wake the embedded listener loop immediately when HTTP/settings change `ui_password`,
-/// `mdns_name`, or `phone_wifi`, avoiding background idle polling.
-pub(crate) fn notify_lan_config_changed() {
-    if let Some(n) = LAN_NOTIFY_HOOK.get() {
-        n.notify_one();
-    }
-}
+/// Fills `Settings.port` (links in settings answers). Nothing listens on it.
+const NOMINAL_CONSOLE_PORT: u16 = 8787;
+
+/// Largest answer handed back to the app in one piece (backups, recordings).
+const MAX_LOCAL_BODY: usize = 512 * 1024 * 1024;
 
 /// Runtime handles captured once the embedded agent has initialized its stores.
 #[derive(Clone)]
@@ -41,64 +55,43 @@ pub struct EmbeddedHandles {
     pub settings: Settings,
     pub settings_store: Arc<SettingsStore>,
     pub calls: Arc<CallStore>,
+    /// The agent's routes (the same ones [`crate::build_app`] gives a desktop agent).
+    pub app: Router,
+    /// The embedded Tokio runtime, for requests coming in from app threads.
+    pub runtime: tokio::runtime::Handle,
 }
 
 /// Shared state between the Android JNI bridge and the embedded Tokio server.
 pub struct EmbeddedControl {
     pub data_dir: PathBuf,
     pub assets_dir: PathBuf,
-    pub port: u16,
-    pub lan_enabled: AtomicBool,
+    /// Stores are open and the phone bridge listens.
     pub ready: AtomicBool,
-    pub lan_notify: Arc<Notify>,
+    /// The agent's thread is running (false once it stopped; [`start`] runs it again).
+    pub alive: AtomicBool,
+    bridge_key: String,
     pub handles: Mutex<Option<EmbeddedHandles>>,
 }
 
 impl EmbeddedControl {
-    pub fn new(data_dir: PathBuf, assets_dir: PathBuf, port: u16, lan_enabled: bool) -> Arc<Self> {
+    pub fn new(data_dir: PathBuf, assets_dir: PathBuf) -> Arc<Self> {
         Arc::new(Self {
             data_dir,
             assets_dir,
-            port,
-            lan_enabled: AtomicBool::new(lan_enabled),
             ready: AtomicBool::new(false),
-            lan_notify: Arc::new(Notify::new()),
+            alive: AtomicBool::new(false),
+            bridge_key: new_bridge_key(),
             handles: Mutex::new(None),
         })
     }
 
-    pub fn set_lan_enabled(&self, enabled: bool) -> bool {
-        self.lan_enabled.store(enabled, Ordering::Release);
-        if let Some(h) = self.handles.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
-            let mdns_name = if enabled { "bageo" } else { "off" };
-            let _ = h.settings_store.apply_patch(&json!({
-                "phone_wifi": enabled,
-                "mdns_name": mdns_name,
-            }));
-        }
-        self.lan_notify.notify_one();
-        true
+    /// The key the app's call service shows on [`LOCAL_BRIDGE_PORT`]. A new one each start.
+    pub fn bridge_key(&self) -> &str {
+        &self.bridge_key
     }
 
-    pub fn set_ui_password(&self, password: &str) -> Result<()> {
-        let trimmed = password.trim();
-        if trimmed.is_empty() || settings_store::ui_password_too_short(trimmed) {
-            anyhow::bail!(
-                "console password must be at least {} characters",
-                settings_store::MIN_UI_PASSWORD_CHARS
-            );
-        }
-        let handles = self
-            .handles
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("agent not ready"))?;
-        handles
-            .settings_store
-            .apply_patch(&json!({ "ui_password": trimmed }))?;
-        self.lan_notify.notify_one();
-        Ok(())
+    fn handles(&self) -> Option<EmbeddedHandles> {
+        self.handles.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     pub fn apply_settings_patch(&self, patch_json: &str) -> Result<()> {
@@ -107,74 +100,319 @@ impl EmbeddedControl {
             anyhow::bail!("settings patch must be a JSON object");
         };
         obj.insert("gemini_live_enabled".to_string(), Value::Bool(true));
-        let handles = self
-            .handles
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("agent not ready"))?;
+        let handles = self.handles().ok_or_else(|| anyhow::anyhow!("agent not ready"))?;
         handles.settings_store.apply_patch(&patch)?;
-        if patch.get("ui_password").is_some()
-            || patch.get("mdns_name").is_some()
-            || patch.get("phone_wifi").is_some()
-        {
-            self.lan_notify.notify_one();
-        }
         Ok(())
     }
 
     pub fn status_json(&self) -> Value {
-        let handles = self.handles.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        let ready = self.ready.load(Ordering::Acquire);
-        let lan_requested = self.lan_enabled.load(Ordering::Acquire);
-        let (password_set, ui_token, active_calls, mdns_name) = match handles {
-            Some(h) => {
-                let tok = settings_store::active_ui_token(&h.settings.calls_ui_token);
-                let rt = h.settings_store.snapshot();
-                let active = h.calls.live_calls_count_try();
-                (
-                    !tok.trim().is_empty(),
-                    tok,
-                    active,
-                    mdns::parse_name_setting(&rt.mdns_name),
-                )
-            }
-            None => (false, String::new(), 0, String::new()),
-        };
-        let lan_active = ready && lan_requested && password_set;
-        let lan_ip = if lan_active {
-            mdns::lan_ipv4().map(|ip| ip.to_string()).unwrap_or_default()
-        } else {
-            String::new()
-        };
-        let lan_url = if lan_active && !lan_ip.is_empty() {
-            format!("http://{}:{}/calls/", lan_ip, self.port)
-        } else {
-            String::new()
-        };
-        let mdns_url = if lan_active && !mdns_name.is_empty() {
-            format!("http://{}.local:{}/calls/", mdns_name, self.port)
-        } else {
-            String::new()
-        };
+        let active_calls = self.handles().map(|h| h.calls.live_calls_count_try()).unwrap_or(0);
         json!({
-            "running": true,
-            "ready": ready,
-            "lan_enabled": lan_active,
-            "lan_requested": lan_requested,
-            "password_set": password_set,
-            "ui_token": ui_token,
-            "port": self.port,
-            "lan_ip": lan_ip,
-            "lan_url": lan_url,
-            "mdns_url": mdns_url,
+            "running": self.alive.load(Ordering::Acquire),
+            "ready": self.ready.load(Ordering::Acquire),
             "active_calls": active_calls,
         })
     }
+
+    /// Answer one console request from the app (blocks the calling thread,
+    /// which must not be a Tokio worker). The console password, when one is
+    /// set, goes with it: the app never needs to know it.
+    pub fn http(&self, req: LocalRequest) -> LocalResponse {
+        let Some(h) = self.handles() else {
+            return LocalResponse::not_ready();
+        };
+        let token = settings_store::active_ui_token(&h.settings.calls_ui_token);
+        h.runtime.block_on(dispatch_local(h.app, &token, req))
+    }
 }
 
-/// Bind a reusable TCP listener so fast loopback <-> all-interface swaps never
-/// fail with `EADDRINUSE` on lingering client sockets.
+/// 32 random bytes as hex.
+fn new_bridge_key() -> String {
+    let mut bytes = [0u8; 32];
+    if getrandom::getrandom(&mut bytes).is_err() {
+        bytes[..16].copy_from_slice(uuid::Uuid::new_v4().as_bytes());
+        bytes[16..].copy_from_slice(uuid::Uuid::new_v4().as_bytes());
+    }
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The running agent, if any.
+static RUNNING: Mutex<Option<Arc<EmbeddedControl>>> = Mutex::new(None);
+
+/// The agent while its thread runs.
+pub fn current() -> Option<Arc<EmbeddedControl>> {
+    RUNNING
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+        .filter(|c| c.alive.load(Ordering::Acquire))
+}
+
+/// The status the app shows, also before the agent ever started.
+pub fn status_json() -> Value {
+    match current() {
+        Some(c) => c.status_json(),
+        None => json!({ "running": false, "ready": false, "active_calls": 0 }),
+    }
+}
+
+/// Start the agent on its own thread, or hand back the one already running.
+/// An agent that stopped (start failed, the bridge closed) is started anew,
+/// with a new bridge key. None when no thread could be made.
+pub fn start(data_dir: PathBuf, assets_dir: PathBuf) -> Option<Arc<EmbeddedControl>> {
+    let mut slot = RUNNING.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(running) = slot.as_ref().filter(|c| c.alive.load(Ordering::Acquire)) {
+        return Some(running.clone());
+    }
+    let ctrl = EmbeddedControl::new(data_dir, assets_dir);
+    ctrl.alive.store(true, Ordering::Release);
+    *slot = Some(ctrl.clone());
+    drop(slot);
+
+    let run = ctrl.clone();
+    let spawned = std::thread::Builder::new()
+        .name("bageo-embedded".into())
+        .spawn(move || {
+            let rt = match tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .thread_name("bageo-tokio")
+                .build()
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    error!("failed to build tokio runtime: {e}");
+                    stopped(&run);
+                    return;
+                }
+            };
+            info!("starting embedded Bageo agent");
+            if let Err(e) = rt.block_on(run_embedded(run.clone())) {
+                error!("embedded Bageo agent stopped: {e:#}; it starts again when the app asks");
+            }
+            stopped(&run);
+            rt.shutdown_timeout(Duration::from_secs(2));
+        });
+    if spawned.is_err() {
+        stopped(&ctrl);
+        return None;
+    }
+    Some(ctrl)
+}
+
+/// The agent's thread ended: requests get "not ready" and the next [`start`] runs it again.
+fn stopped(ctrl: &Arc<EmbeddedControl>) {
+    ctrl.ready.store(false, Ordering::Release);
+    *ctrl.handles.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    ctrl.alive.store(false, Ordering::Release);
+    let mut slot = RUNNING.lock().unwrap_or_else(|e| e.into_inner());
+    if slot.as_ref().is_some_and(|c| Arc::ptr_eq(c, ctrl)) {
+        *slot = None;
+    }
+}
+
+/// One console request from the app.
+#[derive(Debug, Clone, Default)]
+pub struct LocalRequest {
+    pub method: String,
+    /// Path and query, e.g. `/calls/api/list?limit=20`.
+    pub target: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+}
+
+/// The agent's answer to a [`LocalRequest`].
+#[derive(Debug, Clone)]
+pub struct LocalResponse {
+    pub status: u16,
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+}
+
+impl LocalResponse {
+    fn error(status: StatusCode, code: &str) -> Self {
+        Self {
+            status: status.as_u16(),
+            headers: vec![("content-type".into(), "application/json".into())],
+            body: json!({ "ok": false, "code": code, "error": code }).to_string().into_bytes(),
+        }
+    }
+
+    /// The agent is starting or stopped.
+    pub fn not_ready() -> Self {
+        Self::error(StatusCode::SERVICE_UNAVAILABLE, "agent_not_ready")
+    }
+
+    /// The request could not be answered (a panic while handling it).
+    pub fn failed() -> Self {
+        Self::error(StatusCode::INTERNAL_SERVER_ERROR, "internal_error")
+    }
+
+    /// First value of the header `name` (any case).
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(n, _)| n.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    }
+
+    /// For the app: a 4-byte big-endian length of the head, the head in UTF-8
+    /// (the status, then one `name: value` per line), then the body as is.
+    pub fn encode(&self) -> Vec<u8> {
+        let mut head = format!("{}\n", self.status);
+        for (name, value) in &self.headers {
+            let value: String = value.chars().filter(|c| *c != '\r' && *c != '\n').collect();
+            head.push_str(name);
+            head.push_str(": ");
+            head.push_str(&value);
+            head.push('\n');
+        }
+        let head = head.into_bytes();
+        let mut out = Vec::with_capacity(4 + head.len() + self.body.len());
+        out.extend_from_slice(&(head.len() as u32).to_be_bytes());
+        out.extend_from_slice(&head);
+        out.extend_from_slice(&self.body);
+        out
+    }
+}
+
+/// The app's request headers, one `name: value` per line in UTF-8.
+pub fn parse_header_lines(raw: &[u8]) -> Vec<(String, String)> {
+    String::from_utf8_lossy(raw)
+        .lines()
+        .filter_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            let name = name.trim();
+            (!name.is_empty()).then(|| (name.to_ascii_lowercase(), value.trim().to_string()))
+        })
+        .collect()
+}
+
+/// Headers an app request never passes on: the host and the console password
+/// are set here, a page's origin or a proxy header would make the agent treat
+/// the request as coming from elsewhere, and the app's web view can take
+/// neither compressed answers nor a 304.
+fn dropped_header(name: &str) -> bool {
+    matches!(
+        name,
+        "host"
+            | "origin"
+            | "referer"
+            | "cookie"
+            | "authorization"
+            | "x-calls-token"
+            | "connection"
+            | "keep-alive"
+            | "upgrade"
+            | "te"
+            | "trailer"
+            | "transfer-encoding"
+            | "content-length"
+            | "accept-encoding"
+            | "if-none-match"
+            | "if-modified-since"
+            | "if-match"
+            | "if-unmodified-since"
+            | "if-range"
+            | "forwarded"
+            | "via"
+            | "x-real-ip"
+            | "cf-connecting-ip"
+            | "true-client-ip"
+    ) || name.starts_with("x-forwarded-")
+        || name.starts_with("proxy-")
+        || name.starts_with("sec-")
+}
+
+/// Run one app request through the agent's routes as a request from this
+/// device itself, with `ui_token` (the console password, or empty) attached.
+pub async fn dispatch_local(app: Router, ui_token: &str, req: LocalRequest) -> LocalResponse {
+    let bad = || LocalResponse::error(StatusCode::BAD_REQUEST, "bad_request");
+    let Ok(method) = Method::from_bytes(req.method.trim().as_bytes()) else {
+        return bad();
+    };
+    let target = req.target.trim();
+    if !target.starts_with('/') || target.starts_with("//") {
+        return bad();
+    }
+    let Ok(uri) = target.parse::<Uri>() else {
+        return bad();
+    };
+    let mut builder = axum::http::Request::builder().method(method).uri(uri);
+    for (name, value) in &req.headers {
+        let name = name.trim().to_ascii_lowercase();
+        if name.is_empty() || dropped_header(&name) {
+            continue;
+        }
+        if let (Ok(n), Ok(v)) = (HeaderName::from_bytes(name.as_bytes()), HeaderValue::from_bytes(value.trim().as_bytes())) {
+            builder = builder.header(n, v);
+        }
+    }
+    builder = builder.header(header::HOST, "localhost");
+    if let Ok(v) = HeaderValue::from_str(ui_token.trim()) {
+        if !v.is_empty() {
+            builder = builder.header("x-calls-token", v);
+        }
+    }
+    if !req.body.is_empty() {
+        builder = builder.header(header::CONTENT_LENGTH, req.body.len());
+    }
+    let Ok(mut request) = builder.body(Body::from(req.body)) else {
+        return bad();
+    };
+    let this_device = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
+    request.extensions_mut().insert(ConnectInfo(lan::ConnAddrs {
+        peer: this_device,
+        local: Some(this_device),
+    }));
+    let routes: MethodRouter<()> = any_service(app);
+    let response = Handler::call(routes, request, ()).await;
+    let status = response.status().as_u16();
+    let headers = response
+        .headers()
+        .iter()
+        .map(|(n, v)| (n.as_str().to_string(), String::from_utf8_lossy(v.as_bytes()).into_owned()))
+        .collect();
+    match axum::body::to_bytes(response.into_body(), MAX_LOCAL_BODY).await {
+        Ok(body) => LocalResponse { status, headers, body: body.to_vec() },
+        Err(e) => {
+            warn!("in-app console answer could not be read ({e})");
+            LocalResponse::failed()
+        }
+    }
+}
+
+/// The routes on [`LOCAL_BRIDGE_PORT`]: only the phone WebSocket (`/` and `/ws`),
+/// and nothing at all without `key` in [`BRIDGE_KEY_HEADER`].
+pub(crate) fn phone_bridge_app(state: AppState, key: &str) -> Router {
+    let key: Arc<str> = Arc::from(key.trim());
+    Router::new()
+        .route("/", get(crate::root))
+        .route("/ws", get(crate::ws_upgrade))
+        .with_state(state)
+        .layer(axum::middleware::from_fn_with_state(key, require_bridge_key))
+}
+
+async fn require_bridge_key(State(key): State<Arc<str>>, req: Request, next: Next) -> Response {
+    let given = req
+        .headers()
+        .get(BRIDGE_KEY_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if key.is_empty() || !crate::mcp::same(given.trim(), &key) {
+        debug!("phone bridge refused a request without the app's key");
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    next.run(req).await
+}
+
+/// Serve the phone bridge until it fails.
+pub(crate) async fn serve_phone_bridge(listener: tokio::net::TcpListener, app: Router) -> Result<()> {
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
+    Ok(())
+}
+
+/// Bind a reusable TCP listener so a restarted agent can take the port again
+/// at once, while the old sockets linger.
 pub fn bind_tcp_reusable(addr: SocketAddr) -> Result<tokio::net::TcpListener> {
     let domain = if addr.is_ipv4() {
         socket2::Domain::IPV4
@@ -190,53 +428,32 @@ pub fn bind_tcp_reusable(addr: SocketAddr) -> Result<tokio::net::TcpListener> {
     Ok(tokio::net::TcpListener::from_std(std_listener)?)
 }
 
-/// Compute the target bind address for the embedded HTTP console listener.
-pub fn target_console_bind(port: u16, lan_requested: bool, password_set: bool) -> SocketAddr {
-    if lan_requested && password_set {
-        SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port)
-    } else {
-        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port)
-    }
-}
-
-struct RunningListener {
-    addr: SocketAddr,
-    stop: oneshot::Sender<()>,
-    task: tokio::task::JoinHandle<()>,
-}
-
-impl RunningListener {
-    async fn stop(self) {
-        let _ = self.stop.send(());
-        let _ = tokio::time::timeout(Duration::from_secs(3), self.task).await;
-    }
-}
-
-async fn spawn_console_listener(addr: SocketAddr, app: Router) -> Result<RunningListener> {
-    let listener = bind_tcp_reusable(addr)?;
-    let (stop, stopped) = oneshot::channel::<()>();
-    let task = tokio::spawn(async move {
-        let served = axum::serve(
-            listener,
-            app.into_make_service_with_connect_info::<lan::ConnAddrs>(),
-        )
-        .with_graceful_shutdown(async {
-            let _ = stopped.await;
-        })
-        .await;
-        if let Err(e) = served {
-            warn!("embedded console listener on {addr} stopped ({e})");
+/// [`bind_tcp_reusable`], trying again for a few seconds (an agent that just stopped
+/// may still hold the port).
+async fn bind_with_retries(addr: SocketAddr) -> Result<tokio::net::TcpListener> {
+    let mut delay = Duration::from_millis(250);
+    let mut tries = 0;
+    loop {
+        match bind_tcp_reusable(addr) {
+            Ok(listener) => return Ok(listener),
+            Err(e) if tries < 8 => {
+                warn!("embedded phone bridge cannot listen on {addr} yet ({e}); trying again");
+                tries += 1;
+                tokio::time::sleep(delay).await;
+                delay = (delay * 2).min(Duration::from_secs(2));
+            }
+            Err(e) => return Err(e.context(format!("phone bridge cannot listen on {addr}"))),
         }
-    });
-    Ok(RunningListener { addr, stop, task })
+    }
 }
 
-/// Run the full Bageo agent inside the Android application process.
+/// Run the full Bageo agent inside the Android application process. Returns
+/// only when it cannot go on (start failed, the phone bridge stopped).
 pub async fn run_embedded(cfg: Arc<EmbeddedControl>) -> Result<()> {
     crate::config::set_embedded_overrides(EmbeddedOverrides {
         data_dir: cfg.data_dir.clone(),
         assets_dir: cfg.assets_dir.clone(),
-        port: cfg.port,
+        port: NOMINAL_CONSOLE_PORT,
     });
     let _ = rustls::crypto::ring::default_provider().install_default();
 
@@ -245,111 +462,35 @@ pub async fn run_embedded(cfg: Arc<EmbeddedControl>) -> Result<()> {
     let settings_store = state.settings_store.clone();
     let calls = state.calls.clone();
 
-    // Sync initial LAN / mDNS flags with Android's saved preference, and ensure
-    // `gemini_live_enabled` is always true on standalone (the single Android mode
-    // switch controls AI answering vs normal phone).
-    let initial_lan = cfg.lan_enabled.load(Ordering::Acquire);
+    // The console opens only inside the app: no Wi-Fi entry for phones and no
+    // network name (also turning off what an older version may have saved).
+    // `gemini_live_enabled` stays on: the app's mode switch chooses AI answering
+    // or a normal phone.
     let _ = settings_store.apply_patch(&json!({
         "gemini_live_enabled": true,
-        "phone_wifi": initial_lan,
-        "mdns_name": if initial_lan { "bageo" } else { "off" },
+        "phone_wifi": false,
+        "mdns_name": "off",
     }));
 
-    *cfg.handles.lock().unwrap_or_else(|e| e.into_inner()) = Some(EmbeddedHandles {
-        settings: settings.clone(),
-        settings_store: settings_store.clone(),
-        calls: calls.clone(),
-    });
-
     calendar::set_link_secret(&settings_store::active_ui_token(&settings.calls_ui_token));
-    let _ = LAN_NOTIFY_HOOK.set(cfg.lan_notify.clone());
 
     let app = crate::build_app(state.clone(), calls_state, remote, true);
-
-    // Permanent loopback phone-bridge listener (`ws://127.0.0.1:8766`): active
-    // phone calls never drop even if the user toggles LAN sharing on port 8787.
     let bridge_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), LOCAL_BRIDGE_PORT);
-    match bind_tcp_reusable(bridge_addr) {
-        Ok(bridge_listener) => {
-            let bridge_app = app.clone();
-            tokio::spawn(async move {
-                if let Err(e) = axum::serve(
-                    bridge_listener,
-                    bridge_app.into_make_service_with_connect_info::<lan::ConnAddrs>(),
-                )
-                .await
-                {
-                    error!("embedded phone bridge listener stopped: {e}");
-                }
-            });
-            info!("embedded phone bridge listening on ws://{bridge_addr}");
-        }
-        Err(e) => {
-            warn!("embedded phone bridge could not bind {bridge_addr} ({e}); falling back to console port");
-        }
-    }
+    let listener = bind_with_retries(bridge_addr).await?;
+    let bridge = phone_bridge_app(state.clone(), cfg.bridge_key());
 
-    // Dynamic console + optional LAN listener on `cfg.port` (default 8787).
-    // mDNS responder is spawned lazily only once LAN sharing + password are active
-    // so idle standalone phones with LAN OFF create zero extra sockets/wakeups.
-    let mut mdns_spawned = false;
-    let mut current: Option<RunningListener> = None;
-    let mut retry_delay = Duration::from_millis(200);
-    loop {
-        let lan_req = cfg.lan_enabled.load(Ordering::Acquire);
-        let pw_set = !settings_store::active_ui_token(&settings.calls_ui_token)
-            .trim()
-            .is_empty();
-        if lan_req && pw_set && !mdns_spawned {
-            mdns_spawned = true;
-            let cfg_mdns = cfg.clone();
-            let store_mdns = settings_store.clone();
-            let base_tok = settings.calls_ui_token.clone();
-            mdns::spawn(
-                IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-                cfg.port,
-                move || {
-                    let on = cfg_mdns.lan_enabled.load(Ordering::Acquire)
-                        && !settings_store::active_ui_token(&base_tok).trim().is_empty();
-                    if on {
-                        let name = mdns::parse_name_setting(&store_mdns.snapshot().mdns_name);
-                        if name.is_empty() {
-                            "bageo".to_string()
-                        } else {
-                            name
-                        }
-                    } else {
-                        String::new()
-                    }
-                },
-            );
-        }
-        let target = target_console_bind(cfg.port, lan_req, pw_set);
-        let needs_swap = current.as_ref().is_none_or(|c| c.addr != target || c.task.is_finished());
+    *cfg.handles.lock().unwrap_or_else(|e| e.into_inner()) = Some(EmbeddedHandles {
+        settings,
+        settings_store,
+        calls,
+        app,
+        runtime: tokio::runtime::Handle::current(),
+    });
+    cfg.ready.store(true, Ordering::Release);
+    info!("embedded Bageo ready: console inside the app only, phone bridge on ws://{bridge_addr} (app key required)");
 
-        if needs_swap {
-            if let Some(prev) = current.take() {
-                prev.stop().await;
-            }
-            match spawn_console_listener(target, app.clone()).await {
-                Ok(running) => {
-                    lan::set_auto(target.ip().is_unspecified());
-                    info!("embedded console listening on http://{target}/calls/");
-                    current = Some(running);
-                    cfg.ready.store(true, Ordering::Release);
-                    retry_delay = Duration::from_millis(200);
-                }
-                Err(e) => {
-                    warn!("embedded console bind {target} failed ({e}); retrying");
-                    tokio::time::sleep(retry_delay).await;
-                    retry_delay = (retry_delay * 2).min(Duration::from_secs(5));
-                    continue;
-                }
-            }
-        }
-
-        cfg.lan_notify.notified().await;
-    }
+    serve_phone_bridge(listener, bridge).await?;
+    anyhow::bail!("the phone bridge stopped")
 }
 
 /// Core-language labels for incoming SMS notifications (matching `sms_forward.py`).
@@ -398,13 +539,23 @@ pub fn format_incoming_sms_notification(
 
 /// Handle `{"type":"incoming_sms", ...}` sent by the phone over `CONTROL_IDLE`.
 /// Stores the message into `SmsStore`, records a recent notice, and pushes it to
-/// configured notification channels.
+/// configured notification channels. The phone app keeps no texts
+/// ([`sms_store::SmsStore::off`]): it is taken (so nothing sends it again) and dropped.
 pub(crate) async fn handle_incoming_sms(state: &AppState, serial: &str, msg: &Value) -> Value {
     let id = msg
         .get("id")
         .and_then(Value::as_str)
         .unwrap_or("")
         .trim();
+    if state.sms.is_off() {
+        return json!({
+            "type": "incoming_sms_ack",
+            "id": id,
+            "ok": true,
+            "stored": false,
+            "notified": false,
+        });
+    }
     if id.is_empty() {
         return json!({
             "type": "incoming_sms_ack",
@@ -591,26 +742,6 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn target_console_bind_requires_both_lan_flag_and_password() {
-        assert_eq!(
-            target_console_bind(8787, false, false),
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8787)
-        );
-        assert_eq!(
-            target_console_bind(8787, true, false),
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8787)
-        );
-        assert_eq!(
-            target_console_bind(8787, false, true),
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8787)
-        );
-        assert_eq!(
-            target_console_bind(8787, true, true),
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 8787)
-        );
-    }
-
-    #[test]
     fn format_incoming_sms_notification_across_languages() {
         for lang in [
             locale::Lang::ZhTw,
@@ -666,17 +797,190 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    #[test]
-    fn embedded_control_status_requires_password_before_reporting_lan_active() {
-        let dir = std::env::temp_dir().join(format!("bageo-emb-{}", uuid::Uuid::new_v4().simple()));
-        let cfg = EmbeddedControl::new(dir.clone(), dir.join("assets"), 8787, true);
-        cfg.ready.store(true, Ordering::Release);
-        let j = cfg.status_json();
-        assert_eq!(j["ready"], true);
-        assert_eq!(j["lan_requested"], true);
-        assert_eq!(j["password_set"], false);
-        assert_eq!(j["lan_enabled"], false);
-        let _ = std::fs::remove_dir_all(&dir);
+    /// The agent's real routes over a temp data folder, with `password` as the console password.
+    fn full_app(tag: &str, password: &str) -> (Router, AppState, PathBuf) {
+        let (mut state, root) = make_test_app_state(tag);
+        state.settings.calls_ui_token = password.to_string();
+        let calls_state = crate::calls_http::CallsState {
+            settings: state.settings.clone(),
+            store: state.calls.clone(),
+            settings_store: state.settings_store.clone(),
+            task_store: state.task_store.clone(),
+            http: state.http.clone(),
+            control: state.control.clone(),
+            ambience: state.ambience.clone(),
+            previews: state.previews.clone(),
+            phones: state.phones.clone(),
+            contacts: crate::contacts::ContactStore::open(root.join("contacts.json")),
+            errands: state.errands.clone(),
+            sms: state.sms.clone(),
+        };
+        let remote = crate::control::Controller::new(calls_state.clone());
+        let app = crate::build_app(state.clone(), calls_state, remote, true);
+        (app, state, root)
+    }
+
+    /// What [`EmbeddedControl::http`] attaches: the console password in effect.
+    fn token(state: &AppState) -> String {
+        settings_store::active_ui_token(&state.settings.calls_ui_token)
+    }
+
+    fn req(method: &str, target: &str, headers: &[(&str, &str)], body: &[u8]) -> LocalRequest {
+        LocalRequest {
+            method: method.into(),
+            target: target.into(),
+            headers: headers.iter().map(|(n, v)| (n.to_string(), v.to_string())).collect(),
+            body: body.to_vec(),
+        }
+    }
+
+    fn body_json(r: &LocalResponse) -> Value {
+        serde_json::from_slice(&r.body).unwrap_or(Value::Null)
+    }
+
+    #[tokio::test]
+    async fn the_app_reads_and_changes_data_without_any_port() {
+        let (app, state, root) = full_app("emb-http", "");
+        let tok = token(&state);
+        let json_ct = ("content-type", "application/json");
+        // The page's origin and a foreign host name are not passed on: the request is the app's own.
+        let created = dispatch_local(
+            app.clone(),
+            &tok,
+            req(
+                "POST",
+                "/calls/api/contacts",
+                &[json_ct, ("origin", "https://appassets.androidplatform.net"), ("host", "evil.example")],
+                json!({"name": "王小明", "phones": ["+1 555 0100"], "note": "José"}).to_string().as_bytes(),
+            ),
+        )
+        .await;
+        assert_eq!(created.status, 200, "{}", String::from_utf8_lossy(&created.body));
+        let id = body_json(&created)["contact"]["id"].as_str().expect("contact id").to_string();
+
+        // Text in any language comes back byte for byte.
+        for note in ["Müller よろしく 😀", "안녕하세요 señora", "Привет 你好", "مرحبا"] {
+            let updated = dispatch_local(
+                app.clone(),
+                &tok,
+                req(
+                    "PUT",
+                    &format!("/calls/api/contacts/{id}"),
+                    &[json_ct],
+                    json!({"name": "王小明", "phones": ["+1 555 0100"], "note": note}).to_string().as_bytes(),
+                ),
+            )
+            .await;
+            assert_eq!(updated.status, 200, "{}", String::from_utf8_lossy(&updated.body));
+            assert_eq!(body_json(&updated)["contact"]["note"], note);
+        }
+
+        let listed = dispatch_local(app.clone(), &tok, req("GET", "/calls/api/contacts?q=%E7%8E%8B", &[], b"")).await;
+        assert_eq!(listed.status, 200);
+        assert!(listed.header("Content-Type").is_some_and(|v| v.starts_with("application/json")));
+        assert!(String::from_utf8_lossy(&listed.body).contains("王小明"));
+
+        let missing = dispatch_local(app.clone(), &tok, req("GET", "/calls/api/no-such-page", &[], b"")).await;
+        assert_eq!(missing.status, 404);
+        // Only a path on this agent, never an address somewhere else.
+        for target in ["https://example.com/calls/", "//example.com/calls/", "calls/api/contacts"] {
+            assert_eq!(dispatch_local(app.clone(), &tok, req("GET", target, &[], b"")).await.status, 400, "{target}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_recording_plays_from_any_point_and_pages_are_never_a_cached_copy() {
+        let (app, state, root) = full_app("emb-range", "");
+        let tok = token(&state);
+        let mut call = state.calls.start("pixel-test-1", "+1 555 0101", 16000, "active").await.unwrap();
+        call.write_uplink(&vec![42u8; 3200]);
+        let rec = state.calls.finalize(call, "ended").await;
+        let path = format!("/calls/api/audio/{}/listen", rec.id);
+
+        let whole = dispatch_local(app.clone(), &tok, req("GET", &path, &[], b"")).await;
+        assert_eq!(whole.status, 200);
+        assert_eq!(whole.header("accept-ranges"), Some("bytes"));
+        let len = whole.body.len();
+        assert!(len > 20);
+        let part = dispatch_local(app.clone(), &tok, req("GET", &path, &[("Range", "bytes=10-19")], b"")).await;
+        assert_eq!(part.status, 206);
+        assert_eq!(part.header("content-range"), Some(format!("bytes 10-19/{len}").as_str()));
+        assert_eq!(&part.body[..], &whole.body[10..20]);
+
+        // The web view can take neither a 304 nor a compressed page.
+        let page = dispatch_local(app.clone(), &tok, req("GET", "/calls/mobile", &[], b"")).await;
+        assert_eq!(page.status, 200);
+        let etag = page.header("etag").expect("the page has an ETag").to_string();
+        let again = dispatch_local(
+            app,
+            &tok,
+            req("GET", "/calls/mobile", &[("If-None-Match", &etag), ("Accept-Encoding", "gzip")], b""),
+        )
+        .await;
+        assert_eq!(again.status, 200);
+        assert_eq!(again.header("content-encoding"), None);
+        assert_eq!(again.body, page.body);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn the_console_password_goes_along_only_from_the_app_side() {
+        let pw = "emb-test-pass-1234";
+        let (app, state, root) = full_app("emb-pw", pw);
+        let ok = dispatch_local(app.clone(), &token(&state), req("GET", "/calls/api/contacts", &[], b"")).await;
+        assert_eq!(ok.status, 200);
+        // A password written by the page is not passed on.
+        let bearer = format!("Bearer {pw}");
+        let page_only = dispatch_local(
+            app,
+            "",
+            req("GET", "/calls/api/contacts", &[("x-calls-token", pw), ("authorization", &bearer)], b""),
+        )
+        .await;
+        assert_eq!(page_only.status, 401);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn the_phone_bridge_needs_the_app_key_and_serves_only_calls() {
+        use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+        use tokio_tungstenite::tungstenite::Error as WsError;
+
+        let (state, root) = make_test_app_state("emb-bridge");
+        let key = new_bridge_key();
+        assert_eq!(key.len(), 64);
+        assert_ne!(key, new_bridge_key());
+        let listener = bind_tcp_reusable(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(serve_phone_bridge(listener, phone_bridge_app(state, &key)));
+
+        for path in ["/", "/ws"] {
+            for wrong in [None, Some("0".repeat(64)), Some(key[..63].to_string())] {
+                let mut rq = format!("ws://127.0.0.1:{port}{path}").into_client_request().unwrap();
+                if let Some(w) = wrong {
+                    rq.headers_mut().insert(BRIDGE_KEY_HEADER, w.parse().unwrap());
+                }
+                match tokio_tungstenite::connect_async(rq).await {
+                    Err(WsError::Http(resp)) => assert_eq!(resp.status().as_u16(), 401),
+                    other => panic!("{path} opened without the key: {:?}", other.map(|_| ())),
+                }
+            }
+        }
+        let mut rq = format!("ws://127.0.0.1:{port}/ws").into_client_request().unwrap();
+        rq.headers_mut().insert(BRIDGE_KEY_HEADER, key.parse().unwrap());
+        let (mut ws, resp) = tokio_tungstenite::connect_async(rq).await.expect("the app's key opens the bridge");
+        assert_eq!(resp.status().as_u16(), 101);
+        let _ = ws.close(None).await;
+
+        // The console is not on the bridge, even with the key.
+        let client = reqwest::Client::new();
+        let url = format!("http://127.0.0.1:{port}/calls/api/settings");
+        let with_key = client.get(&url).header(BRIDGE_KEY_HEADER, &key).send().await.unwrap();
+        assert_eq!(with_key.status().as_u16(), 404);
+        let without = client.get(&url).send().await.unwrap();
+        assert_eq!(without.status().as_u16(), 401);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

@@ -231,7 +231,13 @@ Every contact can be assigned to one of four lists (from the Contacts page, via 
   language or ask whether the AI speaks one. This is on by default; turn it
   off with *Reply in the caller's language* under **Settings → How it answers**.
 - **Transcripts keep the original words**: lines said in another language stay
-  as they were said, each with a translation into your notification language.
+  as they were said. Tap **Translate** at the top right of the conversation to
+  add a translation into your notification language under each line; nothing
+  is translated (and no API quota spent) until you tap it. The phone app uses
+  the phone's own offline translation first (the words stay on the phone) and
+  the summary service only for what it cannot do.
+- **Live conversation**: open a call while the AI is on it to see what both
+  sides are saying; after **Translate**, each finished line is translated too.
 - **Other names callers use for you** (`owner_aliases`), such as an English
   name or a nickname, so the AI knows they mean you. Set them under **Settings →
   About you**.

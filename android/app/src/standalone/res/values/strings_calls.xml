@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial -->
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
+<resources>
+    <string name="sa_call_idle_title">AI answering is on</string>
+    <string name="sa_call_idle_text">AI answers your calls first</string>
+    <string name="sa_channel_live_call">Calls in progress</string>
+    <string name="sa_ai_missed_title">AI couldn\'t answer</string>
+    <string name="sa_ai_missed_ringing_text">Your phone is ringing so you can answer</string>
+    <string name="sa_channel_ai_missed">Calls AI couldn\'t answer</string>
+    <!-- Shown under the Bageo mode in Settings > Modes and the status bar's Modes panel. -->
+    <string name="sa_dnd_rule_trigger">When on, AI answers your calls first</string>
+    <!-- A call that rings for the owner (the AI did not take it, or a normal phone). -->
+    <string name="sa_channel_incoming">Incoming calls</string>
+    <string name="sa_incoming_title">Incoming call</string>
+    <string name="sa_missed_title">Missed call</string>
+    <string name="sa_channel_missed">Missed calls</string>
+</resources>

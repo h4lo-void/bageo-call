@@ -652,6 +652,231 @@ async fn call_scam_feedback(
     }
 }
 
+
+/// `GET /api/call/{id}/live`: what has been said so far on a call going on now
+/// (`dialogue`, labelled lines as the record has them) and the owner's language,
+/// for the page to show it as it is said. 404 `not_live` once the call is over.
+async fn call_live(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+    Path(id): Path<String>,
+) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    if !task_id_safe(&id) {
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid call id");
+    }
+    let Some(rec) = state.store.live_calls().await.into_iter().find(|c| c.id == id) else {
+        return api_error(StatusCode::NOT_FOUND, "not_live", "this call is not going on now");
+    };
+    let dialogue = crate::live_text::words(&rec.serial, &rec.started_at).unwrap_or_default();
+    Json(json!({ "live": true, "status": rec.status, "dialogue": dialogue, "lang": crate::locale::notify_lang().code() })).into_response()
+}
+
+
+/// `POST /api/call/{id}/live/translate` `{"lines":[{"i","text"}]}`: lines of a call
+/// going on now that the phone could not translate, translated by the summary's
+/// service into the owner's language (one request; lines already in it are left
+/// out). Answers `{"lines":[{"i","text"}]}`; 503 `translate_unavailable`.
+async fn call_live_translate(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+    Path(id): Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    if !is_json_request(&headers) {
+        return json_required();
+    }
+    if !task_id_safe(&id) {
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid call id");
+    }
+    let Ok(parsed) = serde_json::from_slice::<TranslateBody>(&body) else {
+        return api_error(StatusCode::BAD_REQUEST, "bad_body", "the body must be {\"lines\": [{\"i\": 0, \"text\": \"…\"}]}");
+    };
+    if !state.store.live_calls().await.iter().any(|c| c.id == id) {
+        return api_error(StatusCode::NOT_FOUND, "not_live", "this call is not going on now");
+    }
+    // One numbered line each, as a record's dialogue reads (at most 20 a time).
+    let asked: Vec<(usize, String)> = parsed
+        .lines
+        .into_iter()
+        .take(20)
+        .map(|l| (l.i, l.text.trim().chars().take(TRANSLATED_LINE_MAX).collect::<String>()))
+        .filter(|(_, t)| !t.is_empty() && !t.contains('\n'))
+        .collect();
+    if asked.is_empty() {
+        return Json(json!({ "lines": [] })).into_response();
+    }
+    let dialogue = asked.iter().map(|(_, t)| format!("對方：{t}")).collect::<Vec<_>>().join("\n");
+    let eff = state.settings_store.snapshot().effective(&state.settings);
+    let owner = crate::locale::notify_lang();
+    let got = crate::summary::translate_dialogue(&state.http, &eff, &dialogue, owner).await;
+    let lines: Vec<Value> = got
+        .into_iter()
+        .enumerate()
+        .filter_map(|(k, t)| Some(json!({ "i": asked.get(k)?.0, "text": t? })))
+        .collect();
+    if lines.is_empty() && !crate::summary::lines_to_translate(&dialogue, owner).is_empty() {
+        return api_error(StatusCode::SERVICE_UNAVAILABLE, "translate_unavailable", "the summary service did not translate");
+    }
+    Json(json!({ "lines": lines })).into_response()
+}
+
+/// A line the phone translated (`POST /api/call/{id}/translate`).
+#[derive(Deserialize)]
+struct TranslatedLine {
+    i: usize,
+    text: String,
+}
+
+#[derive(Deserialize, Default)]
+struct TranslateBody {
+    /// The phone's own translations; none = ask the summary's service.
+    #[serde(default)]
+    lines: Vec<TranslatedLine>,
+}
+
+/// Most characters kept of one translated line.
+const TRANSLATED_LINE_MAX: usize = 2000;
+
+/// The lines of a call's dialogue said in another language than the owner's,
+/// as the record numbers them (what the page offers to translate).
+fn untranslated_lines(notes: &crate::calls::CallNotes, owner: crate::locale::Lang) -> Vec<(usize, String)> {
+    crate::summary::lines_to_translate(&notes.dialogue, owner)
+        .into_iter()
+        .filter(|(i, _)| notes.dialogue_translations.get(*i).is_none_or(|t| t.is_none()))
+        .collect()
+}
+
+/// The translations a record keeps after adding `found`: one entry per dialogue
+/// line, the ones it had kept; empty when there is none.
+fn merged_translations(notes: &crate::calls::CallNotes, found: &[(usize, String)]) -> Vec<Option<String>> {
+    let lines = notes.dialogue.lines().count();
+    let mut v: Vec<Option<String>> = (0..lines).map(|i| notes.dialogue_translations.get(i).cloned().flatten()).collect();
+    for (i, t) in found {
+        if let Some(slot) = v.get_mut(*i) {
+            *slot = Some(t.clone());
+        }
+    }
+    if v.iter().all(Option::is_none) {
+        Vec::new()
+    } else {
+        v
+    }
+}
+
+/// `GET /api/call/{id}/translate`: the owner's language and the dialogue lines
+/// still to translate into it (`[{"i", "text"}]`; empty: nothing to do).
+async fn call_translate_get(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+    Path(id): Path<String>,
+) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    if !task_id_safe(&id) {
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid call id");
+    }
+    let Some(notes) = state.store.load_notes(&id).await else {
+        return api_error(StatusCode::NOT_FOUND, "not_found", "no dialogue for this call");
+    };
+    let owner = crate::locale::notify_lang();
+    let lines: Vec<Value> = untranslated_lines(&notes, owner).into_iter().map(|(i, text)| json!({ "i": i, "text": text })).collect();
+    Json(json!({ "lang": owner.code(), "lines": lines })).into_response()
+}
+
+/// `POST /api/call/{id}/translate`: translate the dialogue lines still in another
+/// language and keep them in the record. `{"lines":[{"i","text"}]}`: the phone
+/// translated them on the device (only lines still to translate are taken, put in
+/// the owner's script and names); `{}`: the summary's service translates them, as
+/// after a call. Answers the record's translations, or 503 `translate_unavailable`.
+async fn call_translate(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+    Path(id): Path<String>,
+    body: axum::body::Bytes,
+) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    if !is_json_request(&headers) {
+        return json_required();
+    }
+    if !task_id_safe(&id) {
+        return api_error(StatusCode::BAD_REQUEST, "invalid_id", "invalid call id");
+    }
+    let parsed: TranslateBody = if body.iter().all(u8::is_ascii_whitespace) {
+        TranslateBody::default()
+    } else {
+        match serde_json::from_slice(&body) {
+            Ok(b) => b,
+            Err(_) => return api_error(StatusCode::BAD_REQUEST, "bad_body", "the body must be {} or {\"lines\": [{\"i\": 0, \"text\": \"…\"}]}"),
+        }
+    };
+    let Some(notes) = state.store.load_notes(&id).await else {
+        return api_error(StatusCode::NOT_FOUND, "not_found", "no dialogue for this call");
+    };
+    let owner = crate::locale::notify_lang();
+    let wanted = untranslated_lines(&notes, owner);
+    if wanted.is_empty() {
+        return Json(json!({ "ok": true, "source": "none", "dialogue_translations": notes.dialogue_translations })).into_response();
+    }
+    let (found, source): (Vec<(usize, String)>, &str) = if parsed.lines.is_empty() {
+        let eff = state.settings_store.snapshot().effective(&state.settings);
+        let all = crate::summary::translate_dialogue(&state.http, &eff, &notes.dialogue, owner).await;
+        let want: std::collections::HashSet<usize> = wanted.iter().map(|(i, _)| *i).collect();
+        let found = all.into_iter().enumerate().filter_map(|(i, t)| t.filter(|_| want.contains(&i)).map(|t| (i, t))).collect();
+        (found, "service")
+    } else {
+        let mut want: std::collections::HashSet<usize> = wanted.iter().map(|(i, _)| *i).collect();
+        let found = parsed
+            .lines
+            .into_iter()
+            .filter(|l| want.remove(&l.i))
+            .filter_map(|l| {
+                let t: String = l.text.trim().chars().take(TRANSLATED_LINE_MAX).collect();
+                (!t.is_empty()).then(|| (l.i, crate::locale::fix_names(&crate::locale::for_owner_in(owner, &t))))
+            })
+            .collect();
+        (found, "device")
+    };
+    if found.is_empty() {
+        return api_error(StatusCode::SERVICE_UNAVAILABLE, "translate_unavailable", "nothing could be translated");
+    }
+    let dialogue = notes.dialogue.clone();
+    let mut kept = Vec::new();
+    let saved = state
+        .store
+        .update_notes(&id, |n| {
+            // The dialogue changed meanwhile: the line numbers no longer fit.
+            if n.dialogue != dialogue {
+                return false;
+            }
+            kept = merged_translations(n, &found);
+            n.dialogue_translations = kept.clone();
+            true
+        })
+        .await;
+    match saved {
+        Ok(true) => {
+            info!("call {id} dialogue translated on demand source={source} lines={}", found.len());
+            Json(json!({ "ok": true, "source": source, "dialogue_translations": kept })).into_response()
+        }
+        Ok(false) => api_error(StatusCode::CONFLICT, "changed", "the dialogue changed; open the call again"),
+        Err(e) => api_error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", format!("{e:#}")),
+    }
+}
+
+
 /// `DELETE /api/call/{id}`: remove a single finished call record, its WAV
 /// files, `_notes.json`, and any associated task records.
 async fn call_delete(
@@ -1409,13 +1634,6 @@ async fn settings_put(
                     "blocklist_sync cleared after settings save (deny gating removed)"
                 );
             }
-            if crate::config::is_embedded()
-                && (patch.get("ui_password").is_some()
-                    || patch.get("mdns_name").is_some()
-                    || patch.get("phone_wifi").is_some())
-            {
-                crate::embedded::notify_lan_config_changed();
-            }
             Json(json!({
                 "ok": true,
                 "settings": state.settings_store.masked_json(),
@@ -1539,6 +1757,10 @@ async fn notify_send(
     // A text message is kept for the console's SMS page. The forwarder sends
     // one again until a channel took it: the same ref is stored only once.
     let is_sms = body.kind.trim().eq_ignore_ascii_case("sms");
+    // The phone app keeps no texts and forwards none.
+    if is_sms && state.sms.is_off() {
+        return api_error(StatusCode::NOT_FOUND, "not_found", "text messages are not kept here");
+    }
     let repeated = is_sms
         && (!body.from.trim().is_empty() || !body.text.trim().is_empty())
         && state.sms.push(
@@ -5268,6 +5490,61 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
+    async fn a_call_is_translated_on_demand_from_the_phone_and_kept() {
+        let root = std::env::temp_dir().join(format!("bageo-ctr-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let state = quick_state(&root);
+        let base = spawn_router(state.clone()).await;
+        let client = reqwest::Client::new();
+        let mut c = state.store.start("pixel-test-tr", "0900000222", 16000, "active").await.unwrap();
+        c.write_uplink(&vec![42u8; 3200]);
+        let r = state.store.finalize(c, "ended").await;
+        let dialogue = "接聽：Hello, this is the assistant.\n對方：お荷物のお届けですが、今日の午後はご在宅ですか？\n接聽：承知いたしました。お伝えしておきます。";
+        state
+            .store
+            .save_notes(&r.id, &crate::calls::CallNotes { summary: "s".into(), dialogue: dialogue.into(), ..Default::default() })
+            .await
+            .unwrap();
+        let url = format!("{base}/api/call/{}/translate", r.id);
+
+        let asked: Value = client.get(&url).send().await.unwrap().json().await.unwrap();
+        assert!(asked["lines"].as_array().unwrap().iter().any(|l| l["i"] == 1), "{asked}");
+
+        // No service set: nothing to translate with.
+        let none = client.post(&url).header("content-type", "application/json").body("{}").send().await.unwrap();
+        assert_eq!(none.status(), StatusCode::SERVICE_UNAVAILABLE);
+        // A line number that needs nothing is not taken.
+        let wrong = client
+            .post(&url)
+            .header("content-type", "application/json")
+            .body(r#"{"lines":[{"i":7,"text":"x"}]}"#)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(wrong.status(), StatusCode::SERVICE_UNAVAILABLE);
+        // Not JSON: refused.
+        let form = client.post(&url).body("{}").send().await.unwrap();
+        assert_ne!(form.status(), StatusCode::OK);
+
+        let ok = client
+            .post(&url)
+            .header("content-type", "application/json")
+            .body(r#"{"lines":[{"i":1,"text":"  The parcel is here. Will you be home this afternoon?  "}]}"#)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(ok.status(), StatusCode::OK);
+        let kept = state.store.load_notes(&r.id).await.unwrap().dialogue_translations;
+        assert_eq!(kept.len(), 3);
+        assert!(kept[1].as_deref().is_some_and(|t| t.starts_with("The parcel")), "{kept:?}");
+        assert!(kept[0].is_none());
+        // A translated line is not offered again.
+        let again: Value = client.get(&url).send().await.unwrap().json().await.unwrap();
+        assert!(!again["lines"].as_array().unwrap().iter().any(|l| l["i"] == 1), "{again}");
+    }
+
+
+    #[tokio::test]
     async fn delete_single_call_and_clear_finished_calls_preserve_live_and_clean_files() {
         let root = std::env::temp_dir().join(format!("bageo-cdel-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&root).unwrap();
@@ -5601,6 +5878,22 @@ pub(crate) mod tests {
     }
 }
 
+/// The SMS page's routes; none in the phone app (`texts` false), where the
+/// phone's own messages app keeps the texts.
+fn sms_router(texts: bool) -> Router<CallsState> {
+    if !texts {
+        return Router::new();
+    }
+    Router::new()
+        .route("/api/sms", get(sms_list))
+        .route("/api/sms/clear", post(sms_clear))
+        .route("/api/sms/threads", get(sms_threads))
+        .route("/api/sms/thread", get(sms_thread).delete(sms_thread_delete))
+        .route("/api/sms/send", post(sms_send))
+        .route("/api/sms/{id}/retry", post(sms_retry))
+        .route("/api/sms/{id}", axum::routing::delete(sms_delete))
+}
+
 pub fn router(state: CallsState) -> Router {
     Router::new()
         .route("/", get(ui))
@@ -5622,6 +5915,9 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/calls/clear", post(calls_clear))
         .route("/api/call/{id}/event.ics", get(call_event_ics))
         .route("/api/call/{id}/scam-feedback", post(call_scam_feedback))
+        .route("/api/call/{id}/translate", get(call_translate_get).post(call_translate))
+        .route("/api/call/{id}/live", get(call_live))
+        .route("/api/call/{id}/live/translate", post(call_live_translate))
         .route("/api/export.csv", get(export_csv))
         .route("/api/audio/{id}", get(audio))
         .route("/api/audio/{id}/listen", get(audio_listen))
@@ -5634,13 +5930,7 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/notify/test", post(notify_test))
         .route("/api/notify/send", post(notify_send))
         .route("/api/notify/recent", get(notify_recent))
-        .route("/api/sms", get(sms_list))
-        .route("/api/sms/clear", post(sms_clear))
-        .route("/api/sms/threads", get(sms_threads))
-        .route("/api/sms/thread", get(sms_thread).delete(sms_thread_delete))
-        .route("/api/sms/send", post(sms_send))
-        .route("/api/sms/{id}/retry", post(sms_retry))
-        .route("/api/sms/{id}", axum::routing::delete(sms_delete))
+        .merge(sms_router(!state.sms.is_off()))
         .route("/api/devices", get(devices))
         .route("/api/devices/{serial}", axum::routing::delete(device_delete))
         .route("/api/devices/{serial}/mode", post(device_mode))

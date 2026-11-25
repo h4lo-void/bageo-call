@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial -->
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
+<resources>
+    <!-- Android 12+: Material 3 roles from the phone's own palette (they follow the wallpaper). -->
+    <color name="bg_page">@android:color/system_neutral1_10</color>
+    <color name="bg_surface">@android:color/system_neutral1_50</color>
+    <color name="bg_surface2">@android:color/system_neutral1_100</color>
+    <color name="bg_line">@android:color/system_neutral2_200</color>
+    <color name="bg_text">@android:color/system_neutral1_900</color>
+    <color name="bg_muted">@android:color/system_neutral2_700</color>
+    <color name="bg_outline">@android:color/system_neutral2_500</color>
+    <color name="bg_accent">@android:color/system_accent1_600</color>
+    <color name="bg_on_accent">@android:color/system_accent1_0</color>
+    <color name="bg_accent_soft">@android:color/system_accent1_100</color>
+    <color name="bg_on_accent_soft">@android:color/system_accent1_900</color>
+    <color name="bg_secondary">@android:color/system_accent2_100</color>
+    <color name="bg_on_secondary">@android:color/system_accent2_900</color>
+    <color name="bg_primary">@android:color/system_accent1_600</color>
+    <color name="bg_primary_fg">@android:color/system_accent1_0</color>
+</resources>

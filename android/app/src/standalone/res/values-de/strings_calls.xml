@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial -->
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
+<resources>
+    <string name="sa_call_idle_title">AI-Annahme ist an</string>
+    <string name="sa_call_idle_text">Anrufe nimmt zuerst die AI an</string>
+    <string name="sa_channel_live_call">Laufende Anrufe</string>
+    <string name="sa_ai_missed_title">AI konnte nicht annehmen</string>
+    <string name="sa_ai_missed_ringing_text">Dein Telefon klingelt, damit du selbst annimmst</string>
+    <string name="sa_channel_ai_missed">Anrufe, die die AI nicht annehmen konnte</string>
+    <!-- Shown under the Bageo mode in Settings > Modes and the status bar's Modes panel. -->
+    <string name="sa_dnd_rule_trigger">Wenn an, nimmt zuerst die AI deine Anrufe an</string>
+    <!-- A call that rings for the owner (the AI did not take it, or a normal phone). -->
+    <string name="sa_channel_incoming">Eingehende Anrufe</string>
+    <string name="sa_incoming_title">Eingehender Anruf</string>
+    <string name="sa_missed_title">Verpasster Anruf</string>
+    <string name="sa_channel_missed">Verpasste Anrufe</string>
+</resources>

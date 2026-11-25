@@ -10,10 +10,12 @@ import android.provider.ContactsContract
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
-/** Reads Android Contacts and merges them into local Bageo contacts via `/calls/api/contacts/batch`. */
+/**
+ * Reads Android Contacts and merges them into local Bageo contacts via `/calls/api/contacts/batch`,
+ * handed to the agent inside the app ([EmbeddedAgent.http]). [SyncResult.error] is a short code
+ * the console translates (`no_permission`, `agent_not_ready`, `sync_failed`).
+ */
 object PhoneContactsSync {
     data class ContactEntry(
         val name: String,
@@ -63,36 +65,24 @@ object PhoneContactsSync {
             return SyncResult(ok = false, error = "agent_not_ready")
         }
         val payload = buildBatchPayloadJson(entries, starredToWhitelist)
-        val endpoint = "http://127.0.0.1:${BuildConfig.CONSOLE_PORT}/calls/api/contacts/batch"
-        val conn = (URL(endpoint).openConnection() as HttpURLConnection)
         return try {
-            conn.requestMethod = "POST"
-            conn.connectTimeout = 5_000
-            conn.readTimeout = 15_000
-            conn.doOutput = true
-            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            if (status.uiToken.isNotBlank()) {
-                conn.setRequestProperty("Authorization", "Bearer ${status.uiToken}")
-            }
-            conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
-            val code = conn.responseCode
-            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val body = stream?.bufferedReader()?.readText().orEmpty()
-            if (code !in 200..299) {
-                SyncResult(ok = false, error = "HTTP $code: $body")
-            } else {
-                val obj = JSONObject(body)
-                SyncResult(
-                    ok = obj.optBoolean("ok", true),
-                    added = obj.optInt("added", 0),
-                    merged = obj.optInt("merged", 0),
-                    skipped = obj.optInt("skipped", 0),
-                )
-            }
+            val res = EmbeddedAgent.http(
+                "POST",
+                "/calls/api/contacts/batch",
+                mapOf("Content-Type" to "application/json; charset=utf-8"),
+                payload.toByteArray(Charsets.UTF_8),
+            ) ?: return SyncResult(ok = false, error = "agent_not_ready")
+            if (res.status == 503) return SyncResult(ok = false, error = "agent_not_ready")
+            if (!res.ok) return SyncResult(ok = false, error = "sync_failed")
+            val obj = JSONObject(String(res.body, Charsets.UTF_8))
+            SyncResult(
+                ok = obj.optBoolean("ok", true),
+                added = obj.optInt("added", 0),
+                merged = obj.optInt("merged", 0),
+                skipped = obj.optInt("skipped", 0),
+            )
         } catch (e: Exception) {
-            SyncResult(ok = false, error = e.message ?: "sync_failed")
-        } finally {
-            conn.disconnect()
+            SyncResult(ok = false, error = "sync_failed")
         }
     }
 

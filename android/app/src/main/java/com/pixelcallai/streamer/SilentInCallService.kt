@@ -38,6 +38,12 @@ import java.util.concurrent.atomic.AtomicLong
  *   asked for (`place_call`) are not "by hand": that is decided once per call, when it is
  *   added ([CallInfo.agentCallback]), so clearing the agent's pending call later cannot
  *   turn a callback into a call by hand.
+ *
+ * Standalone, in both modes: an incoming call first brings the app's mode in line with
+ * the phone ([PhoneModeManager.reconcileStandalone]); Bageo got the call, so it is the
+ * phone app. A ringing call the call service does not take within
+ * [RingHandoffRules.CLAIM_TIMEOUT_MS] (AI mode), or any ringing call of a normal phone,
+ * rings for the owner through [OwnerRing], which does not need [CallAudioService].
  */
 class SilentInCallService : InCallService() {
     /** Number and SIM of one call as the agent gets them. [callerId] "" = hidden or unknown. */
@@ -57,12 +63,18 @@ class SilentInCallService : InCallService() {
 
     private class SimInfo(val country: String, val subId: Int?)
 
+    /** Standalone: ringing calls being watched, by instance, with when they started ringing (main thread). */
+    private val ringWatch = HashMap<Long, Long>()
+    private val ringHandler = Handler(Looper.getMainLooper())
+
     override fun onCreate() {
         super.onCreate()
         activeService = this
     }
 
     override fun onDestroy() {
+        ringHandler.removeCallbacksAndMessages(null)
+        ringWatch.clear()
         if (activeService === this) {
             activeService = null
             liveCalls.clear()
@@ -71,6 +83,8 @@ class SilentInCallService : InCallService() {
             activeCall = null
             activeCallInstance.set(NO_CALL_INSTANCE)
         }
+        // Unbound with a call still ringing for the owner: stop it, and note it as missed.
+        if (BuildConfig.STANDALONE) OwnerRing.onCallRemoved(this, NO_CALL_INSTANCE, noCallsLeft = true)
         super.onDestroy()
     }
 
@@ -78,6 +92,11 @@ class SilentInCallService : InCallService() {
         super.onCallAdded(call)
         liveCalls.add(call)
         val instanceId = callInstances.computeIfAbsent(call) { nextCallInstance.incrementAndGet() }
+        if (BuildConfig.STANDALONE && isIncomingDirection(call)) {
+            // Telecom gave this call to Bageo, so Bageo is the phone app: the app's mode
+            // follows the phone's before anything decides who takes the call.
+            PhoneModeManager.reconcileStandalone(this, "incoming call", bageoIsPhoneApp = true)
+        }
         // A call that rings while another is up is declined first, also during a whitelist
         // urgent call's merge: it is never taken as a part of that call (the owner is
         // talking on it). Calls the merge itself makes are told apart by isMergeMadeCall.
@@ -113,7 +132,13 @@ class SilentInCallService : InCallService() {
         if (ownCall || (BuildConfig.STANDALONE && CallAudioService.isOwnerHandlingCall())) {
             // Dialed by hand or taken over by the owner: never muted, no AI.
             if (Prefs.isAiCallEnabled(this)) Log.i(TAG, "owner call — not muted, AI not attached")
-        } else {
+            // Standalone: a call the owner dials (from Bageo's dial pad, contacts, a browser,
+            // maps…) gets the call screen right away. Calls the agent dials are not "own".
+            if (BuildConfig.STANDALONE && ownCall && Prefs.isAiCallEnabled(this)) {
+                CallAudioService.showOwnCallScreen(this, info.callerId)
+            }
+        } else if (!BuildConfig.STANDALONE) {
+            // Bridge: as before the standalone ring signal (NEW counts as a ring here).
             ensureArmed(info.callerId, instanceId)
             LocalAudioGuard(this).applyHardMute()
             forceMuteCall(call)
@@ -133,10 +158,46 @@ class SilentInCallService : InCallService() {
                     forceMuteCall(call)
                 }
             }
+        } else {
+            ensureArmed(info.callerId, instanceId)
+            LocalAudioGuard(this).silenceRingingCall()
+            forceMuteCall(call)
+            when (state) {
+                Call.STATE_RINGING -> {
+                    // Do NOT answer here — CallAudioService waits for the agent first.
+                    Log.i(TAG, "RINGING — defer answer to CallAudioService (agent gate)")
+                    forceMuteCall(call)
+                    LocalAudioGuard(this).silenceRingingCall()
+                    signalCallRinging(info.callerId, instanceId)
+                    watchRing(info.callerId, instanceId)
+                }
+                Call.STATE_NEW -> {
+                    // NEW is also the first state of a call this phone dials: only an
+                    // incoming one is a ring.
+                    if (!outgoing) {
+                        Log.i(TAG, "NEW incoming — defer answer to CallAudioService (agent gate)")
+                        forceMuteCall(call)
+                        signalCallRinging(info.callerId, instanceId)
+                        watchRing(info.callerId, instanceId)
+                    }
+                }
+                Call.STATE_ACTIVE -> {
+                    forceMuteCall(call)
+                    selectActiveCall(call, instanceId)
+                    signalCallActive(info.callerId, instanceId)
+                }
+                Call.STATE_CONNECTING, Call.STATE_DIALING -> {
+                    forceMuteCall(call)
+                }
+            }
         }
         call.registerCallback(object : Call.Callback() {
             override fun onStateChanged(call: Call, state: Int) {
                 Log.i(TAG, "call state -> $state instance=$instanceId")
+                // A call that rang for the owner is up: stop ringing (every mode, owner or not).
+                if (BuildConfig.STANDALONE && state == Call.STATE_ACTIVE) {
+                    OwnerRing.onCallActive(this@SilentInCallService, instanceId)
+                }
                 // The owner's own call or an AI call taken over by owner: never muted, never handed back to AI.
                 if (isOwnCall(call) || (BuildConfig.STANDALONE && CallAudioService.isOwnerHandlingCall())) {
                     if (state == Call.STATE_ACTIVE && BuildConfig.STANDALONE) {
@@ -149,12 +210,27 @@ class SilentInCallService : InCallService() {
                     if (call !in liveCalls) return
                     selectActiveCall(call, instanceId)
                 }
-                if (state == Call.STATE_ACTIVE || state == Call.STATE_RINGING) {
-                    LocalAudioGuard(this@SilentInCallService).applyHardMute()
-                    ensureArmed(refreshCallerId(call, instanceId), instanceId)
+                if (!BuildConfig.STANDALONE) {
+                    // Bridge: as before the standalone ring signal.
+                    if (state == Call.STATE_ACTIVE || state == Call.STATE_RINGING) {
+                        LocalAudioGuard(this@SilentInCallService).applyHardMute()
+                        ensureArmed(refreshCallerId(call, instanceId), instanceId)
+                    }
+                    if (state == Call.STATE_ACTIVE) {
+                        signalCallActive(refreshCallerId(call, instanceId), instanceId)
+                    }
+                    return
                 }
-                if (state == Call.STATE_ACTIVE) {
-                    signalCallActive(refreshCallerId(call, instanceId), instanceId)
+                if (state == Call.STATE_ACTIVE || state == Call.STATE_RINGING) {
+                    val cid = refreshCallerId(call, instanceId)
+                    LocalAudioGuard(this@SilentInCallService).silenceRingingCall()
+                    ensureArmed(cid, instanceId)
+                    if (state == Call.STATE_RINGING) {
+                        signalCallRinging(cid, instanceId)
+                        watchRing(cid, instanceId)
+                    } else {
+                        signalCallActive(cid, instanceId)
+                    }
                 }
             }
         })
@@ -164,6 +240,10 @@ class SilentInCallService : InCallService() {
         super.onCallRemoved(call)
         liveCalls.remove(call)
         val instanceId = callInstances.remove(call) ?: NO_CALL_INSTANCE
+        if (BuildConfig.STANDALONE) {
+            ringWatch.remove(instanceId)
+            OwnerRing.onCallRemoved(this, instanceId, noCallsLeft = liveCalls.isEmpty())
+        }
         // Whitelist urgent call: while the merge runs (and after it) the original call's
         // instance goes on in the calls the merge makes, even before they show up.
         val job = addJob
@@ -463,12 +543,60 @@ class SilentInCallService : InCallService() {
         }
     }
 
+    private fun signalCallRinging(callerId: String?, instanceId: Long) {
+        startCallAudioService(CallAudioService.ACTION_CALL_RINGING, callerId, instanceId)
+    }
+
     private fun signalCallActive(callerId: String?, instanceId: Long) {
         startCallAudioService(CallAudioService.ACTION_CALL_ACTIVE, callerId, instanceId)
     }
 
     private fun signalCallEnded(instanceId: Long) {
         startCallAudioService(CallAudioService.ACTION_CALL_ENDED, null, instanceId)
+    }
+
+    /**
+     * Standalone: watch ringing call [instanceId] until someone has it. A normal phone
+     * rings for the owner at once; in AI mode the call service gets
+     * [RingHandoffRules.CLAIM_TIMEOUT_MS] to take it, and the owner gets it when it does
+     * not (the service is not running, or it did not see the ring). Once per call.
+     */
+    private fun watchRing(callerId: String, instanceId: Long) {
+        if (!BuildConfig.STANDALONE || instanceId == NO_CALL_INSTANCE) return
+        if (ringWatch.containsKey(instanceId)) return
+        ringWatch[instanceId] = SystemClock.elapsedRealtime()
+        lookAtRing(instanceId, callerId)
+    }
+
+    private fun lookAtRing(instanceId: Long, callerIdAtRing: String) {
+        val since = ringWatch[instanceId] ?: return
+        val waited = SystemClock.elapsedRealtime() - since
+        val call = liveCalls.firstOrNull { callInstances[it] == instanceId }
+        val aiMode = Prefs.isAiCallEnabled(this)
+        val next = RingHandoffRules.next(
+            stillRinging = call != null && isRingingIncoming(call),
+            aiMode = aiMode,
+            serviceTookIt = CallAudioService.isRingTakenByService(),
+            ownerHasIt = OwnerRing.isHandedToOwner() || CallAudioService.isOwnerHandlingCall(),
+            waitedMs = waited,
+        )
+        when (next) {
+            RingHandoffRules.Next.DONE -> ringWatch.remove(instanceId)
+            RingHandoffRules.Next.WAIT -> ringHandler.postDelayed(
+                { lookAtRing(instanceId, callerIdAtRing) },
+                RingHandoffRules.nextLookInMs(waited),
+            )
+            RingHandoffRules.Next.HAND_TO_OWNER -> {
+                ringWatch.remove(instanceId)
+                val caller = call?.let { refreshCallerId(it, instanceId) } ?: callerIdAtRing
+                val why = when {
+                    !aiMode -> "normal phone"
+                    CallAudioService.isRunning() -> "the call service did not take the call in ${waited}ms"
+                    else -> "the call service is not running"
+                }
+                OwnerRing.handToOwner(this, instanceId, caller, aiMissed = aiMode, why = why)
+            }
+        }
     }
 
     private fun startCallAudioService(action: String, callerId: String?, instanceId: Long) {
@@ -1149,9 +1277,69 @@ class SilentInCallService : InCallService() {
         fun currentActiveCallInstanceId(): Long =
             if (activeService == null) NO_CALL_INSTANCE else activeCallInstance.get()
 
+        fun hasRingingCall(): Boolean = activeService != null && ringingCall() != null
+
+        /**
+         * Telecom has a call that is not ending (ringing, dialing, or up). False without
+         * InCallService and while it is bound but no call has been added yet.
+         */
+        fun hasLiveCalls(): Boolean {
+            if (activeService == null) return false
+            return liveCalls.any { it.state != Call.STATE_DISCONNECTED && it.state != Call.STATE_DISCONNECTING }
+        }
+
+        fun hasRingingOrLiveAiCall(): Boolean {
+            if (activeService == null) return false
+            if (BuildConfig.STANDALONE && CallAudioService.isOwnerHandlingCall()) return false
+            return liveCalls.any {
+                it.state != Call.STATE_DISCONNECTED &&
+                    it.state != Call.STATE_DISCONNECTING &&
+                    !isOwnCall(it)
+            }
+        }
+
+        /**
+         * Aggregate Telecom state observed directly by [SilentInCallService], covering
+         * VoWiFi / secondary eSIM calls where `TelephonyManager.callState` can lag or
+         * remain `CALL_STATE_IDLE`. Null when [SilentInCallService] is not currently bound.
+         */
+        fun effectiveTelecomCallState(): Int? {
+            if (activeService == null) return null
+            return when {
+                liveCalls.any(::isEstablishedCall) -> TelephonyManager.CALL_STATE_OFFHOOK
+                ringingCall() != null -> TelephonyManager.CALL_STATE_RINGING
+                else -> TelephonyManager.CALL_STATE_IDLE
+            }
+        }
+
         private fun ringingCall(): Call? =
-            activeCall?.takeIf { it in liveCalls && it.state == Call.STATE_RINGING }
-                ?: liveCalls.firstOrNull { it.state == Call.STATE_RINGING }
+            if (!BuildConfig.STANDALONE) {
+                // Bridge: only RINGING, as before.
+                activeCall?.takeIf { it in liveCalls && it.state == Call.STATE_RINGING }
+                    ?: liveCalls.firstOrNull { it.state == Call.STATE_RINGING }
+            } else {
+                activeCall?.takeIf { it in liveCalls && isRingingIncoming(it) }
+                    ?: liveCalls.firstOrNull(::isRingingIncoming)
+            }
+
+        /**
+         * A call that rings on this phone. NEW counts only for an incoming call: a call
+         * the owner or the agent dials starts in NEW too, and must never be answered or
+         * reported as a ring.
+         */
+        private fun isRingingIncoming(call: Call): Boolean =
+            when (call.state) {
+                Call.STATE_RINGING -> true
+                Call.STATE_NEW -> isIncomingDirection(call)
+                else -> false
+            }
+
+        private fun isIncomingDirection(call: Call): Boolean =
+            try {
+                call.details.callDirection == Call.Details.DIRECTION_INCOMING
+            } catch (_: Exception) {
+                false
+            }
 
         private fun selectActiveCall(call: Call, instanceId: Long) {
             if (instanceId == NO_CALL_INSTANCE || call !in liveCalls) return
@@ -1215,17 +1403,32 @@ class SilentInCallService : InCallService() {
             }
         }
 
-        /** Defer-ring path: answer the active call once CallAudioService confirms the agent. */
+        /** Defer-ring path: answer the ringing call once CallAudioService confirms the agent. */
         fun answerActiveIfHeld(): Boolean {
-            val call = activeCall ?: return false
-            return try {
-                if (call.state == Call.STATE_RINGING || call.state == Call.STATE_NEW) {
-                    call.answer(VideoProfile.STATE_AUDIO_ONLY)
-                    Log.i(TAG, "answerActiveIfHeld issued")
-                    true
-                } else {
+            if (activeService == null) return false
+            if (!BuildConfig.STANDALONE) {
+                // Bridge: the selected call, as before.
+                val held = activeCall ?: return false
+                return try {
+                    if (held.state == Call.STATE_RINGING || held.state == Call.STATE_NEW) {
+                        held.answer(VideoProfile.STATE_AUDIO_ONLY)
+                        Log.i(TAG, "answerActiveIfHeld issued")
+                        true
+                    } else {
+                        false
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "answerActiveIfHeld failed: ${e.message}")
                     false
                 }
+            }
+            val call = ringingCall() ?: return false
+            val id = callInstances[call] ?: NO_CALL_INSTANCE
+            if (id != NO_CALL_INSTANCE) selectActiveCall(call, id)
+            return try {
+                call.answer(VideoProfile.STATE_AUDIO_ONLY)
+                Log.i(TAG, "answerActiveIfHeld issued via InCallService instance=$id state=${call.state}")
+                true
             } catch (e: Exception) {
                 Log.w(TAG, "answerActiveIfHeld failed: ${e.message}")
                 false

@@ -5,15 +5,6 @@
     <string name="sa_phone_setup_btn">Réglages</string>
     <string name="sa_starting_title">Démarrage de Bageo…</string>
     <string name="sa_starting_desc">Le premier lancement peut prendre quelques secondes.</string>
-    <string name="sa_lan_title">Autoriser le même Wi-Fi</string>
-    <string name="sa_lan_hint">Permet d\'ouvrir cette console depuis un ordinateur ou un autre téléphone sur le même Wi-Fi.</string>
-    <string name="sa_lan_pw_title">Définir un mot de passe</string>
-    <string name="sa_lan_pw_body">Choisissez un mot de passe d\'au moins 8 caractères avant d\'ouvrir la console sur le réseau Wi-Fi.</string>
-    <string name="sa_lan_pw_hint">Au moins 8 caractères</string>
-    <string name="sa_lan_pw_short">Le mot de passe doit contenir au moins 8 caractères.</string>
-    <string name="sa_lan_pw_failed">Impossible d\'enregistrer le mot de passe. Réessayez après le démarrage.</string>
-    <string name="sa_lan_url_label">Adresse Wi-Fi</string>
-    <string name="sa_lan_mdns_hint">Ou ouvrez %1$s</string>
     <string name="sa_copy_url">Copier l\'adresse</string>
     <string name="sa_copied">Copié</string>
     <string name="sa_battery_tip">Si le téléphone reste branché en continu, activez la limite de charge à 80% dans les Paramètres.</string>
@@ -29,8 +20,6 @@
     <string name="sa_dnd_rule_name">Bageo AI Appels</string>
     <string name="sa_channel_owner_calls">Appels prioritaires et urgents</string>
     <string name="sa_channel_summaries">Résumés d\'appels AI</string>
-    <string name="sa_notif_ai_idle_title">L\'AI répond à vos appels</string>
-    <string name="sa_notif_ai_idle_text">Toucher pour ouvrir ou changer ci-dessous</string>
     <string name="sa_notif_ai_call_title">Appel AI en cours</string>
     <string name="sa_notif_owner_call_title">En appel (Vous)</string>
     <string name="sa_notif_urgent_title">Appel urgent</string>

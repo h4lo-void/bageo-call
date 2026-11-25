@@ -785,15 +785,18 @@ pub fn pick_phone_sim(
     found.into_iter().next().ok_or(if unknown { "sim_unknown" } else { "no_sim_for_country" })
 }
 
-/// The connected phones as errands see them.
+/// The connected phones as errands see them. In the phone app a phone set to
+/// normal-phone mode still makes errands: it is connected only while the owner
+/// has the app open.
 pub async fn phone_view(control: &ControlRegistry, devices: &PhoneDevices, calls: &CallStore, sims: &SimBook) -> Vec<PhoneView> {
     let live: Vec<String> = calls.live_calls().await.into_iter().map(|c| c.serial).collect();
+    let normal_dials = crate::config::is_embedded();
     control
         .connected_serials()
         .await
         .into_iter()
         .map(|serial| PhoneView {
-            normal: devices.mode_of(&serial) == Some(PhoneMode::Normal),
+            normal: !normal_dials && devices.mode_of(&serial) == Some(PhoneMode::Normal),
             busy: devices.in_call(&serial)
                 || live.iter().any(|s| s.eq_ignore_ascii_case(&serial))
                 || appointments::outbound_busy_on(&serial),

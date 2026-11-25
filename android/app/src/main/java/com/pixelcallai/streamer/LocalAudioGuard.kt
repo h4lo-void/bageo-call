@@ -14,6 +14,7 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
+import android.telecom.TelecomManager
 import android.util.Log
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
@@ -34,12 +35,29 @@ class LocalAudioGuard(context: Context) {
     /** Queue a hard mute and return without waiting for AudioManager. */
     fun applyHardMute() = coordinator.requestHardMute(fromHold = false, rootPass = true)
 
+    /**
+     * Immediately silence an incoming AI call, even before [CallAudioService] marks the
+     * call busy. Standalone Daily Sound: only this call is silenced (the ringer, ring and
+     * notification volumes are not touched) and everything changed for the call is put
+     * back by the [restore] at the end of the call.
+     */
+    fun silenceRingingCall() =
+        coordinator.requestHardMute(fromHold = false, rootPass = true, forceCallMute = true)
+
     fun startHoldLoop() = coordinator.startHoldLoop()
 
     fun stopHoldLoop() = coordinator.stopHoldLoop()
 
     /** Queue restore behind any active audio Binder call. */
     fun restore(onFinished: (() -> Unit)? = null) = coordinator.requestRestore(onFinished)
+
+    /**
+     * Standalone Daily Sound with no call: put back what a Daily Sound call changed. When
+     * the guard armed in the silent AI mode instead (it saved the volumes after the module
+     * had already turned them to zero), only the microphone and speaker go back and the
+     * saved volumes are forgotten: the module has just set the owner's volumes again.
+     */
+    fun settleForDailySound() = coordinator.requestRestore(null, keepVolumes = true)
 
     /**
      * A call the owner dialed by hand in AI mode: [restore], then also take back the
@@ -64,6 +82,12 @@ class LocalAudioGuard(context: Context) {
 
     fun refreshConsolePreview() = coordinator.refreshConsolePreviewIfAllowed()
 
+    /**
+     * The guard has saved the phone's audio state and changed it (it mutes now, or a call
+     * ended without a restore yet). Volumes read now are not the owner's own.
+     */
+    fun isMutingNow(): Boolean = coordinator.isArmed()
+
     companion object {
         const val HOLD_INTERVAL_MS = 500L
 
@@ -85,6 +109,9 @@ class LocalAudioGuard(context: Context) {
          */
         fun turnOffOwnDndMode(context: Context) {
             if (!appHasOwnDndMode()) return
+            // Standalone: delete that mode instead. Turning it off below never creates it,
+            // but it stays listed in Settings > Modes as "Do Not Disturb (Bageo)".
+            if (BuildConfig.STANDALONE && removeOwnDndMode(context)) return
             try {
                 context.getSystemService(NotificationManager::class.java)
                     ?.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
@@ -93,6 +120,29 @@ class LocalAudioGuard(context: Context) {
                 Log.w("LocalAudioGuard", "own Do Not Disturb mode off failed: ${e.message}")
             }
         }
+
+        /**
+         * Android 15+: delete the mode Android made for an older Bageo that set the phone's
+         * Do Not Disturb itself (id `implicit_<package>`, owned by this app). True when it
+         * is gone or was never there; false when Android refused, so the caller can at
+         * least turn it off.
+         */
+        fun removeOwnDndMode(context: Context): Boolean {
+            if (!appHasOwnDndMode()) return true
+            val nm = context.getSystemService(NotificationManager::class.java) ?: return false
+            return try {
+                if (nm.removeAutomaticZenRule(IMPLICIT_RULE_PREFIX + context.packageName)) {
+                    Log.i("LocalAudioGuard", "removed the Do Not Disturb (Bageo) mode an older version left")
+                }
+                true
+            } catch (e: Exception) {
+                Log.w("LocalAudioGuard", "removing the Do Not Disturb (Bageo) mode failed: ${e.message}")
+                false
+            }
+        }
+
+        /** Android 15's id for the mode it makes when an app sets Do Not Disturb directly. */
+        private const val IMPLICIT_RULE_PREFIX = "implicit_"
 
         private val coordinatorLock = Any()
 
@@ -127,7 +177,10 @@ private class LocalAudioGuardCoordinator(context: Context) {
     private val mutePending = AtomicBoolean(false)
     private val fullPassPending = AtomicBoolean(false)
     private val rootPassPending = AtomicBoolean(false)
+    private val forceCallMutePending = AtomicBoolean(false)
     private val restorePending = AtomicBoolean(false)
+    /** The queued restore is [LocalAudioGuard.settleForDailySound] (volumes are not written back). */
+    private val restoreKeepsVolumes = AtomicBoolean(false)
     private val ownCallPending = AtomicBoolean(false)
     private val releasePending = AtomicBoolean(false)
     private val consolePreviewAllowed = AtomicBoolean(false)
@@ -147,7 +200,13 @@ private class LocalAudioGuardCoordinator(context: Context) {
     private var savedRinger: Int? = null
     private var savedInterruption: Int? = null
     private val savedVolumes = mutableMapOf<Int, Int>()
+    /** Earpiece volume saved when the guard last armed, kept after the restore for the owner's own call. */
+    private var earpieceBeforeCall: Int? = null
     private var armed = false
+    /** Armed in Standalone Daily Sound mode: only the call's own changes are put back. */
+    private var armedDaily = false
+    /** [armed], readable from any thread. */
+    private val armedFlag = AtomicBoolean(false)
     private var hardMuteRuns = 0L
 
     private val holdRunnable = object : Runnable {
@@ -161,22 +220,27 @@ private class LocalAudioGuardCoordinator(context: Context) {
         }
     }
 
-    fun requestHardMute(fromHold: Boolean, rootPass: Boolean) {
+    fun requestHardMute(fromHold: Boolean, rootPass: Boolean, forceCallMute: Boolean = false) {
         // An ordinary phone (normal mode) is never muted.
         if (!Prefs.isAiCallEnabled(appContext)) return
+        // Nor one on its way to a normal phone (the app's copy says AI until the switch ends).
+        if (PhoneModeManager.isSwitchingTo(Prefs.PHONE_MODE_NORMAL)) return
         // Nor is a call the owner dialed by hand (AI mode): they are talking on it.
         if (SilentInCallService.isOwnCallInProgress()) return
         desiredMuted.set(true)
         if (!fromHold) fullPassPending.set(true)
         if (rootPass) rootPassPending.set(true)
+        if (forceCallMute) forceCallMutePending.set(true)
         mutePending.set(true)
         scheduleDrain()
     }
 
+    fun isArmed(): Boolean = armedFlag.get()
+
     fun startHoldLoop() {
         if (holdActive.getAndSet(true)) return
         holdTick.set(0)
-        requestHardMute(fromHold = false, rootPass = true)
+        requestHardMute(fromHold = false, rootPass = true, forceCallMute = true)
         mainHandler.removeCallbacks(holdRunnable)
         mainHandler.postDelayed(holdRunnable, LocalAudioGuard.HOLD_INTERVAL_MS)
         Log.i(TAG, "mute hold loop started intervalMs=${LocalAudioGuard.HOLD_INTERVAL_MS}")
@@ -188,7 +252,7 @@ private class LocalAudioGuardCoordinator(context: Context) {
         Log.i(TAG, "mute hold loop stopped")
     }
 
-    fun requestRestore(onFinished: (() -> Unit)?) {
+    fun requestRestore(onFinished: (() -> Unit)?, keepVolumes: Boolean = false) {
         stopHoldLoop()
         onFinished?.let { restoreCallbacks.add(it) }
         // A queued mute that has not started is stale after restore. If a fresh arm
@@ -197,6 +261,9 @@ private class LocalAudioGuardCoordinator(context: Context) {
         mutePending.set(false)
         fullPassPending.set(false)
         rootPassPending.set(false)
+        forceCallMutePending.set(false)
+        // A full restore asked for at the same time wins over a Daily Sound settle.
+        if (!keepVolumes || !restorePending.get()) restoreKeepsVolumes.set(keepVolumes)
         restorePending.set(true)
         scheduleDrain()
     }
@@ -212,6 +279,7 @@ private class LocalAudioGuardCoordinator(context: Context) {
         mutePending.set(false)
         fullPassPending.set(false)
         rootPassPending.set(false)
+        forceCallMutePending.set(false)
         restorePending.set(false)
         releasePending.set(true)
         scheduleDrain()
@@ -249,7 +317,8 @@ private class LocalAudioGuardCoordinator(context: Context) {
                     continue
                 }
                 if (restorePending.getAndSet(false)) {
-                    runTrackedOperation("restore") { restoreBlocking() }
+                    val keepVolumes = restoreKeepsVolumes.getAndSet(false)
+                    runTrackedOperation("restore") { restoreBlocking(keepVolumes) }
                     if (ownCallPending.getAndSet(false)) {
                         runTrackedOperation("own-call") { unmuteForOwnCallBlocking() }
                     }
@@ -266,16 +335,22 @@ private class LocalAudioGuardCoordinator(context: Context) {
                     mutePending.set(false)
                     fullPassPending.set(false)
                     rootPassPending.set(false)
+                    forceCallMutePending.set(false)
                     break
                 }
                 if (!mutePending.getAndSet(false)) break
 
                 val fullPass = fullPassPending.getAndSet(false)
                 val rootPass = rootPassPending.getAndSet(false) || fullPass
+                val forceCallMute = forceCallMutePending.getAndSet(false)
                 // Restore wins over a mute that was queued but not yet started.
                 if (!desiredMuted.get() || restorePending.get()) continue
                 runTrackedOperation("hard-mute") {
-                    applyHardMuteBlocking(fromHold = !fullPass, rootPass = rootPass)
+                    applyHardMuteBlocking(
+                        fromHold = !fullPass,
+                        rootPass = rootPass,
+                        forceCallMute = forceCallMute,
+                    )
                 }
             }
         } finally {
@@ -335,15 +410,20 @@ private class LocalAudioGuardCoordinator(context: Context) {
         }
     }
 
-    private fun applyHardMuteBlocking(fromHold: Boolean, rootPass: Boolean) {
+    private fun applyHardMuteBlocking(fromHold: Boolean, rootPass: Boolean, forceCallMute: Boolean = false) {
         // Queued before the phone switched to normal mode or while owner took over the call: drop it.
         if (!Prefs.isAiCallEnabled(appContext)) return
         if (BuildConfig.STANDALONE && CallAudioService.isOwnerHandlingCall()) return
-        val callInProgress = holdActive.get() || CallAudioService.isAnyCallBusy()
-        val standaloneDailyIdle =
-            BuildConfig.STANDALONE && Prefs.isStandaloneDailySound(appContext) && !callInProgress
-        if (standaloneDailyIdle) {
-            // Daily Sound mode keeps idle notification, media, and alarm audio untouched.
+        val dailySound = BuildConfig.STANDALONE && Prefs.isStandaloneDailySound(appContext)
+        val callSeen =
+            holdActive.get() ||
+                CallAudioService.isAnyCallBusy() ||
+                SilentInCallService.hasRingingOrLiveAiCall()
+        // Daily Sound needs a call that is really there: a late request (sent while a call
+        // rang, run after it ended) must not leave the microphone muted until the next call.
+        val callInProgress = callSeen || (forceCallMute && !dailySound)
+        if (dailySound && !callSeen) {
+            // Daily Sound mode keeps idle ringtone, notification, media, and alarm audio untouched.
             return
         }
         var firstArm = false
@@ -376,6 +456,8 @@ private class LocalAudioGuardCoordinator(context: Context) {
                 }
             }
             armed = true
+            armedDaily = dailySound
+            armedFlag.set(true)
             firstArm = true
         }
 
@@ -399,18 +481,19 @@ private class LocalAudioGuardCoordinator(context: Context) {
                 Log.w(TAG, "isSpeakerphoneOn=false failed: ${e.message}")
             }
             ensureEarpieceSilent()
+            if (dailySound) silenceThisRing()
         }
 
-        if (firstArm) {
+        if (dailySound) {
+            // Only this call is silenced: Bageo's phone app does not ring for it, the call
+            // screener asked for silence, and [silenceThisRing] covers the rest. The ringer
+            // mode and the ring, notification, and media volumes stay as the owner set them.
+        } else if (firstArm) {
             // setStreamMute() is intentionally forbidden here. On Android 16 it can
             // block in AudioService for 20s after an audioserver createTrack timeout.
             // Volume zero + silent ringer + DND provide the same local-hear guard.
-            val dailySoundCall = BuildConfig.STANDALONE && Prefs.isStandaloneDailySound(appContext)
             for (stream in LOCAL_ZERO_STREAMS) {
                 if (stream == AudioManager.STREAM_MUSIC && consolePreviewAllowed.get() && !callInProgress) {
-                    continue
-                }
-                if (dailySoundCall && stream != AudioManager.STREAM_RING) {
                     continue
                 }
                 try {
@@ -421,40 +504,57 @@ private class LocalAudioGuardCoordinator(context: Context) {
                 }
             }
 
-            if (!dailySoundCall) {
-                try {
-                    am.ringerMode = AudioManager.RINGER_MODE_SILENT
-                } catch (e: Exception) {
-                    Log.w(TAG, "RINGER_MODE_SILENT failed: ${e.message}")
-                }
-
-                applyZenSilence()
+            try {
+                am.ringerMode = AudioManager.RINGER_MODE_SILENT
+            } catch (e: Exception) {
+                Log.w(TAG, "RINGER_MODE_SILENT failed: ${e.message}")
             }
+
+            applyZenSilence()
             abandonFocus()
-        } else if (holdActive.get() || CallAudioService.isAnyCallBusy()) {
-            val dailySoundCall = BuildConfig.STANDALONE && Prefs.isStandaloneDailySound(appContext)
-            if (!dailySoundCall) {
-                // Ensure preview media audio is silenced immediately once a call starts.
+        } else if (callInProgress) {
+            if (!fromHold) {
                 try {
-                    if (am.getStreamVolume(AudioManager.STREAM_MUSIC) != 0) {
-                        am.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
-                        tryZeroViaSettings(AudioManager.STREAM_MUSIC)
+                    if (am.getStreamVolume(AudioManager.STREAM_RING) != 0) {
+                        am.setStreamVolume(AudioManager.STREAM_RING, 0, 0)
+                        tryZeroViaSettings(AudioManager.STREAM_RING)
                     }
                 } catch (_: Exception) {
                 }
             }
+            // Ensure preview media audio is silenced immediately once a call starts.
+            try {
+                if (am.getStreamVolume(AudioManager.STREAM_MUSIC) != 0) {
+                    am.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+                    tryZeroViaSettings(AudioManager.STREAM_MUSIC)
+                }
+            } catch (_: Exception) {
+            }
         }
 
-        if (rootPass && !(BuildConfig.STANDALONE && Prefs.isStandaloneDailySound(appContext))) applyRootForceMute()
+        if (rootPass && !dailySound) applyRootForceMute()
 
         hardMuteRuns++
         if (!fromHold) {
             Log.i(
                 TAG,
-                "hard-mute queued worker applied firstArm=$firstArm runs=$hardMuteRuns " +
+                "hard-mute queued worker applied firstArm=$firstArm runs=$hardMuteRuns dailySound=$dailySound " +
                     "(mic+telecom mute, speaker off, local volumes zero, " +
                     "VOICE_CALL earpiece at min; TYPE_TELEPHONY inject is fixed gain)",
             )
+        }
+    }
+
+    /**
+     * Daily Sound: stop the ringtone of the ringing call only, if anything plays it
+     * (Bageo's phone app does not; this covers a moment Bageo is not the phone app).
+     * Needs the phone app role; refused otherwise, which is fine.
+     */
+    private fun silenceThisRing() {
+        try {
+            appContext.getSystemService(TelecomManager::class.java)?.silenceRinger()
+        } catch (e: Exception) {
+            Log.w(TAG, "silenceRinger failed: ${e.message}")
         }
     }
 
@@ -489,7 +589,9 @@ private class LocalAudioGuardCoordinator(context: Context) {
         // Android 15+: the module already turned the phone's Do Not Disturb on (root), and
         // the ringer is silent with its volume at zero. A filter set here would only add
         // Bageo's own mode, which blocks the switch to a normal phone.
-        if (LocalAudioGuard.appHasOwnDndMode()) return
+        // Standalone: the module's script owns the phone's Do Not Disturb on every Android
+        // version; the app only turns its own "Bageo AI" mode on and off.
+        if (BuildConfig.STANDALONE || LocalAudioGuard.appHasOwnDndMode()) return
         try {
             if (nm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 if (!nm.isNotificationPolicyAccessGranted) {
@@ -557,9 +659,18 @@ private class LocalAudioGuardCoordinator(context: Context) {
         }
     }
 
-    private fun restoreBlocking() {
+    private fun restoreBlocking(keepVolumes: Boolean = false) {
         if (!armed) {
             Log.i(TAG, "audio restore skipped (not armed)")
+            return
+        }
+        earpieceBeforeCall = savedVolumes[AudioManager.STREAM_VOICE_CALL]
+        if (armedDaily) {
+            restoreDailyCallBlocking()
+            return
+        }
+        if (keepVolumes) {
+            releaseKeepingVolumesBlocking()
             return
         }
         try {
@@ -583,7 +694,10 @@ private class LocalAudioGuardCoordinator(context: Context) {
         }
         try {
             // Android 15+: putting the saved filter back would turn Bageo's own mode on.
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !LocalAudioGuard.appHasOwnDndMode()) {
+            // Standalone never set it (see applyZenSilence).
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !BuildConfig.STANDALONE &&
+                !LocalAudioGuard.appHasOwnDndMode()
+            ) {
                 savedInterruption?.let { nm?.setInterruptionFilter(it) }
             }
         } catch (_: Exception) {
@@ -604,13 +718,84 @@ private class LocalAudioGuardCoordinator(context: Context) {
         savedInterruption = null
         savedVolumes.clear()
         armed = false
+        armedDaily = false
+        armedFlag.set(false)
         Log.i(TAG, "audio state restored")
+    }
+
+    /**
+     * Silent AI mode → Daily Sound: the guard armed after the module had turned the
+     * volumes and the ringer down, so the saved ones are zero. The module has just put the
+     * owner's volumes back; only the microphone and speaker this guard changed go back.
+     */
+    private fun releaseKeepingVolumesBlocking() {
+        try {
+            am.isMicrophoneMute = savedMicMute ?: false
+        } catch (_: Exception) {
+        }
+        try {
+            savedSpeaker?.let {
+                @Suppress("DEPRECATION")
+                am.isSpeakerphoneOn = it
+            }
+        } catch (_: Exception) {
+        }
+        savedMicMute = null
+        savedSpeaker = null
+        savedMode = null
+        savedRinger = null
+        savedInterruption = null
+        savedVolumes.clear()
+        armed = false
+        armedDaily = false
+        armedFlag.set(false)
+        Log.i(TAG, "audio guard released for Daily Sound (volumes left as the module set them)")
+    }
+
+    /**
+     * Daily Sound: put back only what the call changed (microphone mute, speaker,
+     * earpiece volume). The ringer and the other volumes were not touched, and writing
+     * old values back could undo a change the owner made during the call. The audio mode
+     * is Telecom's (the saved one is the ringing mode when the guard armed on a ring).
+     */
+    private fun restoreDailyCallBlocking() {
+        try {
+            savedMicMute?.let { am.isMicrophoneMute = it }
+        } catch (_: Exception) {
+        }
+        try {
+            savedSpeaker?.let {
+                @Suppress("DEPRECATION")
+                am.isSpeakerphoneOn = it
+            }
+        } catch (_: Exception) {
+        }
+        try {
+            savedVolumes[AudioManager.STREAM_VOICE_CALL]?.let { volume ->
+                if (am.getStreamVolume(AudioManager.STREAM_VOICE_CALL) != volume) {
+                    am.setStreamVolume(AudioManager.STREAM_VOICE_CALL, volume, 0)
+                }
+            }
+        } catch (_: Exception) {
+        }
+        savedMicMute = null
+        savedSpeaker = null
+        savedMode = null
+        savedRinger = null
+        savedInterruption = null
+        savedVolumes.clear()
+        armed = false
+        armedDaily = false
+        armedFlag.set(false)
+        Log.i(TAG, "audio state restored (Daily Sound call)")
     }
 
     /**
      * After [restoreBlocking] for the owner's own call: the root mic mutes are not
      * part of the saved state, and the earpiece is kept at its minimum on purpose, so
-     * undo both here (the same controls normal phone mode resets).
+     * undo both here (the same controls normal phone mode resets). The earpiece goes to
+     * the owner's own volume: the one saved before the call, else the one saved for the
+     * normal phone, else half of the maximum.
      */
     private fun unmuteForOwnCallBlocking() {
         try {
@@ -625,7 +810,12 @@ private class LocalAudioGuardCoordinator(context: Context) {
             val min = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) am.getStreamMinVolume(stream) else 1
             val cur = am.getStreamVolume(stream)
             if (cur <= min) {
-                val normal = PhoneModeManager.defaultVolume(am.getStreamMaxVolume(stream))
+                val normal = ownCallEarpieceVolume(
+                    beforeCall = earpieceBeforeCall,
+                    savedNormal = PhoneModeManager.savedNormalVolume(appContext, PhoneModeManager.KEY_VOICE_CALL),
+                    min = min,
+                    max = am.getStreamMaxVolume(stream),
+                )
                 am.setStreamVolume(stream, normal, 0)
                 Log.i(TAG, "own call: voice call volume $cur -> $normal")
             }
@@ -644,11 +834,15 @@ private class LocalAudioGuardCoordinator(context: Context) {
         savedInterruption = null
         savedVolumes.clear()
         armed = false
+        armedDaily = false
+        armedFlag.set(false)
         Log.i(TAG, "audio guard released (normal phone mode)")
     }
 
     private fun applyConsolePreviewBlocking() {
         if (!Prefs.isAiCallEnabled(appContext)) return
+        // Daily Sound never mutes media, so there is nothing to allow or take back.
+        if (BuildConfig.STANDALONE && Prefs.isStandaloneDailySound(appContext)) return
         val allow = consolePreviewAllowed.get() && !holdActive.get() && !CallAudioService.isAnyCallBusy()
         try {
             if (allow) {
@@ -703,4 +897,15 @@ private class LocalAudioGuardCoordinator(context: Context) {
             AudioManager.STREAM_DTMF,
         )
     }
+}
+
+/**
+ * Earpiece volume for a call the owner takes: [beforeCall] (saved when the guard armed),
+ * else [savedNormal] (the normal phone's), each only above the lowest step [min], else half
+ * of [max]. Top level, so it needs nothing from Android.
+ */
+internal fun ownCallEarpieceVolume(beforeCall: Int?, savedNormal: Int?, min: Int, max: Int): Int {
+    val half = ((max + 1) / 2).coerceAtLeast(1)
+    val pick = beforeCall?.takeIf { it > min } ?: savedNormal?.takeIf { it > min } ?: half
+    return pick.coerceIn((min + 1).coerceAtMost(max.coerceAtLeast(1)), max.coerceAtLeast(1))
 }

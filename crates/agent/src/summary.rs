@@ -39,6 +39,11 @@ crate::prompt_book::prompt_texts! {
     SUMMARY_SYSTEM_PROMPT_EN = "en/summary_summary_system_prompt_en";
     /// What the model translating a call transcript is told (`{name}`: the language, in English).
     EN_TRANSLATE_SYSTEM_PROMPT = "en/summary_translate_system_prompt";
+    /// Added to it with the owner's name (`{owner}`): the owner's name is
+    /// written as set, never a new rendering of how it sounded.
+    EN_TRANSLATE_OWNER_RULE = "en/summary_translate_owner_rule";
+    /// …and the owner's other names (setting `owner_aliases`, `{aliases}`).
+    EN_TRANSLATE_ALIASES_RULE = "en/summary_translate_aliases_rule";
 }
 
 /// The summary model's instructions in the language the owner reads.
@@ -1069,9 +1074,22 @@ pub fn lines_to_translate(dialogue: &str, owner: Lang) -> Vec<(usize, String)> {
     out
 }
 
-fn translate_system_prompt(owner: Lang) -> String {
-    let name = locale::phrases(owner).name_en;
-    EN_TRANSLATE_SYSTEM_PROMPT.fill(&[("name", &name)])
+/// The translator's instructions: into `lang` (the language the owner reads),
+/// with the owner's name (`owner`, `aliases`) kept as set: a name the AI said
+/// in another language ("Mr. Wang") must not come back as another rendering of
+/// its sound.
+fn translate_system_prompt(lang: Lang, owner: &str, aliases: &[String]) -> String {
+    let name = locale::phrases(lang).name_en;
+    let mut prompt = EN_TRANSLATE_SYSTEM_PROMPT.fill(&[("name", &name)]);
+    if !owner.trim().is_empty() {
+        let owner = crate::prompts::owner_label(Lang::En, owner);
+        prompt.push_str(&EN_TRANSLATE_OWNER_RULE.fill(&[("owner", &owner)]));
+        let names = crate::prompts::alias_list(Lang::En, &owner, aliases);
+        if !names.is_empty() {
+            prompt.push_str(&EN_TRANSLATE_ALIASES_RULE.fill(&[("aliases", &names)]));
+        }
+    }
+    prompt
 }
 
 fn translate_request(asked: &[(usize, String)]) -> String {
@@ -1170,7 +1188,8 @@ pub async fn translate_dialogue(http: &Client, settings: &Settings, dialogue: &s
     let Some(endpoint) = summary_endpoint(settings) else {
         return Vec::new();
     };
-    let system = translate_system_prompt(owner);
+    let active = locale::active();
+    let system = translate_system_prompt(owner, &active.owner, &active.owner_aliases);
     let user = translate_request(&asked);
     let chars: usize = asked.iter().map(|(_, t)| t.chars().count()).sum();
     let max_tokens = translate_max_tokens(&endpoint, chars);
@@ -1180,7 +1199,7 @@ pub async fn translate_dialogue(http: &Client, settings: &Settings, dialogue: &s
                 Some(found) => {
                     let found: Vec<(usize, String)> = found
                         .into_iter()
-                        .map(|(i, t)| (i, locale::for_owner_in(owner, &t)))
+                        .map(|(i, t)| (i, locale::fix_names(&locale::for_owner_in(owner, &t))))
                         .collect();
                     info!(
                         "dialogue translated model={model} lines={} asked={}",
@@ -1782,7 +1801,17 @@ mod translate_tests {
         assert_eq!(asked[0].1, "Hello. Do you speak English?");
         let req: Value = serde_json::from_str(&translate_request(&asked)).unwrap();
         assert_eq!(req[0], json!({"i": 1, "t": "Hello. Do you speak English?"}));
-        assert!(translate_system_prompt(Lang::ZhTw).contains("Traditional Chinese (Taiwan Mandarin)"));
+        assert!(translate_system_prompt(Lang::ZhTw, "", &[]).contains("Traditional Chinese (Taiwan Mandarin)"));
+        // The owner's name is kept as set, whatever language the lines are
+        // translated into (the AI said "Mr. Wang": not 「汪先生」).
+        for lang in [Lang::ZhTw, Lang::En, Lang::Es, Lang::Fr, Lang::Ja] {
+            let p = translate_system_prompt(lang, "王先生", &["Alex".to_string()]);
+            assert!(p.contains("exactly as 王先生"), "{p}");
+            assert!(p.contains("also called \"Alex\""), "{p}");
+            assert!(!p.contains("{owner}") && !p.contains("{aliases}"), "{p}");
+        }
+        assert!(!translate_system_prompt(Lang::Ko, "王先生", &[]).contains("also called"));
+        assert!(!translate_system_prompt(Lang::ZhTw, "  ", &[]).contains("person who was called"));
         // By index, in any order, in a code fence; an index not asked is dropped.
         let reply = "```json\n[{\"i\": 4, \"t\": \"好，聽起來不錯。謝謝，掰掰。\"}, {\"i\": 1, \"t\": \"你好，你會說英文嗎？\"}, {\"i\": \"2\", \"text\": \"會，有什麼事嗎？\"}, {\"i\": 9, \"t\": \"沒問的\"}]\n```";
         let found = parse_translations(reply, &asked).unwrap();

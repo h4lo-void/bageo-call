@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial -->
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
+<resources>
+    <string name="sa_call_idle_title">AI 接听已开启</string>
+    <string name="sa_call_idle_text">来电会先由 AI 接听</string>
+    <string name="sa_channel_live_call">通话中</string>
+    <string name="sa_ai_missed_title">AI 没接起来</string>
+    <string name="sa_ai_missed_ringing_text">已改成响铃，请你自己接</string>
+    <string name="sa_channel_ai_missed">AI 没接起来的来电</string>
+    <!-- Shown under the Bageo mode in Settings > Modes and the status bar's Modes panel. -->
+    <string name="sa_dnd_rule_trigger">开启后来电先由 AI 接听</string>
+    <!-- A call that rings for the owner (the AI did not take it, or a normal phone). -->
+    <string name="sa_channel_incoming">来电</string>
+    <string name="sa_incoming_title">来电</string>
+    <string name="sa_missed_title">未接来电</string>
+    <string name="sa_channel_missed">未接来电</string>
+</resources>

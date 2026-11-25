@@ -5,15 +5,6 @@
     <string name="sa_phone_setup_btn">端末設定</string>
     <string name="sa_starting_title">Bageo を起動しています…</string>
     <string name="sa_starting_desc">初回は数秒かかることがあります。</string>
-    <string name="sa_lan_title">同じ Wi-Fi からの接続を許可</string>
-    <string name="sa_lan_hint">オンにすると、同じ Wi-Fi のパソコンや別のスマホからコンソールを開けます。</string>
-    <string name="sa_lan_pw_title">先にコンソールのパスワードを設定</string>
-    <string name="sa_lan_pw_body">同じ Wi-Fi の端末から開く前に、8 文字以上のパスワードを設定してください。</string>
-    <string name="sa_lan_pw_hint">8 文字以上</string>
-    <string name="sa_lan_pw_short">パスワードは 8 文字以上にしてください。</string>
-    <string name="sa_lan_pw_failed">パスワードを保存できませんでした。起動後にやり直してください。</string>
-    <string name="sa_lan_url_label">Wi-Fi アドレス</string>
-    <string name="sa_lan_mdns_hint">または %1$s</string>
     <string name="sa_copy_url">アドレスをコピー</string>
     <string name="sa_copied">コピーしました</string>
     <string name="sa_battery_tip">常時充電する場合は、システム設定で「充電の上限 80%」をオンにすると電池を保護できます。</string>
@@ -29,8 +20,6 @@
     <string name="sa_dnd_rule_name">Bageo AI 応答</string>
     <string name="sa_channel_owner_calls">優先・緊急着信</string>
     <string name="sa_channel_summaries">AI 通話要約</string>
-    <string name="sa_notif_ai_idle_title">AI が電話に応答します</string>
-    <string name="sa_notif_ai_idle_text">タップでコンソールを開くか下で切替</string>
     <string name="sa_notif_ai_call_title">AI が通話中</string>
     <string name="sa_notif_owner_call_title">通話中（本人）</string>
     <string name="sa_notif_urgent_title">緊急の電話</string>

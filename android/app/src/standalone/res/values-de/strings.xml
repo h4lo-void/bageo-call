@@ -5,15 +5,6 @@
     <string name="sa_phone_setup_btn">Einrichtung</string>
     <string name="sa_starting_title">Bageo wird gestartet…</string>
     <string name="sa_starting_desc">Der erste Start kann ein paar Sekunden dauern.</string>
-    <string name="sa_lan_title">Zugriff im gleichen WLAN erlauben</string>
-    <string name="sa_lan_hint">Öffnet diese Konsole auch für Computer oder Handys im selben WLAN.</string>
-    <string name="sa_lan_pw_title">Zuerst Passwort festlegen</string>
-    <string name="sa_lan_pw_body">Lege ein Passwort mit mindestens 8 Zeichen fest, bevor andere Geräte im WLAN zugreifen dürfen.</string>
-    <string name="sa_lan_pw_hint">Mindestens 8 Zeichen</string>
-    <string name="sa_lan_pw_short">Das Passwort muss mindestens 8 Zeichen lang sein.</string>
-    <string name="sa_lan_pw_failed">Passwort konnte nicht gespeichert werden. Nach dem Start erneut versuchen.</string>
-    <string name="sa_lan_url_label">WLAN-Adresse</string>
-    <string name="sa_lan_mdns_hint">Oder %1$s öffnen</string>
     <string name="sa_copy_url">Adresse kopieren</string>
     <string name="sa_copied">Kopiert</string>
     <string name="sa_battery_tip">Bei Dauerstrom empfiehlt sich das 80%-Ladelimit in den Systemeinstellungen zum Schutz des Akkus.</string>
@@ -29,8 +20,6 @@
     <string name="sa_dnd_rule_name">Bageo AI Anrufe</string>
     <string name="sa_channel_owner_calls">Wichtige &amp; dringende Anrufe</string>
     <string name="sa_channel_summaries">AI-Anrufzusammenfassungen</string>
-    <string name="sa_notif_ai_idle_title">AI nimmt deine Anrufe entgegen</string>
-    <string name="sa_notif_ai_idle_text">Tippen für Konsole oder unten wechseln</string>
     <string name="sa_notif_ai_call_title">AI im Gespräch</string>
     <string name="sa_notif_owner_call_title">Im Gespräch (Du)</string>
     <string name="sa_notif_urgent_title">Dringender Anruf</string>

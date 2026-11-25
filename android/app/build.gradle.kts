@@ -30,12 +30,12 @@ android {
         create("bridge") {
             dimension = "edition"
             buildConfigField("boolean", "STANDALONE", "false")
-            buildConfigField("int", "CONSOLE_PORT", "8787")
         }
         create("standalone") {
             dimension = "edition"
             buildConfigField("boolean", "STANDALONE", "true")
-            buildConfigField("int", "CONSOLE_PORT", "8787")
+            // The console opens only inside the app (no port). This loopback port is the
+            // app's own phone bridge, which needs the agent's key.
             buildConfigField("String", "BRIDGE_WS_URL", "\"ws://127.0.0.1:8766\"")
             ndk {
                 abiFilters += "arm64-v8a"

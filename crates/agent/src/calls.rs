@@ -1255,6 +1255,10 @@ pub struct CallStore {
     index_written: Arc<std::sync::Mutex<u64>>,
     /// Small LRU-ish cache of rebuilt `/listen` WAVs (call id → bytes).
     listen_cache: std::sync::Mutex<Vec<(String, bytes::Bytes)>>,
+    /// One write lock per call id for its `_notes.json`: every save, and every
+    /// read-modify-write ([`CallStore::update_notes`]), runs under it. Entries nobody
+    /// holds are dropped on the next lookup, so the table stays small.
+    notes_locks: std::sync::Mutex<std::collections::HashMap<String, Arc<Mutex<()>>>>,
 }
 
 const LISTEN_CACHE_MAX: usize = 6;
@@ -1289,6 +1293,7 @@ impl CallStore {
             index_seq: std::sync::atomic::AtomicU64::new(0),
             index_written: Arc::new(std::sync::Mutex::new(0)),
             listen_cache: std::sync::Mutex::new(Vec::new()),
+            notes_locks: std::sync::Mutex::new(std::collections::HashMap::new()),
         })
     }
 
@@ -1844,6 +1849,40 @@ impl CallStore {
     /// Store the post-call notes: short summary on the index row (list / notification),
     /// everything else in `{date}/{id}_notes.json` (purged with the date dir).
     pub async fn save_notes(&self, id: &str, notes: &CallNotes) -> Result<()> {
+        let lock = self.notes_lock(id);
+        let _guard = lock.lock().await;
+        self.save_notes_locked(id, notes).await
+    }
+
+    /// The write lock of one call's notes. Locks no one else holds are dropped here
+    /// (a clone is only handed out under the table lock, so a held lock stays).
+    fn notes_lock(&self, id: &str) -> Arc<Mutex<()>> {
+        let mut table = self.notes_locks.lock().unwrap_or_else(|e| e.into_inner());
+        table.retain(|key, lock| key == id || Arc::strong_count(lock) > 1);
+        table.entry(id.to_string()).or_default().clone()
+    }
+
+    /// Change a call's saved notes as one step: `change` gets the notes as they are on
+    /// disk now and returns whether it changed them. Updates of the same call never
+    /// overwrite each other. `Ok(false)`: no notes saved yet, or nothing changed.
+    pub async fn update_notes(
+        &self,
+        id: &str,
+        change: impl FnOnce(&mut CallNotes) -> bool,
+    ) -> Result<bool> {
+        let lock = self.notes_lock(id);
+        let _guard = lock.lock().await;
+        let Some(mut notes) = self.load_notes(id).await else {
+            return Ok(false);
+        };
+        if !change(&mut notes) {
+            return Ok(false);
+        }
+        self.save_notes_locked(id, &notes).await?;
+        Ok(true)
+    }
+
+    async fn save_notes_locked(&self, id: &str, notes: &CallNotes) -> Result<()> {
         if !record_id_ok(id) {
             anyhow::bail!("call id is no file name");
         }
@@ -1880,6 +1919,34 @@ impl CallStore {
         let path = record_path(&self.root, &format!("{}/{id}_notes.json", record_date_dir(&rec)?))?;
         let data = tokio::task::spawn_blocking(move || fs::read(path)).await.ok()?.ok()?;
         serde_json::from_slice(&data).ok()
+    }
+
+    /// Add what finished after the notes were first saved: a calendar suggestion
+    /// (kept only if the notes have none yet) and the dialogue translations (kept
+    /// only if there is any). Everything else in the notes is read back from disk as
+    /// it is now, so a write made meanwhile stays. `Ok(false)`: nothing to add or no
+    /// notes saved yet.
+    pub async fn add_late_notes(
+        &self,
+        id: &str,
+        calendar: Option<crate::calendar::Event>,
+        translations: Vec<Option<String>>,
+    ) -> Result<bool> {
+        self.update_notes(id, |notes| {
+            let mut changed = false;
+            if notes.calendar.is_none() {
+                if let Some(ev) = calendar {
+                    notes.calendar = Some(ev);
+                    changed = true;
+                }
+            }
+            if translations.iter().any(|t| t.is_some()) {
+                notes.dialogue_translations = translations;
+                changed = true;
+            }
+            changed
+        })
+        .await
     }
 
     /// In-progress sessions still open in the index (`ringing` / `active`).
@@ -3088,6 +3155,95 @@ mod tests {
             None
         ));
         assert!(store.save_notes("no-such-call", &notes).await.is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn late_notes_add_the_calendar_without_losing_translations_or_the_summary() {
+        let dir = std::env::temp_dir().join(format!("bageo-calls-late-{}", Uuid::new_v4()));
+        let store = CallStore::new(dir.clone(), true, false);
+        let call = store.start("pixel-1", "+12025550143", 16000, "active").await.unwrap();
+        let id = call.id.clone();
+        store.finalize(call, "ended").await;
+        let ev = crate::calendar::Event {
+            title: "Dentist".into(),
+            start: "2026-11-26T10:00".into(),
+            end: "2026-11-26T11:00".into(),
+            all_day: false,
+        };
+        // No notes yet: nothing to add to.
+        assert!(!store.add_late_notes(&id, Some(ev.clone()), Vec::new()).await.unwrap());
+
+        // The notes are saved at once, without the suggestion and the translations.
+        let notes = CallNotes {
+            summary: "Caller: Ann".into(),
+            dialogue: "Caller: Hola\nAI: Hello".into(),
+            source: "model".into(),
+            ..Default::default()
+        };
+        store.save_notes(&id, &notes).await.unwrap();
+        assert!(store.load_notes(&id).await.unwrap().calendar.is_none());
+
+        // The translation lands first, the calendar suggestion later: both stay.
+        let tr = vec![Some("你好".to_string()), None];
+        assert!(store.add_late_notes(&id, None, tr.clone()).await.unwrap());
+        assert!(store.add_late_notes(&id, Some(ev.clone()), Vec::new()).await.unwrap());
+        let back = store.load_notes(&id).await.unwrap();
+        assert_eq!(back.calendar, Some(ev.clone()));
+        assert_eq!(back.dialogue_translations, tr);
+        assert_eq!(back.summary, "Caller: Ann");
+        assert_eq!(back.dialogue, notes.dialogue);
+        assert_eq!(store.get(&id).await.unwrap().summary.as_deref(), Some("Caller: Ann"));
+
+        // An event already in the notes (an appointment's) is not replaced; nothing new: no write.
+        let other = crate::calendar::Event { title: "Other".into(), ..ev.clone() };
+        assert!(!store.add_late_notes(&id, Some(other), Vec::new()).await.unwrap());
+        assert_eq!(store.load_notes(&id).await.unwrap().calendar, Some(ev));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn updates_of_one_calls_notes_do_not_overwrite_each_other() {
+        let dir = std::env::temp_dir().join(format!("bageo-calls-race-{}", Uuid::new_v4()));
+        let store = CallStore::new(dir.clone(), true, false);
+        let call = store.start("pixel-1", "+12025550143", 16000, "active").await.unwrap();
+        let id = call.id.clone();
+        store.finalize(call, "ended").await;
+        let ev = crate::calendar::Event {
+            title: "Dentist".into(),
+            start: "2026-11-26T10:00".into(),
+            end: "2026-11-26T11:00".into(),
+            all_day: false,
+        };
+        for round in 0..30 {
+            let notes = CallNotes { summary: "Caller: Ann".into(), source: "model".into(), ..Default::default() };
+            store.save_notes(&id, &notes).await.unwrap();
+            let tr = vec![Some(format!("你好 {round}"))];
+            let end_hint = format!("hint {round}");
+            // A late calendar suggestion with translations, an edit of another field, and a
+            // plain save of the same notes all at once.
+            let (a, b, c) = tokio::join!(
+                store.add_late_notes(&id, Some(ev.clone()), tr.clone()),
+                store.update_notes(&id, |n| {
+                    n.end_hint = end_hint.clone();
+                    true
+                }),
+                store.update_notes(&id, |n| {
+                    n.recording_text = "rec".into();
+                    true
+                }),
+            );
+            assert!(a.unwrap() && b.unwrap() && c.unwrap());
+            let back = store.load_notes(&id).await.unwrap();
+            assert_eq!(back.calendar, Some(ev.clone()), "round {round}");
+            assert_eq!(back.dialogue_translations, tr, "round {round}");
+            assert_eq!(back.end_hint, end_hint, "round {round}");
+            assert_eq!(back.recording_text, "rec", "round {round}");
+            assert_eq!(back.summary, "Caller: Ann", "round {round}");
+        }
+        // No update running: the lock table does not keep the call.
+        store.update_notes("other", |_| true).await.unwrap();
+        assert_eq!(store.notes_locks.lock().unwrap().len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

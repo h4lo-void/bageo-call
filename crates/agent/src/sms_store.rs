@@ -531,6 +531,9 @@ struct SmsFileRef<'a> {
 pub struct SmsStore {
     path: PathBuf,
     book: Mutex<SmsBook>,
+    /// Bageo inside the phone app ([`SmsStore::off`]): no text page, nothing
+    /// is kept and no file is written.
+    off: bool,
 }
 
 impl SmsStore {
@@ -542,11 +545,22 @@ impl SmsStore {
         let mut book = SmsBook::from_messages(load_file(&path));
         let settled = book.settle_sending();
         let pruned = book.prune(now_ms, keep_days);
-        let store = Self { path, book: Mutex::new(book) };
+        let store = Self { path, book: Mutex::new(book), off: false };
         if pruned || settled {
             store.save(&store.lock());
         }
         Arc::new(store)
+    }
+
+    /// No texts at all (the phone app: the phone's own messages app has them).
+    /// Nothing is read, kept or written; the folder is never made.
+    pub fn off() -> Arc<Self> {
+        Arc::new(Self { path: PathBuf::new(), book: Mutex::new(SmsBook::from_messages(Vec::new())), off: true })
+    }
+
+    /// True for [`SmsStore::off`]: the console has no text page.
+    pub fn is_off(&self) -> bool {
+        self.off
     }
 
     fn lock(&self) -> MutexGuard<'_, SmsBook> {
@@ -560,6 +574,9 @@ impl SmsStore {
 
     /// Add the messages of a backup that are not here yet; how many.
     pub fn merge(&self, messages: Vec<SmsMessage>) -> usize {
+        if self.off {
+            return 0;
+        }
         let mut book = self.lock();
         let added = book.merge(messages);
         if added > 0 {
@@ -570,6 +587,9 @@ impl SmsStore {
 
     /// Write the file. A failure is logged and the messages stay in memory.
     fn save(&self, book: &SmsBook) {
+        if self.off {
+            return;
+        }
         let body = match serde_json::to_vec(&SmsFileRef { messages: book.messages() }) {
             Ok(b) => b,
             Err(e) => {
@@ -583,6 +603,9 @@ impl SmsStore {
     }
 
     pub fn push(&self, now_ms: u64, keep_days: u32, new: NewSms<'_>) -> Pushed {
+        if self.off {
+            return Pushed::Duplicate;
+        }
         let mut book = self.lock();
         let before = book.len();
         let pushed = book.push(now_ms, keep_days, new);

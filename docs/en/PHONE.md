@@ -25,8 +25,8 @@ its version under *Advanced*, and the console under *System → Phones*.
 
 > **Want phone-only with no computer?** Flash `bageo-phone-standalone-1.7.0.zip`
 > instead. Both zips share the same app and module id, so one updates over the
-> other; standalone starts strictly local and can optionally share the console on
-> your Wi-Fi after you set a console password in *Settings → Permissions & advanced*.
+> other. In the standalone edition the console opens only inside the Bageo app on
+> the phone; other phones and computers cannot open it.
 
 ## What the phone does
 

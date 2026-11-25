@@ -49,6 +49,12 @@ object DialerRoleHelper {
             Log.i(TAG, "normal phone mode: leave the phone app alone")
             return
         }
+        // The app's copy still says AI while the script makes the phone a normal phone:
+        // taking the phone app role back now would fight that script.
+        if (PhoneModeManager.isSwitchingTo(Prefs.PHONE_MODE_NORMAL)) {
+            Log.i(TAG, "switching to a normal phone: leave the phone app alone")
+            return
+        }
         tryRootRoles(context)
         suspendCompetingDialerUi()
         if (isDefaultDialer(context)) {

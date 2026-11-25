@@ -352,7 +352,6 @@ object Prefs {
     private fun normalizeNumber(s: String): String =
         s.filter { !it.isWhitespace() && it != '-' }
 
-    private const val KEY_STANDALONE_LAN = "STANDALONE_LAN_ENABLED"
     private const val KEY_STANDALONE_DAILY_SOUND = "STANDALONE_DAILY_SOUND"
     private const val KEY_STANDALONE_PERSISTENT_NOTIF = "STANDALONE_PERSISTENT_NOTIF"
     private const val KEY_STANDALONE_CALL_SUMMARY_NOTIF = "STANDALONE_CALL_SUMMARY_NOTIF"
@@ -360,21 +359,17 @@ object Prefs {
     private const val KEY_STANDALONE_DND_AUTO_AI = "STANDALONE_DND_AUTO_AI"
     private const val KEY_STANDALONE_DND_ANY_MODE = "STANDALONE_DND_ANY_MODE"
     private const val KEY_STANDALONE_DND_RULE_ID = "STANDALONE_DND_RULE_ID"
+    private const val KEY_STANDALONE_DND_RULE_VERSION = "STANDALONE_DND_RULE_VERSION"
+    private const val KEY_STANDALONE_DND_RULE_MIRRORS = "STANDALONE_DND_RULE_MIRRORS"
+    private const val KEY_STANDALONE_DND_RULE_DISMISSED = "STANDALONE_DND_RULE_DISMISSED"
     private const val KEY_STANDALONE_LAST_DND_ACTIVE = "STANDALONE_LAST_DND_ACTIVE"
     private const val KEY_STANDALONE_MANUAL_MODE_AT = "STANDALONE_MANUAL_MODE_AT"
+    private const val KEY_STANDALONE_DND_AI_AT = "STANDALONE_DND_AI_AT"
 
     const val WHITELIST_ACTION_URGENT_PROMPT = "urgent_prompt"
     const val WHITELIST_ACTION_RING_PHONE = "ring_phone"
     const val WHITELIST_ACTION_FORWARD_NUMBER = "forward_number"
     const val WHITELIST_ACTION_AI_ONLY = "ai_only"
-
-    /** Standalone edition: whether same-Wi-Fi LAN console access is turned on (default false). */
-    fun isStandaloneLanEnabled(ctx: Context): Boolean =
-        sp(ctx).getBoolean(KEY_STANDALONE_LAN, false)
-
-    fun setStandaloneLanEnabled(ctx: Context, enabled: Boolean) {
-        sp(ctx).edit().putBoolean(KEY_STANDALONE_LAN, enabled).apply()
-    }
 
     /** Standalone edition: keep daily notification/media sounds intact while AI handles calls (default true). */
     fun isStandaloneDailySound(ctx: Context): Boolean =
@@ -442,6 +437,38 @@ object Prefs {
         sp(ctx).edit().putString(KEY_STANDALONE_DND_RULE_ID, ruleId.trim()).apply()
     }
 
+    /** Version of the look and behavior the dedicated rule was last written with (0 = an older app's rule). */
+    fun standaloneDndRuleVersion(ctx: Context): Int =
+        sp(ctx).getInt(KEY_STANDALONE_DND_RULE_VERSION, 0)
+
+    /**
+     * [mirrors]: the rule is the Android 15 mode that can be turned on by hand and silences
+     * nothing, so Bageo keeps it on exactly while the phone is in AI mode.
+     */
+    fun setStandaloneDndRuleVersion(ctx: Context, version: Int, mirrors: Boolean) {
+        sp(ctx).edit()
+            .putInt(KEY_STANDALONE_DND_RULE_VERSION, version)
+            .putBoolean(KEY_STANDALONE_DND_RULE_MIRRORS, mirrors)
+            .apply()
+    }
+
+    fun standaloneDndRuleMirrors(ctx: Context): Boolean =
+        sp(ctx).getBoolean(KEY_STANDALONE_DND_RULE_MIRRORS, false)
+
+    /** The owner deleted the rule in Settings: it is made again only from the console. */
+    fun isStandaloneDndRuleDismissed(ctx: Context): Boolean =
+        sp(ctx).getBoolean(KEY_STANDALONE_DND_RULE_DISMISSED, false)
+
+    fun setStandaloneDndRuleDismissed(ctx: Context, dismissed: Boolean) {
+        val editor = sp(ctx).edit().putBoolean(KEY_STANDALONE_DND_RULE_DISMISSED, dismissed)
+        if (dismissed) {
+            editor.remove(KEY_STANDALONE_DND_RULE_ID)
+                .remove(KEY_STANDALONE_DND_RULE_VERSION)
+                .remove(KEY_STANDALONE_DND_RULE_MIRRORS)
+        }
+        editor.apply()
+    }
+
     /** Last system DND active state seen by [DedicatedDndManager] (`null` = not yet observed). */
     fun lastStandaloneDndActive(ctx: Context): Boolean? =
         when (sp(ctx).getInt(KEY_STANDALONE_LAST_DND_ACTIVE, -1)) {
@@ -460,6 +487,14 @@ object Prefs {
 
     fun markManualModeSwitch(ctx: Context, nowMs: Long = System.currentTimeMillis()) {
         sp(ctx).edit().putLong(KEY_STANDALONE_MANUAL_MODE_AT, nowMs).apply()
+    }
+
+    /** Epoch ms when Do Not Disturb last turned AI answering on (0 = never). */
+    fun dndAiAt(ctx: Context): Long =
+        sp(ctx).getLong(KEY_STANDALONE_DND_AI_AT, 0L)
+
+    fun markDndAi(ctx: Context, nowMs: Long = System.currentTimeMillis()) {
+        sp(ctx).edit().putLong(KEY_STANDALONE_DND_AI_AT, nowMs).apply()
     }
 
     private const val NO_SUB_ID = -1

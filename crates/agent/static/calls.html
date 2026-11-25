@@ -6486,7 +6486,8 @@ function renderAboutHints() {
   // The region's own way in English or Chinese; other languages, or a Chinese line with
   // words in another script (Thai, Arabic, Cyrillic…), get the plain example.
   let d = r && r.delivery ? String((lang === "en" ? r.delivery.en : lang.startsWith("zh") ? r.delivery.zh : "") || "") : "";
-  if (lang.startsWith("zh") && /[^\u0000-\u024F\u2000-\u206F\u3000-\u30FF\u3400-\u9FFF\uAC00-\uD7AF\uFF00-\uFFEF]/.test(d)) d = "";
+  // A Chinese example with another script or English words in it ("porch") reads as a mistake.
+  if (lang.startsWith("zh") && (/[^\u0000-\u024F\u2000-\u206F\u3000-\u30FF\u3400-\u9FFF\uAC00-\uD7AF\uFF00-\uFFEF]/.test(d) || /[A-Za-z]{2,}/.test(d))) d = "";
   $("f-about_parcel").placeholder = d ? t("ab_parcel_ph", { x: d }) : t("ab_parcel_ph0");
   abSyncBox($("f-about_say"));
   abSyncBox($("f-about_avoid"));

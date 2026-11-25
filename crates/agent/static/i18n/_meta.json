@@ -504,6 +504,11 @@
     "who": "the owner",
     "placeholders": []
   },
+  "bk_calls_phone": {
+    "where": "a switch label on the phone app's backup settings (the phone keeps no texts). English: Include call records and recordings",
+    "who": "the owner",
+    "placeholders": []
+  },
   "bk_calls_h": {
     "where": "a label or sentence in the console. English: Backup files get much bigger.",
     "who": "the owner",
@@ -630,6 +635,11 @@
     "who": "the owner",
     "placeholders": []
   },
+  "bk_encrypt_h_phone": {
+    "where": "help under the backup encryption switch in the phone app. English: Protects the copies you save to the cloud or send elsewhere.",
+    "who": "the owner",
+    "placeholders": []
+  },
   "bk_encrypted": {
     "where": "a label or sentence in the console. English: Encrypted",
     "who": "the owner",
@@ -732,6 +742,11 @@
   },
   "bk_exp_keys_h": {
     "where": "a label or sentence in the console. English: Turn this on when you move to another computer. Leave it off when you show your setting...",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "bk_exp_keys_h_phone": {
+    "where": "help for the keys tick when exporting settings in the phone app. English: Turn this on when you move to a new phone. Leave it off when you show your settings to someone.",
     "who": "the owner",
     "placeholders": []
   },
@@ -1835,6 +1850,53 @@
     "who": "the owner",
     "placeholders": []
   },
+  "d_live_dlg": {
+    "where": "title of the dialogue on a call's page while the AI is on the call. English: Live conversation",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "d_live_wait": {
+    "where": "shown on a live call's page before anyone has spoken. English: Once the AI picks up, what both sides say shows up here.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "d_tr_btn": {
+    "where": "button on a call's page that translates the dialogue into the owner's language. English: Translate",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "d_tr_hide": {
+    "where": "the same button once the translation shows: hides it again. English: Hide translation",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "d_tr_need": {
+    "where": "on a call's page when the phone needs a language pack to translate on its own; {langs} is the language names. English: This phone has no offline translation for {langs} yet. Download it to translate on the phone without using quota.",
+    "who": "the owner",
+    "placeholders": [
+      "{langs}"
+    ]
+  },
+  "d_tr_get": {
+    "where": "button next to it that opens the phone's translation languages to download one. English: Download",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "d_live_phone": {
+    "where": "a call's summary box while the call goes on, in the phone app (the conversation already shows live). English: The call is still going. The summary appears after it ends.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "d_tr_busy": {
+    "where": "the translate button while it works. English: Translating…",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "d_tr_fail": {
+    "where": "error when a call's dialogue could not be translated. English: Couldn't translate: the phone has no offline translation for this language and the summary service didn't answer.",
+    "who": "the owner",
+    "placeholders": []
+  },
   "d_src_fallback": {
     "where": "a label or sentence in the console. English: The summary service did not answer, so this is only a rough note.",
     "who": "the owner",
@@ -2713,6 +2775,11 @@
     "who": "the owner",
     "placeholders": []
   },
+  "err_try_again": {
+    "where": "an error the console shows when something did not work and there is no more exact reason. English: That didn't work. Please try again.",
+    "who": "the owner",
+    "placeholders": []
+  },
   "err_network_error": {
     "where": "an error the console shows. English: The service could not be reached.",
     "who": "the owner",
@@ -3280,6 +3347,11 @@
     "who": "the owner",
     "placeholders": []
   },
+  "f_keep_h_phone": {
+    "where": "help under how many days records are kept, on the phone app (the phone keeps no texts). English: Calls and recordings, errands and to-dos older than this are deleted automatically.",
+    "who": "the owner",
+    "placeholders": []
+  },
   "f_key": {
     "same_ok": true,
     "where": "a label or sentence in the console. English: Gemini API key",
@@ -3555,6 +3627,11 @@
   },
   "f_status_ph": {
     "where": "a label or sentence in the console. English: e.g. Deliveries: please leave the parcel at the front desk.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "note_use": {
+    "where": "the switch in the phone app's status note sheet that turns the note on for calls. English: Use this note on calls",
     "who": "the owner",
     "placeholders": []
   },
@@ -4332,16 +4409,6 @@
     "who": "the owner",
     "placeholders": []
   },
-  "m_lan_h": {
-    "where": "Help text for same Wi-Fi console access. English: Off by default. Requires a password of at least 8 characters.",
-    "who": "the owner",
-    "placeholders": []
-  },
-  "m_lan_title": {
-    "where": "Switch to allow opening the console from another device on the same Wi-Fi. English: Allow console access on same Wi-Fi",
-    "who": "the owner",
-    "placeholders": []
-  },
   "m_open_phone": {
     "where": "Button to open the system Phone app when AI answering is off. English: Open Phone app",
     "who": "the owner",
@@ -4384,6 +4451,11 @@
   },
   "m_sg_adv_d": {
     "where": "Settings menu item 8 subtitle. English: Permissions check, SIM cards, Wi-Fi console, and version",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_sg_adv_d_phone": {
+    "where": "Settings menu item 8 subtitle in the phone app. English: Permissions check, SIM cards and version",
     "who": "the owner",
     "placeholders": []
   },
@@ -5880,7 +5952,7 @@
     ]
   },
   "raw_health": {
-    "where": "a label or sentence in the console. English: Raw /health data (for troubleshooting)",
+    "where": "a label or sentence in the console. English: Technical details (for troubleshooting)",
     "who": "the owner",
     "placeholders": []
   },
@@ -5997,6 +6069,11 @@
     "placeholders": [
       "{msg}"
     ]
+  },
+  "set_not_loaded": {
+    "where": "a message when Save is tapped before the settings have arrived. English: The settings are still loading. Try again in a moment.",
+    "who": "the owner",
+    "placeholders": []
   },
   "save_region": {
     "where": "the save bar. English: Unsaved changes",
@@ -7099,6 +7176,31 @@
   },
   "wl_title": {
     "where": "a label or sentence in the console. English: Forward to your phone",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_chk_sms": {
+    "where": "the phone app's permissions card: a permission to allow. English: Send booking confirmation texts",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "m_chk_sms_d": {
+    "where": "the phone app's permissions card, under the label above. English: Lets Bageo text callers whether their booking went through.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_need_phone": {
+    "where": "the AI errand form in the phone app, when the phone cannot place calls yet. English: Your phone isn't ready yet. Wait a few seconds; if this stays, reopen the app.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "bk_err_read_failed": {
+    "where": "an error after picking a backup file to restore. English: Couldn't read this file. Please pick it again.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "bk_app_note": {
+    "where": "under the backup buttons, only in the phone app. “Download” is the button next to each backup. English: Backups are kept inside Bageo and are deleted with the app. To keep one, tap “Download” to save it on your phone.",
     "who": "the owner",
     "placeholders": []
   }

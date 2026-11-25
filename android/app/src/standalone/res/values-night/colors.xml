@@ -3,23 +3,30 @@
 <!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
 <resources>
     <bool name="sa_is_light_theme">false</bool>
-    <color name="bg_page">#141518</color>
-    <color name="bg_surface">#1B1D21</color>
-    <color name="bg_surface2">#24272D</color>
-    <color name="bg_line">#2A2D34</color>
-    <color name="bg_text">#EEEEF0</color>
-    <color name="bg_muted">#8E929C</color>
-    <color name="bg_accent">#45A5A1</color>
-    <color name="bg_accent_soft">#1A3232</color>
-    <color name="bg_primary">#E6E7EB</color>
-    <color name="bg_primary_fg">#141518</color>
-    <color name="bg_good">#4CC38A</color>
-    <color name="bg_good_soft">#183126</color>
-    <color name="bg_warn">#E4A84B</color>
-    <color name="bg_warn_soft">#312617</color>
-    <color name="bg_bad">#E07A72</color>
-    <color name="bg_bad_soft">#341F1E</color>
+    <!-- Material 3 roles in Bageo teal, dark (phones before Android 12). -->
+    <color name="bg_page">#1B1C1C</color>
+    <color name="bg_surface">#2D3131</color>
+    <color name="bg_surface2">#424848</color>
+    <color name="bg_line">#3E4949</color>
+    <color name="bg_text">#E1E3E3</color>
+    <color name="bg_muted">#BFC8C8</color>
+    <color name="bg_outline">#829494</color>
+    <color name="bg_accent">#81D5CF</color>
+    <color name="bg_on_accent">#123633</color>
+    <color name="bg_accent_soft">#1A4E4B</color>
+    <color name="bg_on_accent_soft">#D5E6E5</color>
+    <color name="bg_secondary">#334B4C</color>
+    <color name="bg_on_secondary">#DEE4E4</color>
+    <color name="bg_primary">#81D5CF</color>
+    <color name="bg_primary_fg">#123633</color>
+    <color name="bg_good">#7DDBA0</color>
+    <color name="bg_good_soft">#173826</color>
+    <color name="bg_warn">#F2C06A</color>
+    <color name="bg_warn_soft">#3D2C0D</color>
+    <color name="bg_bad">#F2B8B5</color>
+    <color name="bg_bad_soft">#4F1F1D</color>
+    <color name="bg_on_bad">#601410</color>
     <color name="bg_yellow">#ECC354</color>
-    <color name="bg_ripple">#22FFFFFF</color>
+    <color name="bg_ripple">#1FE1E3E3</color>
     <color name="bg_ripple_on_dark">#33000000</color>
 </resources>

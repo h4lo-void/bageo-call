@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial -->
+<!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
+<!-- One-color Bageo bird with a headset, for the Bageo mode in the status bar and Settings. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="72"
+    android:viewportHeight="72">
+    <!-- Crest -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M33,14 C34,9 39,9 39,14 C42,10 45,13 42,17 Z" />
+    <!-- Body with the eyes cut out -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M36,18 C24,18 18,27 18,39 C18,50 25,57 36,57 C47,57 54,50 54,39 C54,27 48,18 36,18 Z M29,28.4 A2.6,2.6 0 1,0 29,33.6 A2.6,2.6 0 1,0 29,28.4 Z M43,28.4 A2.6,2.6 0 1,0 43,33.6 A2.6,2.6 0 1,0 43,28.4 Z" />
+    <!-- Headset band -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3.6"
+        android:strokeLineCap="round"
+        android:pathData="M14,35 C14,20 23,11 36,11 C49,11 58,20 58,35" />
+    <!-- Earcup -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,30 C15,30 17,32 17,35 L17,42 C17,45 15,47 12,47 C9,47 8,45 8,42 L8,35 C8,32 9,30 12,30 Z" />
+    <!-- Mic boom -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:pathData="M12,46 Q14,58 26,58" />
+</vector>
