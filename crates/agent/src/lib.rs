@@ -56,6 +56,7 @@ mod gmail;
 mod hold_music;
 mod lan;
 mod lang_lock;
+mod live_text;
 mod locale;
 mod log_text;
 mod mcp;
@@ -6447,6 +6448,7 @@ fn enter_gemini_or_voicemail(
     if let Ok(mut g) = gemini_transcript.lock() {
         g.clear();
     }
+    live_text::started(serial, gemini_transcript);
     // Cold path (no ConnectAtAnswer): open audio immediately.
     if let Ok(mut opened_at) = gemini_audio_opened_at.lock() {
         *opened_at = Some(tokio::time::Instant::now());
@@ -6809,6 +6811,7 @@ async fn adopt_ring_prewarm(
         *g = Some(up_tx);
     }
     *gemini_transcript = transcript.clone();
+    live_text::started(serial, &transcript);
     *gemini_audio_open = audio_open.clone();
     *gemini_audio_opened_at = audio_opened_at.clone();
     *gemini_setup_ready = setup_ready.clone();
@@ -6912,6 +6915,7 @@ fn start_gemini_connect_at_answer(
     if let Ok(mut g) = gemini_transcript.lock() {
         g.clear();
     }
+    live_text::started(serial, gemini_transcript);
     if let Ok(mut opened_at) = gemini_audio_opened_at.lock() {
         *opened_at = None;
     }
@@ -10228,15 +10232,10 @@ fn spawn_ai_talk_tg_summary(
                     .trim(),
             ))
         };
-        // Lines said in another language than the owner's, translated while the
-        // summary is written (same service); the web record shows them under the line.
-        let mut translation = {
-            let http = http.clone();
-            let eff = eff.clone();
-            let dialogue = live.clone();
-            let owner = locale::notify_lang();
-            tokio::spawn(async move { summary::translate_dialogue(&http, &eff, &dialogue, owner).await })
-        };
+        // Lines said in another language are translated only when the owner asks on
+        // the call's page (POST /api/call/{id}/translate): no request is spent on
+        // calls nobody wants translated.
+        let mut translation = tokio::spawn(async { Vec::<Option<String>>::new() });
         // A call-back: did the callee say anything (else nobody answered)?
         let callee_answered = ai_callback
             && appointments::callee_spoke(&gemini_live::merge_dialogue_fragments(

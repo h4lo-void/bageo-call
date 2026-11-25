@@ -745,6 +745,35 @@ class StandaloneUi(private val activity: Activity) {
             }
         }
 
+        /**
+         * Translate a call's lines on the phone ([OnDeviceTranslate]): `json` is
+         * `{"req":"…","target":"zh-TW","lines":[{"i":1,"text":"…"}]}`. The answer comes back
+         * as `window.__bageoTranslated(req, "[{\"i\":1,\"text\":\"…\"}]")` (an empty list
+         * when the phone could not translate any).
+         */
+        @JavascriptInterface
+        fun translateLines(json: String) {
+            val parsed = try {
+                val o = JSONObject(json)
+                val arr = o.optJSONArray("lines") ?: org.json.JSONArray()
+                val list = (0 until minOf(arr.length(), 80)).mapNotNull { k ->
+                    arr.optJSONObject(k)?.let { l -> l.optInt("i", -1) to l.optString("text").take(2000) }
+                }.filter { it.first >= 0 && it.second.isNotBlank() }
+                Triple(o.optString("req").take(64), o.optString("target").take(16), list)
+            } catch (_: Exception) {
+                return
+            }
+            val (req, target, lines) = parsed
+            httpExecutor.execute {
+                val out = org.json.JSONArray()
+                for ((i, t) in OnDeviceTranslate.run(activity, target, lines)) out.put(JSONObject().put("i", i).put("text", t))
+                val js = "if(window.__bageoTranslated)window.__bageoTranslated(${JSONObject.quote(req)},${JSONObject.quote(out.toString())});"
+                activity.runOnUiThread {
+                    if (!activity.isDestroyed && ::webView.isInitialized) webView.evaluateJavascript(js, null)
+                }
+            }
+        }
+
         @JavascriptInterface
         fun setAiMode(enable: Boolean) {
             activity.runOnUiThread {

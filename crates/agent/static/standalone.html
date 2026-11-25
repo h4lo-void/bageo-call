@@ -879,9 +879,10 @@ input[type=text],input[type=search],input[type=password],input[type=url],input[t
 
       <div class="card d-sec" id="dDlgSec" hidden>
         <h3>
-          <span data-i18n="d_dialogue"></span>
+          <span class="row" style="gap:8px"><span class="pulse" id="dLivePulse" hidden></span><span id="dDlgTitle" data-i18n="d_dialogue"></span></span>
           <span class="row" style="gap:10px">
             <label class="trsw" id="dTrSw" hidden><input type="checkbox" id="dTrToggle" /><span data-i18n="d_show_tr"></span></label>
+            <button type="button" class="btn xs" id="btnTrDlg" hidden data-i18n="d_tr_btn"></button>
             <button type="button" class="btn xs" id="btnCopyDlg" data-i18n="d_copy_dlg"></button>
           </span>
         </h3>
@@ -1115,7 +1116,7 @@ input[type=text],input[type=search],input[type=password],input[type=url],input[t
         </button>
         <button type="button" class="smenu-row" data-sub="adv">
           <span class="smenu-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
-          <span class="smenu-body"><b><span data-i18n="m_sg_adv"></span><span class="smenu-dot" id="dotAdv" hidden></span></b><small id="subAdv" data-i18n="m_sg_adv_d"></small></span>
+          <span class="smenu-body"><b><span data-i18n="m_sg_adv"></span><span class="smenu-dot" id="dotAdv" hidden></span></b><small id="subAdv" data-i18n="m_sg_adv_d_phone"></small></span>
           <span class="smenu-chev" aria-hidden="true"></span>
         </button>
       </div>
@@ -1604,7 +1605,7 @@ input[type=text],input[type=search],input[type=password],input[type=url],input[t
             </select>
           </div>
           <label class="sw"><span><b data-i18n="bk_calls_phone"></b><small data-i18n="bk_calls_h"></small></span><input type="checkbox" data-k="backup_include_calls" data-t="bool" /></label>
-          <label class="sw"><span><b data-i18n="bk_encrypt"></b><small data-i18n="bk_encrypt_h"></small></span><input type="checkbox" id="f-backup_encrypt" data-k="backup_encrypt" data-t="bool" /></label>
+          <label class="sw"><span><b data-i18n="bk_encrypt"></b><small data-i18n="bk_encrypt_h_phone"></small></span><input type="checkbox" id="f-backup_encrypt" data-k="backup_encrypt" data-t="bool" /></label>
           <div class="field"><label for="f-backup_password"><span data-i18n="bk_pw"></span><span class="tag" data-flag="backup_password"></span></label>
             <div data-secret="backup_password"></div>
             <div class="help" data-i18n="bk_pw_h"></div></div>
@@ -3106,6 +3107,8 @@ async function openCallById(id) {
   detail.scamNames = null;
   detail.track = "";
   detail.contact = undefined;
+  detail.trAsk = null;
+  showTr = false;
   if (known) { renderDetail(); showDetailView(); }
   await loadDetail(id);
 }
@@ -3125,6 +3128,7 @@ async function loadDetail(id) {
     if (isLive(c) || (!d.notes && endedRecently(c))) {
       detail.pollTimer = setTimeout(() => { if (detail.id === id) loadDetail(id); }, 5000);
     }
+    if (isLive(c) && liveTx.polling !== id) pollLiveTx(id);
   } catch (e) {
     if (detail.id !== id) return;
     if (!detail.call) {
@@ -3150,6 +3154,8 @@ function showDetailView() {
 }
 function closeDetail() {
   clearTimeout(detail.pollTimer);
+  clearTimeout(liveTx.timer);
+  liveTx.polling = liveTx.id = liveTx.dialogue = "";
   $("dAudio").pause();
   detail.id = null;
   detail.call = null;
@@ -3295,17 +3301,7 @@ function renderDetail() {
   if (detail.audioFor !== c.id + "|" + want) setTrack(want, false);
   else $("dTrackHint").textContent = want ? t("tr_" + want + "_h") : "";
 
-  const turns = dialogueTurns(n && n.dialogue, n && n.dialogue_translations);
-  $("dDlgSec").hidden = !turns.length;
-  $("dTrSw").hidden = !turns.some((x) => x.tr);
-  $("dTrToggle").checked = showTr;
-  const chat = clear($("dDialogue"));
-  for (const turn of turns) {
-    const cls = turn.who === "ai" ? " ai" : turn.who === "carrier" ? " sys" : "";
-    chat.append(h("div", { class: "msg" + cls },
-      h("span", { class: "who2", text: t("who_" + turn.who) }),
-      h("div", { class: "bub", text: turn.text }, turn.tr && showTr ? h("span", { class: "tr", text: turn.tr }) : null)));
-  }
+  renderDialogue();
 
   const ek = isLive(c) ? "" : endKey(c);
   const endText = ek ? t(ek) : (!isLive(c) && n && n.end_hint) || "";
@@ -3379,8 +3375,172 @@ $("dScamFb").addEventListener("click", async (e) => {
 $("dTrToggle").addEventListener("change", (e) => {
   showTr = e.target.checked;
   store.set("pca.show_tr", showTr ? "1" : "0");
-  renderDetail();
+  renderDialogue();
 });
+
+// The dialogue: the record's after the call; while the AI is on it, the words so far
+// (/call/{id}/live), translated on the phone when "Show translation" is on.
+const liveTx = { id: "", polling: "", dialogue: "", lang: "", timer: 0, tr: new Map(), asked: new Set(), busy: false };
+const nativeTr = () => !!(window.BageoAndroid && typeof window.BageoAndroid.translateLines === "function");
+const trWaits = new Map();
+let trSeq = 0;
+window.__bageoTranslated = (req, json) => {
+  const done = trWaits.get(req);
+  if (!done) return;
+  trWaits.delete(req);
+  let v = [];
+  try { v = JSON.parse(json); } catch (_) {}
+  done(Array.isArray(v) ? v : []);
+};
+// Lines [{i, text}] translated on the phone into target ([] when it cannot).
+function phoneTranslate(lines, target, ms) {
+  if (!nativeTr() || !lines.length) return Promise.resolve([]);
+  const req = "tr" + (++trSeq);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => { trWaits.delete(req); resolve([]); }, ms);
+    trWaits.set(req, (v) => { clearTimeout(timer); resolve(v); });
+    try { window.BageoAndroid.translateLines(JSON.stringify({ req, target: target || lang, lines })); }
+    catch (_) { clearTimeout(timer); trWaits.delete(req); resolve([]); }
+  });
+}
+const lineBody = (l) => { const m = String(l).match(/^[^:：]{1,12}?[：:]\s*(.*)$/); return m ? m[1].trim() : ""; };
+function renderDialogue() {
+  const c = detail.call;
+  const n = detail.notes;
+  const live = !!c && isLive(c) && liveTx.id === c.id;
+  const text = live ? liveTx.dialogue : n && n.dialogue;
+  const trs = live ? String(text || "").split("\n").map((l) => liveTx.tr.get(lineBody(l)) || null) : n && n.dialogue_translations;
+  const turns = dialogueTurns(text, trs);
+  $("dDlgSec").hidden = !turns.length && !live;
+  $("dLivePulse").hidden = !live;
+  $("dDlgTitle").textContent = t(live ? "d_live_dlg" : "d_dialogue");
+  // One button at the top right: translate (only when tapped, so nothing is spent
+  // otherwise), then hide / show what was translated.
+  const hasTr = turns.some((x) => x.tr);
+  const ask = detail.trAsk;
+  const canAsk = !live && !!ask && !!c && ask.id === c.id && ask.lines.length > 0;
+  $("dTrSw").hidden = true;
+  $("btnTrDlg").hidden = !(live || hasTr || canAsk);
+  $("btnTrDlg").textContent = t(showTr && (live || hasTr) ? "d_tr_hide" : "d_tr_btn");
+  $("btnCopyDlg").hidden = live;
+  const atEnd = live && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
+  const chat = clear($("dDialogue"));
+  if (live && !turns.length) chat.append(h("p", { class: "muted small", text: t("d_live_wait") }));
+  for (const turn of turns) {
+    const cls = turn.who === "ai" ? " ai" : turn.who === "carrier" ? " sys" : "";
+    chat.append(h("div", { class: "msg" + cls },
+      h("span", { class: "who2", text: t("who_" + turn.who) }),
+      h("div", { class: "bub", text: turn.text }, turn.tr && showTr ? h("span", { class: "tr", text: turn.tr }) : null)));
+  }
+  if (atEnd && turns.length) window.scrollTo(0, document.documentElement.scrollHeight);
+  if (live && showTr) liveTranslate();
+  if (!live && c && n && n.dialogue && !(ask && ask.id === c.id)) askTranslate(c.id);
+}
+// The lines still in another language than the owner's, for the Translate button.
+async function askTranslate(id) {
+  detail.trAsk = { id, lines: [], lang: "" };
+  const n = detail.notes;
+  if (n && Array.isArray(n.dialogue_translations) && n.dialogue_translations.some(Boolean)) return;
+  try {
+    const d = await api("/call/" + encodeURIComponent(id) + "/translate");
+    if (detail.id !== id) return;
+    detail.trAsk = { id, lines: Array.isArray(d.lines) ? d.lines : [], lang: d.lang || lang };
+    renderDialogue();
+  } catch (_) {}
+}
+$("btnTrDlg").addEventListener("click", async () => {
+  const id = detail.id;
+  const ask = detail.trAsk;
+  const c = detail.call;
+  if (!id || !c) return;
+  if (showTr) { showTr = false; renderDialogue(); return; }
+  // Live: translate from now on, as lines are finished.
+  if (isLive(c) && liveTx.id === c.id) { showTr = true; renderDialogue(); return; }
+  // Kept translations and nothing left to translate: just show them.
+  if (!ask || ask.id !== id || !ask.lines.length) { showTr = true; renderDialogue(); return; }
+  const btn = $("btnTrDlg");
+  btn.disabled = true;
+  btn.textContent = t("d_tr_busy");
+  const path = "/call/" + encodeURIComponent(id) + "/translate";
+  try {
+    // On the phone first (the words stay on it), the summary's service for the rest.
+    const got = await phoneTranslate(ask.lines, ask.lang, 60000);
+    let d = null;
+    if (got.length) { try { d = await api(path, jsonBody("POST", { lines: got })); } catch (_) {} }
+    if (!d || got.length < ask.lines.length) {
+      try { d = await api(path, jsonBody("POST", {})); } catch (e) { if (!d) throw e; }
+    }
+    if (detail.id !== id) return;
+    if (detail.notes) detail.notes.dialogue_translations = d.dialogue_translations || [];
+    detail.trAsk = { id, lines: [], lang: ask.lang };
+    showTr = true;
+    renderDialogue();
+  } catch (_) {
+    toast(t("d_tr_fail"), true);
+  } finally {
+    btn.disabled = false;
+    renderDialogue();
+  }
+});
+async function pollLiveTx(id) {
+  clearTimeout(liveTx.timer);
+  liveTx.polling = "";
+  if (detail.id !== id || !detail.call || !isLive(detail.call)) return;
+  liveTx.polling = id;
+  try {
+    const d = await api("/call/" + encodeURIComponent(id) + "/live");
+    if (detail.id !== id) return;
+    if (liveTx.id !== id) Object.assign(liveTx, { id, dialogue: "", tr: new Map(), asked: new Set() });
+    liveTx.lang = d.lang || lang;
+    if ((d.dialogue || "") !== liveTx.dialogue || $("dDlgSec").hidden) {
+      liveTx.dialogue = d.dialogue || "";
+      renderDialogue();
+    }
+  } catch (e) {
+    if (e.status === 404) { liveTx.polling = ""; if (detail.id === id) loadDetail(id); return; }
+  }
+  if (detail.id === id) liveTx.timer = setTimeout(() => pollLiveTx(id), 1500);
+  else liveTx.polling = "";
+}
+// Finished lines of the live dialogue not yet tried, translated on the phone.
+async function liveTranslate() {
+  if (liveTx.busy) return;
+  const rows = String(liveTx.dialogue || "").split("\n");
+  const lines = [];
+  rows.forEach((l, i) => {
+    const text = lineBody(l);
+    const open = i === rows.length - 1 && !/[。？！?!…⋯.]$/.test(text);
+    if (text && !open && !liveTx.asked.has(text)) lines.push({ i, text });
+  });
+  if (!lines.length) return;
+  const id = liveTx.id;
+  for (const l of lines) liveTx.asked.add(l.text);
+  liveTx.busy = true;
+  let got = [];
+  try {
+    got = await phoneTranslate(lines, liveTx.lang, 30000);
+    // What the phone could not do (or a phone without it): the summary's service, one batch.
+    const rest = lines.filter((l) => !got.some((g) => g.i === l.i));
+    if (rest.length && liveTx.id === id) {
+      // At most one batch every 4 s: lines finished meanwhile go in the next one.
+      const wait = (liveTx.lastSvc || 0) + 4000 - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      liveTx.lastSvc = Date.now();
+      try {
+        const d = await api("/call/" + encodeURIComponent(id) + "/live/translate", jsonBody("POST", { lines: rest }));
+        got = got.concat(Array.isArray(d.lines) ? d.lines : []);
+      } catch (_) {}
+    }
+  } finally { liveTx.busy = false; }
+  if (liveTx.id !== id) return;
+  for (const g of got) {
+    const src = lines.find((l) => l.i === g.i);
+    if (src && g.text) liveTx.tr.set(src.text, g.text);
+  }
+  if (got.length) renderDialogue();
+  else if (liveTx.dialogue.split("\n").some((l, i, a) => lineBody(l) && !liveTx.asked.has(lineBody(l)) && i < a.length - 1)) liveTranslate();
+}
+
 $("btnCopyDlg").addEventListener("click", () => {
   const n = detail.notes;
   const turns = dialogueTurns(n && n.dialogue, n && n.dialogue_translations);
@@ -5579,7 +5739,7 @@ function renderSetMenuSummaries() {
   $("subData").textContent = `${tmLabel} · ${uiName}`;
 
   const ver = native.version_name || (health && health.version) || "";
-  $("subAdv").textContent = ver ? `Bageo v${ver}` : t("m_sg_adv_d");
+  $("subAdv").textContent = ver ? `Bageo v${ver}` : t("m_sg_adv_d_phone");
 }
 
 function populate() {
@@ -5947,7 +6107,7 @@ function bkExportAsk() {
     };
     pw.oninput = pw2.oninput = sync;
     enc.onchange = sync;
-    bkTicks(host, BK_ORDER.map((id) => ({ id, label: bkName(id), hint: id === "keys" ? t("bk_exp_keys_h") : BK_BIG.has(id) ? t("bk_exp_big_h") : "", on: BK_EXPORT_ON.has(id) })), sync);
+    bkTicks(host, BK_ORDER.map((id) => ({ id, label: bkName(id), hint: id === "keys" ? t("bk_exp_keys_h_phone") : BK_BIG.has(id) ? t("bk_exp_big_h") : "", on: BK_EXPORT_ON.has(id) })), sync);
     sync();
     d.returnValue = "";
     d.addEventListener("close", () => resolve(d.returnValue === "ok" ? { items: bkTicked(host), password: enc.checked ? pw.value.trim() : "" } : null), { once: true });
