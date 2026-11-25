@@ -233,7 +233,7 @@ Todos os recursos em detalhes: [Recursos](docs/en/FEATURES.md).
 1. **Um celular Android reserva** com o seu SIM, com root pelo Magisk ou KernelSU, Android 10 ou mais novo. Testado: Google Pixel 7, 7a, 8 e 9.
 2. **Um computador** ligado enquanto as ligações devem ser atendidas: Windows 10/11, macOS, Linux ou Docker. Com a edição só para o celular, você não precisa de computador.
 3. **Um cabo USB** (Wi-Fi também funciona).
-4. **Uma chave de API do Gemini** do [Google AI Studio](https://aistudio.google.com/apikey). O Google cobra por uso.
+4. **Uma chave de API do Gemini** do [Google AI Studio](https://aistudio.google.com/apikey), gratuita. Dentro da cota gratuita você não paga nada (nos nossos testes, deu para 10 ligações ou mais por dia). O Google só cobra por uso se você passar da cota gratuita ou mudar para um plano pago.
 
 ## Início rápido
 

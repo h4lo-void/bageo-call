@@ -17,7 +17,7 @@
 |---|---|
 | **一支備用 Android 手機** | 已用 Magisk 或 KernelSU root，Android 10 以上，插著能接電話的 SIM 卡。在 Google Pixel 7、7a、8、9 實測過（見[支援哪些手機](PHONE.md#支援哪些手機)）。這裡不教 root：請照你那個型號的教學做，並記得解鎖 bootloader 會清空手機。 |
 | **一台電腦** | Windows 10/11、macOS（Apple Silicon 或 Intel）或 Linux，要接電話的時段都得開著，再加一條接手機的 USB 線。也可以用 Docker，手機改走 Wi-Fi。**如果完全不想開電腦**，改用發行版的 `bageo-phone-standalone-<版本>.zip`（手機獨立版 **Bageo AI Call Agent**），可跳過電腦安裝步驟，直接把模組刷入手機並用手機裡的控制台完成設定；用 Google AI Studio 的免費 Gemini 金鑰，不用付 API 費用。 |
-| **一把 Gemini API 金鑰** | 到 <https://aistudio.google.com/apikey> 建立並複製。Bageo 只需要這一把：即時通話、摘要、防詐複審、聯絡人匯入都用它。Google 依用量計費；想設上限，可以在 Google 帳戶裡設定預算。 |
+| **一把 Gemini API 金鑰** | 到 <https://aistudio.google.com/apikey> 免費建立並複製。Bageo 只需要這一把：即時通話、摘要、防詐複審、聯絡人匯入都用它。免費額度內不用付費，我們實測每天 10 通以上夠用；超過免費額度或改用付費方案時，才由 Google 依用量計費。想設上限，可以在 Google 帳戶裡設定預算。 |
 
 ## 2. 安裝並啟動 Bageo
 

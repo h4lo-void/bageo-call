@@ -16,8 +16,8 @@ This page covers:
 Building the app, its permissions and its protocol are covered in
 [`android/README.md`](../../android/README.md).
 
-This page describes **Bageo 2.0**: the root module `v2.0.0` with the app
-`2.0.0` inside, installed from
+This page describes **Bageo 2.0**: the root module `v2.0.0` (versionCode 30) with
+the app `2.0.0` (versionCode 38) inside, installed from
 `bageo-phone-module-2.0.0.zip` (**Bageo Uplink**, for pairing with Bageo on a
 computer or NAS) or
 `bageo-phone-standalone-2.0.0.zip` (**Bageo AI Call Agent**, the phone-only

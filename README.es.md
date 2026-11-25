@@ -233,7 +233,7 @@ Todas las funciones en detalle: [Funciones](docs/en/FEATURES.md).
 1. **Un teléfono Android de repuesto** con tu SIM, con root mediante Magisk o KernelSU, Android 10 o superior. Probado: Google Pixel 7, 7a, 8 y 9.
 2. **Un ordenador** encendido mientras quieras que se contesten llamadas: Windows 10/11, macOS, Linux o Docker. Con la edición solo para el móvil no necesitas ordenador.
 3. **Un cable USB** (también funciona con Wi-Fi).
-4. **Una clave de API de Gemini** de [Google AI Studio](https://aistudio.google.com/apikey). Google cobra por uso.
+4. **Una clave de API de Gemini** de [Google AI Studio](https://aistudio.google.com/apikey), gratuita. Dentro del cupo gratuito no pagas nada (en nuestras pruebas alcanzó para 10 llamadas o más al día). Google cobra por uso solo si superas el cupo gratuito o pasas a un plan de pago.
 
 ## Inicio rápido
 

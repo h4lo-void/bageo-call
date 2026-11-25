@@ -233,7 +233,7 @@
 1. **여분의 Android 폰**: 내 SIM을 넣고 Magisk나 KernelSU로 root 한 Android 10 이상 기기. 테스트한 기기: Google Pixel 7, 7a, 8, 9.
 2. **컴퓨터**: 전화를 받아야 하는 동안 켜져 있는 컴퓨터. Windows 10/11, macOS, Linux 또는 Docker. 휴대폰 단독 실행판을 쓰면 컴퓨터는 필요 없습니다.
 3. **USB 케이블** (Wi-Fi로도 됩니다).
-4. **Gemini API 키**: [Google AI Studio](https://aistudio.google.com/apikey)에서 받습니다. 사용한 만큼 Google이 청구합니다.
+4. **Gemini API 키**: [Google AI Studio](https://aistudio.google.com/apikey)에서 무료로 받습니다. 무료 한도 안에서는 요금이 없고, 직접 써 본 결과 하루 10통 이상은 충분했습니다. 무료 한도를 넘기거나 유료 요금제로 바꾼 경우에만 사용한 만큼 Google이 청구합니다.
 
 ## 빠른 시작
 

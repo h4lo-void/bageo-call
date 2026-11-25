@@ -233,7 +233,7 @@ Toutes les fonctions en détail : [Fonctionnalités](docs/en/FEATURES.md).
 1. **Un téléphone Android de rechange** avec votre SIM, rooté avec Magisk ou KernelSU, Android 10 ou plus récent. Testés : Google Pixel 7, 7a, 8 et 9.
 2. **Un ordinateur** allumé quand les appels doivent être décrochés : Windows 10/11, macOS, Linux ou Docker. Avec l’édition téléphone seul, vous n’avez pas besoin d’ordinateur.
 3. **Un câble USB** (le Wi-Fi fonctionne aussi).
-4. **Une clé API Gemini** de [Google AI Studio](https://aistudio.google.com/apikey). Google facture à l’usage.
+4. **Une clé API Gemini** de [Google AI Studio](https://aistudio.google.com/apikey), gratuite. Dans le quota gratuit, vous ne payez rien (lors de nos tests, il a suffi pour 10 appels ou plus par jour). Google ne facture à l’usage que si vous dépassez le quota gratuit ou passez à une offre payante.
 
 ## Démarrage rapide
 

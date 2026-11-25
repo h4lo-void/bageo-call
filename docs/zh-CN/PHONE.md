@@ -12,7 +12,7 @@
 
 构建应用、它的权限和通信协议，写在 [`android/README.md`](../../android/README.md)（英文）里。
 
-这一页说明的是 **Bageo 2.0**：root 模块 `v2.0.0`，里面的应用是 `2.0.0`。
+这一页说明的是 **Bageo 2.0**：root 模块 `v2.0.0`（versionCode 30），里面的应用是 `2.0.0`（versionCode 38）。
 
 安装包有两个：`bageo-phone-module-2.0.0.zip`（电脑联动版 **Bageo Uplink**，配合电脑或 NAS 使用）与 `bageo-phone-standalone-2.0.0.zip`（手机独立版 **Bageo AI Call Agent**，不需要电脑，把完整 Bageo 与控制台装在手机里）。应用的版本在“高级”页面能看到，控制台则在“系统 → 手机”里。
 

@@ -233,7 +233,7 @@ Every feature in detail: [Features](docs/en/FEATURES.md).
 1. **A spare Android phone** with your SIM, rooted with Magisk or KernelSU, Android 10 or newer. Tested: Google Pixel 7, 7a, 8 and 9.
 2. **A computer** that is on while calls should be answered: Windows 10/11, macOS, Linux or Docker. With the phone-only edition you don't need a computer.
 3. **A USB cable** (Wi-Fi works too).
-4. **A Gemini API key** from [Google AI Studio](https://aistudio.google.com/apikey). Google bills per use.
+4. **A Gemini API key** from [Google AI Studio](https://aistudio.google.com/apikey), free to get. Within the free quota you pay nothing (in our own tests it covered 10 or more calls a day). Google bills per use only if you go over the free quota or switch to a paid plan.
 
 ## Quick start
 

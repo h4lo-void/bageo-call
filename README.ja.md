@@ -233,7 +233,7 @@
 1. **予備の Android スマホ**：自分の SIM を入れ、Magisk か KernelSU で root 化した Android 10 以上のもの。動作確認済み：Google Pixel 7、7a、8、9。
 2. **パソコン**：電話に出てほしい間、電源が入っているもの。Windows 10/11、macOS、Linux、または Docker。スマホ単体版ならパソコンは要りません。
 3. **USB ケーブル**（Wi-Fi でも使えます）。
-4. **Gemini API キー**：[Google AI Studio](https://aistudio.google.com/apikey) で取得します。料金は、使った分だけ Google から請求されます。
+4. **Gemini API キー**：[Google AI Studio](https://aistudio.google.com/apikey) で無料で取得できます。無料枠の範囲内なら料金はかからず、私たちの実測では 1 日 10 件以上の通話をまかなえました。無料枠を超えた場合や有料プランに切り替えた場合だけ、使った分が Google から請求されます。
 
 ## クイックスタート
 

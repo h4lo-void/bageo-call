@@ -22,7 +22,7 @@ goes into preparing the phone.
 |---|---|
 | **A spare Android phone** | Rooted with Magisk or KernelSU, Android 10 or newer, with a SIM that receives calls. Tested on Google Pixel 7, 7a, 8 and 9 (see [which phones work](PHONE.md#which-phones)). Rooting is not covered here: follow a guide for your exact model, and remember that unlocking the bootloader wipes the phone. |
 | **A computer** | Windows 10/11, macOS (Apple Silicon or Intel) or Linux, switched on whenever calls should be answered, plus a USB cable to the phone. Docker works too, with the phone on Wi-Fi. **Prefer no computer at all?** Flash `bageo-phone-standalone-<version>.zip` (**Bageo AI Call Agent**, the phone-only edition) onto your rooted phone instead and skip the computer steps—the app runs Bageo and the full console directly on the phone, and a free Gemini key from Google AI Studio means no API fees. |
-| **A Gemini API key** | Create one at <https://aistudio.google.com/apikey> and copy it. It is the only key Bageo needs: live calls, summaries, the scam review and contact import all use it. Google bills per use; set a budget in your Google account if you want a ceiling. |
+| **A Gemini API key** | Create one for free at <https://aistudio.google.com/apikey> and copy it. It is the only key Bageo needs: live calls, summaries, the scam review and contact import all use it. Within the free quota you pay nothing (in our own tests it covered 10 or more calls a day); Google bills per use only if you go over the free quota or switch to a paid plan. Set a budget in your Google account if you want a ceiling. |
 
 ## 2. Install and start Bageo
 

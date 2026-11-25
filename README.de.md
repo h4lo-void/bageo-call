@@ -233,7 +233,7 @@ Alle Funktionen im Detail: [Funktionen](docs/en/FEATURES.md).
 1. **Ein übriges Android-Telefon** mit deiner SIM-Karte, gerootet mit Magisk oder KernelSU, Android 10 oder neuer. Getestet: Google Pixel 7, 7a, 8 und 9.
 2. **Einen Computer**, der läuft, solange Anrufe angenommen werden sollen: Windows 10/11, macOS, Linux oder Docker. Mit der Nur-Handy-Edition brauchst du keinen Computer.
 3. **Ein USB-Kabel** (WLAN geht auch).
-4. **Einen Gemini-API-Schlüssel** von [Google AI Studio](https://aistudio.google.com/apikey). Google rechnet nach Nutzung ab.
+4. **Einen Gemini-API-Schlüssel** von [Google AI Studio](https://aistudio.google.com/apikey), kostenlos. Innerhalb des kostenlosen Kontingents zahlst du nichts (in unseren Tests reichte es für 10 oder mehr Anrufe pro Tag). Google rechnet nur dann nach Nutzung ab, wenn du das kostenlose Kontingent überschreitest oder einen Bezahlplan nutzt.
 
 ## Schnellstart
 

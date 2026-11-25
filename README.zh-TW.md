@@ -233,7 +233,7 @@ AI 一確定對方是推銷或詐騙，就變成一個有興趣、反應慢、�
 1. **一支備用 Android 手機**，插著你的 SIM 卡，用 Magisk 或 KernelSU root，Android 10 以上。實測過 Google Pixel 7、7a、8、9。
 2. **一台電腦**，需要接電話的時段開著：Windows 10/11、macOS、Linux 或 Docker。用手機獨立版就不需要電腦。
 3. **一條 USB 線**（也可以用 Wi-Fi）。
-4. **一把 Gemini API 金鑰**，到 [Google AI Studio](https://aistudio.google.com/apikey) 取得，Google 依用量計費。
+4. **一把 Gemini API 金鑰**，到 [Google AI Studio](https://aistudio.google.com/apikey) 免費申請。免費額度內不用付費，我們實測每天 10 通以上夠用；超過免費額度或改用付費方案時，才由 Google 依用量計費。
 
 ## 快速開始
 
