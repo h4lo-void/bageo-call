@@ -2103,6 +2103,7 @@ fn sms_message_json(state: &CallsState, labels: &HashMap<String, String>, m: &cr
         "device": device,
         "status": m.status,
         "error": m.error,
+        "unread": m.unread,
     })
 }
 
@@ -2147,6 +2148,7 @@ async fn sms_threads(
                 "last_status": t.last.status,
                 "count": t.count,
                 "last_in_at": t.last_in_at,
+                "unread": t.unread,
                 "can_reply": crate::sms_store::check_send_number(&t.number, region.as_deref()).is_ok(),
             })
         })
@@ -2302,6 +2304,53 @@ async fn sms_thread_delete(
         .map(|key| state.sms.delete_thread(&key, &key_of))
         .unwrap_or(0);
     Json(json!({"ok": true, "removed": removed})).into_response()
+}
+
+#[derive(Deserialize)]
+struct SmsReadBody {
+    /// The newest message the owner saw; one that came in after it stays unread.
+    #[serde(default)]
+    up_to: Option<u64>,
+}
+
+/// Mark what came in on one conversation read (the console showed it). Bageo
+/// keeps the mark, so every browser and phone shows the same.
+async fn sms_thread_read(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<SmsThreadQuery>,
+    body: axum::body::Bytes,
+) -> Response {
+    if !token_ok_parts(&state.settings, &headers, query.token.as_deref()) {
+        return unauthorized();
+    }
+    if !is_json_request(&headers) {
+        return json_required();
+    }
+    let req = serde_json::from_slice::<Value>(&body)
+        .ok()
+        .filter(Value::is_object)
+        .and_then(|v| serde_json::from_value::<SmsReadBody>(v).ok());
+    let Some(req) = req else {
+        return api_error(StatusCode::BAD_REQUEST, "bad_request", "the body must be {up_to}");
+    };
+    let keep_days = state.settings_store.snapshot().retention_days;
+    let raw = query.number.as_deref().unwrap_or("").trim().to_string();
+    let lines = sms_lines(&state).await;
+    let home = sms_home_region();
+    let key_of = |m: &crate::sms_store::SmsMessage| sms_key_of(&lines, m, home.as_deref());
+    let (_, threads) = state.sms.threads(
+        crate::sms_store::now_ms(),
+        keep_days,
+        "",
+        &key_of,
+        &|_: &crate::sms_store::SmsMessage| String::new(),
+    );
+    let keys: Vec<String> = threads.iter().map(|t| t.key.clone()).collect();
+    let marked = sms_find_thread(&keys, &raw, home.as_deref())
+        .map(|key| state.sms.mark_read(&key, req.up_to, &key_of))
+        .unwrap_or(0);
+    Json(json!({"ok": true, "marked": marked})).into_response()
 }
 
 #[derive(Deserialize)]
@@ -5023,6 +5072,7 @@ pub(crate) mod tests {
             sub_id: sub,
             status: String::new(),
             error: String::new(),
+            unread: false,
         };
         let region = |_: &SmsMessage| Some("tw".to_string());
         let pick = |msgs: &[SmsMessage], lines: &[SmsLine]| sms_reply_line(msgs, lines, &region).map(|l| (l.serial.clone(), l.sub_id));
@@ -5210,6 +5260,58 @@ pub(crate) mod tests {
         assert_eq!(recent_json(del(sms_json_headers(None), "0912345678").await).await, json!({"ok": true, "removed": 0}));
         let v = recent_json(sms_threads_get(&state, None, "").await).await;
         assert_eq!((sms_thread_keys(&v), v["total"].as_u64()), (vec!["+16505550142".to_string()], Some(1)));
+    }
+
+    #[tokio::test]
+    async fn sms_thread_read_route_marks_a_conversation_read_for_every_browser() {
+        let state = recent_state("sms-read");
+        let a = sms_serial("A");
+        state.errands.sims.note_list(&a, &json!([{"sub_id": 1, "country": "tw"}]));
+        sms_receive(&state, "0912345678", "第一則", &a, Some(1), "").await;
+        sms_receive(&state, "+16505550142", "other person", &a, Some(1), "").await;
+        let unread = |v: &Value| -> Vec<(String, u64)> {
+            let mut out: Vec<(String, u64)> = v["threads"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|t| (t["key"].as_str().unwrap().to_string(), t["unread"].as_u64().unwrap()))
+                .collect();
+            out.sort();
+            out
+        };
+        let both = |a: u64, b: u64| vec![("+16505550142".to_string(), a), ("+886912345678".to_string(), b)];
+        assert_eq!(unread(&recent_json(sms_threads_get(&state, None, "").await).await), both(1, 1));
+        let opened = sms_thread_get(&state, "+886912345678", None, None).await;
+        assert_eq!(opened["messages"][0]["unread"], true);
+        let seen = opened["messages"][0]["id"].as_u64().unwrap();
+        sms_receive(&state, "0912345678", "第二則", &a, Some(1), "").await;
+        let read = |headers: HeaderMap, number: &str, body: Value| {
+            sms_thread_read(
+                State(state.clone()),
+                headers,
+                Query(sms_thread_query(number, None, None)),
+                axum::body::Bytes::from(body.to_string()),
+            )
+        };
+        let up_to = json!({"up_to": seen});
+        assert_eq!(read(sms_headers(None), "+886912345678", up_to.clone()).await.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(recent_json(read(sms_json_headers(None), "+886912345678", up_to).await).await, json!({"ok": true, "marked": 1}));
+        let v = recent_json(sms_threads_get(&state, None, "").await).await;
+        assert_eq!(unread(&v), both(1, 1), "the one that came in after stays unread");
+        assert_eq!(recent_json(read(sms_json_headers(None), "0912345678", json!({})).await).await, json!({"ok": true, "marked": 1}));
+        assert_eq!(unread(&recent_json(sms_threads_get(&state, None, "").await).await), both(1, 0));
+        assert_eq!(read(sms_json_headers(None), "0912345678", json!([])).await.status(), StatusCode::BAD_REQUEST);
+        let mut locked = state.clone();
+        locked.settings.calls_ui_token = "sms-read-pw".into();
+        let r = sms_thread_read(
+            State(locked),
+            sms_json_headers(None),
+            Query(sms_thread_query("+16505550142", None, None)),
+            axum::body::Bytes::from("{}"),
+        )
+        .await;
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(unread(&recent_json(sms_threads_get(&state, None, "").await).await), both(1, 0));
     }
 
     #[tokio::test]
@@ -5889,6 +5991,7 @@ fn sms_router(texts: bool) -> Router<CallsState> {
         .route("/api/sms/clear", post(sms_clear))
         .route("/api/sms/threads", get(sms_threads))
         .route("/api/sms/thread", get(sms_thread).delete(sms_thread_delete))
+        .route("/api/sms/thread/read", post(sms_thread_read))
         .route("/api/sms/send", post(sms_send))
         .route("/api/sms/{id}/retry", post(sms_retry))
         .route("/api/sms/{id}", axum::routing::delete(sms_delete))

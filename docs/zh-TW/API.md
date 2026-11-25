@@ -81,7 +81,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - `POST /calls/api/tasks/{id}/confirm` 和 `…/ignore`；
 - `POST /calls/api/appointments/{id}/retry-sms`；
 - `POST /calls/api/calls/clear`；
-- `POST /calls/api/sms/send`、`…/retry`、`…/clear` 和 `DELETE /calls/api/sms/thread`；
+- `POST /calls/api/sms/send`、`…/retry`、`…/clear`、`POST /calls/api/sms/thread/read` 和 `DELETE /calls/api/sms/thread`；
 - `POST /calls/api/devices/{serial}/mode` 和 `PUT /calls/api/devices/{serial}/sim-number`；
 - `POST /calls/api/contacts`、`PUT /calls/api/contacts/{id}`、`POST /calls/api/contacts/batch`、`POST /calls/api/contacts/block`（`POST /calls/api/contacts/import` 則改成要帶 `X-Filename` 標頭）；
 - `POST /calls/api/errands`、`…/{id}/cancel`、`…/{id}/retry`、`…/{id}/say`；
@@ -270,11 +270,12 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 | `GET /calls/api/sms?q=&before=<id>&limit=<n>` | 由新到舊列出存下來的簡訊：`{ok, total, retention_days, has_more, messages: [{id, at_ms, dir, from, from_name, to, text, serial, device, status}]}`。`q` 搜尋寄件人、聯絡人名稱與內容；`before` 只列比這個 `id` 舊的；`limit` 是 1 到 200（預設 50）。`total` 是全部簡訊的數目，不受搜尋影響。超過「紀錄保留幾天」的簡訊會刪掉，最多留 5000 則。 |
 | `DELETE /calls/api/sms/{id}` | 刪除一則簡訊：`{ok: true}`，找不到回 HTTP 404 `not_found`。 |
 | `POST /calls/api/sms/clear` | 刪除全部簡訊：`{ok: true, removed: N}`。 |
-| `GET /calls/api/sms/threads?q=` | 由新到舊列出對話，一個號碼一則：`{ok, total, retention_days, threads: [{key, number, name, last_at, last_text, last_dir, last_status, count, last_in_at, can_reply}], lines: [{serial, sub_id, device, number, carrier, slot, can_send}]}`。`0912…` 與 `+886912…` 算同一則對話（號碼照收到它的那張 SIM 卡的國家判讀）。`q` 搜尋名稱、號碼與每一則內容。寄件人是「BankInfo」這種名稱時 `can_reply` 是 false。`lines` 是可以用來傳簡訊的 SIM 卡；`can_send` 表示那支手機連著、App 也能傳簡訊。 |
-| `GET /calls/api/sms/thread?number=<號碼或 key>&before=<id>&limit=<n>` | 由舊到新列出一則對話：`{ok, key, number, name, can_reply, has_more, reply, messages: [{id, at_ms, dir, from, to, text, serial, sub_id, device, status, error}]}`。`dir` 是 `in` 或 `out`；傳出的簡訊 `status` 是 `sending`、`sent`、`failed`（`error` 是手機回的代碼）或 `timeout`。`reply`（`{serial, sub_id}` 或 `null`）是回覆預設用的門號：收到最近一則簡訊的那支手機與 SIM 卡，不能用時改用第一個能傳的。還沒有對話的號碼回空的對話。 |
+| `GET /calls/api/sms/threads?q=` | 由新到舊列出對話，一個號碼一則：`{ok, total, retention_days, threads: [{key, number, name, last_at, last_text, last_dir, last_status, count, last_in_at, unread, can_reply}], lines: [{serial, sub_id, device, number, carrier, slot, can_send}]}`。`0912…` 與 `+886912…` 算同一則對話（號碼照收到它的那張 SIM 卡的國家判讀）。`q` 搜尋名稱、號碼與每一則內容。`unread` 是還沒在控制台打開過的收到簡訊則數，記在 Bageo 裡，每個瀏覽器和手機看到的都一樣。寄件人是「BankInfo」這種名稱時 `can_reply` 是 false。`lines` 是可以用來傳簡訊的 SIM 卡；`can_send` 表示那支手機連著、App 也能傳簡訊。 |
+| `GET /calls/api/sms/thread?number=<號碼或 key>&before=<id>&limit=<n>` | 由舊到新列出一則對話：`{ok, key, number, name, can_reply, has_more, reply, messages: [{id, at_ms, dir, from, to, text, serial, sub_id, device, status, error, unread}]}`。`dir` 是 `in` 或 `out`；傳出的簡訊 `status` 是 `sending`、`sent`、`failed`（`error` 是手機回的代碼）或 `timeout`。`reply`（`{serial, sub_id}` 或 `null`）是回覆預設用的門號：收到最近一則簡訊的那支手機與 SIM 卡，不能用時改用第一個能傳的。還沒有對話的號碼回空的對話。讀這則對話不會把它標成已讀，要另外呼叫 `…/thread/read`。 |
 | `POST /calls/api/sms/send` | Body `{"to", "text", "serial", "sub_id"}`（`lines` 其中一條；`text` 1 到 500 個字）。叫那支手機傳出，最多等 30 秒它的回覆：`{ok, message}`，送出才是 `ok`。HTTP 400 `bad_number`、`bad_line` 或 `bad_text`。這則簡訊會留在對話裡，不會送到通知管道。 |
 | `POST /calls/api/sms/{id}/retry` | 用同一個門號重送 `failed` 或 `timeout` 的簡訊，回應同 `send`。其他簡訊回 HTTP 409 `not_retryable`。 |
 | `DELETE /calls/api/sms/thread?number=<號碼或 key>` | 刪除一則對話：`{ok: true, removed: N}`。 |
+| `POST /calls/api/sms/thread/read?number=<號碼或 key>` | 把一則對話收到的簡訊標成已讀，body `{"up_to": <id>}`：id 之後才收到的仍是未讀；body 是 `{}` 就全部標成已讀。回 `{ok: true, marked: N}`。 |
 | `GET /calls/api/quick-action` · `POST /calls/api/quick-action` | 32 種通知管道內附的單次簽章互動按鈕路由（`?act=confirm\|ignore\|block\|stall\|white&target=<id或號碼>&sig=<hmac>`）。打開連結（`GET`）只會先顯示確認頁，按下頁面上的按鈕（`POST`）才會執行；連結 7 天後失效。透過 HMAC-SHA256 驗證，不用登入控制台，支援全部 9 種語言。 |
 | `POST /calls/api/control/inbound` | 跨平台通用指令 Webhook，用聊天指令控制 Bageo。Body 例如 `{"text": "清單 5", "channel_id": "line", "sender_id": "owner", "reply": false, "token": "..."}`（也相容 `user`／`channel`）。 |
 | `GET /calls/api/auth-status` · `POST /calls/api/initial-password` | 查詢是否已設密碼與是否顯示首次設定密碼視窗（`{ok, password_set, authenticated, prompt_initial, language}`），以及首次建立或略過密碼（`{"password": "..."}` 或 `{"skip": true}`，僅在尚未設定任何密碼／Token 時可用）。 |
