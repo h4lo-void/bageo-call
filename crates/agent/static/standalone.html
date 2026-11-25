@@ -555,6 +555,12 @@ main{padding-block:8px calc(var(--tab-h) + 24px + env(safe-area-inset-bottom));p
 
 /* bottom navigation bar with the pill indicator */
 .tabbar{background:var(--md-sc);border-top:0;backdrop-filter:none;-webkit-backdrop-filter:none;padding-block:12px calc(12px + env(safe-area-inset-bottom));padding-inline:8px;gap:0}
+/* Typing: the keyboard is up, so the tab bar steps aside like the system apps' (it would cover the field). */
+body:has(:is(textarea, input:not([type=checkbox], [type=radio], [type=range], [type=button], [type=submit], [type=file])):focus) .tabbar{display:none}
+/* A focused field scrolled into view stays clear of the header and the tab bar. */
+html{scroll-padding-top:calc(var(--top-h) + env(safe-area-inset-top) + 12px);scroll-padding-bottom:calc(var(--tab-h) + env(safe-area-inset-bottom) + 12px)}
+/* The questions before dialling have their own buttons; the big Start button waits. */
+#erPre:not([hidden]) ~ #erGo{display:none}
 .tabbar button{min-height:64px;gap:4px;padding:0 2px;border-radius:16px;color:var(--md-on-surface-variant);font-size:.75rem;font-weight:500;line-height:1.25}
 .tabbar button .tab-pill{width:64px;height:32px}
 .tabbar button svg{width:24px;height:24px}

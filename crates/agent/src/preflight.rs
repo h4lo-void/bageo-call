@@ -184,6 +184,25 @@ fn has_any_word(low: &str, words: &[&str]) -> bool {
     words.iter().any(|w| has_word(low, w))
 }
 
+/// Children in a request, in the nine languages ("kids", "2大1小", "2a1c", "子ども").
+const KID_WORDS: &[&str] = &[
+    "kid", "kids", "child", "children", "baby", "babies", "toddler", "toddlers", "infant", "high chair", "小孩", "小朋友", "兒童", "儿童",
+    "寶寶", "宝宝", "嬰兒", "婴儿", "幼兒", "幼儿", "子ども", "子供", "こども", "お子", "赤ちゃん", "幼児", "아이", "어린이", "아기", "유아", "niño", "niña",
+    "niños", "niñas", "bebé", "bebés", "enfant", "enfants", "bébé", "bébés", "kinder", "kleinkind", "criança", "crianças", "bebê", "bebês",
+];
+
+fn mentions_kids(low: &str, c: &[char]) -> bool {
+    if has_any_word(low, KID_WORDS) {
+        return true;
+    }
+    // "2大1小" / "兩大一小" (not "1小時", an hour), and "2a1c".
+    let num = |ch: char| ch.is_ascii_digit() || "一二兩两三四五".contains(ch);
+    (0..c.len()).any(|i| {
+        (i > 0 && num(c[i - 1]) && c[i] == '小' && !matches!(c.get(i + 1), Some('時' | '时')))
+            || (i > 1 && c[i - 2].is_ascii_digit() && c[i - 1] == 'a' && c[i].is_ascii_digit() && c.get(i + 1) == Some(&'c'))
+    })
+}
+
 /// A request lower case for reading: Turkish İ comes out as "i" plus U+0307,
 /// and the dot goes ("İptal" reads as "iptal").
 fn fold(text: &str) -> String {
@@ -1732,6 +1751,8 @@ fn optional_for(task: &str, known: &Known, place: &str, missing: &[&str], ladder
         "backup" => ladder.len() >= 2 || contains_any(&low, BACKUP_WORDS),
         "spec" => has_qty(&low, &c),
         "question" => true,
+        // Ages and a high chair only matter when the owner wrote of children.
+        "kids_detail" => !mentions_kids(&low, &c),
         _ => false,
     };
     crate::place_habits::nice_to_have(known.region, place)
@@ -2693,6 +2714,26 @@ mod tests {
         let ladder = ladder_of("訂今晚 7 點 4 位，不行就 8 點", Kind::Restaurant);
         assert!(!optional_for("訂今晚 7 點 4 位，不行就 8 點", &tw, "restaurant", &[], &ladder).contains(&"backup"));
         assert!(optional_for(task, &Known::default(), "restaurant", &[], &[]).is_empty());
+    }
+
+    #[test]
+    fn kids_are_asked_about_only_when_the_request_has_children() {
+        for (task, kids) in [
+            ("Book a table for 2 tonight at 7pm under the name Wang", false),
+            ("Table for 2 adults and 1 kid tonight at 7", true),
+            ("訂今晚 7 點 2大1小", true),
+            ("訂今晚 7 點 4 位，1小時就好", false),
+            ("明日の夜7時、大人2名と子ども1名", true),
+            ("Mesa para 3 esta noche, con un niño", true),
+            ("Une table pour 2 ce soir", false),
+            ("Tisch für 2 Erwachsene und 2 Kinder heute um 19 Uhr", true),
+            ("오늘 저녁 7시 2명", false),
+            ("2a1c tonight 7pm", true),
+        ] {
+            let low = fold(task);
+            let c: Vec<char> = low.chars().collect();
+            assert_eq!(mentions_kids(&low, &c), kids, "{task}");
+        }
     }
 
     #[test]
