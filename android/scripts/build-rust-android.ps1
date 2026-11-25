@@ -60,6 +60,9 @@ $env:CC_aarch64_linux_android = $clang
 $env:CXX_aarch64_linux_android = $clangPp
 $env:AR_aarch64_linux_android = $ar
 $env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = $clang
+$cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE ".cargo" }
+$remap = "--remap-path-prefix=$repoRoot=/bageo --remap-path-prefix=$cargoHome=/cargo"
+$env:RUSTFLAGS = if ($env:RUSTFLAGS) { "$($env:RUSTFLAGS) $remap" } else { $remap }
 
 Write-Host "==> Using NDK: $ndk"
 Write-Host "==> Building agent library for aarch64-linux-android (release)..."

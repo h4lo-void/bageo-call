@@ -248,9 +248,20 @@ pub struct RuntimeSettings {
     #[serde(default = "default_answer_style")]
     pub answer_style: String,
     /// Facts the AI may answer from (opening hours, address, what to tell
-    /// couriers…). Anything not written here it must not make up.
+    /// couriers…). Anything not written here it must not make up. Sections
+    /// after a `[Contacts only]` / `【僅限聯絡人】` heading are withheld from
+    /// unknown callers and given only when a saved contact calls.
     #[serde(default)]
     pub knowledge_notes: String,
+    /// Additional background notes given to the AI only when the caller matches
+    /// a saved `normal` or `whitelist` contact (never to unknown callers).
+    #[serde(default)]
+    pub contact_knowledge_notes: String,
+    /// Withhold `knowledge_notes`, `owner_status_text`, `about_work` and
+    /// `about_extra` from unknown callers so only saved contacts receive them
+    /// (`about_parcel` stays available for courier drop-offs).
+    #[serde(default)]
+    pub knowledge_contacts_only: bool,
     /// Switch to the caller's language when it is not the agent's.
     /// On unless the owner turned it off.
     #[serde(default = "default_reply_in_caller_language")]
@@ -482,7 +493,7 @@ pub const RETENTION_DAYS_DEFAULT: u32 = 15;
 pub const RETENTION_DAYS_MIN: u32 = 1;
 pub const RETENTION_DAYS_MAX: u32 = 365;
 pub const STALL_MODEL_DEFAULT: &str = "gemini-3.8-live";
-/// About one ring (Taiwan ringback: 1 s tone, 2 s pause).
+/// About one ring (1 s tone, 2 s pause).
 pub const ANSWER_RING_MS_DEFAULT: u32 = 3_000;
 const ANSWER_RING_MS_CEIL: u32 = 8_000;
 
@@ -809,6 +820,11 @@ fn language_chosen_in(o: &Overrides, env_set: impl Fn(&str) -> bool) -> bool {
 }
 
 fn read_overrides(text: &str) -> serde_json::Result<(Overrides, bool)> {
+    let (ov, moved, _) = read_overrides_from(None, text)?;
+    Ok((ov, moved))
+}
+
+fn read_overrides_from(path: Option<&Path>, text: &str) -> serde_json::Result<(Overrides, bool, bool)> {
     let mut v: Value = serde_json::from_str(text)?;
     let mut moved = false;
     if let Some(m) = v.as_object_mut() {
@@ -821,18 +837,42 @@ fn read_overrides(text: &str) -> serde_json::Result<(Overrides, bool)> {
             }
         }
     }
-    Ok((serde_json::from_value(v)?, moved))
+    let had_plain = crate::secret_seal::unseal_overrides_json(path, &mut v, &CREDENTIAL_FIELDS);
+    Ok((serde_json::from_value(v)?, moved, path.is_some() && had_plain))
 }
 
-/// Write settings.json whole: to a temporary file, then renamed over it.
+/// Write settings.json whole (with credential fields sealed at rest, mode 600 on Unix):
+/// to a temporary file, then renamed over it.
 fn write_overrides(path: &Path, ov: &Overrides) -> Result<()> {
+    use std::io::Write as _;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
     }
-    let data = serde_json::to_vec_pretty(ov)?;
+    let mut val = serde_json::to_value(ov)?;
+    crate::secret_seal::seal_overrides_json(path, &mut val, &CREDENTIAL_FIELDS)?;
+    let data = serde_json::to_vec_pretty(&val)?;
     let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, &data).with_context(|| format!("write {}", tmp.display()))?;
-    std::fs::rename(&tmp, path).with_context(|| format!("rename to {}", path.display()))?;
+    {
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        let mut f = opts.open(&tmp).with_context(|| format!("write {}", tmp.display()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            f.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        }
+        f.write_all(&data).with_context(|| format!("write {}", tmp.display()))?;
+        f.sync_all().with_context(|| format!("sync {}", tmp.display()))?;
+    }
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e).with_context(|| format!("rename to {}", path.display()));
+    }
     Ok(())
 }
 
@@ -1225,6 +1265,8 @@ impl RuntimeSettings {
             owner_aliases: clean_owner_aliases(&split_list(&env_or("OWNER_ALIASES", "")), &env_or("OWNER_NAME", "")),
             answer_style: sanitize_answer_style(&env_or("ANSWER_STYLE", "assistant")),
             knowledge_notes: env_or("KNOWLEDGE_NOTES", ""),
+            contact_knowledge_notes: env_or("CONTACT_KNOWLEDGE_NOTES", ""),
+            knowledge_contacts_only: env_bool("KNOWLEDGE_CONTACTS_ONLY", false),
             reply_in_caller_language: env_bool("REPLY_IN_CALLER_LANGUAGE", default_reply_in_caller_language()),
             country_code: digits_only(&env_or("COUNTRY_CODE", "")),
             home_country: sanitize_home_country(&env_or("HOME_COUNTRY", "")),
@@ -1457,20 +1499,83 @@ impl RuntimeSettings {
     /// gets its prompt, its rules and the identity guard in that language.
     fn call_prompt(&self, stall: crate::gemini_live::StallPrompt, lang: Option<crate::locale::Lang>) -> String {
         let lang = lang.unwrap_or_else(|| self.lang());
-        let about = self.about();
+        let (pub_kb, _) = crate::prompts::split_knowledge(&self.knowledge_notes);
+        let kb = if self.knowledge_contacts_only { "" } else { pub_kb.as_str() };
+        let status = if self.owner_status_enabled && !self.knowledge_contacts_only {
+            self.owner_status_text.as_str()
+        } else {
+            ""
+        };
+        let mut about = self.about();
+        if self.knowledge_contacts_only {
+            about.work.clear();
+            about.extra.clear();
+        }
         crate::prompts::build(&crate::prompts::Ctx {
             lang,
             assistant: self.is_assistant_style(),
             owner: &self.owner_name,
             aliases: &self.owner_aliases,
             custom: self.active_custom_prompt(),
-            status: if self.owner_status_enabled { &self.owner_status_text } else { "" },
+            status,
             stall,
-            knowledge: &self.knowledge_notes,
+            knowledge: kb,
             about: Some(&about),
             carrier_note: lang == crate::locale::Lang::ZhTw,
             auto_language: self.reply_in_caller_language,
         })
+    }
+
+    /// Extra background context appended only when the caller matches a saved
+    /// `normal` or `whitelist` contact ([`crate::contacts::with_caller`]):
+    /// `[Contacts only]` sections of `knowledge_notes`, `contact_knowledge_notes`,
+    /// and (when `knowledge_contacts_only` withheld them from unknown callers)
+    /// the public knowledge notes, status note, and `about` work/extra lines.
+    pub fn contact_context_block(&self, lang: crate::locale::Lang) -> String {
+        let (pub_kb, priv_kb) = crate::prompts::split_knowledge(&self.knowledge_notes);
+        let extra_kb = crate::prompts::sanitize_knowledge(&self.contact_knowledge_notes);
+        let mut kb_parts = Vec::new();
+        if self.knowledge_contacts_only && !pub_kb.is_empty() {
+            kb_parts.push(pub_kb);
+        }
+        if !priv_kb.is_empty() {
+            kb_parts.push(priv_kb);
+        }
+        if !extra_kb.is_empty() {
+            kb_parts.push(extra_kb);
+        }
+        let mut out = String::new();
+        if self.knowledge_contacts_only && self.owner_status_enabled {
+            let st = crate::gemini_live::sanitize_owner_status(&self.owner_status_text);
+            if !st.is_empty() {
+                let owner = crate::prompts::owner_label(lang, &self.owner_name);
+                out.push_str(
+                    &crate::prompts::pack(lang)
+                        .status_block
+                        .replace("{status}", &st)
+                        .replace("{owner}", &owner),
+                );
+            }
+        }
+        let combined_kb = kb_parts.join("\n");
+        if !combined_kb.is_empty() {
+            out.push_str(&crate::prompts::knowledge_block_for(lang, &self.owner_name, &combined_kb));
+        }
+        if self.knowledge_contacts_only && (!self.about_work.is_empty() || !self.about_extra.is_empty()) {
+            let contact_about = crate::prompts::About {
+                work: self.about_work.clone(),
+                extra: self.about_extra.clone(),
+                ..crate::prompts::About::default()
+            };
+            out.push_str(&crate::prompts::about_block(
+                lang,
+                self.is_assistant_style(),
+                &self.owner_name,
+                &contact_about,
+                &combined_kb,
+            ));
+        }
+        out
     }
 
     /// What the owner said in the "About you" card, for a call's prompt.
@@ -1625,6 +1730,7 @@ impl RuntimeSettings {
             owner_aliases,
             answer_style,
             knowledge_notes,
+            contact_knowledge_notes,
             country_code,
             about_callers,
             about_work,
@@ -1707,6 +1813,7 @@ impl RuntimeSettings {
             gemini_ring_prewarm,
             ambience_level,
             reply_in_caller_language,
+            knowledge_contacts_only,
             calendar_suggest,
             appointment_sms,
             ui_password_prompted,
@@ -1745,6 +1852,8 @@ impl RuntimeSettings {
         self.appointment_mode = sanitize_appointment_mode(&self.appointment_mode);
         self.calendar_app = crate::calendar::sanitize_app(&self.calendar_app);
         self.appointment_reply = crate::appointments::sanitize_reply_setting(&self.appointment_reply);
+        self.knowledge_notes = crate::prompts::sanitize_knowledge(&self.knowledge_notes);
+        self.contact_knowledge_notes = crate::prompts::sanitize_knowledge(&self.contact_knowledge_notes);
         self.owner_aliases = clean_owner_aliases(&self.owner_aliases, &self.owner_name);
         self.about_callers = crate::prompts::clean_about_callers(&self.about_callers);
         self.about_work = crate::prompts::clean_about_text(&self.about_work, crate::prompts::ABOUT_WORK_MAX);
@@ -2162,6 +2271,10 @@ struct Overrides {
     #[serde(skip_serializing_if = "Option::is_none")]
     knowledge_notes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    contact_knowledge_notes: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    knowledge_contacts_only: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     reply_in_caller_language: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     country_code: Option<String>,
@@ -2283,11 +2396,13 @@ impl SettingsStore {
             .join("config")
             .join("settings.json");
         let mut old_key_moved = false;
+        let mut had_plain_secrets = false;
         let overrides = match std::fs::read_to_string(&path) {
-            Ok(text) => match read_overrides(&text) {
-                Ok((o, moved)) => {
+            Ok(text) => match read_overrides_from(Some(&path), &text) {
+                Ok((o, moved, plain)) => {
                     info!("runtime settings overrides loaded path={}", path.display());
                     old_key_moved = moved;
+                    had_plain_secrets = plain;
                     o
                 }
                 Err(e) => {
@@ -2300,7 +2415,7 @@ impl SettingsStore {
             },
             Err(_) => Overrides::default(),
         };
-        let (overrides, rt) = Self::settle_overrides(&base, &path, overrides, old_key_moved);
+        let (overrides, rt) = Self::settle_overrides(&base, &path, overrides, old_key_moved, had_plain_secrets);
         rt.warn_if_legacy_flow_replaced();
         set_active_ui_password(&rt.ui_password);
         crate::calendar::set_link_secret(&active_ui_token(&base.calls_ui_token));
@@ -2317,7 +2432,13 @@ impl SettingsStore {
     /// A settings file as read (`overrides`) after the changes settings of
     /// older versions need, and the runtime settings it makes. The file at
     /// `path` is written again when one of those changed it.
-    fn settle_overrides(base: &Settings, path: &Path, mut overrides: Overrides, old_key_moved: bool) -> (Overrides, RuntimeSettings) {
+    fn settle_overrides(
+        base: &Settings,
+        path: &Path,
+        mut overrides: Overrides,
+        old_key_moved: bool,
+        had_plain_secrets: bool,
+    ) -> (Overrides, RuntimeSettings) {
         // An `auto` from before the Google Calendar connection was removed is
         // `confirm` now, and is saved so.
         if let Some(m) = overrides.appointment_mode.take() {
@@ -2400,7 +2521,7 @@ impl SettingsStore {
             }
             info!("summary service of an older version written down path={}", path.display());
         }
-        if old_key_moved || filled || prompt_split {
+        if old_key_moved || filled || prompt_split || had_plain_secrets {
             if let Err(e) = write_overrides(path, &overrides) {
                 warn!("settings from an older version not saved yet: {e:#}");
             }
@@ -2455,7 +2576,7 @@ impl SettingsStore {
                 m.insert("ui_password_prompted".into(), json!(true));
             }
         }
-        let (ov, moved) = read_overrides(&merged.to_string()).context("not a settings file")?;
+        let (ov, moved, _) = read_overrides_from(Some(&self.path), &merged.to_string()).context("not a settings file")?;
         let rt = self.swap_in(&mut st, ov, moved)?;
         info!("runtime settings restored from a backup path={} settings={settings} keys={keys}", self.path.display());
         Ok(rt)
@@ -2471,14 +2592,14 @@ impl SettingsStore {
             anyhow::bail!("not a settings file");
         };
         keep_this_computers(m, &cur);
-        let (ov, moved) = read_overrides(&inc.to_string()).context("not a settings file")?;
+        let (ov, moved, _) = read_overrides_from(Some(&self.path), &inc.to_string()).context("not a settings file")?;
         let rt = self.swap_in(&mut st, ov, moved)?;
         info!("runtime settings replaced from a backup path={}", self.path.display());
         Ok(rt)
     }
 
     fn swap_in(&self, st: &mut StoreState, ov: Overrides, moved: bool) -> Result<Arc<RuntimeSettings>> {
-        let (ov, rt) = Self::settle_overrides(&self.base, &self.path, ov, moved);
+        let (ov, rt) = Self::settle_overrides(&self.base, &self.path, ov, moved, false);
         write_overrides(&self.path, &ov)?;
         st.overrides = ov;
         set_active_ui_password(&rt.ui_password);
@@ -3006,6 +3127,14 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     if let Some(v) = patch.get("knowledge_notes").and_then(|v| v.as_str()) {
         ov.knowledge_notes = Some(crate::prompts::sanitize_knowledge(v));
     }
+    if let Some(v) = patch.get("contact_knowledge_notes").and_then(|v| v.as_str()) {
+        ov.contact_knowledge_notes = Some(crate::prompts::sanitize_knowledge(v));
+    }
+    p_bool(
+        patch,
+        "knowledge_contacts_only",
+        &mut ov.knowledge_contacts_only,
+    );
     p_bool(
         patch,
         "reply_in_caller_language",
@@ -4902,10 +5031,12 @@ mod review_t4_tests {
         // It is saved, and it reaches the call's prompt, which has no braces left.
         let back = SettingsStore::load(base).snapshot();
         assert_eq!((back.about_callers.as_str(), back.about_say.len(), back.about_message_asks.len()), ("family", 10, 2));
-        let prompt = back.persona_stall_system_prompt();
+        let prompt = back.gemini_system_prompt_for_call();
         assert!(prompt.contains("Callers: mostly family and friends"), "{prompt}");
         // (All fields at full length are over the block's limit, so the phrases and the note go first.)
         assert!(prompt.contains("Your work: sales 字") && !prompt.contains('{'), "{prompt}");
+        // Confirmed stall sessions withhold occupation and personal details from scammers.
+        assert!(!back.persona_stall_system_prompt().contains("sales 字"));
 
         // Changing one answer leaves the others; an empty one clears it.
         let rt = store.apply_patch(&json!({ "about_callers": "work", "about_say": [] })).unwrap();
@@ -5090,5 +5221,121 @@ mod review_t4_tests {
         assert!(!rt.gemini_system_prompt_for_call().contains("Soy Alex, dime."));
         assert_eq!(SettingsStore::load(old_per_base).snapshot().gemini_assistant_prompt, "");
         let _ = std::fs::remove_dir_all(&old_per_dir);
+    }
+
+    #[test]
+    fn credentials_and_channel_tokens_are_encrypted_at_rest_and_upgraded_on_load() {
+        let dir = std::env::temp_dir().join(format!("bageo-sealed-settings-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        store
+            .apply_patch(&json!({
+                "gemini_api_key": "test-fake-gemini-secret-1234",
+                "summary_api_key": "test-fake-summary-secret-5678",
+                "ui_password": "test-fake-console-pw",
+                "mcp_token": "test-fake-mcp-token",
+                "notify_channels": [{
+                    "id": "ch1",
+                    "kind": "telegram",
+                    "enabled": true,
+                    "token": "test-fake-tg-channel-token",
+                    "target": "10001"
+                }]
+            }))
+            .unwrap();
+        let settings_file = dir.join("config").join("settings.json");
+        let on_disk = std::fs::read_to_string(&settings_file).unwrap();
+        for plain in [
+            "test-fake-gemini-secret-1234",
+            "test-fake-summary-secret-5678",
+            "test-fake-console-pw",
+            "test-fake-mcp-token",
+            "test-fake-tg-channel-token",
+        ] {
+            assert!(!on_disk.contains(plain), "plaintext leaked to disk: {plain}");
+        }
+        let disk_json: Value = serde_json::from_str(&on_disk).unwrap();
+        assert!(disk_json["gemini_api_key"].as_str().unwrap().starts_with(crate::secret_seal::PREFIX));
+        assert!(disk_json["notify_channels"][0]["token"].as_str().unwrap().starts_with(crate::secret_seal::PREFIX));
+
+        // Reloading unseals back into memory transparently; backups still read unsealed overrides_json.
+        let reloaded = SettingsStore::load(base.clone());
+        let snap = reloaded.snapshot();
+        assert_eq!(snap.gemini_api_key, "test-fake-gemini-secret-1234");
+        assert_eq!(snap.summary_api_key, "test-fake-summary-secret-5678");
+        assert_eq!(snap.ui_password, "test-fake-console-pw");
+        assert_eq!(snap.notify_channels[0].token, "test-fake-tg-channel-token");
+        let backup_bytes = String::from_utf8(reloaded.overrides_json()).unwrap();
+        assert!(backup_bytes.contains("test-fake-gemini-secret-1234"));
+
+        // Legacy plaintext settings.json upgrades automatically on load.
+        let legacy_dir = dir.join("legacy");
+        std::fs::create_dir_all(legacy_dir.join("config")).unwrap();
+        let legacy_file = legacy_dir.join("config").join("settings.json");
+        std::fs::write(
+            &legacy_file,
+            r#"{"owner_name":"Alex","gemini_api_key":"legacy-plain-secret-xyz"}"#,
+        )
+        .unwrap();
+        let mut legacy_base = Settings::from_env();
+        legacy_base.calls_data_dir = legacy_dir.to_string_lossy().to_string();
+        let upgraded = SettingsStore::load(legacy_base);
+        assert_eq!(upgraded.snapshot().gemini_api_key, "legacy-plain-secret-xyz");
+        let upgraded_disk = std::fs::read_to_string(&legacy_file).unwrap();
+        assert!(!upgraded_disk.contains("legacy-plain-secret-xyz"), "{upgraded_disk}");
+        assert!(upgraded_disk.contains(crate::secret_seal::PREFIX));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn contacts_only_knowledge_is_withheld_from_strangers_and_given_to_saved_contacts() {
+        let dir = std::env::temp_dir().join(format!("bageo-contact-kb-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base);
+        let rt = store
+            .apply_patch(&json!({
+                "language": "en",
+                "owner_name": "Alex",
+                "answer_style": "assistant",
+                "knowledge_notes": "Parcels go to the front desk.\n[Contacts only]\nBack-door spare key is with Sam.",
+                "contact_knowledge_notes": "Travelling to Kyoto on Friday."
+            }))
+            .unwrap();
+        let stranger_prompt = rt.gemini_system_prompt_for_call();
+        assert!(stranger_prompt.contains("Parcels go to the front desk."));
+        assert!(!stranger_prompt.contains("Back-door spare key is with Sam."));
+        assert!(!stranger_prompt.contains("Travelling to Kyoto on Friday."));
+
+        let contact_blk = rt.contact_context_block(crate::locale::Lang::En);
+        assert!(contact_blk.contains("Back-door spare key is with Sam."));
+        assert!(contact_blk.contains("Travelling to Kyoto on Friday."));
+
+        // With `knowledge_contacts_only = true`, public notes, status, and work/extra are also
+        // withheld from unknown callers while parcel drop-off stays available for couriers.
+        let rt_strict = store
+            .apply_patch(&json!({
+                "language": "zh-TW",
+                "knowledge_contacts_only": true,
+                "owner_status_enabled": true,
+                "owner_status_text": "下午三點前在開會",
+                "about_work": "建築師",
+                "about_parcel": "放一樓管理室",
+                "knowledge_notes": "工作室在三樓\n【僅限聯絡人】\n星期五去台南"
+            }))
+            .unwrap();
+        let strict_stranger = rt_strict.gemini_system_prompt_for_call();
+        assert!(strict_stranger.contains("放一樓管理室"), "{strict_stranger}");
+        for secret in ["下午三點前在開會", "建築師", "工作室在三樓", "星期五去台南"] {
+            assert!(!strict_stranger.contains(secret), "stranger saw {secret}: {strict_stranger}");
+        }
+        let strict_contact = rt_strict.contact_context_block(crate::locale::Lang::ZhTw);
+        for allowed in ["下午三點前在開會", "建築師", "工作室在三樓", "星期五去台南"] {
+            assert!(strict_contact.contains(allowed), "contact missed {allowed}: {strict_contact}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

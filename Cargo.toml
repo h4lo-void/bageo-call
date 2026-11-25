@@ -36,8 +36,13 @@ url = "2"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pki-types = "1"
 tokio-rustls = "0.26"
 webpki-roots = "1"
+ring = "0.17"
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+tower-service = "0.3"
 hmac = "0.12"
 sha2 = "0.10"
 base64 = "0.22"

@@ -8,8 +8,8 @@ a short report: **which phone, which language, what happened.**
 
 | You have | What helps most |
 |---|---|
-| A rooted Android phone other than a Pixel 7, 7a, 8 or 9 | A report: did calls connect, could the AI hear the caller and be heard? |
-| A language other than Traditional Chinese | A report on greetings, goodbyes and sales detection in your language, or better phrases in `locale.rs` |
+| A rooted Android phone | A report: phone model, Android version, did calls connect, could the AI hear the caller and be heard? |
+| Additional languages or regional accents | A report on greetings, goodbyes and sales detection in your language, or phrase improvements |
 | An account with a notification service | Try that channel against the real service and tell us |
 | Rust or Kotlin experience | A bug fix with a unit test |
 | A good eye for text | Documentation fixes, in all three languages |
@@ -120,8 +120,8 @@ User documentation lives in `docs/en`, `docs/zh-TW` and `docs/zh-CN`. A change
 that users see goes into all three, with the same facts in each: Traditional
 Chinese as written in Taiwan, Simplified Chinese as written in mainland China.
 Field names, codes and routes stay in English. Examples use made-up names,
-`192.0.2.x` / `.local` addresses and placeholder numbers (`0912345678`,
-`+1 202 555 0143`).
+`192.0.2.x` / `.local` addresses and placeholder numbers (`+1 202 555 0143`,
+`+44 20 7946 0123`).
 
 ## Pull requests
 

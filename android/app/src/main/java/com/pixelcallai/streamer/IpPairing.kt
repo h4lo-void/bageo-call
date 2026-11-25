@@ -6,6 +6,9 @@ package com.pixelcallai.streamer
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.concurrent.atomic.AtomicReference
+import javax.net.ssl.HostnameVerifier
+import javax.net.ssl.HttpsURLConnection
 import org.json.JSONObject
 
 /**
@@ -88,13 +91,22 @@ object IpPairing {
 
     fun claimUrl(address: Address): String = "http://${address.urlHost}:${address.port}$CLAIM_PATH"
 
+    fun httpsClaimUrl(address: Address): String = "https://${address.urlHost}:${address.port}$CLAIM_PATH"
+
     /**
      * Where the phone connects: the address typed, the path Bageo gave (`/ws` when it gave
-     * none or an odd one) and the pairing key.
+     * none or an odd one), the pairing key, and — when paired over HTTPS — the server's
+     * SHA-256 certificate pin (`wss://…&pin=<sha256>`).
      */
-    fun wsUrl(address: Address, path: String?, token: String): String {
+    fun wsUrl(address: Address, path: String?, token: String, tlsPin: String? = null): String {
         val p = path?.trim()?.takeIf { it.startsWith("/") && !it.contains('?') && !it.contains('#') } ?: "/ws"
-        return "ws://${address.urlHost}:${address.port}$p?token=${URLEncoder.encode(token.trim(), "UTF-8")}"
+        val encToken = URLEncoder.encode(token.trim(), "UTF-8")
+        val cleanPin = tlsPin?.trim()?.lowercase()?.takeIf { TlsPinning.isValidPin(it) }
+        return if (cleanPin != null) {
+            "wss://${address.urlHost}:${address.port}$p?token=$encToken&pin=$cleanPin"
+        } else {
+            "ws://${address.urlHost}:${address.port}$p?token=$encToken"
+        }
     }
 
     /** What an error answer means: Bageo's `code`, else the HTTP status. */
@@ -106,10 +118,19 @@ object IpPairing {
         else -> Failure.UNREACHABLE
     }
 
-    /** Trade [code] for the pairing key at [address]. Blocks: not on the main thread. */
+    /**
+     * Trade [code] for the pairing key at [address] over TLS (`https://`), binding both the
+     * request MAC and the server's response proof to the observed X.509 leaf certificate
+     * SHA-256 digest so passive sniffers and active LAN MITMs cannot steal the code or token.
+     * Blocks: not on the main thread.
+     */
     fun claim(address: Address, code: String): Outcome = try {
-        val conn = URL(claimUrl(address)).openConnection() as HttpURLConnection
+        val observedPin = AtomicReference<String?>(null)
+        val sslCtx = TlsPinning.pairingHandshakeContext(observedPin)
+        val conn = URL(httpsClaimUrl(address)).openConnection() as HttpsURLConnection
         try {
+            conn.sslSocketFactory = sslCtx.socketFactory
+            conn.hostnameVerifier = HostnameVerifier { _, _ -> true }
             conn.requestMethod = "POST"
             conn.connectTimeout = 6_000
             conn.readTimeout = 10_000
@@ -117,7 +138,18 @@ object IpPairing {
             conn.doOutput = true
             conn.setRequestProperty("Content-Type", "application/json")
             conn.setRequestProperty("Accept", "application/json")
-            val body = JSONObject().put("code", code).toString().toByteArray(Charsets.UTF_8)
+            // Complete the TLS handshake first so `code_mac` is bound to this exact peer cert.
+            conn.connect()
+            val peerPin = observedPin.get()
+                ?: conn.serverCertificates.firstOrNull()?.encoded?.let { TlsPinning.sha256Hex(it) }
+                ?: return Outcome.Failed(Failure.UNREACHABLE)
+            val cnonce = TlsPinning.randomNonceHex()
+            val codeMac = TlsPinning.claimRequestMac(code, cnonce, peerPin)
+            val body = JSONObject()
+                .put("cnonce", cnonce)
+                .put("code_mac", codeMac)
+                .toString()
+                .toByteArray(Charsets.UTF_8)
             conn.outputStream.use { it.write(body) }
             val status = conn.responseCode
             val stream = if (status in 200..299) conn.inputStream else conn.errorStream
@@ -128,8 +160,16 @@ object IpPairing {
                 null
             }
             val token = json?.optString("token").orEmpty()
+            val reportedPin = json?.optString("tls_pin").orEmpty()
+            val proof = json?.optString("proof").orEmpty()
             if (status == 200 && json != null && json.optBoolean("ok") && token.isNotBlank()) {
-                Outcome.Paired(wsUrl(address, json.optString("path"), token))
+                val pinMatches = TlsPinning.constantTimeEquals(reportedPin, peerPin)
+                val proofOk = TlsPinning.verifyClaimProof(code, cnonce, peerPin, token, proof)
+                if (!pinMatches || !proofOk) {
+                    Outcome.Failed(Failure.BAD_CODE)
+                } else {
+                    Outcome.Paired(wsUrl(address, json.optString("path"), token, peerPin))
+                }
             } else {
                 Outcome.Failed(failureFor(status, json?.optString("code")))
             }

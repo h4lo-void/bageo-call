@@ -316,6 +316,10 @@ const AFTER_WAIT: Duration = Duration::from_secs(3);
 /// read back to them ([`confirm_first`]): each time once, and no more than
 /// this many in all, so a model that never sets the flag cannot loop.
 const READ_BACK_REFUSALS_MAX: usize = 2;
+/// Separate appointments a single call may record (`replaces_previous = false`),
+/// bounding To-Do tasks and notification cards against caller / model flooding.
+pub const MAX_APPOINTMENTS_PER_CALL: usize = 3;
+const MAX_HELD_PER_CALL: usize = 3;
 /// The longest one proposal can run (waiting for the one sent before it and
 /// for its turn), plus a margin.
 pub const TOOL_WAIT: Duration = Duration::from_secs(24);
@@ -901,7 +905,7 @@ impl CallAppointments {
     /// Keep a proposal sent back for the caller's yes ([`Held`]).
     fn hold(&self, held: Held) {
         let mut b = self.book();
-        if !b.discarded {
+        if !b.discarded && (held.replaces || b.held.len() < MAX_HELD_PER_CALL) {
             b.held.push(held);
         }
     }
@@ -921,6 +925,13 @@ impl CallAppointments {
         for h in held {
             let target = b.target(h.seq, h.replaces, &h.appt.start, &h.appt.end);
             if target == Target::Stale {
+                continue;
+            }
+            if target == Target::New && b.slots.len() >= MAX_APPOINTMENTS_PER_CALL {
+                warn!(
+                    "appointment dropped at call end seq={}: call already reached {} appointments",
+                    h.seq, MAX_APPOINTMENTS_PER_CALL
+                );
                 continue;
             }
             let mut appt = h.appt;
@@ -1348,14 +1359,27 @@ impl ApptSession {
             .and_then(Value::as_bool)
             .unwrap_or(true);
         let (start, end) = (stamp(start), stamp(end));
-        let (target, tag) = {
+        let (target, tag, over_limit) = {
             let b = self.book.book();
             let target = b.target(seq, replaces, &start, &end);
-            (target, b.tag_for(target, &self.tag))
+            let over = target == Target::New && b.slots.len() >= MAX_APPOINTMENTS_PER_CALL;
+            let tag = if over { String::new() } else { b.tag_for(target, &self.tag) };
+            (target, tag, over)
         };
         if target == Target::Stale {
             info!("appointment proposal seq={seq} start={start} superseded by a later one");
             return json!({ "status": "superseded" });
+        }
+        if over_limit {
+            warn!(
+                "appointment proposal seq={seq} start={start} refused: call already has {} appointments",
+                MAX_APPOINTMENTS_PER_CALL
+            );
+            return json!({
+                "error": "too_many_appointments",
+                "max": MAX_APPOINTMENTS_PER_CALL,
+                "hint": "This call already has the maximum number of separate appointments. Set replaces_previous = true if changing one of the times already proposed."
+            });
         }
         let appt = Appointment {
             start,
@@ -5073,6 +5097,69 @@ mod tests {
         s3.book.discard();
         assert_eq!(s3.run_tool(&raw(later(2, 10))).await["status"], "pending_owner_confirmation");
         assert_eq!(s3.book.outcome(), None);
+    }
+
+    #[tokio::test]
+    async fn single_call_cannot_flood_pending_appointment_queue() {
+        let s = session(Mode::Confirm);
+        for day in 2..=(1 + MAX_APPOINTMENTS_PER_CALL as i64) {
+            let call = ToolCall {
+                id: format!("f-{day}"),
+                name: PROPOSE.into(),
+                args: json!({
+                    "start": later(day, 10),
+                    "end": later(day, 11),
+                    "title": format!("Visit {day}"),
+                    "caller_name": "Alex",
+                    "confirmed_by_caller": true,
+                    "replaces_previous": false
+                }),
+                seq: 0,
+                after: 0,
+            };
+            let ans = s.run_tool(&call).await;
+            assert_eq!(ans["status"], "pending_owner_confirmation", "slot {day}: {ans}");
+        }
+        let extra = s
+            .run_tool(&ToolCall {
+                id: "f-over".into(),
+                name: PROPOSE.into(),
+                args: json!({
+                    "start": later(10, 10),
+                    "end": later(10, 11),
+                    "title": "Flood 4",
+                    "caller_name": "Attacker",
+                    "confirmed_by_caller": true,
+                    "replaces_previous": false
+                }),
+                seq: 0,
+                after: 0,
+            })
+            .await;
+        assert_eq!(extra["error"], "too_many_appointments", "{extra}");
+        assert_eq!(s.book.outcomes().len(), MAX_APPOINTMENTS_PER_CALL);
+
+        // Changing the latest appointment (`replaces_previous = true`) still works.
+        let changed = s
+            .run_tool(&ToolCall {
+                id: "f-change".into(),
+                name: PROPOSE.into(),
+                args: json!({
+                    "start": later(11, 14),
+                    "end": later(11, 15),
+                    "title": "Rescheduled",
+                    "caller_name": "Alex",
+                    "confirmed_by_caller": true,
+                    "replaces_previous": true
+                }),
+                seq: 0,
+                after: 0,
+            })
+            .await;
+        assert_eq!(changed["status"], "pending_owner_confirmation", "{changed}");
+        let out = s.book.outcomes();
+        assert_eq!(out.len(), MAX_APPOINTMENTS_PER_CALL);
+        assert_eq!(out.last().unwrap().title, "Rescheduled");
     }
 
     #[test]

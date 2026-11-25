@@ -896,6 +896,13 @@ const FAREWELLS: Lexicon = &[
         "பத்திரமா போயிட்டு வாங்க", "உடம்பை பார்த்துக்கோங்க", "சரிங்க வச்சிடறேன்", "அப்புறம் பேசலாம்",
         "நாளைக்கு பேசலாம்", "சரி வைக்கிறேன்", "போயிட்டு வாங்க", "சரி பாய்",
     ]),
+    // Sixth batch: Cebuano, Haitian Creole, Kannada, Malayalam, Gujarati, Punjabi.
+    ("ceb", &["amping kanunay", "hangtod sa sunod", "una na ko ha", "ari na ko", "sige babay", "babay na"]),
+    ("ht", &["n a pale pita", "nap pale pita", "n a wè pita", "nap wè pita", "pran swen tèt ou", "pase yon bon jounen", "babay"]),
+    ("kn", &["ಹೋಗಿ ಬರುತ್ತೇನೆ", "ಮತ್ತೆ ಸಿಗೋಣ", "ಮತ್ತೆ ಮಾತನಾಡೋಣ", "ಶುಭ ರಾತ್ರಿ", "ಇರುತ್ತೇನೆ", "ಬೈ ಬೈ"]),
+    ("ml", &["പോയി വരാം", "പിന്നെ സംസാരിക്കാം", "പിന്നെ കാണാം", "ശരി വെക്കട്ടെ", "ശുഭരാത്രി", "ബൈ ബൈ"]),
+    ("gu", &["પછી વાત કરીએ", "ફરી મળીશું", "ચાલો મૂકું છું", "આવજો", "શુભ રાત્રિ", "બાય બાય"]),
+    ("pa", &["ਫਿਰ ਗੱਲ ਕਰਦੇ ਹਾਂ", "ਫਿਰ ਮਿਲਾਂਗੇ", "ਚੰਗਾ ਜੀ ਰੱਖਦਾ ਹਾਂ", "ਰੱਬ ਰਾਖਾ", "ਸ਼ੁਭ ਰਾਤਰੀ", "ਬਾਏ ਬਾਏ"]),
 ];
 
 /// Greetings that also say goodbye: farewells only once the business is done
@@ -1040,6 +1047,12 @@ const GREETING_BYES: Lexicon = &[
     ("lt", &["sėkmės", "čiau", "viso", "iki", "ate"]),
     ("be", &["добрага вечара", "стэлефануемся", "беражы сябе", "добрага дня", "шчасліва", "пакуль"]),
     ("ta", &["வணக்கம்"]),
+    ("ceb", &["maayong buntag", "maayong hapon", "maayong gabii", "maayong adlaw", "amping"]),
+    ("ht", &["bonjou", "bonswa", "pase bon jounen"]),
+    ("kn", &["ನಮಸ್ಕಾರ", "ಶುಭ ದಿನ"]),
+    ("ml", &["നമസ്കാരം", "ശുഭദിനം"]),
+    ("gu", &["નમસ્તે", "જય શ્રી કૃષ્ણ", "શુભ દિવસ"]),
+    ("pa", &["ਸਤ ਸ੍ਰੀ ਅਕਾਲ", "ਸ਼ੁਭ ਦਿਨ"]),
 ];
 
 /// How calls are answered and opened; never a goodbye by themselves.
@@ -7319,5 +7332,25 @@ mod parting_wish_gaps_tests {
             }
         }
         assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    #[test]
+    fn cebuano_haitian_kannada_malayalam_gujarati_and_punjabi_farewells_close_cleanly() {
+        let first = "Parcel delivery at the gate";
+        for (lang, opening, farewell) in [
+            ("ceb", "Maayong buntag, naa koy pakete", "Salamat kaayo, sige babay!"),
+            ("ht", "Bonjou, mwen gen yon pake pou ou", "Mèsi anpil, n a pale pita!"),
+            ("kn", "ನಮಸ್ಕಾರ, ನಿಮಗೆ ಒಂದು ಪಾರ್ಸೆಲ್ ಇದೆ", "ಧನ್ಯವಾದಗಳು, ಹೋಗಿ ಬರುತ್ತೇನೆ."),
+            ("ml", "നമസ്കാരം, നിങ്ങൾക്ക് ഒരു പാഴ്സൽ ഉണ്ട്", "നന്ദി, പിന്നെ സംസാരിക്കാം."),
+            ("gu", "નમસ્તે, તમારું પાર્સલ આવ્યું છે", "આભાર, આવજો."),
+            ("pa", "ਸਤ ਸ੍ਰੀ ਅਕਾਲ, ਤੁਹਾਡਾ ਪਾਰਸਲ ਆਇਆ ਹੈ", "ਧੰਨਵਾਦ ਜੀ, ਰੱਬ ਰਾਖਾ।"),
+        ] {
+            let mut m = ClosingMachine::new(lang);
+            let open_step = hears(&mut m, opening);
+            assert!(!closes(&open_step), "{lang} opening should not close: {:?}", open_step.event);
+            let bye_step = hears(&mut after(lang, first), farewell);
+            assert_eq!(bye_step.event, ClosingEvent::CallerFarewell, "{lang}: {farewell}");
+            assert!(bye_step.ends_call, "{lang}: {farewell}");
+        }
     }
 }

@@ -256,12 +256,39 @@ pub fn entry_allows(token: Option<&str>, device_token: &str, pairing: &Pairing) 
 /// then `<mdns_host>.local` (left out when the network name is off). Empty
 /// without a LAN address.
 pub fn wifi_urls(lan_ip: Option<Ipv4Addr>, port: u16, mdns_host: &str, key: &str) -> Vec<String> {
+    wifi_urls_pinned(lan_ip, port, mdns_host, key, None, false)
+}
+
+/// [`wifi_urls`] with optional SHA-256 leaf-certificate pinning (`wss://…&pin=<sha256>`
+/// tried first, followed by `ws://` fallback unless `tls_only` is true). Kept within
+/// the phone's 4-URL candidate limit (`ConnectionPlan.MAX_WIFI_URLS`).
+pub fn wifi_urls_pinned(
+    lan_ip: Option<Ipv4Addr>,
+    port: u16,
+    mdns_host: &str,
+    key: &str,
+    tls_pin: Option<&str>,
+    tls_only: bool,
+) -> Vec<String> {
     let Some(ip) = lan_ip else {
         return Vec::new();
     };
-    let mut urls = vec![format!("ws://{ip}:{port}/ws?token={key}")];
-    if !mdns_host.is_empty() {
-        urls.push(format!("ws://{mdns_host}.local:{port}/ws?token={key}"));
+    let pin = tls_pin
+        .map(str::trim)
+        .filter(|p| p.len() == 64 && p.bytes().all(|b| b.is_ascii_hexdigit()));
+    let mut urls = Vec::new();
+    if let Some(pin) = pin {
+        let p = pin.to_ascii_lowercase();
+        urls.push(format!("wss://{ip}:{port}/ws?token={key}&pin={p}"));
+        if !mdns_host.is_empty() {
+            urls.push(format!("wss://{mdns_host}.local:{port}/ws?token={key}&pin={p}"));
+        }
+    }
+    if !tls_only || pin.is_none() {
+        urls.push(format!("ws://{ip}:{port}/ws?token={key}"));
+        if !mdns_host.is_empty() {
+            urls.push(format!("ws://{mdns_host}.local:{port}/ws?token={key}"));
+        }
     }
     urls
 }
@@ -396,7 +423,20 @@ impl PairCodes {
     /// Use `code`, sent from `from`: Ok once for the code in use, which then
     /// stops working.
     pub fn claim_from(&self, code: &str, from: IpAddr, now: Instant) -> Result<(), ClaimError> {
-        let code = code.trim();
+        self.claim_authenticated(Some(code), None, from, now).map(|_| ())
+    }
+
+    /// Claim either via raw `code` (legacy plain HTTP) or via channel-bound
+    /// `(cnonce, code_mac, server_pin_sha256)` over HTTPS (`crate::wifi_tls::claim_request_mac`),
+    /// returning the matched 6-digit code so the caller can sign the response proof.
+    pub fn claim_authenticated(
+        &self,
+        code: Option<&str>,
+        mac_req: Option<(&str, &str, &str)>,
+        from: IpAddr,
+        now: Instant,
+    ) -> Result<String, ClaimError> {
+        let code = code.map(str::trim).filter(|c| !c.is_empty());
         let from = source_key(from);
         let mut inner = self.lock();
         if inner.window_start.is_none_or(|t| now.saturating_duration_since(t) >= Duration::from_secs(60)) {
@@ -423,9 +463,18 @@ impl PairCodes {
         let Some(pending) = inner.pending.as_mut() else {
             return Err(ClaimError::NoCode);
         };
-        if same(code, &pending.code) {
+        let matched = if let Some((cnonce, client_mac, server_pin)) = mac_req {
+            let expected = crate::wifi_tls::claim_request_mac(&pending.code, cnonce, server_pin);
+            crate::wifi_tls::same_hex(client_mac, &expected)
+        } else if let Some(c) = code {
+            same(c, &pending.code)
+        } else {
+            false
+        };
+        if matched {
+            let taken = pending.code.clone();
             inner.pending = None;
-            return Ok(());
+            return Ok(taken);
         }
         pending.wrong += 1;
         if pending.wrong >= CODE_MAX_WRONG_ALL {
@@ -560,6 +609,24 @@ mod tests {
         );
         assert_eq!(wifi_urls(ip, 8788, "", "k3y"), vec!["ws://192.168.1.20:8788/ws?token=k3y".to_string()], "network name off");
         assert!(wifi_urls(None, 8788, "bageo", "k3y").is_empty(), "no LAN address");
+
+        let pin = "a1".repeat(32);
+        assert_eq!(
+            wifi_urls_pinned(ip, 8788, "bageo", "k3y", Some(&pin), false),
+            vec![
+                format!("wss://192.168.1.20:8788/ws?token=k3y&pin={pin}"),
+                format!("wss://bageo.local:8788/ws?token=k3y&pin={pin}"),
+                "ws://192.168.1.20:8788/ws?token=k3y".to_string(),
+                "ws://bageo.local:8788/ws?token=k3y".to_string(),
+            ]
+        );
+        assert_eq!(
+            wifi_urls_pinned(ip, 8788, "bageo", "k3y", Some(&pin), true),
+            vec![
+                format!("wss://192.168.1.20:8788/ws?token=k3y&pin={pin}"),
+                format!("wss://bageo.local:8788/ws?token=k3y&pin={pin}"),
+            ]
+        );
     }
 
     #[test]

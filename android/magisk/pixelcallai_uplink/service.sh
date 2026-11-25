@@ -21,9 +21,8 @@ MODE_FILE=/data/adb/pixelcallai/mode
 STRIP=' \t\r\n\v\f\357\273\277'
 
 chmod 755 "$MODDIR/inject" 2>/dev/null || true
-mkdir -p /data/local/tmp
-touch /data/local/tmp/pixelcallai_uplink.pcm
-chmod 666 /data/local/tmp/pixelcallai_uplink.pcm 2>/dev/null || true
+# Clean up any world-writable legacy uplink dump left by pre-1.0 versions.
+rm -f /data/local/tmp/pixelcallai_uplink.pcm 2>/dev/null || true
 # No mode switch can be running this early: drop a lock left by a reboot mid-switch,
 # and the pid of the last boot's mode helper.
 rm -rf /data/adb/pixelcallai/apply.lock 2>/dev/null || true

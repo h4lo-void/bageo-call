@@ -1,38 +1,6 @@
-# 法律免責聲明與使用須知 / Legal Disclaimer & Usage Notice
+# Legal Disclaimer & Usage Notice / 法律免責聲明與使用須知
 
-[繁體中文](#繁體中文) · [English](#english) · [简体中文](#简体中文)
-
----
-
-## 繁體中文
-
-本文件說明 Bageo（八哥，`bageo-call`）之免責聲明、風險提示與使用須知。本文件不構成法律意見；如有法規疑問，請諮詢合格律師。授權條款見 [`LICENSE`](LICENSE)、[`LICENSING.md`](LICENSING.md) 與 [`COMMERCIAL_LICENSE.md`](COMMERCIAL_LICENSE.md)。
-
-### 1. 按現狀提供與自架性質
-
-- **按現狀提供（AS IS）：** 在適用法律允許的最大範圍內，Bageo 依「現狀」提供，原作者（**h4lo-void**）與貢獻者不提供任何明示、默示或法定擔保（包含適售性、特定目的適用性、持續可用性、正確性或法規合規保證），亦不對因安裝、設定或使用本軟體所生之任何直接或間接損失、通話與漫遊費、API 帳單、設備損壞、漏接來電、行政罰鍰或第三方爭議負責（另見 [`LICENSE`](LICENSE) 第 15–16 條與 [`LICENSING.md`](LICENSING.md) 第 7(a) 條）。
-- **作者不維運服務、軟體不回傳資料：** Bageo 為供使用者自行架設之軟體。原作者不提供或維運任何公共伺服器、電話轉接閘道或代管服務。本軟體不含遙測或資料回傳機制，不會將你的通話音訊、錄音、逐字稿、簡訊、聯絡人或金鑰傳送給原作者；資料只存放在你自己的設備，並依你的設定傳送至你自行選擇的第三方服務（如 Google Gemini、摘要服務與通知管道）。
-
-### 2. 部署者自行負責遵守當地法律
-
-安裝或執行 Bageo 的人，須自行查明並遵守自己所在地及通話對方所在地之適用法律與電信契約，包含但不限於：
-
-- **通話錄音與個人資料保護：** 確認是否須在錄音前告知對方或取得全體通話者同意（例如雙邊／全體同意錄音地區之規定，以及 GDPR、台灣《個人資料保護法》等資料保護法規），並妥善管理錄音與逐字稿之保存與刪除。
-- **AI 身分揭露與外撥電話規範：** 確認當地對自動化語音、合成語音揭露及外撥電話之規定（例如美國 TCPA 與 FCC 合成語音規範、歐盟《人工智慧法》透明義務及各國電信法規）。
-- **技術、硬體與緊急通訊風險：** 語言模型具機率性，可能聽錯、幻覺、誤判推銷／詐騙或講錯話；解鎖手機 Bootloader 與 Root 可能導致保固失效、設備故障或觸發電信風控；請勿將本軟體用於唯一求救、醫療照護或生命安全相關門號，亦請勿將未加密之控制台直接暴露於網際網路。
-
-### 3. 正當使用須知
-
-請將 Bageo 用於合法之個人或經授權的通訊管理。作為守法提醒與使用須知（非開源著作權授權之額外限制條件），請勿將本軟體用於以下違法或不當行為：
-
-- 電信詐騙、金融詐財、網路釣魚，或冒充政府機關、金融機構、企業與他人身分；
-- 違反當地法律之竊聽、未經同意錄音，或擅自散佈他人通話內容；
-- 電話騷擾、惡意占線、濫發垃圾簡訊、未經同意之商業電話行銷或大量自動撥號（Robocalling）；
-- 未經許可架設商業話務轉接機房（如 SIM Box／貓池），或干擾緊急報案救難專線。
-
-開源授權（[`LICENSE`](LICENSE)）僅授予著作權與專利上之軟體權利，並不豁免任何使用者遵守當地刑法、電信法與隱私法規之義務。商業授權（[`COMMERCIAL_LICENSE.md`](COMMERCIAL_LICENSE.md)）另受雙方簽署之書面合約約束。
-
-本文件以繁體中文版為準；英文版與簡體中文版為翻譯參考。
+[English](#english) · [繁體中文](#繁體中文) · [简体中文](#简体中文)
 
 ---
 
@@ -64,7 +32,39 @@ As a compliance reminder and usage notice (and not as an additional condition on
 
 Open-source licensing ([`LICENSE`](LICENSE)) grants copyright and patent permissions only and does not exempt any user from criminal, telecommunications, wiretapping, or privacy laws. Any separate Commercial License ([`COMMERCIAL_LICENSE.md`](COMMERCIAL_LICENSE.md)) is governed by its signed written contract.
 
-The Traditional Chinese text of this document governs; the English and Simplified Chinese sections are translations for convenience.
+The English text of this document governs; the Traditional Chinese and Simplified Chinese sections are translations for convenience.
+
+---
+
+## 繁體中文
+
+本文件說明 Bageo（八哥，`bageo-call`）之免責聲明、風險提示與使用須知。本文件不構成法律意見；如有法規疑問，請諮詢合格律師。授權條款見 [`LICENSE`](LICENSE)、[`LICENSING.md`](LICENSING.md) 與 [`COMMERCIAL_LICENSE.md`](COMMERCIAL_LICENSE.md)。
+
+### 1. 按現狀提供與自架性質
+
+- **按現狀提供（AS IS）：** 在適用法律允許的最大範圍內，Bageo 依「現狀」提供，原作者（**h4lo-void**）與貢獻者不提供任何明示、默示或法定擔保（包含適售性、特定目的適用性、持續可用性、正確性或法規合規保證），亦不對因安裝、設定或使用本軟體所生之任何直接或間接損失、通話與漫遊費、API 帳單、設備損壞、漏接來電、行政罰鍰或第三方爭議負責（另見 [`LICENSE`](LICENSE) 第 15–16 條與 [`LICENSING.md`](LICENSING.md) 第 7(a) 條）。
+- **作者不維運服務、軟體不回傳資料：** Bageo 為供使用者自行架設之軟體。原作者不提供或維運任何公共伺服器、電話轉接閘道或代管服務。本軟體不含遙測或資料回傳機制，不會將你的通話音訊、錄音、逐字稿、簡訊、聯絡人或金鑰傳送給原作者；資料只存放在你自己的設備，並依你的設定傳送至你自行選擇的第三方服務（如 Google Gemini、摘要服務與通知管道）。
+
+### 2. 部署者自行負責遵守當地法律
+
+安裝或執行 Bageo 的人，須自行查明並遵守自己所在地及通話對方所在地之適用法律與電信契約，包含但不限於：
+
+- **通話錄音與個人資料保護：** 確認是否須在錄音前告知對方或取得全體通話者同意（例如雙邊／全體同意錄音地區之規定，以及 GDPR、加州 CIPA 及各地個人資料保護法規），並妥善管理錄音與逐字稿之保存與刪除。
+- **AI 身分揭露與外撥電話規範：** 確認當地對自動化語音、合成語音揭露及外撥電話之規定（例如美國 TCPA 與 FCC 合成語音規範、歐盟《人工智慧法》透明義務及各國電信法規）。
+- **技術、硬體與緊急通訊風險：** 語言模型具機率性，可能聽錯、幻覺、誤判推銷／詐騙或講錯話；解鎖手機 Bootloader 與 Root 可能導致保固失效、設備故障或觸發電信風控；請勿將本軟體用於唯一求救、醫療照護或生命安全相關門號，亦請勿將未加密之控制台直接暴露於網際網路。
+
+### 3. 正當使用須知
+
+請將 Bageo 用於合法之個人或經授權的通訊管理。作為守法提醒與使用須知（非開源著作權授權之額外限制條件），請勿將本軟體用於以下違法或不當行為：
+
+- 電信詐騙、金融詐財、網路釣魚，或冒充政府機關、金融機構、企業與他人身分；
+- 違反當地法律之竊聽、未經同意錄音，或擅自散佈他人通話內容；
+- 電話騷擾、惡意占線、濫發垃圾簡訊、未經同意之商業電話行銷或大量自動撥號（Robocalling）；
+- 未經許可架設商業話務轉接機房（如 SIM Box／貓池），或干擾緊急報案救難專線。
+
+開源授權（[`LICENSE`](LICENSE)）僅授予著作權與專利上之軟體權利，並不豁免任何使用者遵守當地刑法、電信法與隱私法規之義務。商業授權（[`COMMERCIAL_LICENSE.md`](COMMERCIAL_LICENSE.md)）另受雙方簽署之書面合約約束。
+
+本文件以英文版為準；繁體中文版與簡體中文版為翻譯參考。
 
 ---
 
@@ -81,7 +81,7 @@ The Traditional Chinese text of this document governs; the English and Simplifie
 
 安装或运行 Bageo 的人，须自行查明并遵守自己所在地及通话对方所在地的适用法律与运营商协议，包括但不限于：
 
-- **通话录音与个人信息保护：** 确认录音前是否需要告知对方或取得全体通话方同意（例如双方／全体同意录音地区的规定，以及 GDPR、个人信息保护法规等），并妥善管理录音与文字记录的保存与删除。
+- **通话录音与个人信息保护：** 确认录音前是否需要告知对方或取得全体通话方同意（例如双方／全体同意录音地区的规定，以及 GDPR、加州 CIPA 及各地个人信息保护法规），并妥善管理录音与文字记录的保存与删除。
 - **AI 身份披露与外呼规范：** 确认当地对自动化语音、合成语音披露及外呼电话的规定（例如美国 TCPA 与 FCC 合成语音规范、欧盟《人工智能法》透明义务及各国电信法规）。
 - **技术、硬件与紧急通信风险：** 语言模型具有概率性，可能听错、产生幻觉、误判推销／诈骗或说错话；解锁手机 Bootloader 与 Root 可能导致失去保修、设备故障或触发运营商风控；请勿将本软件用于唯一求救、医疗看护或生命安全相关号码，也请勿将未加密的控制台直接暴露到公网。
 
@@ -96,6 +96,6 @@ The Traditional Chinese text of this document governs; the English and Simplifie
 
 开源许可证（[`LICENSE`](LICENSE)）仅授予著作权与专利上的软件权利，并不豁免任何使用者遵守当地刑法、电信法与隐私法规的义务。商业授权（[`COMMERCIAL_LICENSE.md`](COMMERCIAL_LICENSE.md)）另受双方签署的书面合同约束。
 
-本文件以繁体中文版为准；英文版与简体中文版为翻译参考。
+本文件以英文版为准；繁体中文版与简体中文版为翻译参考。
 
 <!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

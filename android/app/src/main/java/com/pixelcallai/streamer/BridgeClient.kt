@@ -171,6 +171,10 @@ class BridgeClient(
                 Log.e(TAG, "bridge error", ex)
                 if (!closedLocally.get()) onDisconnected?.invoke("error ${ex?.javaClass?.simpleName}")
             }
+
+            override fun onSetSSLParameters(sslParameters: javax.net.ssl.SSLParameters) {
+                TlsPinning.configureSslParameters(sslParameters, url)
+            }
         }
         client = ws
         try {
@@ -178,6 +182,7 @@ class BridgeClient(
             ws.connectionLostTimeout = CONNECTION_LOST_TIMEOUT_S
         } catch (_: Exception) {
         }
+        TlsPinning.attachIfPinned(ws, url)
         ws.connect()
     }
 

@@ -1676,6 +1676,7 @@ fn with_contact(prompt: &str, rt: &RuntimeSettings, c: Option<&Contact>, lang: L
     if let Some(c) = c {
         info!(contact = c.id.as_str(), kind = c.kind.as_str(), "caller is in the contacts: the prompt says who it is");
         blk = caller_block(lang, rt.is_assistant_style(), &rt.owner_name, &c.name, &c.note);
+        blk.push_str(&rt.contact_context_block(lang));
     }
     if let Some((who, will_call)) = urgent {
         blk.push_str(&urgent_block(lang, rt.is_assistant_style(), &rt.owner_name, who, will_call));

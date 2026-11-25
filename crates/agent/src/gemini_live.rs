@@ -1304,6 +1304,30 @@ fn has_ukrainian_letters(text: &str) -> bool {
         .any(|c| matches!(c, 'і' | 'ї' | 'є' | 'ґ' | 'І' | 'Ї' | 'Є' | 'Ґ'))
 }
 
+fn arabic_script_stt(text: &str) -> &'static str {
+    let (mut ur_only, mut fa_letters, mut ar_only) = (0usize, 0usize, 0usize);
+    for c in text.chars() {
+        match c {
+            // Urdu retroflexes, noon ghunna, bari ye, do-chashmi he.
+            'ٹ' | 'ڈ' | 'ڑ' | 'ں' | 'ے' | 'ھ' => ur_only += 1,
+            // Pashto-specific letters keep generic Arabic fallback unless Pashto is added.
+            'ښ' | 'ږ' | 'څ' | 'ځ' | 'ډ' | 'ټ' | 'ړ' | 'ڼ' => return "ar-EG",
+            // Persian-distinctive letters (shared by Urdu, absent from standard Arabic).
+            'پ' | 'چ' | 'ژ' | 'گ' | 'ک' | 'ی' => fa_letters += 1,
+            // Arabic taa marbuta & alef maksura (not used in Persian/Urdu).
+            'ة' | 'ى' => ar_only += 1,
+            _ => {}
+        }
+    }
+    if ur_only >= 1 && ar_only == 0 {
+        return "ur-PK";
+    }
+    if fa_letters >= 2 && ar_only == 0 {
+        return "fa-IR";
+    }
+    "ar-EG"
+}
+
 /// The speech-to-text code of a country's main language when the AI has no
 /// setting for it (ISO 3166 alpha-2, any case); None for any other country.
 pub fn other_lang_stt_of_country(iso: &str) -> Option<&'static str> {
@@ -1336,6 +1360,9 @@ pub fn other_script_lang(text: &str) -> Option<&'static str> {
     }
     if i == 1 && has_ukrainian_letters(text) {
         return Some("uk-UA");
+    }
+    if i == 2 {
+        return Some(arabic_script_stt(text));
     }
     Some(OTHER_LANG_STT[i])
 }

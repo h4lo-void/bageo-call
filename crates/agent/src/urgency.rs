@@ -1101,13 +1101,17 @@ struct OtherLatin {
     /// Index of the best language in [OTHER_LATIN_CODES].
     best_idx: usize,
     /// Each language's score (common words and letters), in [OTHER_LATIN_CODES] order.
-    scores: [i32; 7],
+    scores: [i32; OTHER_LATIN_COUNT],
     /// Each language's common words, in [OTHER_LATIN_CODES] order.
-    word_hits: [i32; 7],
+    word_hits: [i32; OTHER_LATIN_COUNT],
 }
 
+const OTHER_LATIN_COUNT: usize = 13;
+
 /// The languages [other_latin_stats] scores, in its order.
-const OTHER_LATIN_CODES: [&str; 7] = ["vi", "it", "id", "tr", "pl", "nl", "ro"];
+const OTHER_LATIN_CODES: [&str; OTHER_LATIN_COUNT] = [
+    "vi", "it", "id", "tr", "pl", "nl", "ro", "sv", "da", "fi", "cs", "hu", "fil",
+];
 
 fn is_vi_unique_char(c: char) -> bool {
     matches!(
@@ -1143,6 +1147,18 @@ fn is_ro_unique_char(c: char) -> bool {
         c,
         'ș' | 'Ș' | 'ț' | 'Ț' | 'ţ' | 'Ţ' | 'ă' | 'Ă'
     )
+}
+
+fn is_da_unique_char(c: char) -> bool {
+    matches!(c, 'ø' | 'Ø' | 'æ' | 'Æ')
+}
+
+fn is_cs_unique_char(c: char) -> bool {
+    matches!(c, 'ř' | 'Ř' | 'ě' | 'Ě' | 'ů' | 'Ů' | 'ď' | 'Ď' | 'ť' | 'Ť' | 'ň' | 'Ň')
+}
+
+fn is_hu_unique_char(c: char) -> bool {
+    matches!(c, 'ő' | 'Ő' | 'ű' | 'Ű')
 }
 
 fn other_latin_stats(text: &str) -> OtherLatin {
@@ -1207,10 +1223,43 @@ fn other_latin_stats(text: &str) -> OtherLatin {
         "trecută", "anul", "trecut", "știri", "știrile", "exercițiu", "falsă", "glumesc", "foame", "mama", "tata",
         "bunica", "copilul", "fratele", "pasaportul", "pașaportul", "portofelul", "lift", "gaze",
     ];
-    // [Vi, It, Id, Tr, Pl, Nl, Ro]
-    let mut scores = [0i32; 7];
-    let mut word_hits = [0i32; 7];
-    let mut unique_tokens = [0usize; 7];
+    const SV_WORDS: &[&str] = &[
+        "hej", "tack", "jag", "är", "inte", "det", "har", "ett", "paket", "leverans", "bud", "hemma",
+        "ring", "ringer", "tillbaka", "snälla", "ursäkta", "imorgon", "idag", "nu", "akut", "sjukhus",
+        "ambulans", "olycka", "polisen", "brandkår", "dörren", "porten", "kan", "vill", "mycket",
+    ];
+    const DA_WORDS: &[&str] = &[
+        "hej", "tak", "jeg", "ikke", "pakke", "levering", "bud", "hjemme", "ringe", "ringer", "tilbage",
+        "undskyld", "morgen", "idag", "akut", "hospital", "ambulance", "ulykke", "politiet", "døren",
+        "hvornår", "hvordan", "meget", "gerne", "besked",
+    ];
+    const FI_WORDS: &[&str] = &[
+        "hei", "moi", "kiitos", "anteeksi", "minä", "olen", "ei", "ole", "ja", "on", "minulla", "sinulle",
+        "kanssa", "vielä", "mitä", "se", "ihan", "hyvä", "töissä", "hän", "paketti", "toimitus", "kuriiri",
+        "kotona", "soitan", "soittaa", "takaisin", "tänään", "huomenna", "nyt", "kiireellinen", "hätä",
+        "sairaala", "ambulanssi", "onnettomuus", "poliisi", "ovella", "voinko", "jättää",
+    ];
+    const CS_WORDS: &[&str] = &[
+        "dobrý", "den", "ahoj", "děkuji", "prosím", "jsem", "není", "balík", "balíček", "kurýr", "doručení",
+        "doma", "zavolat", "volám", "zavolám", "dnes", "zítra", "hned", "naléhavé", "nemocnice", "sanitka",
+        "nehoda", "policie", "dveří", "můžu", "nechat", "promiňte",
+    ];
+    const HU_WORDS: &[&str] = &[
+        "szia", "jó", "napot", "köszönöm", "kérem", "vagyok", "nem", "van", "nincs", "csomag", "futár",
+        "kézbesítés", "otthon", "itthon", "hívom", "visszahívom", "ma", "holnap", "azonnal", "sürgős",
+        "kórház", "mentő", "baleset", "rendőrség", "ajtónál", "elnézést",
+    ];
+    const FIL_WORDS: &[&str] = &[
+        "kumusta", "salamat", "po", "opo", "hindi", "ako", "ikaw", "siya", "kami", "namin", "natin",
+        "ito", "iyan", "para", "sa", "ng", "mga", "may", "wala", "bahay", "ngayon", "bukas", "kahapon",
+        "tawag", "tumatawag", "pakete", "hatid", "iwan", "ospital", "ambulansya", "aksidente", "pulis",
+        "sunog", "madali", "pakisabi", "pasensya",
+    ];
+    // [Vi, It, Id, Tr, Pl, Nl, Ro, Sv, Da, Fi, Cs, Hu, Fil]
+    let mut scores = [0i32; OTHER_LATIN_COUNT];
+    let mut word_hits = [0i32; OTHER_LATIN_COUNT];
+    let mut unique_tokens = [0usize; OTHER_LATIN_COUNT];
+    let mut nb_only = 0usize;
     for raw_tok in text
         .split(|c: char| !(c.is_alphabetic() || matches!(c, '\'' | '\u{2019}' | '\u{2018}' | '\u{60}') || ('\u{0300}'..='\u{036F}').contains(&c)))
         .filter(|t| !t.is_empty())
@@ -1227,6 +1276,15 @@ fn other_latin_stats(text: &str) -> OtherLatin {
         if raw_tok.chars().any(is_ro_unique_char) {
             unique_tokens[6] += 1;
         }
+        if raw_tok.chars().any(is_da_unique_char) {
+            unique_tokens[8] += 1;
+        }
+        if raw_tok.chars().any(is_cs_unique_char) {
+            unique_tokens[10] += 1;
+        }
+        if raw_tok.chars().any(is_hu_unique_char) {
+            unique_tokens[11] += 1;
+        }
         let tok: String = raw_tok
             .to_lowercase()
             .chars()
@@ -1234,14 +1292,29 @@ fn other_latin_stats(text: &str) -> OtherLatin {
             .map(|c| if matches!(c, '\u{2019}' | '\u{2018}' | '\u{60}') { '\'' } else { c })
             .collect();
         let word = tok.as_str();
-        for (idx, list) in [VI_WORDS, IT_WORDS, ID_WORDS, TR_WORDS, PL_WORDS, NL_WORDS, RO_WORDS].iter().enumerate() {
+        for (idx, list) in [
+            VI_WORDS, IT_WORDS, ID_WORDS, TR_WORDS, PL_WORDS, NL_WORDS, RO_WORDS,
+            SV_WORDS, DA_WORDS, FI_WORDS, CS_WORDS, HU_WORDS, FIL_WORDS,
+        ]
+        .iter()
+        .enumerate()
+        {
             if list.contains(&word) {
                 scores[idx] += 1;
                 word_hits[idx] += 1;
             }
         }
+        if matches!(word, "jobb" | "nå" | "kveld" | "gjerne" | "beklager" | "hjemmefra") {
+            nb_only += 1;
+        }
         if matches!(word, "è" | "c'è") {
             scores[1] += 2;
+        }
+        if ["ää", "öö", "yy", "ii", "uu", "aa"].iter().any(|vv| word.contains(vv)) {
+            scores[9] += 2;
+            if word.contains("ää") || word.contains("öö") {
+                unique_tokens[9] += 1;
+            }
         }
     }
     for c in text.chars() {
@@ -1257,6 +1330,28 @@ fn other_latin_stats(text: &str) -> OtherLatin {
         if is_ro_unique_char(c) {
             scores[6] += 2;
         }
+        if matches!(c, 'å' | 'Å') {
+            if word_hits[7] >= 2 {
+                scores[7] += 1;
+            }
+            if word_hits[8] >= 2 {
+                scores[8] += 1;
+            }
+        }
+        if is_da_unique_char(c) {
+            scores[8] += 2;
+        }
+        if is_cs_unique_char(c) {
+            scores[10] += 2;
+        }
+        if is_hu_unique_char(c) {
+            scores[11] += 2;
+        }
+    }
+    if nb_only > 0 {
+        scores[8] = 0;
+        word_hits[8] = 0;
+        unique_tokens[8] = 0;
     }
     let Some((best_idx, &best)) = scores.iter().enumerate().max_by_key(|(_, s)| **s) else {
         return OtherLatin::default();
@@ -1298,8 +1393,8 @@ pub fn read_other(said: &str) -> Option<OtherReading> {
         let code = stt.split('-').next().unwrap_or("");
         let script = match code {
             "th" => Script::Thai,
-            "ru" | "uk" => Script::Cyrillic,
-            "ar" => Script::Arabic,
+            "ru" | "uk" | "bg" | "sr" | "be" => Script::Cyrillic,
+            "ar" | "fa" | "ur" => Script::Arabic,
             "hi" => Script::Devanagari,
             "bn" => Script::Bengali,
             "ta" => Script::Tamil,
@@ -1310,7 +1405,11 @@ pub fn read_other(said: &str) -> Option<OtherReading> {
     }
     if is_strong_other_latin(said) {
         let o = other_latin_stats(said);
-        let lang = if o.best >= 2 { ready(OTHER_LATIN_CODES[o.best_idx]) } else { None };
+        let lang = if o.best >= 3 || (o.unique_script && o.best >= 2) {
+            ready(OTHER_LATIN_CODES[o.best_idx])
+        } else {
+            None
+        };
         return Some(OtherReading { script: Script::Latin, lang });
     }
     None
@@ -1379,9 +1478,72 @@ pub fn other_told_apart(said: &str, now: crate::locale::Ext) -> Option<Lang> {
             }
             ready(to)
         }
+        Script::Arabic => {
+            if !matches!(now.code(), "ar" | "fa" | "ur") {
+                return None;
+            }
+            let (mut ur_only, mut fa_letters, mut ar_only) = (0usize, 0usize, 0usize);
+            for c in said.chars() {
+                match c {
+                    'ٹ' | 'ڈ' | 'ڑ' | 'ں' | 'ے' | 'ھ' => ur_only += 1,
+                    'ښ' | 'ږ' | 'څ' | 'ځ' | 'ډ' | 'ټ' | 'ړ' | 'ڼ' => return None,
+                    'پ' | 'چ' | 'ژ' | 'گ' => fa_letters += 1,
+                    'ة' | 'ى' => ar_only += 1,
+                    _ => {}
+                }
+            }
+            let tokens: Vec<&str> = said
+                .split(|c: char| !c.is_alphabetic())
+                .filter(|t| t.chars().any(|c| ('\u{0600}'..='\u{06FF}').contains(&c)))
+                .collect();
+            if tokens.len() < 4 {
+                return None;
+            }
+            let ar_hits = tokens.iter().filter(|t| AR_WORDS.contains(t)).count();
+            let fa_hits = tokens.iter().filter(|t| FA_WORDS.contains(t)).count();
+            let ur_hits = tokens.iter().filter(|t| UR_WORDS.contains(t)).count();
+            let target = if ur_only >= 1 && ar_only == 0 && ur_hits >= 2 && ur_hits > ar_hits && ur_hits >= fa_hits {
+                "ur"
+            } else if ur_only == 0 && ar_only == 0 && (fa_letters >= 1 || fa_hits >= 3) && fa_hits >= 2 && fa_hits > ar_hits && fa_hits > ur_hits {
+                "fa"
+            } else if ur_only == 0 && fa_letters == 0 && (ar_only >= 1 || ar_hits >= 3) && ar_hits >= 2 && ar_hits > fa_hits && ar_hits > ur_hits {
+                "ar"
+            } else {
+                return None;
+            };
+            let target_hits = match target {
+                "ar" => ar_hits,
+                "fa" => fa_hits,
+                _ => ur_hits,
+            };
+            if target == now.code() || target_hits * 3 < tokens.len() {
+                return None;
+            }
+            ready(target)
+        }
         _ => None,
     }
 }
+
+/// Common Arabic words distinct from Persian and Urdu.
+const AR_WORDS: &[&str] = &[
+    "أنا", "انا", "أنت", "انت", "هذا", "هذه", "ليس", "مش", "على", "إلى", "الى", "عن", "مع", "هل",
+    "ماذا", "متى", "أين", "اين", "لماذا", "كيف", "شكراً", "شكرا", "طرد", "مندوب", "اليوم", "غداً",
+    "غدا", "البيت", "تفضل", "حاضر", "لدي", "عندك", "توصيل",
+];
+
+/// Common Persian words distinct from Arabic and Urdu.
+const FA_WORDS: &[&str] = &[
+    "من", "شما", "است", "نیست", "هستم", "هستید", "این", "آن", "برای", "با", "در", "به", "از", "که",
+    "را", "ولی", "ممنون", "مرسی", "بسته", "پیک", "امروز", "فردا", "خانه", "لطفا", "لطفاً", "چطور",
+    "کجا", "دارم", "تحویل",
+];
+
+/// Common Urdu words distinct from Arabic and Persian.
+const UR_WORDS: &[&str] = &[
+    "میں", "ہے", "ہیں", "نہیں", "آپ", "یہ", "وہ", "کے", "کی", "کا", "کو", "سے", "پر", "اور",
+    "شکریہ", "مہربانی", "پارسل", "گھر", "ابھی", "کل", "آج", "بات", "فون", "لیے", "ہوں",
+];
 
 /// Common Russian words that Ukrainian and Belarusian write otherwise.
 const RU_WORDS: &[&str] = &[
@@ -2371,5 +2533,28 @@ mod tests {
         ] {
             assert!(is_urgent(said), "{said}");
         }
+    }
+
+    #[test]
+    fn arabic_persian_urdu_and_nordic_central_european_latin_are_told_apart() {
+        assert_eq!(
+            crate::gemini_live::other_script_lang("سلام، من پیک هستم و بسته شما امروز می‌رسد"),
+            Some("fa-IR")
+        );
+        assert_eq!(
+            crate::gemini_live::other_script_lang("السلام علیکم، میں کوریئر ہوں، آپ کا پارسل گھر پر ہے"),
+            Some("ur-PK")
+        );
+        assert_eq!(
+            crate::gemini_live::other_script_lang("مرحبا، أنا مندوب التوصيل وعندي طرد لك اليوم في البيت"),
+            Some("ar-EG")
+        );
+
+        assert!(is_strong_other_latin("Hej, jag har ett paket till dig, är du hemma idag?"));
+        assert!(is_strong_other_latin("Dobrý den, jsem kurýr a mám pro vás dnes balíček."));
+        assert!(is_strong_other_latin("Szia, futár vagyok, csomag van nálam, otthon vagy ma?"));
+        assert!(is_strong_other_latin("Hei, olen kuriiri ja minulla on paketti sinulle tänään."));
+        assert!(is_strong_other_latin("Hej, jeg ringer angående levering af din pakke ved døren."));
+        assert!(is_strong_other_latin("Kumusta po, may pakete po kami para sa bahay ninyo ngayon."));
     }
 }

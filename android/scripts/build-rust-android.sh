@@ -48,6 +48,8 @@ export CC_aarch64_linux_android="$BIN_DIR/aarch64-linux-android29-clang"
 export CXX_aarch64_linux_android="$BIN_DIR/aarch64-linux-android29-clang++"
 export AR_aarch64_linux_android="$BIN_DIR/llvm-ar"
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$BIN_DIR/aarch64-linux-android29-clang"
+CARGO_HOME_DIR="${CARGO_HOME:-$HOME/.cargo}"
+export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=${REPO_ROOT}=/bageo --remap-path-prefix=${CARGO_HOME_DIR}=/cargo"
 
 echo "==> Using NDK: $NDK_DIR"
 echo "==> Building agent library for aarch64-linux-android (release)..."
