@@ -344,8 +344,11 @@ audio{width:100%;height:42px;margin-top:10px;display:block}
 .slrow .sl-del{grid-column:2;grid-row:1/3}
 .chan{border:1px solid var(--line);border-radius:var(--radius-sm);padding:13px 14px;background:var(--surface)}
 .chan.offc{opacity:.72}
-.chan-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.chan-head .kind{font-weight:650}
+.chan-head{display:flex;gap:8px;align-items:center}
+.chan-title{flex:1 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
+.chan-title>.tag{max-width:100%;white-space:normal}
+.chan-head .kind{font-weight:650;min-width:0;overflow-wrap:break-word}
+.chan-head>.btn{flex:0 0 auto;white-space:nowrap}
 .chan-head .sw{padding:0;margin-inline-start:auto;gap:8px;border:0}
 .chan-fields{display:flex;flex-direction:column;gap:2px}
 .chan-foot{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
@@ -356,11 +359,13 @@ audio{width:100%;height:42px;margin-top:10px;display:block}
 .addrow select{flex:1 1 auto}
 
 .sim-list{display:flex;flex-direction:column;gap:8px}
-.sim-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--line)}
+.sim-row{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:10px 0;border-top:1px solid var(--line)}
 .sim-row:first-child{border-top:0;padding-top:0}
-.sim-badge{font-size:.75rem;font-weight:700;padding:2px 7px;border-radius:6px;background:var(--surface2);color:var(--muted)}
-.sim-num{font-family:var(--mono);font-size:.92rem;font-weight:600}
-.sim-in{flex:1 1 10rem;min-height:38px;padding:6px 10px;font-family:var(--mono)}
+.sim-badge{font-size:.75rem;font-weight:700;padding:2px 7px;border-radius:6px;background:var(--surface2);color:var(--muted);max-width:100%;overflow-wrap:anywhere}
+.sim-line{display:flex;gap:8px;align-items:center;align-self:stretch;min-width:0}
+.sim-line .btn{flex:0 0 auto;white-space:nowrap}
+.sim-num{font-family:var(--mono);font-size:.92rem;font-weight:600;flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.sim-in{flex:1 1 auto;min-width:0;min-height:38px;padding:6px 10px;font-family:var(--mono)}
 [aria-invalid="true"]{border-color:var(--bad)}
 
 /* ---------- Errands & Contacts ---------- */
@@ -375,8 +380,8 @@ audio{width:100%;height:42px;margin-top:10px;display:block}
 .er-pick b{color:var(--text)}
 .er-pick select{width:auto;min-height:36px;padding-block:4px}
 .er-pre{margin-top:14px;padding:13px;border:1px solid var(--line-strong);border-radius:var(--radius-sm);background:var(--surface2)}
-.er-pre-in{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.er-pre-in input{flex:1 1 12rem;min-width:0}
+.er-pre-in{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.er-pre-in input{align-self:stretch;min-width:0}
 .er-card{padding:15px 16px}
 .er-card.er-live-card{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
 .er-head{display:flex;flex-direction:column;gap:6px}
@@ -422,11 +427,17 @@ audio{width:100%;height:42px;margin-top:10px;display:block}
 .bk-status{margin-top:10px;font-size:.88rem}
 .bk-status .bad{color:var(--bad)}
 .bk-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.bk-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--line)}
+.btn-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.btn-grid>.btn{width:100%;min-width:0;white-space:normal}
+.btn-grid>:nth-last-child(1 of :not([hidden])):nth-child(odd of :not([hidden])){grid-column:1/-1}
+.bk-row{display:flex;flex-direction:column;gap:8px;padding:10px 0;border-top:1px solid var(--line)}
 .bk-row:first-child{border-top:0}
-.bk-when{flex:1 1 10rem;min-width:0}
+.bk-top{display:flex;gap:8px;align-items:flex-start}
+.bk-when{flex:1 1 auto;min-width:0}
+.bk-top>.btn{flex:0 0 auto}
 .bk-meta{color:var(--muted);font-size:.82rem}
-.bk-acts{display:flex;flex-wrap:wrap;gap:6px;margin-inline-start:auto;max-width:100%}
+.bk-acts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.bk-acts>.btn{width:100%;min-width:0;white-space:normal}
 .bk-warns{margin-top:10px;padding:8px 12px;border-radius:var(--radius-sm);background:var(--surface2);font-size:.86rem}
 .ex-list{max-height:50vh;overflow:auto;margin-top:10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg)}
 .ex-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line)}
@@ -709,7 +720,6 @@ input[type=text],input[type=search],input[type=password],input[type=url],input[t
 .seg.full{grid-auto-columns:minmax(max-content,1fr)}
 .seg button{padding-inline:12px}
 .help+.sw{margin-top:8px}
-.sim-in{flex:1 1 12rem}
 .chan.offc{opacity:.88}
 .ct-row{border:0;background:var(--md-sc);border-radius:var(--radius);padding:12px 16px}
 .ct-item{flex-wrap:wrap;align-items:center;gap:0 8px;background:var(--md-sc);border-radius:var(--radius)}
@@ -902,11 +912,11 @@ input[type=text],input[type=search],input[type=password],input[type=url],input[t
         <h3 data-i18n="d_scam"></h3>
         <p style="font-weight:600;margin-bottom:6px" id="dScam"></p>
         <p class="muted small" style="margin-bottom:8px" data-i18n="d_fb_q"></p>
-        <div class="actions" id="dScamFb"></div>
+        <div class="actions btn-grid" id="dScamFb"></div>
       </div>
 
       <div class="card d-sec">
-        <div class="actions">
+        <div class="actions btn-grid">
           <button type="button" class="btn sm" id="btnCopyNum" data-i18n="d_copy_number"></button>
           <button type="button" class="btn sm" id="btnAddContact" hidden data-i18n="ct_add_from_call"></button>
           <button type="button" class="btn sm danger" id="btnBlock" data-i18n="d_block"></button>
@@ -1027,7 +1037,7 @@ input[type=text],input[type=search],input[type=password],input[type=url],input[t
     <div class="search-row">
       <input type="search" id="ctQ" autocomplete="off" data-i18n-ph="ct_search_ph" data-i18n-aria="ct_search_ph" />
     </div>
-    <div class="row" style="margin-bottom:12px">
+    <div class="btn-grid" style="margin-bottom:12px">
       <button type="button" class="btn sm primary" id="ctAdd" data-i18n="ct_add"></button>
       <button type="button" class="btn sm" id="ctImport" data-i18n="ct_import"></button>
       <button type="button" class="btn sm" id="ctExport" data-i18n="ct_export"></button>
@@ -1594,7 +1604,7 @@ input[type=text],input[type=search],input[type=password],input[type=url],input[t
         <div class="card pad">
           <b style="display:block;font-size:.98rem" data-i18n="g_backup"></b>
           <p class="help" data-i18n="g_backup_d"></p>
-          <div class="bk-btns">
+          <div class="bk-btns btn-grid">
             <button type="button" class="btn sm primary" id="btnBkRun" data-i18n="bk_run"></button>
             <button type="button" class="btn sm" id="btnBkExport" data-i18n="bk_export"></button>
             <button type="button" class="btn sm" id="btnBkImport" data-i18n="bk_import"></button>
@@ -5610,8 +5620,9 @@ function chanCard(c) {
   // append() writes a null child out as the text "null"; leave the empty ones out.
   card.append(...[
     h("div", { class: "chan-head" },
-      h("span", { class: "kind", text: kindLabel(c.kind) }),
-      c.id ? null : h("span", { class: "tag warn", text: t("n_new") }),
+      h("div", { class: "chan-title" },
+        h("span", { class: "kind", text: kindLabel(c.kind) }),
+        c.id ? null : h("span", { class: "tag warn", text: t("n_new") })),
       h("label", { class: "sw" }, sw),
       h("button", { type: "button", class: "btn xs ghost", text: t("ct_delete"), onclick: () => { chans = chans.filter((x) => x !== c); renderChannels(); if (c.id) saveChannelsNow(); } })),
     fields, ctl,
@@ -6055,15 +6066,17 @@ function renderAdvPermsAndSims() {
     if (!editing) {
       sBox.append(h("div", { class: "sim-row" },
         h("span", { class: "sim-badge", text: badgeText }),
-        h("span", { class: "sim-num grow", text: eff }),
-        h("button", { type: "button", class: "btn xs ghost", text: t("ph_sim_edit"), onclick: () => { simEdit[key] = true; simDraft[key] = eff; renderAdvPermsAndSims(); } })));
+        h("div", { class: "sim-line" },
+          h("span", { class: "sim-num", text: eff }),
+          h("button", { type: "button", class: "btn xs ghost", text: t("ph_sim_edit"), onclick: () => { simEdit[key] = true; simDraft[key] = eff; renderAdvPermsAndSims(); } }))));
     } else {
       const inp = h("input", { type: "tel", class: "sim-in", maxlength: "24", placeholder: t("ph_sim_num_ph"), value: key in simDraft ? simDraft[key] : eff, oninput: (ev) => { simDraft[key] = ev.target.value; } });
       sBox.append(h("div", { class: "sim-row" },
         h("span", { class: "sim-badge", text: badgeText }),
-        inp,
-        h("button", { type: "button", class: "btn xs primary", disabled: !!simBusy[key] || !serial, text: t("ph_sim_save"), onclick: () => saveSimNumber(serial, subId, sim.country, inp.value) }),
-        eff ? h("button", { type: "button", class: "btn xs ghost", text: t("cancel"), onclick: () => { delete simEdit[key]; delete simDraft[key]; renderAdvPermsAndSims(); } }) : null));
+        h("div", { class: "sim-line" },
+          inp,
+          h("button", { type: "button", class: "btn xs primary", disabled: !!simBusy[key] || !serial, text: t("ph_sim_save"), onclick: () => saveSimNumber(serial, subId, sim.country, inp.value) }),
+          eff ? h("button", { type: "button", class: "btn xs ghost", text: t("cancel"), onclick: () => { delete simEdit[key]; delete simDraft[key]; renderAdvPermsAndSims(); } }) : null)));
     }
   }
 }
@@ -6099,13 +6112,14 @@ function bkRender() {
   if (!list.length) box.append(h("div", { class: "bk-meta", text: t("bk_files_empty") }));
   for (const b of (bkAll ? list : list.slice(0, 6))) {
     box.append(h("div", { class: "bk-row" },
-      h("div", { class: "bk-when" },
-        h("div", { text: fmtFull(b.at) }),
-        h("div", { class: "bk-meta", text: [bkSize(b.size), b.encrypted ? t("bk_encrypted") : ""].filter(Boolean).join(" · ") })),
+      h("div", { class: "bk-top" },
+        h("div", { class: "bk-when" },
+          h("div", { text: fmtFull(b.at) }),
+          h("div", { class: "bk-meta", text: [bkSize(b.size), b.encrypted ? t("bk_encrypted") : ""].filter(Boolean).join(" · ") })),
+        h("button", { type: "button", class: "btn xs danger", disabled: busy, dataset: { bkDelete: b.name }, text: t("bk_btn_delete") })),
       h("div", { class: "bk-acts" },
         h("button", { type: "button", class: "btn xs", disabled: busy, dataset: { bkRestore: b.name }, text: t("bk_btn_restore") }),
-        h("button", { type: "button", class: "btn xs", disabled: busy, dataset: { bkDownload: b.name }, text: t("bk_btn_download") }),
-        h("button", { type: "button", class: "btn xs danger", disabled: busy, dataset: { bkDelete: b.name }, text: t("bk_btn_delete") }))));
+        h("button", { type: "button", class: "btn xs", disabled: busy, dataset: { bkDownload: b.name }, text: t("bk_btn_download") }))));
   }
   $("btnBkAll").hidden = list.length <= 6;
   $("btnBkAll").textContent = bkAll ? t("bk_show_less") : t("bk_show_all", { n: list.length });

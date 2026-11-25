@@ -92,7 +92,7 @@ h1,h2,h3,p{margin:0}
 .nav a[aria-current=page]{background:var(--nav-active-bg);color:var(--nav-active-fg);font-weight:600}
 .nav .dot{position:absolute;top:5px;inset-inline-end:5px;width:6px;height:6px;border-radius:50%;background:var(--warn)}
 .top-right{display:flex;align-items:center;gap:8px;margin-inline-start:auto;min-width:0}
-.pill{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;font-size:.82rem;font-weight:500;background:var(--surface);color:var(--muted);border:1px solid var(--line);white-space:nowrap;cursor:pointer;min-width:0;flex:0 1 auto;overflow:hidden;transition:border-color .14s}
+.pill{position:relative;display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;font-size:.82rem;font-weight:500;background:var(--surface);color:var(--muted);border:1px solid var(--line);white-space:nowrap;cursor:pointer;min-width:0;flex:0 1 auto;overflow:hidden;transition:border-color .14s}
 .pill:hover{border-color:var(--line-strong);color:var(--text)}
 #pillText{overflow:hidden;text-overflow:ellipsis}
 .pill .led{width:7px;height:7px;border-radius:50%;background:var(--line-strong);flex:0 0 auto}
@@ -133,7 +133,9 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 .tag.bad{background:var(--bad-soft);color:var(--bad)}
 .tag.info{background:var(--info-soft);color:var(--info)}
 .tag.accent{background:var(--accent-soft);color:var(--accent-ink)}
-.banner{display:flex;gap:12px;align-items:center;padding:12px 16px;border-radius:var(--radius);margin-bottom:16px;border:1px solid var(--line)}
+.banner{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:center;padding:12px 16px;border-radius:var(--radius);margin-bottom:16px;border:1px solid var(--line)}
+.banner>.grow{flex:1 1 16rem;min-width:0}
+.banner>.grow+.btn{margin-inline-start:auto}
 .banner.bad{background:var(--bad-soft);color:var(--bad);border-color:color-mix(in srgb,var(--bad) 22%,transparent)}
 .banner.info{background:var(--surface);color:var(--text)}
 .banner.live{background:var(--accent-soft);color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 25%,transparent);cursor:pointer;width:100%;text-align:start;font-weight:600}
@@ -391,8 +393,11 @@ audio{width:100%;height:40px;margin-top:10px;display:block}
 .slrow{grid-template-columns:minmax(0,20rem) minmax(0,14rem) auto}
 .chan{border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px;background:var(--surface)}
 .chan.offc{opacity:.75}
-.chan-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.chan-head .kind{font-weight:600}
+.chan-head{display:flex;gap:10px;align-items:center}
+.chan-title{flex:1 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
+.chan-title>.tag{max-width:100%;white-space:normal}
+.chan-head .kind{font-weight:600;min-width:0;overflow-wrap:break-word}
+.chan-head>.btn{flex:0 0 auto;white-space:nowrap}
 .chan-head .sw{padding:0;margin-inline-start:auto;align-items:center;gap:8px}
 .chan-head .sw span{font-size:.87rem;color:var(--muted)}
 .chan-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}
@@ -424,11 +429,13 @@ audio{width:100%;height:40px;margin-top:10px;display:block}
 .item .sdot.bad{background:var(--bad)}
 .item b{display:block;font-weight:600}
 .item .d{color:var(--muted);font-size:.86rem}
-.sim-list{display:flex;flex-direction:column;gap:6px;margin-top:8px}
-.sim-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:.86rem}
+.sim-list{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.sim-row{display:flex;flex-direction:column;align-items:flex-start;gap:4px;font-size:.86rem}
 .sim-row .sim-badge{font-size:.73rem;font-weight:600;padding:1px 6px;border-radius:5px;background:var(--surface2);color:var(--muted);letter-spacing:.02em;white-space:nowrap}
-.sim-row .sim-num{font-family:var(--mono);color:var(--text);font-size:.88rem}
-.sim-row .sim-in{width:auto;flex:1 1 10.5rem;max-width:14rem;min-height:30px;padding:3px 9px;font-family:var(--mono);font-size:.85rem}
+.sim-line{display:flex;gap:6px;align-items:center;align-self:stretch;min-width:0}
+.sim-line .btn{flex:0 0 auto;white-space:nowrap}
+.sim-row .sim-num{font-family:var(--mono);color:var(--text);font-size:.88rem;min-width:0;overflow-wrap:anywhere}
+.sim-row .sim-in{width:auto;flex:1 1 auto;min-width:0;max-width:14rem;min-height:30px;padding:3px 9px;font-family:var(--mono);font-size:.85rem}
 .wide{grid-column:1/-1}
 .cu{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;padding-bottom:14px;margin-bottom:4px;border-bottom:1px solid var(--line)}
 .cu .qr{width:120px;height:120px;image-rendering:pixelated;border-radius:8px;flex:0 0 auto;border:1px solid var(--line)}
@@ -463,6 +470,9 @@ dialog .terms li+li{margin-top:8px}
 .bk-when{flex:1 1 11rem;min-width:0}
 .bk-meta{color:var(--muted);font-size:.86rem}
 .bk-acts{display:flex;gap:6px;margin-inline-start:auto}
+.bk-top{display:contents}
+.bk-acts{order:1}
+.bk-top>.btn{order:2}
 .bk-items{margin:6px 0 0}
 .bk-items .sw{padding:6px 0}
 .bk-warns{margin-top:12px;padding:8px 12px;border-radius:var(--radius-sm);background:var(--surface2)}
@@ -522,8 +532,8 @@ dialog .terms li+li{margin-top:8px}
 .er-pre{margin-top:16px;padding:12px 14px;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface2)}
 .er-pre .help{margin:4px 0 0}
 .er-pre .er-pre-note{margin:8px 0 0}
-.er-pre .er-pre-in{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.er-pre .er-pre-in input{flex:1 1 14rem;min-width:0}
+.er-pre .er-pre-in{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.er-pre .er-pre-in input{align-self:stretch;min-width:0}
 .er-pre .er-pre-opt{margin-top:12px}
 .er-count{font-variant-numeric:tabular-nums;white-space:nowrap}
 .er-list-head{margin:6px 0 10px}
@@ -575,6 +585,13 @@ dialog .terms li+li{margin-top:8px}
 .ct-item{display:flex;gap:8px;align-items:center}
 .ct-item>.ct-row{flex:1 1 auto;min-width:0}
 .ct-call{flex:0 0 auto}
+/* Every contact card the same width, with or without an "Ask AI to call" button beside it */
+#ctList{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 8px}
+#ctList>*{grid-column:1/-1}
+#ctList>.ct-row{grid-column:1}
+#ctList>.ct-item{display:contents}
+#ctList>.ct-item>.ct-row{grid-column:1;min-width:0}
+#ctList>.ct-item>.ct-call{grid-column:2;align-self:center}
 @media (max-width:720px){
   .er-head{grid-template-columns:minmax(0,1fr);gap:6px}
   .er-side{flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px 10px}
@@ -652,10 +669,28 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
   .snav a{min-height:40px}
   .ct-row .who{white-space:normal;overflow-wrap:anywhere}
   .ct-call{min-height:40px}
+  .btn-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .btn-grid>.btn{width:100%;min-width:0;white-space:normal}
+  .btn-grid>:nth-last-child(1 of :not([hidden])):nth-child(odd of :not([hidden])){grid-column:1/-1}
+  .ct-bar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ct-bar>.search{grid-column:1/-1}
+  .ct-bar>.btn{width:100%;min-width:0;white-space:normal}
+  .ct-bar>:nth-last-child(1 of :not([hidden])):nth-child(even of :not([hidden])){grid-column:1/-1}
+  .bk-row{flex-direction:column;align-items:stretch;gap:8px}
+  .bk-top{display:flex;gap:8px;align-items:flex-start}
+  .bk-top>.bk-when{flex:1 1 auto}
+  .bk-top>.btn{flex:0 0 auto}
+  .bk-acts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-inline-start:0}
+  .bk-acts>.btn{width:100%;min-width:0;white-space:normal}
   dialog{width:calc(100vw - 24px)}
   dialog form{padding:18px 16px 0}
   dialog .dlg-btns{position:sticky;bottom:0;z-index:1;background:var(--surface);margin:16px -16px 0;padding:12px 16px 16px;border-top:1px solid var(--line)}
   dialog .dlg-btns .btn{flex:1 1 auto;min-height:44px}
+}
+/* very narrow: the phone status keeps its dot; the words stay for screen readers and in the tooltip */
+@media (max-width:520px){
+  #pillText{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .pill{padding:5px 9px}
 }
 /* touch screens have no hover: show each text message's copy and delete buttons under it */
 @media (hover:none){
@@ -939,10 +974,10 @@ html[data-embed="android"] .brand .word{display:none}
             <h3 data-i18n="d_scam"></h3>
             <p id="dScam"></p>
             <p class="muted" data-i18n="d_fb_q"></p>
-            <div class="actions" id="dScamFb"></div>
+            <div class="actions btn-grid" id="dScamFb"></div>
           </div>
           <div class="d-sec">
-            <div class="actions">
+            <div class="actions btn-grid">
               <button type="button" class="btn sm" id="btnAddContact" hidden data-i18n="ct_add_from_call"></button>
               <button type="button" class="btn sm danger" id="btnBlock" data-i18n="d_block"></button>
               <button type="button" class="btn sm" id="btnCopyLink" data-i18n="d_copy_link"></button>
@@ -1743,7 +1778,7 @@ html[data-embed="android"] .brand .word{display:none}
             </div>
             <div class="help" data-i18n="bk_dir_h"></div></div>
           <div class="bk-status" id="bkStatus" aria-live="polite"></div>
-          <div class="bk-btns">
+          <div class="bk-btns btn-grid">
             <button type="button" class="btn primary" id="btnBkRun" data-i18n="bk_run"></button>
             <button type="button" class="btn" id="btnBkExport" data-i18n="bk_export"></button>
             <button type="button" class="btn" id="btnBkImport" data-i18n="bk_import"></button>
@@ -4823,8 +4858,9 @@ function chanCard(c) {
   const hint = tCode("hint_", c.kind);
   card.append(
     h("div", { class: "chan-head" },
-      h("span", { class: "kind", text: kindLabel(c.kind) }),
-      c.id ? null : h("span", { class: "tag warn", text: t("n_new") }),
+      h("div", { class: "chan-title" },
+        h("span", { class: "kind", text: kindLabel(c.kind) }),
+        c.id ? null : h("span", { class: "tag warn", text: t("n_new") })),
       h("label", { class: "sw" }, h("span", { text: t("n_enabled") }), sw),
       h("button", { type: "button", class: "btn sm ghost", title: t("n_delete"), "aria-label": t("n_delete"), text: t("ct_delete"), onclick: () => { chans = chans.filter((x) => x !== c); renderChannels(); updateDirty(); } })),
     fields);
@@ -5288,8 +5324,11 @@ function bkRender() {
     del.textContent = t("bk_btn_delete");
     del.dataset.bkDelete = b.name;
     del.disabled = busy;
-    acts.append(re, dl, del);
-    row.append(who, acts);
+    acts.append(re, dl);
+    const top = document.createElement("div");
+    top.className = "bk-top";
+    top.append(who, del);
+    row.append(top, acts);
     return row;
   });
   if (!rows.length) {
@@ -7204,11 +7243,12 @@ function phoneSimBlock(serial) {
     if (!editing) {
       wrap.append(h("div", { class: "sim-row" },
         badge,
-        h("span", { class: "sim-num", text: eff }),
-        h("button", {
-          type: "button", class: "btn xs ghost", text: t("ph_sim_edit"),
-          onclick: () => { simEdit[key] = true; simDraft[key] = eff; renderSystem(); },
-        })));
+        h("div", { class: "sim-line" },
+          h("span", { class: "sim-num", text: eff }),
+          h("button", {
+            type: "button", class: "btn xs ghost", text: t("ph_sim_edit"),
+            onclick: () => { simEdit[key] = true; simDraft[key] = eff; renderSystem(); },
+          }))));
     } else {
       const inp = h("input", {
         type: "tel", class: "sim-in", maxlength: "24", autocomplete: "off", spellcheck: "false",
@@ -7221,15 +7261,16 @@ function phoneSimBlock(serial) {
       });
       wrap.append(h("div", { class: "sim-row" },
         badge,
-        inp,
-        h("button", {
-          type: "button", class: "btn xs", disabled: !!simBusy[key], text: t("ph_sim_save"),
-          onclick: () => saveSimNumber(serial, subId, sim.country, inp.value),
-        }),
-        eff ? h("button", {
-          type: "button", class: "btn xs ghost", text: t("cancel"),
-          onclick: () => { delete simEdit[key]; delete simDraft[key]; renderSystem(); },
-        }) : null));
+        h("div", { class: "sim-line" },
+          inp,
+          h("button", {
+            type: "button", class: "btn xs", disabled: !!simBusy[key], text: t("ph_sim_save"),
+            onclick: () => saveSimNumber(serial, subId, sim.country, inp.value),
+          }),
+          eff ? h("button", {
+            type: "button", class: "btn xs ghost", text: t("cancel"),
+            onclick: () => { delete simEdit[key]; delete simDraft[key]; renderSystem(); },
+          }) : null)));
     }
   }
   return wrap;
