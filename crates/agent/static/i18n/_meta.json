@@ -504,6 +504,11 @@
     "who": "the owner",
     "placeholders": []
   },
+  "bk_calls_phone": {
+    "where": "a switch label on the phone app's backup settings (the phone keeps no texts). English: Include call records and recordings",
+    "who": "the owner",
+    "placeholders": []
+  },
   "bk_calls_h": {
     "where": "a label or sentence in the console. English: Backup files get much bigger.",
     "who": "the owner",
@@ -3285,6 +3290,11 @@
     "who": "the owner",
     "placeholders": []
   },
+  "f_keep_h_phone": {
+    "where": "help under how many days records are kept, on the phone app (the phone keeps no texts). English: Calls and recordings, errands and to-dos older than this are deleted automatically.",
+    "who": "the owner",
+    "placeholders": []
+  },
   "f_key": {
     "same_ok": true,
     "where": "a label or sentence in the console. English: Gemini API key",
@@ -3560,6 +3570,11 @@
   },
   "f_status_ph": {
     "where": "a label or sentence in the console. English: e.g. Deliveries: please leave the parcel at the front desk.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "note_use": {
+    "where": "the switch in the phone app's status note sheet that turns the note on for calls. English: Use this note on calls",
     "who": "the owner",
     "placeholders": []
   },

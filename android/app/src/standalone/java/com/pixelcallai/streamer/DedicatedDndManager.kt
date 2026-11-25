@@ -52,6 +52,7 @@ object DedicatedDndManager {
         ruleMatchesOurs: Boolean,
         currentMode: String,
         previousDndActive: Boolean? = null,
+        aiCameFromDnd: Boolean = true,
     ): String? {
         if (!autoEnabled) return null
         val dndActive = interruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL
@@ -63,6 +64,9 @@ object DedicatedDndManager {
             ruleMatchesOurs && dndActive
         }
         val desired = if (active) Prefs.PHONE_MODE_AI else Prefs.PHONE_MODE_NORMAL
+        // Do Not Disturb going off only ends AI answering that it started: an owner who
+        // turned AI on by hand keeps it when they flip Do Not Disturb on and off.
+        if (desired == Prefs.PHONE_MODE_NORMAL && currentMode == Prefs.PHONE_MODE_AI && !aiCameFromDnd) return null
         return if (desired != currentMode) desired else null
     }
 
@@ -292,6 +296,7 @@ object DedicatedDndManager {
             ruleMatchesOurs = ruleExistsAndEnabled,
             currentMode = currentMode,
             previousDndActive = prevDnd,
+            aiCameFromDnd = Prefs.dndAiAt(ctx) > Prefs.lastManualModeSwitchAt(ctx),
         ) ?: return
         val busy = PhoneModeManager.isPhoneIdle(ctx).not()
         if (busy) {
@@ -302,6 +307,7 @@ object DedicatedDndManager {
         PhoneModeManager.requestSwitch(ctx, target, callBusy = false) { res ->
             if (res.ok && res.mode == Prefs.PHONE_MODE_AI) {
                 CallAudioService.ensureArmed(ctx)
+                Prefs.markDndAi(ctx)
             }
             Log.i(TAG, "DND auto-switch to $target ok=${res.ok} err=${res.error}")
         }

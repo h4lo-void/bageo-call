@@ -364,6 +364,7 @@ object Prefs {
     private const val KEY_STANDALONE_DND_RULE_DISMISSED = "STANDALONE_DND_RULE_DISMISSED"
     private const val KEY_STANDALONE_LAST_DND_ACTIVE = "STANDALONE_LAST_DND_ACTIVE"
     private const val KEY_STANDALONE_MANUAL_MODE_AT = "STANDALONE_MANUAL_MODE_AT"
+    private const val KEY_STANDALONE_DND_AI_AT = "STANDALONE_DND_AI_AT"
 
     const val WHITELIST_ACTION_URGENT_PROMPT = "urgent_prompt"
     const val WHITELIST_ACTION_RING_PHONE = "ring_phone"
@@ -486,6 +487,14 @@ object Prefs {
 
     fun markManualModeSwitch(ctx: Context, nowMs: Long = System.currentTimeMillis()) {
         sp(ctx).edit().putLong(KEY_STANDALONE_MANUAL_MODE_AT, nowMs).apply()
+    }
+
+    /** Epoch ms when Do Not Disturb last turned AI answering on (0 = never). */
+    fun dndAiAt(ctx: Context): Long =
+        sp(ctx).getLong(KEY_STANDALONE_DND_AI_AT, 0L)
+
+    fun markDndAi(ctx: Context, nowMs: Long = System.currentTimeMillis()) {
+        sp(ctx).edit().putLong(KEY_STANDALONE_DND_AI_AT, nowMs).apply()
     }
 
     private const val NO_SUB_ID = -1

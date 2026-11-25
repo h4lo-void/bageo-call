@@ -1466,10 +1466,15 @@ class StandaloneUi(private val activity: Activity) {
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
             val bars = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or
-                    WindowInsetsCompat.Type.displayCutout() or
-                    WindowInsetsCompat.Type.ime(),
+                    WindowInsetsCompat.Type.displayCutout(),
             )
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            // The page draws under the status bar and the gesture bar itself
+            // (env(safe-area-inset-top / -bottom)), like the system apps: its header
+            // and tab bar run to the screen edges and a sheet's dimming covers the
+            // status bar too. Padding here as well left empty strips. Only the
+            // keyboard pushes the page up.
+            view.setPadding(bars.left, 0, bars.right, (ime.bottom - bars.bottom).coerceAtLeast(0))
             insets
         }
     }

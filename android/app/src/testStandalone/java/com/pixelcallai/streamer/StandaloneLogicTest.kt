@@ -99,6 +99,31 @@ class StandaloneLogicTest {
                 previousDndActive = false,
             ),
         )
+        // AI turned on by hand stays on when Do Not Disturb goes on and off again
+        assertNull(
+            DedicatedDndManager.decideModeTarget(
+                autoEnabled = true,
+                anyDndAllowed = true,
+                interruptionFilter = NotificationManager.INTERRUPTION_FILTER_ALL,
+                ruleMatchesOurs = false,
+                currentMode = Prefs.PHONE_MODE_AI,
+                previousDndActive = true,
+                aiCameFromDnd = false,
+            ),
+        )
+        // AI that Do Not Disturb started ends with it
+        assertEquals(
+            Prefs.PHONE_MODE_NORMAL,
+            DedicatedDndManager.decideModeTarget(
+                autoEnabled = true,
+                anyDndAllowed = true,
+                interruptionFilter = NotificationManager.INTERRUPTION_FILTER_ALL,
+                ruleMatchesOurs = false,
+                currentMode = Prefs.PHONE_MODE_AI,
+                previousDndActive = true,
+                aiCameFromDnd = true,
+            ),
+        )
     }
 
     @Test
