@@ -2815,6 +2815,8 @@ class CallAudioService : Service() {
                 .setImportant(true)
                 .build()
             builder.setStyle(NotificationCompat.CallStyle.forOngoingCall(person, hangupPi))
+            // The caller is already the call style's title; the line under it says who is talking.
+            builder.setContentText(title)
             if (inAiCall) {
                 builder.addAction(
                     android.R.drawable.ic_menu_call,

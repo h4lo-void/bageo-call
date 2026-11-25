@@ -41,7 +41,7 @@
     "errands_intro_owner": "Guten Tag, hier spricht {owner}",
     "appointments_read_back_example": "\"Also {weekday}, der {day}. {month} um {hour}:{minute} Uhr, stimmt das?\"",
     "scenario_cue_mark": "[Note] ",
-    "scenario_cue_delivery": "Paket: Ort/Tag nie wählen/zusagen; Nachnahme: Betrag, Absender; dankt er, verabschiede dich.",
+    "scenario_cue_delivery": "Paket: Ort/Tag nie vorschlagen/zusagen; Nachnahme: Betrag, Absender; Dank: verabschiede dich.",
     "scenario_cue_bank_verify": "Bank prüft Kauf: Betrag, Händler, Zeit; weder ja noch nein; nichts sperren; selbst anrufen.",
     "scenario_cue_important_notice": "Mitteilung: zuhören, Fehlendes (Stelle, Frist, Rückrufnummer) erfragen, Zahlen wiederholen.",
     "scenario_cue_schedule_invite": "Termin: gern annehmen, du meldest dich später dazu; noch nichts festlegen.",

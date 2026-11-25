@@ -671,7 +671,8 @@ mod tests {
         assert!(book.contains("預約") && no_book.contains("不說死"));
         // Each cue names the kind of call first, as a colleague would.
         let delivery = cue(Scenario::Delivery, Lang::ZhTw, None, false).unwrap();
-        assert!(delivery.contains("是快遞") && delivery.contains("照這裡的習慣"), "{delivery}");
+        // The courier is not handed a spot or the local habit as advice: the AI passes it on.
+        assert!(delivery.contains("是快遞") && delivery.contains("別提議") && delivery.contains("說會轉達"), "{delivery}");
         assert!(bank.starts_with("【系統小抄·不是對方說的】像銀行在核對刷卡"), "{bank}");
     }
 
