@@ -1,21 +1,23 @@
-# Bageo v1.7.1-beta.3
+# Bageo v2.0.0
 
-> **Beta test build (Android Standalone Edition)** — runs 100% on a rooted Pixel phone with **no computer or server needed**. Still in testing; desktop, NAS, and Docker users stay on [v1.7.0](https://github.com/h4lo-void/bageo-call/releases/tag/v1.7.0).
+**Bageo on your phone alone, no computer, no API fees.** Bageo AI Call Agent runs entirely on a rooted phone. With a free Google AI Studio Gemini key there are no API fees; in our tests the free limit covered 10 or more calls a day (Google sets the free limit, and it may change).
 
-- **Purpose-built single-phone mobile app UI:** Replaces the adapted desktop web view with a dedicated four-tab mobile layout, grouped auto-saving settings, and matching native call & dialpad screens—with zero multi-phone clutter or redundant SMS tab.
-- **Turning off AI answering restores your normal phone:** Unifies AI answering into a single master switch that re-enables the system Phone app (`ROLE_DIALER`), restores normal ringers and Do Not Disturb, and stops background call interception cleanly.
-- **Built for phone-only daily use:** Answer whitelisted or urgent calls right on the phone, take over a live AI call anytime without hanging up, dial out from the built-in keypad, and sync phone contacts in one tap.
-- **Install (Rooted Pixel only):** Flash `bageo-phone-standalone-1.7.1-beta.3.zip` in Magisk or KernelSU and reboot (do **not** unpack or install `base.apk` as a regular user app).
+- **Install on a rooted phone.** Flash `bageo-phone-standalone-2.0.0.zip` in KernelSU or Magisk and reboot. Do not unpack it or install `base.apk` as a regular app.
+- **Tested on a Google Pixel 9 (Android 16) with KernelSU.**
+- **New module ID: `bageo_ai_call_agent`.** If the computer-linked module (`pixelcallai_uplink`) is already installed, the other one is removed at the next reboot, and the same the other way round. The app and its settings stay.
+- **One switch back to a normal phone.** Turn off *AI answering* and the system Phone app, ringers and Do Not Disturb come back.
+- **Also in 2.0.0:** calls follow the caller's language, scam stalling repeats itself less, and phone pairing and saved keys are better protected. The computer, NAS and Docker editions are updated to 2.0.0 too.
 
 ## 繁體中文
 
-> **Beta 測試版（手機獨立版）**——**完全不用電腦或主機**，單靠一支已 Root 的 Pixel 手機就能獨立運作。目前仍在測試階段；電腦、NAS 與 Docker 使用者請維持使用 [v1.7.0](https://github.com/h4lo-void/bageo-call/releases/tag/v1.7.0)。
+**只靠手機就能用 Bageo，不用電腦，沒有 API 費用。** Bageo AI Call Agent 整個跑在已 root 的手機上。用 Google AI Studio 的免費 Gemini 金鑰就沒有 API 費用；我們實測免費額度每天 10 通以上夠用（免費額度由 Google 決定，可能會變）。
 
-- **全新純手機專屬 App 介面：** 全面重寫為底部四分頁行動介面、分組子頁與即時自動儲存設定，並統一原生通話與撥號盤視覺風格，徹底移除多手機配對殘留與多餘的簡訊分頁。
-- **關閉「AI 接聽」完整還原原本電話：** 整合為單一「AI 接聽」總開關，關閉即自動歸還系統預設電話 App、解除勿擾與靜音，並停止背景攔截服務與常駐通知。
-- **為手機單機使用重新設計：** 白名單與急事可直接由手機本人接聽、AI 通話中隨時一鍵「我來接」無縫接手、內建撥號盤直接撥電話，並支援一鍵同步手機通訊錄。
-- **安裝方式（限已 Root 的 Pixel）：** 本測試版僅提供此單機模組包，請在 Magisk 或 KernelSU 刷入 `bageo-phone-standalone-1.7.1-beta.3.zip` 後重開機（請勿解壓縮當成一般 App 安裝）。
+- **裝在已 root 的手機上。** 在 KernelSU 或 Magisk 刷入 `bageo-phone-standalone-2.0.0.zip` 後重開機。不要解壓縮，也不要把 `base.apk` 當一般 App 安裝。
+- **已在 Google Pixel 9（Android 16）加 KernelSU 上實測。**
+- **新的模組 ID：`bageo_ai_call_agent`。** 手機上已有電腦連動版模組（`pixelcallai_uplink`）時，另一版會在下次重開機移除，反過來裝也一樣。App 和設定都會保留。
+- **一個開關換回一般手機。** 關掉「AI 接聽」，系統電話 App、響鈴和勿擾就會恢復。
+- **2.0.0 還有：** 電話跟著來電的人用的語言走、詐騙陪聊更少重複、手機配對和存好的金鑰保護更完整。電腦、NAS、Docker 版也一併更新到 2.0.0。
 
-Full notes / 完整說明：[CHANGELOG.md](https://github.com/h4lo-void/bageo-call/blob/v1.7.1-beta.3/CHANGELOG.md)
+Full notes / 完整說明：[CHANGELOG.md](https://github.com/h4lo-void/bageo-call/blob/v2.0.0/CHANGELOG.md)
 
 <!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->

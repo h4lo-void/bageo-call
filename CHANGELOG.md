@@ -1,11 +1,23 @@
-# Bageo v1.7.1-beta.3
+# Bageo v2.0.0
 
-- **Purpose-built single-phone mobile app & clean normal-phone restore (Android Standalone Edition, beta test).** Replaces the adapted desktop web view with a dedicated four-tab mobile app (`Calls`, `AI Errands`, `Contacts`, `Settings`), grouped auto-saving settings subpages, and matching paper-and-ink native call and dialpad screens (`bageo-phone-standalone-1.7.1-beta.3.zip`). Removes multi-phone pairing clutter and the redundant SMS reader tab, and unifies AI answering into a single master switch that cleanly re-enables the system Phone app, restores ringers and Do Not Disturb, and stops background call interception when turned off; computer, NAS, and Docker editions are unchanged.
-- **全新純手機專屬 App 介面與完整還原一般電話（手機獨立版 Beta 測試）。** 將原本套用桌面網頁的畫面全面重寫為底部四分頁行動 App（`通話`、`AI 代打`、`聯絡人`、`設定`）、分組子頁面與即時自動儲存設定，並統一原生通話接手與撥號盤視覺風格（`bageo-phone-standalone-1.7.1-beta.3.zip`）；移除多手機配對殘留與多餘的簡訊讀取分頁，並整合為單一「AI 接聽」總開關，關閉時完整歸還系統預設電話 App、恢復響鈴與解除勿擾、停止背景攔截服務；電腦、NAS 與 Docker 版維持不變。
-- **全新纯手机专属 App 界面与完整还原普通电话（手机独立版 Beta 测试）。** 将原本套用桌面网页的画面全面重写为底部四分页移动应用（`通话`、`AI 代打`、`联系人`、`设置`）、分组子页面与即时自动保存设置，并统一原生通话接手与拨号盘视觉风格（`bageo-phone-standalone-1.7.1-beta.3.zip`）；移除多手机配对残留与多余的短信读取分页，并整合为单一“AI 接听”总开关，关闭时完整归还系统默认电话应用、恢复响铃与解除勿扰、停止后台拦截服务；电脑、NAS 与 Docker 版保持不变。
-- **Designed for phone-only daily use.** Answer whitelisted or urgent calls directly on the phone, take over a live AI call anytime in one tap without hanging up, place calls from the built-in dialpad, and sync phone contacts in one tap; includes a Quick Settings tile, Do Not Disturb auto-trigger, optional pinned status notification, and zero-polling standby for battery life.
-- **為手機單機使用重新設計。** 白名單或急事可直接由手機本人接聽、AI 通話中隨時一鍵「我來接」無縫接手不掛斷、內建原生撥號盤並支援一鍵同步手機通訊錄；提供下拉快速設定磚、開啟勿擾自動接聽、可選置頂通知與待機零輪詢省電。
-- **为手机单机使用重新设计。** 白名单或急事可直接由手机本人接听、AI 通话中随时一键“我来接”无缝接手不挂断、内置原生拨号盘并支持一键同步手机通讯录；提供下拉快捷开关、开启勿扰自动接听、可选常驻通知与待机零轮询省电。
+- **New: Bageo AI Call Agent, the phone-only edition.** All of Bageo runs on a rooted phone, so you need no computer. With a free Google AI Studio Gemini key there are no API fees; in our tests the free limit covered 10 or more calls a day (Google sets the free limit, and it may change). The module ID is now `bageo_ai_call_agent`. Installing it on a phone that has the computer-linked module (`pixelcallai_uplink`), or the other way round, removes the other one at the next reboot. Install `bageo-phone-standalone-2.0.0.zip`.
+- **全新：手機獨立版 Bageo AI Call Agent。** 整個 Bageo 都跑在已 root 的手機上，不用電腦。用 Google AI Studio 的免費 Gemini 金鑰就沒有 API 費用；我們實測免費額度每天 10 通以上夠用（免費額度由 Google 決定，可能會變）。模組 ID 改成 `bageo_ai_call_agent`。手機上已有電腦連動版模組（`pixelcallai_uplink`）時裝這一版，或反過來裝，另一版會在下次重開機時自動移除。安裝檔是 `bageo-phone-standalone-2.0.0.zip`。
+- **全新：手机独立版 Bageo AI Call Agent。** 整个 Bageo 都跑在已 root 的手机上，不用电脑。用 Google AI Studio 的免费 Gemini 密钥就没有 API 费用；我们实测免费额度每天 10 通以上够用（免费额度由 Google 决定，可能会变）。模块 ID 改成 `bageo_ai_call_agent`。手机上已有电脑联动版模块（`pixelcallai_uplink`）时装这一版，或反过来装，另一版会在下次重启时自动移除。安装包是 `bageo-phone-standalone-2.0.0.zip`。
+- **A phone app made for the phone, and a clean way back to a normal phone.** The phone has its own four tabs (*Calls*, *AI Errands*, *Contacts*, *Settings*), settings that save by themselves, and call and dialpad screens that look like the rest of the phone. One *AI answering* switch turns it all off: the system Phone app comes back, ringers and Do Not Disturb return, and Bageo stops listening for calls. Bageo mode is in Quick Settings, the text inbox is gone, and typing keeps the field in view. The computer, NAS and Docker editions are unchanged.
+- **為手機做的手機 App，也能乾淨地換回一般手機。** 手機有自己的四個分頁（`通話`、`AI 代打`、`聯絡人`、`設定`），設定會自動儲存，通話和撥號畫面跟手機其他畫面一致。一個「AI 接聽」開關就能全部關掉：系統電話 App 歸還、響鈴和勿擾恢復、Bageo 不再攔截來電。快速設定裡有 Bageo 模式，簡訊收件匣拿掉了，打字時輸入欄位不會被擋住。電腦、NAS、Docker 版不變。
+- **为手机做的手机应用，也能干净地换回普通手机。** 手机有自己的四个分页（`通话`、`AI 代打`、`联系人`、`设置`），设置会自动保存，通话和拨号界面跟手机其他界面一致。一个“AI 接听”开关就能全部关掉：系统电话应用归还、响铃和勿扰恢复、Bageo 不再拦截来电。快捷设置里有 Bageo 模式，短信收件箱去掉了，打字时输入栏不会被挡住。电脑、NAS、Docker 版不变。
+- **Made for using only the phone.** Answer whitelisted or urgent calls yourself, take over a live AI call in one tap without hanging up, call from the built-in dialpad, and copy your phone contacts in one tap. The console opens inside the app, also with no internet. If a language is missing, the phone asks you to download it. The module and the app no longer disagree about a ringing call, so none gets lost.
+- **為只用手機而設計。** 白名單或急事可以自己接，AI 通話中一鍵「我來接」就接手、不用掛斷，可以從內建撥號盤打電話，也能一鍵同步手機通訊錄。控制台在 App 裡就能開，沒有網路也行。缺少某個語言時，手機會問你要不要下載。模組和 App 對來電的判斷不一致時也不會漏接。
+- **为只用手机而设计。** 白名单或急事可以自己接，AI 通话中一键“我来接”就接手、不用挂断，可以从内置拨号盘打电话，也能一键同步手机通讯录。控制台在应用里就能打开，没有网络也行。缺少某个语言时，手机会问你要不要下载。模块和应用对来电的判断不一致时也不会漏接。
+- **Calls follow the caller.** Bageo answers in the caller's language and does not switch because of one misheard line. It opens the way people in the caller's country do, whichever SIM took the call. It waits for the caller's goodbye, says goodbye once, and saves the notes first. A call page now shows the live conversation, and translates only when you ask. Calls from couriers no longer get a parcel spot or day picked for you.
+- **電話跟著來電的人走。** Bageo 用對方的語言回話，聽錯一句不會就換語言；不管哪張 SIM 接的，都照對方國家的習慣開場。它會等對方道別、只道別一次，並先把備註存好。通話頁會即時顯示對話，只有你要求時才翻譯。快遞來電不會再替你決定放哪裡或哪一天。
+- **电话跟着来电的人走。** Bageo 用对方的语言回话，听错一句不会就换语言；不管哪张 SIM 接的，都按对方国家的习惯开场。它会等对方道别、只道别一次，并先把备注存好。通话页会实时显示对话，只有你要求时才翻译。快递来电不会再替你决定放哪里或哪一天。
+- **Scam stalling sounds less repetitive.** Bageo notices when a pitch comes round again, varies how its replies end, and stops giving an answer it already gave.
+- **詐騙陪聊不再一直重複。** 對方的話術繞回來時 Bageo 會發現，回話的收尾會有變化，也不再重講已經講過的答案。
+- **诈骗陪聊不再一直重复。** 对方的话术绕回来时 Bageo 会发现，回话的收尾会有变化，也不再重讲已经讲过的答案。
+- **Safer pairing and keys.** Pairing a phone over your home network is better protected, and keys saved in the settings are sealed. A security fix for the desktop app's cookie handling is included.
+- **配對與金鑰更安全。** 手機透過家裡網路配對時保護更完整，存在設定裡的金鑰也加了密。桌面程式也補了一個 cookie 處理的資安修正。
+- **配对与密钥更安全。** 手机通过家里网络配对时保护更完整，存在设置里的密钥也加了密。桌面程序也补了一个 cookie 处理的安全修复。
 
 # Bageo v1.7.0
 

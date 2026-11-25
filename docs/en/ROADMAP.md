@@ -1,6 +1,6 @@
 # Roadmap
 
-What Bageo 1.7 already does as an open-source AI phone assistant, what it does
+What Bageo 2.0 already does as an open-source AI phone assistant, what it does
 only in part, and what would be worth building next. Nothing here is a promise
 or a date; pull requests are welcome.
 

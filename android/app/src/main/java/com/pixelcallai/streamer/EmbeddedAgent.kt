@@ -26,7 +26,10 @@ object EmbeddedAgent {
     private const val TAG = "EmbeddedAgent"
     private const val PRIV_APP_SO = "/system/priv-app/com.pixelcallai.streamer/lib/arm64/libbageo_agent.so"
     private const val PRIV_APP_ASSETS_DIR = "/system/priv-app/com.pixelcallai.streamer/bageo_assets"
-    private const val MODULE_ASSETS_DIR = "/data/adb/modules/pixelcallai_uplink/bageo_assets"
+    private val MODULE_ASSETS_DIRS = listOf(
+        "/data/adb/modules/bageo_ai_call_agent/bageo_assets",
+        "/data/adb/modules/pixelcallai_uplink/bageo_assets",
+    )
 
     /** Header the phone bridge checks on every connection. */
     const val BRIDGE_KEY_HEADER = "x-bageo-bridge-key"
@@ -108,8 +111,7 @@ object EmbeddedAgent {
     fun assetsDir(ctx: Context): File {
         val priv = File(PRIV_APP_ASSETS_DIR)
         if (priv.isDirectory) return priv
-        val mod = File(MODULE_ASSETS_DIR)
-        if (mod.isDirectory) return mod
+        MODULE_ASSETS_DIRS.map(::File).firstOrNull { it.isDirectory }?.let { return it }
         val de = ctx.applicationContext.createDeviceProtectedStorageContext()
         return File(de.filesDir, "assets").apply { mkdirs() }
     }

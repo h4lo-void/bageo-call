@@ -1,0 +1,168 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!-- Bageo AI Call Agent demo animation, 420x800 per frame.
+     Open with ?lang=en or ?lang=zh-CN; render.py calls show(i) for each frame. -->
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:420px;height:800px;font-family:-apple-system,"SF Pro Text","Helvetica Neue","PingFang SC",sans-serif;background:#FFC93F;overflow:hidden;color:#1B1B1F}
+.phone{position:absolute;left:30px;top:22px;width:360px;height:640px;background:#101014;border-radius:44px;padding:12px}
+.screen{position:relative;width:100%;height:100%;border-radius:33px;overflow:hidden;background:#F7F4EC}
+.scene{position:absolute;inset:0;display:none}
+.on{display:block}
+.hide{display:none}
+.cap{position:absolute;left:0;right:0;top:684px;text-align:center;padding:0 18px;font-size:24px;font-weight:800;line-height:1.25}
+.inc{background:linear-gradient(180deg,#123B3B,#0B1F1F);color:#fff;text-align:center}
+.inc .t{margin-top:70px;font-size:16px;opacity:.75}
+.inc .n{font-size:30px;font-weight:700;margin-top:8px}
+.inc .u{font-size:16px;opacity:.7;margin-top:4px}
+.ring{position:absolute;left:50%;top:300px;width:120px;height:120px;margin-left:-60px;border-radius:50%;background:#0E8F8F}
+.ring.big{transform:scale(1.25);box-shadow:0 0 0 18px rgba(14,143,143,.35),0 0 0 40px rgba(14,143,143,.15)}
+.ring svg{width:120px;height:120px}
+.badge{position:absolute;left:24px;right:24px;bottom:46px;background:#FFCF4A;color:#1B1B1F;border-radius:16px;padding:14px;font-weight:700;font-size:17px}
+.bar{background:#0E8F8F;color:#fff;padding:22px 18px 14px}
+.bar .w{font-size:13px;opacity:.85}
+.bar .n{font-size:21px;font-weight:700}
+.st{margin-top:8px;display:inline-block;font-weight:700;font-size:13px;padding:5px 9px;border-radius:8px;background:#fff;color:#0E8F8F}
+.st.scam{background:#FFCF4A;color:#1B1B1F}
+.tm{float:right;font-size:22px;font-weight:800;margin-top:10px;font-variant-numeric:tabular-nums}
+.msgs{padding:16px 12px;display:flex;flex-direction:column;gap:12px}
+.m{max-width:86%;padding:11px 13px;border-radius:16px;font-size:16px;line-height:1.38}
+.c{background:#E4E1D8;align-self:flex-start;border-bottom-left-radius:4px}
+.a{background:#1B1B1F;color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+.l{font-size:11.5px;font-weight:700;opacity:.6;margin-bottom:3px}
+.end{position:absolute;left:12px;right:12px;bottom:14px;background:#fff;border-radius:14px;padding:14px;font-size:16px;line-height:1.4;box-shadow:0 4px 14px rgba(0,0,0,.1)}
+.end span{display:block;opacity:.7}
+.home{background:linear-gradient(180deg,#2B2B33,#16161A);color:#fff}
+.clock{text-align:center;font-size:64px;font-weight:300;margin-top:60px}
+.date{text-align:center;opacity:.7;font-size:15px}
+.note{margin:36px 14px 0;background:rgba(255,255,255,.95);color:#1B1B1F;border-radius:20px;padding:14px}
+.note .h{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;opacity:.7}
+.note .h svg{width:22px;height:22px}
+.note .ti{font-weight:800;font-size:16px;margin-top:6px}
+.note .b{font-size:14.5px;line-height:1.42;margin-top:4px}
+.top{padding:24px 18px 10px;font-size:22px;font-weight:800}
+.card{margin:8px 14px;background:#fff;border-radius:18px;padding:14px;box-shadow:0 3px 12px rgba(0,0,0,.07)}
+.card .k{font-size:12px;font-weight:700;opacity:.55}
+.card .v{font-size:16px;margin-top:4px;line-height:1.4}
+.btn{margin-top:12px;background:#0E8F8F;color:#fff;font-weight:700;text-align:center;padding:12px;border-radius:12px}
+.ok{background:#E8F7EC;border:2px solid #2E9D4F}
+.ok .big{font-size:22px;font-weight:800;color:#1E7A3B}
+.out{background:#FFCF4A;text-align:center}
+.out svg{width:190px;height:190px;margin-top:80px}
+.out h2{font-size:32px;font-weight:800;margin-top:18px}
+.out p{font-size:19px;font-weight:600;margin-top:8px}
+.out .f{margin-top:18px;display:inline-block;background:#0E8F8F;color:#fff;border-radius:14px;padding:10px 18px;font-size:18px;font-weight:800}
+.out .s{margin-top:12px;display:inline-block;background:#1B1B1F;color:#fff;border-radius:999px;padding:9px 16px;font-size:15px;font-weight:700}
+</style></head><body>
+<div class="phone"><div class="screen">
+<div class="scene inc" id="s-inc">
+  <div class="t" data-t="incoming"></div><div class="n">+1 555-0142</div><div class="u" data-t="unknown"></div>
+  <div class="ring" id="ring"><svg viewBox="0 0 120 120"><path d="M42 40c3-3 8-3 10 1l5 9c2 3 1 6-1 8l-4 4c3 7 9 13 16 16l4-4c2-2 5-3 8-1l9 5c4 2 4 7 1 10l-5 5c-4 4-10 5-15 3-16-6-29-19-35-35-2-5-1-11 3-15z" fill="#fff"/></svg></div>
+  <div class="badge hide" id="ans" data-t="picked"></div>
+</div>
+<div class="scene" id="s-call">
+  <div class="bar"><span class="tm" id="tm">0:04</span><div class="w" data-t="oncall"></div><div class="n">+1 555-0142</div><span class="st" id="st"></span></div>
+  <div class="msgs">
+    <div class="m c hide" id="m1"><div class="l" data-t="caller"></div><span data-t="m1"></span></div>
+    <div class="m a hide" id="m2"><div class="l">Bageo AI</div><span data-t="m2"></span></div>
+    <div class="m c hide" id="m3"><div class="l" data-t="caller"></div><span data-t="m3"></span></div>
+    <div class="m a hide" id="m4"><div class="l">Bageo AI</div><span data-t="m4"></span></div>
+    <div class="m c hide" id="m5"><div class="l" data-t="caller"></div><span data-t="m5"></span></div>
+    <div class="m a hide" id="m6"><div class="l">Bageo AI</div><span data-t="m6"></span></div>
+  </div>
+  <div class="end hide" id="hang"><b data-t="hung"></b><span data-t="nodetails"></span></div>
+</div>
+<div class="scene home" id="s-note">
+  <div class="clock">9:41</div><div class="date" data-t="day"></div>
+  <div class="note"><div class="h"><svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="8" width="240" height="240" rx="56" fill="#FFCF4A"/><g fill="#0E8F8F"><rect x="52" y="204" width="136" height="16" rx="8"/><rect x="44" y="204" width="34" height="30" rx="11"/><rect x="162" y="204" width="34" height="30" rx="11"/></g><g stroke="#E08A00" stroke-width="7" stroke-linecap="round"><line x1="104" y1="186" x2="104" y2="203"/><line x1="128" y1="186" x2="128" y2="203"/></g><polygon points="70,150 22,176 30,192 84,176" fill="#1B1B1F"/><ellipse cx="112" cy="142" rx="56" ry="50" fill="#1B1B1F"/><circle cx="146" cy="88" r="38" fill="#1B1B1F"/><polygon points="158,60 166,30 172,56 184,36 184,64 198,50 190,76" fill="#1B1B1F"/><g transform="rotate(-24 100 150)"><ellipse cx="100" cy="150" rx="42" ry="25" fill="#34343B"/><ellipse cx="88" cy="160" rx="18" ry="7" fill="#FFFFFF"/></g><g fill="#FFF4D8" stroke="#1B1B1F" stroke-width="3" stroke-linejoin="round"><polygon points="178,74 216,84 180,92"/><polygon points="180,94 208,102 176,106"/></g><circle cx="158" cy="80" r="8" fill="#FF8A1F"/><circle cx="159" cy="80" r="3.5" fill="#1B1B1F"/><g fill="none" stroke="#1B1B1F" stroke-width="5" stroke-linecap="round"><path d="M222 80 q7 13 0 26"/><path d="M233 71 q13 22 0 44"/></g></svg><span data-t="now"></span></div>
+    <div class="ti" data-t="ntitle"></div><div class="b" data-t="nbody"></div></div>
+</div>
+<div class="scene" id="s-err">
+  <div class="top" data-t="errand"></div>
+  <div class="card" id="callto"><div class="k" data-t="callk"></div><div class="v"><span data-t="shop"></span> · +1 555-0188</div></div>
+  <div class="card"><div class="k" data-t="whatk"></div><div class="v" data-t="what"></div><div class="btn" id="go" data-t="ask"></div></div>
+  <div class="msgs hide" id="em">
+    <div class="m c"><div class="l" data-t="shop"></div><span data-t="r1"></span></div>
+    <div class="m a"><div class="l">Bageo AI</div><span data-t="a1"></span></div>
+  </div>
+  <div class="card ok hide" id="done"><div class="big" data-t="done"></div><div class="v" data-t="donev"></div></div>
+</div>
+<div class="scene out" id="s-out"><svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="8" width="240" height="240" rx="56" fill="#FFCF4A"/><g fill="#0E8F8F"><rect x="52" y="204" width="136" height="16" rx="8"/><rect x="44" y="204" width="34" height="30" rx="11"/><rect x="162" y="204" width="34" height="30" rx="11"/></g><g stroke="#E08A00" stroke-width="7" stroke-linecap="round"><line x1="104" y1="186" x2="104" y2="203"/><line x1="128" y1="186" x2="128" y2="203"/></g><polygon points="70,150 22,176 30,192 84,176" fill="#1B1B1F"/><ellipse cx="112" cy="142" rx="56" ry="50" fill="#1B1B1F"/><circle cx="146" cy="88" r="38" fill="#1B1B1F"/><polygon points="158,60 166,30 172,56 184,36 184,64 198,50 190,76" fill="#1B1B1F"/><g transform="rotate(-24 100 150)"><ellipse cx="100" cy="150" rx="42" ry="25" fill="#34343B"/><ellipse cx="88" cy="160" rx="18" ry="7" fill="#FFFFFF"/></g><g fill="#FFF4D8" stroke="#1B1B1F" stroke-width="3" stroke-linejoin="round"><polygon points="178,74 216,84 180,92"/><polygon points="180,94 208,102 176,106"/></g><circle cx="158" cy="80" r="8" fill="#FF8A1F"/><circle cx="159" cy="80" r="3.5" fill="#1B1B1F"/><g fill="none" stroke="#1B1B1F" stroke-width="5" stroke-linecap="round"><path d="M222 80 q7 13 0 26"/><path d="M233 71 q13 22 0 44"/></g></svg><h2>Bageo AI Call Agent</h2><p data-t="o1"></p><span class="f" data-t="o2"></span><br><span class="s" data-t="o3"></span></div>
+</div></div>
+<div class="cap" id="cap"></div>
+<script>
+const T={
+ "en":{incoming:"Incoming call",unknown:"Unknown caller",picked:"Bageo picked up after 1 ring",oncall:"On call · AI talking",
+  listen:"Listening…",scam:"Scam detected · AI stalling",ended:"Call ended",caller:"Caller",
+  m1:"Hello, this is your bank's security team. Your card has been locked.",
+  m2:"Oh no! Which card? I have the blue one and the old red one…",
+  m3:"Just read me the 6-digit code we sent you.",
+  m4:"Hang on, let me find my glasses… is it the number on the back?",
+  m5:"No! The text message! Sir, please…",
+  m6:"Text message… my grandson set up this phone. Can you spell \"text\"?",
+  hung:"Caller hung up after 27 minutes.",nodetails:"No personal details given.",
+  day:"Tuesday",now:"Bageo · now",ntitle:"Scam call stalled for 27 min",
+  nbody:"Fake bank call from +1 555-0142 asked for a login code. The AI played along and gave nothing away. Nothing for you to do.",
+  errand:"AI errand",callk:"Call",shop:"Pizza Roma",whatk:"What to do",what:"Book a table for 4 tomorrow at 7 pm. 7:30 is fine too.",ask:"Ask AI to call",
+  r1:"Seven is full, sorry. Would 7:30 work?",a1:"7:30 works. A table for four, under Alex, please.",done:"Done ✓",donev:"Tomorrow 7:30 pm · 4 people · under Alex",
+  o1:"AI answers your calls. No PC needed.",o2:"No API fees",o3:"Rooted Android 10+",
+  c_inc:"A call comes in. You don't pick up.",c_ans:"Bageo answers for you",c_scam:"Spots the scam. Keeps them talking.",
+  c_hang:"27 minutes wasted. Not yours.",c_note:"A short summary lands on your phone",c_err:"Write one line. AI makes the call.",
+  c_done:"Booked. It asks you when unsure.",c_out:"No PC. No API fees."},
+ "zh-CN":{incoming:"来电",unknown:"未知号码",picked:"响一声，Bageo 就接起来了",oncall:"通话中 · AI 在说话",
+  listen:"正在听…",scam:"识别为诈骗 · AI 拖住中",ended:"通话结束",caller:"来电者",
+  m1:"你好，这里是银行安全部门，你的银行卡被锁了。",
+  m2:"哎呀！哪张卡？我有蓝色那张，还有旧的红色那张……",
+  m3:"把我们发给你的 6 位验证码念给我就行。",
+  m4:"等等，我找一下老花镜……是卡背面那串数字吗？",
+  m5:"不是！是短信！先生，拜托……",
+  m6:"短信……这手机是我孙子帮我弄的。短信要在哪里点开啊？",
+  hung:"27 分钟后，对方自己挂了。",nodetails:"没给任何个人资料。",
+  day:"星期二",now:"Bageo · 刚刚",ntitle:"诈骗电话，拖了 27 分钟",
+  nbody:"冒充银行的电话（+1 555-0142）要验证码。AI 陪他周旋，什么都没给。你不用处理。",
+  errand:"AI 代打",callk:"打给",shop:"罗马披萨",whatk:"要办的事",what:"订明晚 7 点 4 位，7 点半也行。",ask:"请 AI 打",
+  r1:"不好意思，7 点满了。7 点半可以吗？",a1:"7 点半可以，4 位，登记 Alex。",done:"已订好 ✓",donev:"明晚 7:30 · 4 位 · Alex",
+  o1:"AI 帮你接电话，不用电脑",o2:"免 API 费用",o3:"已 root 的 Android 10+",
+  c_inc:"来电了，你不用接",c_ans:"Bageo 替你接听",c_scam:"识别诈骗，陪他慢慢耗",
+  c_hang:"拖了 27 分钟，浪费的是骗子的时间",c_note:"通话结束，摘要马上通知你",c_err:"写一句话，AI 帮你打电话",
+  c_done:"订好了，拿不准时会先问你",c_out:"免电脑，免 API 费用"}
+};
+const lang=new URLSearchParams(location.search).get("lang")||"en";
+const L=T[lang]||T.en;
+document.documentElement.lang=lang;
+document.querySelectorAll("[data-t]").forEach(e=>{e.textContent=L[e.dataset.t];});
+const F=[
+ {s:"inc",c:"c_inc",ring:0},{s:"inc",c:"c_inc",ring:1},{s:"inc",c:"c_inc",ring:0},{s:"inc",c:"c_inc",ring:1},
+ {s:"inc",c:"c_ans",ans:1},
+ {s:"call",c:"c_ans",m:1,tm:"0:06",st:"listen"},
+ {s:"call",c:"c_scam",m:2,tm:"0:21",st:"scam"},
+ {s:"call",c:"c_scam",m:3,tm:"3:48",st:"scam"},
+ {s:"call",c:"c_scam",m:4,tm:"9:15",st:"scam"},
+ {s:"call",c:"c_scam",m:5,tm:"18:02",st:"scam"},
+ {s:"call",c:"c_scam",m:6,tm:"26:57",st:"scam"},
+ {s:"call",c:"c_hang",m:6,tm:"27:05",st:"ended",hang:1},
+ {s:"note",c:"c_note"},
+ {s:"err",c:"c_err"},
+ {s:"err",c:"c_err",em:1},
+ {s:"err",c:"c_done",em:1,done:1},
+ {s:"out",c:"c_out"}
+];
+const D=[450,450,450,450,1300,1300,1500,1500,1500,1500,1500,2000,2800,1600,1900,2400,2800];
+function show(i){
+ const f=F[i];
+ document.querySelectorAll(".scene").forEach(e=>e.classList.remove("on"));
+ document.getElementById("s-"+f.s).classList.add("on");
+ document.getElementById("cap").textContent=L[f.c];
+ document.getElementById("ring").className="ring"+(f.ring?" big":"");
+ document.getElementById("ans").classList.toggle("hide",!f.ans);
+ for(let k=1;k<=6;k++){document.getElementById("m"+k).classList.toggle("hide",!(f.m>=k)||(f.m>4&&k<=f.m-4));}
+ if(f.tm)document.getElementById("tm").textContent=f.tm;
+ if(f.st){const s=document.getElementById("st");s.textContent=L[f.st];s.className="st"+(f.st!=="listen"?" scam":"");}
+ document.getElementById("hang").classList.toggle("hide",!f.hang);
+ document.getElementById("em").classList.toggle("hide",!f.em);
+ document.getElementById("done").classList.toggle("hide",!f.done);
+ document.getElementById("go").classList.toggle("hide",!!f.em);
+ document.getElementById("callto").classList.toggle("hide",!!f.done);
+}
+window.FRAMES=F.length;window.DUR=D;
+</script></body></html>
