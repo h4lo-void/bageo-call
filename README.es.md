@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v1.7.0"><img src="https://img.shields.io/badge/release-v1.7.0-brightgreen.svg" alt="Versión v1.7.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.0.0"><img src="https://img.shields.io/badge/release-v2.0.0-brightgreen.svg" alt="Versión v2.0.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="Licencia: AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/commercial-dual%20license-gold.svg" alt="Licencia comercial disponible"></a>
 </p>
@@ -42,6 +42,21 @@
     </td>
   </tr>
 </table>
+
+## Edición solo móvil: sin ordenador y sin costo de API
+
+<p align="center">
+  <a href="store/kernelsu/README.md"><img src="store/kernelsu/assets/banner.en.png" width="760" alt="Bageo AI Call Agent: la edición de Bageo solo para el móvil"></a>
+</p>
+
+**Bageo AI Call Agent** es la edición de Bageo solo para el móvil: todo Bageo funciona en un teléfono Android con root, así que no hace falta tener un ordenador encendido. Usa una clave gratuita de Gemini de Google AI Studio, por lo que no pagas por la API; en nuestras pruebas, el cupo gratuito alcanzó para 10 llamadas o más al día (Google fija el límite gratuito y puede cambiar). Descarga `bageo-phone-standalone-<versión>.zip` desde [Releases](https://github.com/h4lo-void/bageo-call/releases) e instálalo en KernelSU o Magisk. [Lee la presentación completa](store/kernelsu/README.md).
+
+| Archivo de instalación | Para qué sirve | ID del módulo |
+|---|---|---|
+| `bageo-phone-standalone-<versión>.zip` | **Bageo AI Call Agent**: solo móvil, sin ordenador. Todo Bageo funciona en el teléfono. | `bageo_ai_call_agent` |
+| `bageo-phone-module-<versión>.zip` | Para usar con un ordenador: va con el instalador de Windows, macOS o Linux, o con Docker. | `pixelcallai_uplink` (el gestor muestra **Bageo Uplink (for Bageo on a computer)**) |
+
+Instala solo uno de los dos. Al instalar uno, el otro se elimina solo en el siguiente reinicio.
 
 <p align="center"><sub>El nombre viene de bāgē (八哥), el miná crestado, un ave que aprende a hablar como las personas con las que vive.</sub></p>
 
@@ -216,7 +231,7 @@ Todas las funciones en detalle: [Funciones](docs/en/FEATURES.md).
 ## Qué necesitas
 
 1. **Un teléfono Android de repuesto** con tu SIM, con root mediante Magisk o KernelSU, Android 10 o superior. Probado: Google Pixel 7, 7a, 8 y 9.
-2. **Un ordenador** encendido mientras quieras que se contesten llamadas: Windows 10/11, macOS, Linux o Docker.
+2. **Un ordenador** encendido mientras quieras que se contesten llamadas: Windows 10/11, macOS, Linux o Docker. Con la edición solo para el móvil no necesitas ordenador.
 3. **Un cable USB** (también funciona con Wi-Fi).
 4. **Una clave de API de Gemini** de [Google AI Studio](https://aistudio.google.com/apikey). Google cobra por uso.
 

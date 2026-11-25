@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v1.7.0"><img src="https://img.shields.io/badge/release-v1.7.0-brightgreen.svg" alt="リリース v1.7.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.0.0"><img src="https://img.shields.io/badge/release-v2.0.0-brightgreen.svg" alt="リリース v2.0.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="ライセンス：AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/commercial-dual%20license-gold.svg" alt="商用ライセンスあり"></a>
 </p>
@@ -42,6 +42,21 @@
     </td>
   </tr>
 </table>
+
+## スマホ単体版：パソコン不要、API 料金なし
+
+<p align="center">
+  <a href="store/kernelsu/README.md"><img src="store/kernelsu/assets/banner.en.png" width="760" alt="Bageo AI Call Agent：スマホ単体版"></a>
+</p>
+
+**Bageo AI Call Agent** は Bageo のスマホ単体版です。Bageo のすべてを root 化した Android スマホに入れるので、パソコンを起動しておく必要はありません。Google AI Studio の無料の Gemini キーを使うため、API 料金はかかりません。私たちの実測では、無料枠で 1 日 10 件以上の通話をまかなえました（無料枠の上限は Google が決めるため、変わることがあります）。[Releases](https://github.com/h4lo-void/bageo-call/releases) から `bageo-phone-standalone-<バージョン>.zip` をダウンロードし、KernelSU または Magisk でインストールします。[詳しい紹介を読む](store/kernelsu/README.md)。
+
+| インストールファイル | 用途 | モジュール ID |
+|---|---|---|
+| `bageo-phone-standalone-<バージョン>.zip` | **Bageo AI Call Agent**（スマホ単体版）：パソコン不要。Bageo のすべてがスマホの中で動きます。 | `bageo_ai_call_agent` |
+| `bageo-phone-module-<バージョン>.zip` | パソコン連携用：Windows・macOS・Linux のインストーラー、または Docker と組み合わせて使います。 | `pixelcallai_uplink`（管理アプリでは **Bageo Uplink (for Bageo on a computer)** と表示） |
+
+インストールするのは、どちらか 1 つだけです。片方を入れると、もう片方は次の再起動で自動的に削除されます。
 
 <p align="center"><sub>名前の由来は bāgē (八哥)。ハッカチョウという鳥で、一緒に暮らす人の話し方を覚えて真似します。</sub></p>
 
@@ -216,7 +231,7 @@
 ## 必要なもの
 
 1. **予備の Android スマホ**：自分の SIM を入れ、Magisk か KernelSU で root 化した Android 10 以上のもの。動作確認済み：Google Pixel 7、7a、8、9。
-2. **パソコン**：電話に出てほしい間、電源が入っているもの。Windows 10/11、macOS、Linux、または Docker。
+2. **パソコン**：電話に出てほしい間、電源が入っているもの。Windows 10/11、macOS、Linux、または Docker。スマホ単体版ならパソコンは要りません。
 3. **USB ケーブル**（Wi-Fi でも使えます）。
 4. **Gemini API キー**：[Google AI Studio](https://aistudio.google.com/apikey) で取得します。料金は、使った分だけ Google から請求されます。
 

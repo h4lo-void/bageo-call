@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v1.7.0"><img src="https://img.shields.io/badge/release-v1.7.0-brightgreen.svg" alt="Release v1.7.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.0.0"><img src="https://img.shields.io/badge/release-v2.0.0-brightgreen.svg" alt="Release v2.0.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="授權：AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/商業授權-雙重授權-gold.svg" alt="提供商業授權"></a>
 </p>
@@ -42,6 +42,21 @@
     </td>
   </tr>
 </table>
+
+## 手機獨立版：不用電腦、免 API 費用
+
+<p align="center">
+  <a href="store/kernelsu/README.md"><img src="store/kernelsu/assets/banner.en.png" width="760" alt="Bageo AI Call Agent：手機獨立版"></a>
+</p>
+
+**Bageo AI Call Agent** 是 Bageo 的手機獨立版：整個 Bageo 裝在已 root 的 Android 手機上，不用開電腦。它使用 Google AI Studio 的免費 Gemini 金鑰，不必付 API 費用；我們實測免費額度每天 10 通以上夠用（免費額度的上限由 Google 決定，可能會變）。到 [Releases](https://github.com/h4lo-void/bageo-call/releases) 下載 `bageo-phone-standalone-<版本>.zip`，在 KernelSU 或 Magisk 安裝。[看完整介紹](store/kernelsu/README.md)。
+
+| 安裝檔 | 用途 | 模組 ID |
+|---|---|---|
+| `bageo-phone-standalone-<版本>.zip` | **Bageo AI Call Agent**（手機獨立版）：不用電腦，整個 Bageo 在手機上。 | `bageo_ai_call_agent` |
+| `bageo-phone-module-<版本>.zip` | 配電腦用：搭配 Windows、macOS、Linux 安裝檔或 Docker。 | `pixelcallai_uplink`（管理器顯示 **Bageo Uplink (for Bageo on a computer)**） |
+
+兩個只能裝一個；裝其中一個，另一個會在下次重新開機自動移除。
 
 <p align="center"><sub>名字取自八哥（bāgē）：一種會學身邊的人講話的鳥。</sub></p>
 
@@ -216,7 +231,7 @@ AI 一確定對方是推銷或詐騙，就變成一個有興趣、反應慢、�
 ## 需要準備什麼
 
 1. **一支備用 Android 手機**，插著你的 SIM 卡，用 Magisk 或 KernelSU root，Android 10 以上。實測過 Google Pixel 7、7a、8、9。
-2. **一台電腦**，需要接電話的時段開著：Windows 10/11、macOS、Linux 或 Docker。
+2. **一台電腦**，需要接電話的時段開著：Windows 10/11、macOS、Linux 或 Docker。用手機獨立版就不需要電腦。
 3. **一條 USB 線**（也可以用 Wi-Fi）。
 4. **一把 Gemini API 金鑰**，到 [Google AI Studio](https://aistudio.google.com/apikey) 取得，Google 依用量計費。
 

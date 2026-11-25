@@ -16,17 +16,32 @@ This page covers:
 Building the app, its permissions and its protocol are covered in
 [`android/README.md`](../../android/README.md).
 
-This page describes **Bageo 1.7**: the root module `v1.7.0` (versionCode 26)
-with the app `1.7.0` (versionCode 34) inside, installed from
-`bageo-phone-module-1.7.0.zip` (for pairing with Bageo on a computer or NAS) or
-`bageo-phone-standalone-1.7.0.zip` (phone-only standalone edition: runs the full
-Bageo engine and console inside the phone with no computer needed). The app shows
-its version under *Advanced*, and the console under *System → Phones*.
+This page describes **Bageo 2.0**: the root module `v2.0.0` with the app
+`2.0.0` inside, installed from
+`bageo-phone-module-2.0.0.zip` (**Bageo Uplink**, for pairing with Bageo on a
+computer or NAS) or
+`bageo-phone-standalone-2.0.0.zip` (**Bageo AI Call Agent**, the phone-only
+edition: runs the full Bageo engine and console inside the phone with no computer
+needed). The app shows its version under *Advanced*, and the console under
+*System → Phones*.
 
-> **Want phone-only with no computer?** Flash `bageo-phone-standalone-1.7.0.zip`
-> instead. Both zips share the same app and module id, so one updates over the
-> other. In the standalone edition the console opens only inside the Bageo app on
-> the phone; other phones and computers cannot open it.
+| Install file | What it is | Module ID |
+|---|---|---|
+| `bageo-phone-standalone-2.0.0.zip` | **Bageo AI Call Agent**: phone-only, no computer. All of Bageo runs on the phone. | `bageo_ai_call_agent` (shown as **Bageo AI Call Agent**) |
+| `bageo-phone-module-2.0.0.zip` | For Bageo on a computer: use it with the Windows, macOS or Linux installer, or Docker. | `pixelcallai_uplink` (shown as **Bageo Uplink (for Bageo on a computer)**) |
+
+Install only one of the two. When you install one, the other is removed automatically at the next reboot.
+
+> **Want phone-only with no computer?** Flash `bageo-phone-standalone-2.0.0.zip`
+> instead. With a free Gemini key from Google AI Studio you pay no API fees; in
+> our own tests the free quota covered 10 or more calls a day (Google sets the
+> free limit, and it can change). The two editions have different module IDs:
+> the phone-only edition is `bageo_ai_call_agent` (shown as *Bageo AI Call Agent*
+> in the root manager), the computer edition is `pixelcallai_uplink` (shown as
+> *Bageo Uplink (for Bageo on a computer)*). When you install one, the other is removed automatically at the
+> next reboot; the app and its settings stay. In the phone-only edition the console
+> opens only inside the Bageo app on the phone; other phones and computers cannot
+> open it.
 
 ## What the phone does
 
@@ -79,7 +94,7 @@ handset. All of this can be switched off from the app or the console (see
 1. **Root** the phone with Magisk or KernelSU (not covered here).
 2. If you ever installed the app as a plain APK, uninstall it. Never have both.
 3. Copy `bageo-phone-module-<version>.zip` to the phone (for this release
-   `bageo-phone-module-1.7.0.zip`). In the Magisk or KernelSU app: *Modules →
+   `bageo-phone-module-2.0.0.zip`). In the Magisk or KernelSU app: *Modules →
    Install from storage* → pick the zip → reboot.
 4. Open **Bageo**. The card at the top says in one sentence what the phone is
    doing right now. Below it, **Setup steps** lists what is still missing,
@@ -269,7 +284,8 @@ volumes go to zero.
   step, and so does the next start of the app (after a reboot, say) while a
   switch is unfinished.
 - If the app says the Bageo module is not running, check in Magisk or KernelSU
-  that **Bageo Uplink** is enabled, then reboot the phone.
+  that **Bageo Uplink** (computer edition) or **Bageo AI Call Agent** (phone-only
+  edition) is enabled, then reboot the phone.
 - The app shows the mode the phone is really in, not the one you asked for: it changes only after the switch has finished. A switch to AI answering that fails puts the phone back as a normal phone, and at the next boot the module repairs a normal phone that was left half switched (Google Phone turned off, or Bageo still the phone app).
 - If the app says *Do Not Disturb is still on* when you switch to a normal phone,
   open **Settings → Modes** on the phone, turn off the mode the app names (for
@@ -319,10 +335,13 @@ To remove Bageo:
 1. Switch the phone to a [normal phone](#normal-phone-mode) first. That brings
    back Google's phone app, the ringer and the volumes and turns off Do Not
    Disturb, so steps 3 and 4 are already done.
-2. Disable or remove the **Bageo Uplink** module in Magisk or KernelSU and
+2. Disable or remove the Bageo module in Magisk or KernelSU (**Bageo Uplink** for
+   the computer edition, **Bageo AI Call Agent** for the phone-only edition) and
    reboot. If the phone does not boot far enough, use the root manager's safe
-   mode, or run this with root from recovery:
-   `touch /data/adb/modules/pixelcallai_uplink/disable`. The folder
+   mode, or run one of these with root from recovery:
+   `touch /data/adb/modules/pixelcallai_uplink/disable` (computer edition) or
+   `touch /data/adb/modules/bageo_ai_call_agent/disable` (phone-only edition).
+   The folder
    `/data/adb/pixelcallai/` with the mode file stays; delete it too if you do
    not plan to install Bageo again.
 3. If you removed the module without switching first: removing it does **not**

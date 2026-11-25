@@ -12,11 +12,18 @@
 
 构建应用、它的权限和通信协议，写在 [`android/README.md`](../../android/README.md)（英文）里。
 
-这一页说明的是 **Bageo 1.7**：root 模块 `v1.7.0`（versionCode 26），里面的应用是 `1.7.0`（versionCode 34）。
+这一页说明的是 **Bageo 2.0**：root 模块 `v2.0.0`，里面的应用是 `2.0.0`。
 
-安装包有两个：`bageo-phone-module-1.7.0.zip`（配合电脑或 NAS 使用）与 `bageo-phone-standalone-1.7.0.zip`（手机单机版，不需要电脑，把完整 Bageo 与控制台装在手机里）。应用的版本在“高级”页面能看到，控制台则在“系统 → 手机”里。
+安装包有两个：`bageo-phone-module-2.0.0.zip`（电脑联动版 **Bageo Uplink**，配合电脑或 NAS 使用）与 `bageo-phone-standalone-2.0.0.zip`（手机独立版 **Bageo AI Call Agent**，不需要电脑，把完整 Bageo 与控制台装在手机里）。应用的版本在“高级”页面能看到，控制台则在“系统 → 手机”里。
 
-> **想完全不靠电脑？** 直接改刷 `bageo-phone-standalone-1.7.0.zip` 即可。两份模块包 id 相同，可直接覆盖切换；手机单机版的控制台只能在手机上的 Bageo 应用里打开，其他手机或电脑都打不开。
+| 安装包 | 用途 | 模块 ID |
+|---|---|---|
+| `bageo-phone-standalone-2.0.0.zip` | **Bageo AI Call Agent**（手机独立版）：不用电脑，整个 Bageo 在手机上。 | `bageo_ai_call_agent`（管理器显示 Bageo AI Call Agent） |
+| `bageo-phone-module-2.0.0.zip` | 配电脑用：搭配 Windows、macOS、Linux 安装包或 Docker。 | `pixelcallai_uplink`（管理器显示 **Bageo Uplink (for Bageo on a computer)**） |
+
+两个只能装一个；装其中一个，另一个会在下次重启时自动移除。
+
+> **想完全不靠电脑？** 直接改刷 `bageo-phone-standalone-2.0.0.zip` 即可。用 Google AI Studio 的免费 Gemini 密钥就不用付 API 费用；我们实测免费额度每天 10 通以上够用（免费额度的上限由 Google 决定，可能会变）。两个版本的模块 ID 不同：手机独立版是 `bageo_ai_call_agent`（管理器里显示 Bageo AI Call Agent），电脑联动版是 `pixelcallai_uplink`（显示 Bageo Uplink）。装其中一版时，另一版会在下次重启自动移除，应用与设置都会保留。手机独立版的控制台只能在手机上的 Bageo 应用里打开，其他手机或电脑都打不开。
 
 ## 手机会做哪些事
 
@@ -58,7 +65,7 @@
 
 1. 用 Magisk 或 KernelSU 给手机 **root**（这里不讲）。
 2. 如果你曾经把这个应用当作普通 APK 安装过，请先卸载。两种绝对不要同时存在。
-3. 把 `bageo-phone-module-<version>.zip` 复制到手机（这一版是 `bageo-phone-module-1.7.0.zip`）。在 Magisk 或 KernelSU 应用里：“模块”（Modules）→“从本地安装”（Install from storage）→ 选择那个 zip → 重启。
+3. 把 `bageo-phone-module-<version>.zip` 复制到手机（这一版是 `bageo-phone-module-2.0.0.zip`）。在 Magisk 或 KernelSU 应用里：“模块”（Modules）→“从本地安装”（Install from storage）→ 选择那个 zip → 重启。
 4. 打开 **Bageo**。最上面的卡片用一句话说明手机现在的状态。下面的“**设置步骤**”列出还没完成的事，每一步都有按钮：
 
    | 步骤 | 要做什么 |
@@ -161,7 +168,7 @@ USB 还能让手机一直充电，没有 Wi-Fi 也能用。一台电脑可以插
 ### 切换没完成时
 
 - 应用和控制台会说明是哪一步失败（例如“手机没办法更换默认电话应用”）。再切一次会把每一步重做一遍；切换还没完成时，应用下次启动（例如重启后）也会自己重做。
-- 如果应用提示 Bageo 模块没有在运行，请在 Magisk 或 KernelSU 中确认 **Bageo Uplink** 模块已启用，然后重启手机。
+- 如果应用提示 Bageo 模块没有在运行，请在 Magisk 或 KernelSU 中确认 **Bageo Uplink**（电脑联动版）或 **Bageo AI Call Agent**（手机独立版）模块已启用，然后重启手机。
 - 应用显示的是手机实际所在的模式，不是你刚点的那个：切换完成后才会改。切成 AI 接听时失败，手机会退回普通手机；下次开机时，模块也会把切到一半的普通手机修好（Google 电话被关掉，或 Bageo 还是默认电话应用）。
 - 切成普通手机时应用提示“勿扰还开着”：到手机的“设置 → 模式”，把应用点名的那个模式关掉（例如“零打扰 (Bageo)”或“就寝时间”），再切一次。这种情况应用不会自己重试。Android 15 及以上，1.4.0 及更早的应用会自己开一个以 Bageo 命名的模式，模块关不掉它；新版应用不再开，切成普通手机前也会先把它关掉。
 - 控制台 15 秒内没收到手机回复时，会显示“结果未确认，请稍后刷新。”，稍后刷新就能看到手机报告的模式。
@@ -197,9 +204,9 @@ USB 还能让手机一直充电，没有 Wi-Fi 也能用。一台电脑可以插
 要移除 Bageo：
 
 1. 先把手机切成[普通手机](#普通手机模式)。这会恢复 Google 的电话应用、铃声和音量，并关掉勿扰模式，第 3、4 步就不用做了。
-2. 在 Magisk 或 KernelSU 里停用或移除 **Bageo Uplink** 模块，然后重启。
+2. 在 Magisk 或 KernelSU 里停用或移除 Bageo 模块（电脑联动版是 **Bageo Uplink**，手机独立版是 **Bageo AI Call Agent**），然后重启。
 
-   如果手机启动不到那一步，请使用 root 管理器的安全模式，或者在 recovery 里以 root 身份运行：`touch /data/adb/modules/pixelcallai_uplink/disable`。
+   如果手机启动不到那一步，请使用 root 管理器的安全模式，或者在 recovery 里以 root 身份运行：电脑联动版用 `touch /data/adb/modules/pixelcallai_uplink/disable`，手机独立版用 `touch /data/adb/modules/bageo_ai_call_agent/disable`。
 
    放模式文件的 `/data/adb/pixelcallai/` 文件夹会保留；以后不打算再装 Bageo 的话，也把它删掉。
 3. 如果没先切换就移除了模块：移除模块**不会**恢复 Google 的电话应用，也不会关掉勿扰模式，因为这两样 Android 都会记住。重新启用电话应用：

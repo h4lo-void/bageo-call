@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v1.7.0"><img src="https://img.shields.io/badge/release-v1.7.0-brightgreen.svg" alt="릴리스 v1.7.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.0.0"><img src="https://img.shields.io/badge/release-v2.0.0-brightgreen.svg" alt="릴리스 v2.0.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="라이선스: AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/commercial-dual%20license-gold.svg" alt="상용 라이선스 제공"></a>
 </p>
@@ -42,6 +42,21 @@
     </td>
   </tr>
 </table>
+
+## 휴대폰 단독 실행판: 컴퓨터 없이, API 요금 없이
+
+<p align="center">
+  <a href="store/kernelsu/README.md"><img src="store/kernelsu/assets/banner.en.png" width="760" alt="Bageo AI Call Agent: 휴대폰 단독 실행판"></a>
+</p>
+
+**Bageo AI Call Agent**는 Bageo의 휴대폰 단독 실행판입니다. Bageo 전체를 루팅한 Android 폰에 설치하므로 컴퓨터를 켜 둘 필요가 없습니다. Google AI Studio의 무료 Gemini 키를 쓰기 때문에 API 요금이 들지 않습니다. 직접 써 본 결과 무료 한도로 하루 10통 이상은 충분했습니다(무료 한도는 Google이 정하며 바뀔 수 있습니다). [Releases](https://github.com/h4lo-void/bageo-call/releases)에서 `bageo-phone-standalone-<버전>.zip`을 내려받아 KernelSU 또는 Magisk에서 설치하세요. [전체 소개 보기](store/kernelsu/README.md).
+
+| 설치 파일 | 용도 | 모듈 ID |
+|---|---|---|
+| `bageo-phone-standalone-<버전>.zip` | **Bageo AI Call Agent**(휴대폰 단독 실행판): 컴퓨터 없이, Bageo 전체가 휴대폰에서 돌아갑니다. | `bageo_ai_call_agent` |
+| `bageo-phone-module-<버전>.zip` | 컴퓨터와 함께 쓰는 용도: Windows·macOS·Linux 설치 파일 또는 Docker와 함께 씁니다. | `pixelcallai_uplink`(관리자 앱에는 **Bageo Uplink (for Bageo on a computer)**로 표시) |
+
+둘 중 하나만 설치하세요. 하나를 설치하면 다른 하나는 다음 재부팅 때 자동으로 제거됩니다.
 
 <p align="center"><sub>이름은 bāgē (八哥)에서 따왔습니다. 뿔찌르레기라는 새로, 함께 사는 사람들의 말투를 배워 따라 합니다.</sub></p>
 
@@ -216,7 +231,7 @@
 ## 필요한 것
 
 1. **여분의 Android 폰**: 내 SIM을 넣고 Magisk나 KernelSU로 root 한 Android 10 이상 기기. 테스트한 기기: Google Pixel 7, 7a, 8, 9.
-2. **컴퓨터**: 전화를 받아야 하는 동안 켜져 있는 컴퓨터. Windows 10/11, macOS, Linux 또는 Docker.
+2. **컴퓨터**: 전화를 받아야 하는 동안 켜져 있는 컴퓨터. Windows 10/11, macOS, Linux 또는 Docker. 휴대폰 단독 실행판을 쓰면 컴퓨터는 필요 없습니다.
 3. **USB 케이블** (Wi-Fi로도 됩니다).
 4. **Gemini API 키**: [Google AI Studio](https://aistudio.google.com/apikey)에서 받습니다. 사용한 만큼 Google이 청구합니다.
 

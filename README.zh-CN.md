@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v1.7.0"><img src="https://img.shields.io/badge/release-v1.7.0-brightgreen.svg" alt="Release v1.7.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.0.0"><img src="https://img.shields.io/badge/release-v2.0.0-brightgreen.svg" alt="Release v2.0.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="许可证：AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/商业授权-双重授权-gold.svg" alt="提供商业授权"></a>
 </p>
@@ -42,6 +42,21 @@
     </td>
   </tr>
 </table>
+
+## 手机独立版：不用电脑、免 API 费用
+
+<p align="center">
+  <a href="store/kernelsu/README.md"><img src="store/kernelsu/assets/banner.zh-CN.png" width="760" alt="Bageo AI Call Agent：手机独立版"></a>
+</p>
+
+**Bageo AI Call Agent** 是 Bageo 的手机独立版：整个 Bageo 装在已 root 的 Android 手机上，不用开电脑。它使用 Google AI Studio 的免费 Gemini 密钥，不必付 API 费用；我们实测免费额度每天 10 通以上够用（免费额度的上限由 Google 决定，可能会变）。到 [Releases](https://github.com/h4lo-void/bageo-call/releases) 下载 `bageo-phone-standalone-<版本>.zip`，在 KernelSU 或 Magisk 安装。[看完整介绍](store/kernelsu/README.md)。
+
+| 安装包 | 用途 | 模块 ID |
+|---|---|---|
+| `bageo-phone-standalone-<版本>.zip` | **Bageo AI Call Agent**（手机独立版）：不用电脑，整个 Bageo 在手机上。 | `bageo_ai_call_agent` |
+| `bageo-phone-module-<版本>.zip` | 配电脑用：搭配 Windows、macOS、Linux 安装包或 Docker。 | `pixelcallai_uplink`（管理器显示 **Bageo Uplink (for Bageo on a computer)**） |
+
+两个只能装一个；装其中一个，另一个会在下次重启时自动移除。
 
 <p align="center"><sub>名字取自八哥（bāgē）：一种会学身边的人说话的鸟。</sub></p>
 
@@ -216,7 +231,7 @@ AI 一确定对方是推销或诈骗，就变成一个有兴趣、反应慢、�
 ## 需要准备什么
 
 1. **一部备用 Android 手机**，插着你的 SIM 卡，用 Magisk 或 KernelSU root，Android 10 及以上。实测过 Google Pixel 7、7a、8、9。
-2. **一台电脑**，需要接电话的时段开着：Windows 10/11、macOS、Linux 或 Docker。
+2. **一台电脑**，需要接电话的时段开着：Windows 10/11、macOS、Linux 或 Docker。用手机独立版就不需要电脑。
 3. **一根 USB 线**（也可以用 Wi-Fi）。
 4. **一个 Gemini API 密钥**，在 [Google AI Studio](https://aistudio.google.com/apikey) 获取，Google 按用量计费。
 
