@@ -639,7 +639,7 @@
     "ab_settings": "設定檔",
     "ab_retention": "紀錄保留",
     "ab_days": "{n} 天",
-    "raw_health": "原始 /health 資料（除錯用）",
+    "raw_health": "技術資料（除錯用）",
     "ev_hello_reattach": "通話中手機重新連上",
     "ev_live_ai_start": "AI 助理開始（舊選單）",
     "ev_shaming_played": "播放浪費能源提示",

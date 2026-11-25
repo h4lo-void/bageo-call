@@ -426,7 +426,7 @@ audio{width:100%;height:42px;margin-top:10px;display:block}
 .bk-row:first-child{border-top:0}
 .bk-when{flex:1 1 10rem;min-width:0}
 .bk-meta{color:var(--muted);font-size:.82rem}
-.bk-acts{display:flex;gap:6px;margin-inline-start:auto}
+.bk-acts{display:flex;flex-wrap:wrap;gap:6px;margin-inline-start:auto;max-width:100%}
 .bk-warns{margin-top:10px;padding:8px 12px;border-radius:var(--radius-sm);background:var(--surface2);font-size:.86rem}
 .ex-list{max-height:50vh;overflow:auto;margin-top:10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg)}
 .ex-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line)}
@@ -567,6 +567,11 @@ main{padding-block:8px calc(var(--tab-h) + 24px + env(safe-area-inset-bottom));p
 .pad{padding:16px}
 .banner{border:0;border-radius:var(--radius);padding:14px 16px;min-height:56px;background:var(--md-sc)}
 .banner.info{background:var(--md-sc);color:var(--text)}
+/* Narrow phones: the text keeps a readable width and the buttons drop below it. */
+.banner{flex-wrap:wrap}
+.banner > .grow{flex:1 1 220px;min-width:0}
+.banner > .grow + .btn,.banner-acts{margin-inline-start:auto}
+.banner-acts{display:flex;gap:8px;flex:0 0 auto}
 
 /* buttons: tonal by default, filled for the main action, text for quiet ones */
 .btn{position:relative;min-height:48px;padding:10px 20px;border:0;border-radius:999px;background:var(--md-secondary-container);color:var(--md-on-secondary-container);font-size:.875rem;font-weight:500;line-height:1.25}
@@ -739,8 +744,10 @@ input[type=text],input[type=search],input[type=password],input[type=url],input[t
 
   <div class="banner info" id="vpCard" hidden role="status">
     <span class="grow"><b id="vpCardAsk"></b> <span id="vpCardHelp"></span><span class="help" id="vpCardEn" style="display:block"></span></span>
-    <button type="button" class="btn sm primary" id="vpCardGet" data-i18n="vp_get"></button>
-    <button type="button" class="btn sm ghost" id="vpCardLater" data-i18n="vp_not_now"></button>
+    <span class="banner-acts">
+      <button type="button" class="btn sm primary" id="vpCardGet" data-i18n="vp_get"></button>
+      <button type="button" class="btn sm ghost" id="vpCardLater" data-i18n="vp_not_now"></button>
+    </span>
   </div>
 
   <!-- ======================= TAB 1: CALLS ======================= -->
@@ -5278,7 +5285,8 @@ for (const id of ["f-about_say", "f-about_avoid"]) {
 function renderAboutHints() {
   const r = regionOfCountry(homeCountryNow()) || (packRegions || []).find((x) => x.code === "default");
   let d = r && r.delivery ? String((lang === "en" ? r.delivery.en : lang.startsWith("zh") ? r.delivery.zh : "") || "") : "";
-  if (lang.startsWith("zh") && /[^\u0000-\u024F\u2000-\u206F\u3000-\u30FF\u3400-\u9FFF\uAC00-\uD7AF\uFF00-\uFFEF]/.test(d)) d = "";
+  // A Chinese example with another script or English words in it ("porch") reads as a mistake.
+  if (lang.startsWith("zh") && (/[^\u0000-\u024F\u2000-\u206F\u3000-\u30FF\u3400-\u9FFF\uAC00-\uD7AF\uFF00-\uFFEF]/.test(d) || /[A-Za-z]{2,}/.test(d))) d = "";
   $("f-about_parcel").placeholder = d ? t("ab_parcel_ph", { x: d }) : t("ab_parcel_ph0");
   abSyncBox($("f-about_say"));
   abSyncBox($("f-about_avoid"));
@@ -5391,7 +5399,8 @@ function chanCard(c) {
   const card = h("div", { class: "chan" + (c.enabled ? "" : " offc") });
   const sw = h("input", { type: "checkbox", checked: !!c.enabled, onchange: () => { c.enabled = sw.checked; card.classList.toggle("offc", !c.enabled); if (c.id) saveChannelsNow(); else markDirty(); } });
   const hint = tCode("hint_", c.kind);
-  card.append(
+  // append() writes a null child out as the text "null"; leave the empty ones out.
+  card.append(...[
     h("div", { class: "chan-head" },
       h("span", { class: "kind", text: kindLabel(c.kind) }),
       c.id ? null : h("span", { class: "tag warn", text: t("n_new") }),
@@ -5399,7 +5408,7 @@ function chanCard(c) {
       h("button", { type: "button", class: "btn xs ghost", text: t("ct_delete"), onclick: () => { chans = chans.filter((x) => x !== c); renderChannels(); if (c.id) saveChannelsNow(); } })),
     fields, ctl,
     hint !== c.kind ? h("p", { class: "help", text: hint }) : null,
-    h("div", { class: "chan-foot" }, saveBtn, testBtn, res));
+    h("div", { class: "chan-foot" }, saveBtn, testBtn, res)].filter(Boolean));
   return card;
 }
 function renderChannels() {
@@ -5888,7 +5897,7 @@ function bkRender() {
       h("div", { class: "bk-acts" },
         h("button", { type: "button", class: "btn xs", disabled: busy, dataset: { bkRestore: b.name }, text: t("bk_btn_restore") }),
         h("button", { type: "button", class: "btn xs", disabled: busy, dataset: { bkDownload: b.name }, text: t("bk_btn_download") }),
-        h("button", { type: "button", class: "btn xs ghost", disabled: busy, dataset: { bkDelete: b.name }, text: t("bk_btn_delete") }))));
+        h("button", { type: "button", class: "btn xs danger", disabled: busy, dataset: { bkDelete: b.name }, text: t("bk_btn_delete") }))));
   }
   $("btnBkAll").hidden = list.length <= 6;
   $("btnBkAll").textContent = bkAll ? t("bk_show_less") : t("bk_show_all", { n: list.length });
@@ -6181,12 +6190,12 @@ function vpRender() {
   const offer = vpOffer();
   $("vpCard").hidden = !offer;
   if (offer) {
-    const pl = LANGS.includes(offer.lang) ? offer.lang : lang;
-    const vars = (l) => ({ name: vpName(offer, l), size: vpSize(offer.bytes) });
-    $("vpCardAsk").textContent = tIn(pl, "vp_ask", vars(pl));
-    $("vpCardHelp").textContent = tIn(pl, "vp_ask_h");
-    $("vpCardEn").hidden = pl === "en";
-    $("vpCardEn").textContent = pl === "en" ? "" : `${tIn("en", "vp_ask", vars("en"))} ${tIn("en", "vp_ask_h")}`;
+    // On the phone the owner reads it: ask in the app's language, and say
+    // nothing about "this computer".
+    $("vpCardAsk").textContent = t("vp_ask", { name: vpName(offer, lang), size: vpSize(offer.bytes) });
+    $("vpCardHelp").textContent = t("pk_h");
+    $("vpCardEn").hidden = true;
+    $("vpCardEn").textContent = "";
     $("vpCard").dataset.id = offer.id;
   }
   const pick = vpPackFor(pvLang() || lang);

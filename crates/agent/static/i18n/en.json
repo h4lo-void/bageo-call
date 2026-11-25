@@ -608,7 +608,7 @@
     "ab_settings": "Settings file",
     "ab_retention": "Records kept",
     "ab_days": "{n} days",
-    "raw_health": "Raw /health data (for troubleshooting)",
+    "raw_health": "Technical details (for troubleshooting)",
     "ev_hello_reattach": "Phone reconnected during the call",
     "ev_live_ai_start": "AI assistant started (older menu)",
     "ev_shaming_played": "Energy-waste announcement played",

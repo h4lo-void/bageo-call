@@ -608,7 +608,7 @@
     "ab_settings": "Archivo de ajustes",
     "ab_retention": "Los registros se guardan",
     "ab_days": "{n} días",
-    "raw_health": "Datos sin procesar de /health (para resolver problemas)",
+    "raw_health": "Datos técnicos (para resolver problemas)",
     "ev_hello_reattach": "El teléfono se reconectó durante la llamada",
     "ev_live_ai_start": "Empezó el asistente de IA (menú antiguo)",
     "ev_shaming_played": "Se reprodujo el aviso de energía malgastada",

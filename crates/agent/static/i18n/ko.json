@@ -608,7 +608,7 @@
     "ab_settings": "설정 파일",
     "ab_retention": "기록 보관 기간",
     "ab_days": "{n}일",
-    "raw_health": "/health 원본 데이터(문제 해결용)",
+    "raw_health": "기술 정보(문제 해결용)",
     "ev_hello_reattach": "통화 중 휴대폰 다시 연결",
     "ev_live_ai_start": "AI 비서 시작(이전 메뉴)",
     "ev_shaming_played": "에너지 낭비 안내 재생",

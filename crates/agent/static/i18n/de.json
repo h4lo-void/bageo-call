@@ -608,7 +608,7 @@
     "ab_settings": "Einstellungsdatei",
     "ab_retention": "Daten werden aufbewahrt",
     "ab_days": "{n} Tage",
-    "raw_health": "Rohdaten von /health (zur Fehlersuche)",
+    "raw_health": "Technische Details (zur Fehlersuche)",
     "ev_hello_reattach": "Telefon während des Anrufs neu verbunden",
     "ev_live_ai_start": "KI-Assistent gestartet (altes Menü)",
     "ev_shaming_played": "Ansage zur Energieverschwendung abgespielt",

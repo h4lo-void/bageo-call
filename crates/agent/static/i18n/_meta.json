@@ -5875,7 +5875,7 @@
     ]
   },
   "raw_health": {
-    "where": "a label or sentence in the console. English: Raw /health data (for troubleshooting)",
+    "where": "a label or sentence in the console. English: Technical details (for troubleshooting)",
     "who": "the owner",
     "placeholders": []
   },

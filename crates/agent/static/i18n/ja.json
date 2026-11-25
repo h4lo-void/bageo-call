@@ -608,7 +608,7 @@
     "ab_settings": "設定ファイル",
     "ab_retention": "記録の保存期間",
     "ab_days": "{n} 日",
-    "raw_health": "/health の生データ（トラブルシューティング用）",
+    "raw_health": "技術情報（トラブルシューティング用）",
     "ev_hello_reattach": "通話中にスマホが再接続",
     "ev_live_ai_start": "AI アシスタント開始（旧メニュー）",
     "ev_shaming_played": "エネルギー浪費アナウンスを再生",
