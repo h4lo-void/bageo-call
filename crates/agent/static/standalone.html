@@ -6554,8 +6554,12 @@ setInterval(() => {
 }, 1000);
 
 document.addEventListener("visibilitychange", () => {
-  // Back from downloading a translation language: try the lines left again.
-  if (document.visibilityState === "visible" && detail.trBack && detail.id) {
+  if (document.visibilityState === "visible") trResumed();
+});
+// Back from downloading a translation language: try the lines left again.
+window.__bageoResumed = () => trResumed();
+function trResumed() {
+  if (detail.trBack && detail.id) {
     detail.trBack = false;
     const c = detail.call;
     if (c && isLive(c) && liveTx.id === c.id) {
@@ -6567,6 +6571,8 @@ document.addEventListener("visibilitychange", () => {
       translateRest(detail.id);
     }
   }
+}
+document.addEventListener("visibilitychange", () => {
   if (!visible()) {
     if (view === "settings" && settingsSub) saveCurrentSettings(false, true);
     else flushAutoSave();

@@ -210,6 +210,9 @@ class StandaloneUi(private val activity: Activity) {
         }
         handler.removeCallbacks(pollRunnable)
         handler.post(pollRunnable)
+        // Back in the app (say, from downloading a translation language): the page
+        // does not get a visibility change from the WebView, so tell it.
+        if (::webView.isInitialized) webView.evaluateJavascript("if(window.__bageoResumed)window.__bageoResumed();", null)
     }
 
     fun onPause() {
