@@ -284,7 +284,7 @@ AI 一確定對方是推銷或詐騙，就變成一個有興趣、反應慢、�
 <details>
 <summary><strong>要花多少錢？</strong></summary>
 
-個人與開源社群免費使用（`AGPL-3.0-only`；若需閉源商用或商業代管請[取得商業授權](COMMERCIAL_LICENSE.md)）。AI 處理的每通電話（不論來電或撥出），Google 都會依用量收 Gemini Live 的語音費用；摘要只是送到 Gemini 最便宜模型的一小段文字。試聽聲音和拒接語音都是預錄的，不花錢。另外就是電信門號費和電腦的電費；想設上限，可以在 Google 帳號裡設預算。
+個人與開源社群免費使用（`AGPL-3.0-only`；若需閉源商用或商業代管請[取得商業授權](COMMERCIAL_LICENSE.md)）。AI 處理的每通電話（不論來電或撥出）都用 Gemini Live 的語音；摘要只是送到 Gemini 最便宜模型的一小段文字。用 Google AI Studio 的免費 Gemini 金鑰，免費額度內不用付費，我們實測每天 10 通以上夠用；超過免費額度或改用付費方案時，Google 才依用量計費。試聽聲音和拒接語音都是預錄的，不花錢。另外就是電信門號費和電腦的電費；想設上限，可以在 Google 帳號裡設預算。
 
 </details>
 

@@ -297,9 +297,8 @@ lados não ouve nada. Veja
 <details>
 <summary><strong>Quanto custa manter funcionando?</strong></summary>
 
-O Bageo é gratuito para uso pessoal e de código aberto sob `AGPL-3.0-only` (quem o operar como serviço hospedado de código fechado ou comercial precisa de uma [Licença Comercial](COMMERCIAL_LICENSE.md)). O Google cobra por uso o áudio do Gemini Live
-de cada ligação que a IA atende, recebida ou feita; os resumos são pedidos
-pequenos de texto ao modelo mais barato do Gemini. As prévias de voz e o aviso
+O Bageo é gratuito para uso pessoal e de código aberto sob `AGPL-3.0-only` (quem o operar como serviço hospedado de código fechado ou comercial precisa de uma [Licença Comercial](COMMERCIAL_LICENSE.md)). As ligações que a IA atende, recebidas ou feitas, usam o áudio do Gemini Live;
+os resumos são pedidos pequenos de texto ao modelo mais barato do Gemini. Com uma chave Gemini gratuita do Google AI Studio você não paga nada dentro da cota gratuita (nos nossos testes, deu para 10 ligações ou mais por dia); o Google só cobra por uso se você passar da cota gratuita ou mudar para um plano pago. As prévias de voz e o aviso
 de número bloqueado são pré-gravados e não custam nada. Some o seu plano de
 celular e a energia do computador, e defina um orçamento na sua conta do Google
 se quiser um limite.

@@ -297,9 +297,8 @@ l’appel est décroché, mais l’un des deux côtés n’entend rien. Voir
 <details>
 <summary><strong>Combien coûte son fonctionnement ?</strong></summary>
 
-Bageo est gratuit pour un usage personnel et open source sous `AGPL-3.0-only` (les exploitants en source fermée ou en hébergement commercial ont besoin d’une [licence commerciale](COMMERCIAL_LICENSE.md)). Google facture l’audio de Gemini Live à l’usage, pour
-chaque appel que l’IA traite, entrant ou sortant ; les résumés sont de petites
-requêtes texte envoyées au modèle Gemini le moins cher. Les aperçus de voix et
+Bageo est gratuit pour un usage personnel et open source sous `AGPL-3.0-only` (les exploitants en source fermée ou en hébergement commercial ont besoin d’une [licence commerciale](COMMERCIAL_LICENSE.md)). Les appels que l’IA traite, entrants ou sortants, utilisent l’audio de Gemini Live ;
+les résumés sont de petites requêtes texte envoyées au modèle Gemini le moins cher. Avec une clé Gemini gratuite de Google AI Studio, vous ne payez rien dans le quota gratuit (lors de nos tests, il a suffi pour 10 appels ou plus par jour) ; Google ne facture à l’usage que si vous dépassez le quota gratuit ou passez à une offre payante. Les aperçus de voix et
 l’annonce de numéro bloqué sont préenregistrés et ne coûtent rien. Ajoutez votre
 forfait mobile et l’électricité de l’ordinateur, et fixez un budget dans votre
 compte Google si vous voulez un plafond.

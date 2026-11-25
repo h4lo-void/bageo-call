@@ -293,9 +293,8 @@ play into it; otherwise the call is answered but one side hears nothing. See
 <details>
 <summary><strong>How much does it cost to run?</strong></summary>
 
-Bageo is free for personal and open-source use under `AGPL-3.0-only` (closed-source or commercial hosted operators need a [Commercial License](COMMERCIAL_LICENSE.md)). Google bills the Gemini Live audio per use for
-every call the AI handles, incoming or outgoing; summaries are small text
-requests to Gemini's lowest-cost model. Voice previews and the blocked-number
+Bageo is free for personal and open-source use under `AGPL-3.0-only` (closed-source or commercial hosted operators need a [Commercial License](COMMERCIAL_LICENSE.md)). The calls the AI handles, incoming or outgoing, use Gemini Live audio;
+summaries are small text requests to Gemini's lowest-cost model. With a free Gemini key from Google AI Studio you pay nothing within the free quota (in our own tests it covered 10 or more calls a day); Google bills per use only if you go over the free quota or switch to a paid plan. Voice previews and the blocked-number
 announcement are prerecorded and cost nothing. Add your phone plan and the
 electricity for the computer, and set a budget in your Google account if you
 want a ceiling.

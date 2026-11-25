@@ -23,7 +23,7 @@
 
 兩個只能裝一個；裝其中一個，另一個會在下次重新開機自動移除。
 
-> **想完全不靠電腦？** 直接改刷 `bageo-phone-standalone-2.0.0.zip` 即可。用 Google AI Studio 的免費 Gemini 金鑰就不用付 API 費用；我們實測免費額度每天 10 通以上夠用（免費額度的上限由 Google 決定，可能會變）。兩個版本的模組 ID 不同：手機獨立版是 `bageo_ai_call_agent`（管理器裡顯示 Bageo AI Call Agent），電腦連動版是 `pixelcallai_uplink`（顯示 Bageo Uplink）。裝其中一版時，另一版會在下次重新開機自動移除，App 與設定都會保留。手機獨立版的控制台只能在手機上的 Bageo App 裡開啟，其他手機或電腦都打不開。
+> **想完全不靠電腦？** 直接改刷 `bageo-phone-standalone-2.0.0.zip` 即可。用 Google AI Studio 的免費 Gemini 金鑰就不用付 API 費用；我們實測免費額度每天 10 通以上夠用（免費額度的上限由 Google 決定，可能會變）。兩個版本的模組 ID 不同：手機獨立版是 `bageo_ai_call_agent`（管理器裡顯示 Bageo AI Call Agent），電腦連動版是 `pixelcallai_uplink`（顯示 Bageo Uplink (for Bageo on a computer)）。裝其中一版時，另一版會在下次重新開機自動移除，App 與設定都會保留。手機獨立版的控制台只能在手機上的 Bageo App 裡開啟，其他手機或電腦都打不開。
 
 ## 手機會做哪些事
 

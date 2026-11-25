@@ -297,9 +297,8 @@ angenommen, aber eine Seite hört nichts. Siehe
 <details>
 <summary><strong>Was kostet der Betrieb?</strong></summary>
 
-Bageo ist für den privaten und den Open-Source-Gebrauch unter `AGPL-3.0-only` kostenlos (Betreiber mit Closed Source oder kommerziellem Hosting brauchen eine [Kommerzielle Lizenz](COMMERCIAL_LICENSE.md)). Google rechnet das Gemini-Live-Audio für
-jeden Anruf, den die KI führt, nach Nutzung ab, ob eingehend oder ausgehend;
-Zusammenfassungen sind kleine Textanfragen an das günstigste Gemini-Modell.
+Bageo ist für den privaten und den Open-Source-Gebrauch unter `AGPL-3.0-only` kostenlos (Betreiber mit Closed Source oder kommerziellem Hosting brauchen eine [Kommerzielle Lizenz](COMMERCIAL_LICENSE.md)). Die Anrufe, die die KI führt, ob eingehend oder ausgehend, nutzen das Gemini-Live-Audio;
+Zusammenfassungen sind kleine Textanfragen an das günstigste Gemini-Modell. Mit einem kostenlosen Gemini-Schlüssel aus Google AI Studio zahlst du innerhalb des kostenlosen Kontingents nichts (in unseren Tests reichte es für 10 oder mehr Anrufe pro Tag); Google rechnet nur nach Nutzung ab, wenn du das Kontingent überschreitest oder einen Bezahlplan nutzt.
 Stimmproben und die Ansage für gesperrte Nummern sind vorab aufgenommen und
 kosten nichts. Dazu kommen dein Handytarif und der Strom für den Computer;
 setz in deinem Google-Konto ein Budget, wenn du eine Obergrenze willst.

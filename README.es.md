@@ -297,9 +297,8 @@ contesta pero una de las partes no oye nada. Consulta
 <details>
 <summary><strong>¿Cuánto cuesta mantenerlo en marcha?</strong></summary>
 
-Bageo es gratuito para uso personal y de código abierto bajo `AGPL-3.0-only` (quienes lo ofrezcan como servicio alojado de código cerrado o comercial necesitan una [licencia comercial](COMMERCIAL_LICENSE.md)). Google cobra por uso el audio de Gemini Live
-de cada llamada que atiende la IA, entrante o saliente; los resúmenes son
-peticiones pequeñas de texto al modelo más económico de Gemini. Las pruebas de
+Bageo es gratuito para uso personal y de código abierto bajo `AGPL-3.0-only` (quienes lo ofrezcan como servicio alojado de código cerrado o comercial necesitan una [licencia comercial](COMMERCIAL_LICENSE.md)). Las llamadas que atiende la IA, entrantes o salientes, usan el audio de Gemini Live;
+los resúmenes son peticiones pequeñas de texto al modelo más económico de Gemini. Con una clave gratuita de Gemini de Google AI Studio no pagas nada dentro del cupo gratuito (en nuestras pruebas alcanzó para 10 llamadas o más al día); Google cobra por uso solo si superas el cupo gratuito o pasas a un plan de pago. Las pruebas de
 voz y el aviso de número bloqueado están pregrabados y no cuestan nada. Suma tu
 plan de telefonía y la electricidad del ordenador, y fija un presupuesto en tu
 cuenta de Google si quieres un tope.
