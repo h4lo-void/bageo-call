@@ -748,8 +748,8 @@ class StandaloneUi(private val activity: Activity) {
         /**
          * Translate a call's lines on the phone ([OnDeviceTranslate]): `json` is
          * `{"req":"…","target":"zh-TW","lines":[{"i":1,"text":"…"}]}`. The answer comes back
-         * as `window.__bageoTranslated(req, "[{\"i\":1,\"text\":\"…\"}]")` (an empty list
-         * when the phone could not translate any).
+         * as `window.__bageoTranslated(req, "{\"lines\":[{\"i\":1,\"text\":\"…\"}],\"need_download\":[\"ja\"]}")`:
+         * what the phone translated, and the languages it could do once their pack is downloaded.
          */
         @JavascriptInterface
         fun translateLines(json: String) {
@@ -765,11 +765,32 @@ class StandaloneUi(private val activity: Activity) {
             }
             val (req, target, lines) = parsed
             httpExecutor.execute {
-                val out = org.json.JSONArray()
-                for ((i, t) in OnDeviceTranslate.run(activity, target, lines)) out.put(JSONObject().put("i", i).put("text", t))
+                val outcome = OnDeviceTranslate.run(activity, target, lines)
+                val arr = org.json.JSONArray()
+                for ((i, t) in outcome.lines) arr.put(JSONObject().put("i", i).put("text", t))
+                val out = JSONObject().put("lines", arr).put("need_download", org.json.JSONArray(outcome.needDownload))
                 val js = "if(window.__bageoTranslated)window.__bageoTranslated(${JSONObject.quote(req)},${JSONObject.quote(out.toString())});"
                 activity.runOnUiThread {
                     if (!activity.isDestroyed && ::webView.isInitialized) webView.evaluateJavascript(js, null)
+                }
+            }
+        }
+
+        /** Open the phone's translation languages (Pixel: Live Translate) to download a language. */
+        @JavascriptInterface
+        fun openTranslateLanguages() {
+            activity.runOnUiThread {
+                val tries = listOf(
+                    Intent("com.android.settings.action.live_translate").setPackage("com.google.android.as"),
+                    Intent("com.android.settings.action.live_translate"),
+                    Intent(android.provider.Settings.ACTION_LOCALE_SETTINGS),
+                )
+                for (intent in tries) {
+                    try {
+                        activity.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        return@runOnUiThread
+                    } catch (_: Exception) {
+                    }
                 }
             }
         }

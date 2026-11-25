@@ -36,19 +36,22 @@ object OnDeviceTranslate {
     private const val MIN_CONFIDENCE = 0.5f
     private val executor = Executors.newSingleThreadExecutor()
 
-    fun run(ctx: Context, target: String, lines: List<Pair<Int, String>>): List<Pair<Int, String>> {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || lines.isEmpty() || target.isBlank()) return emptyList()
+    /** What came back, and the languages (codes) the phone could do once its language pack is downloaded. */
+    data class Outcome(val lines: List<Pair<Int, String>>, val needDownload: List<String>)
+
+    fun run(ctx: Context, target: String, lines: List<Pair<Int, String>>): Outcome {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || lines.isEmpty() || target.isBlank()) return Outcome(emptyList(), emptyList())
         return try {
             translateAll(ctx, ULocale.forLanguageTag(target), lines)
         } catch (e: Exception) {
             Log.w(TAG, "on-device translation failed: ${e.javaClass.simpleName}")
-            emptyList()
+            Outcome(emptyList(), emptyList())
         }
     }
 
     @RequiresApi(Build.VERSION_CODES.S)
-    private fun translateAll(ctx: Context, target: ULocale, lines: List<Pair<Int, String>>): List<Pair<Int, String>> {
-        val tm = ctx.getSystemService(TranslationManager::class.java) ?: return emptyList()
+    private fun translateAll(ctx: Context, target: ULocale, lines: List<Pair<Int, String>>): Outcome {
+        val tm = ctx.getSystemService(TranslationManager::class.java) ?: return Outcome(emptyList(), emptyList())
         val caps = tm.getOnDeviceTranslationCapabilities(TranslationSpec.DATA_FORMAT_TEXT, TranslationSpec.DATA_FORMAT_TEXT)
         val classifier = ctx.getSystemService(TextClassificationManager::class.java)?.textClassifier
         val bySource = linkedMapOf<String, MutableList<Pair<Int, String>>>()
@@ -58,21 +61,27 @@ object OnDeviceTranslate {
             bySource.getOrPut(src.language) { mutableListOf() }.add(i to text)
         }
         val out = mutableListOf<Pair<Int, String>>()
+        val needDownload = mutableListOf<String>()
         for ((language, group) in bySource) {
             val cap = pick(caps, language, target)
             if (cap == null) {
                 Log.i(TAG, "no on-device pair $language->${target.toLanguageTag()}")
                 continue
             }
-            val translator = create(tm, cap) ?: continue
-            try {
-                for ((i, text) in group) translate(translator, text)?.let { out += i to it }
-            } finally {
-                translator.destroy()
+            val before = out.size
+            val translator = create(tm, cap)
+            if (translator != null) {
+                try {
+                    for ((i, text) in group) translate(translator, text)?.let { out += i to it }
+                } finally {
+                    translator.destroy()
+                }
             }
+            // Nothing came back and the pair is not on the phone yet: its language pack is missing.
+            if (out.size == before && cap.state != TranslationCapability.STATE_ON_DEVICE) needDownload += language
         }
-        Log.i(TAG, "on-device translation lines=${out.size} asked=${lines.size}")
-        return out
+        Log.i(TAG, "on-device translation lines=${out.size} asked=${lines.size} need_download=$needDownload")
+        return Outcome(out, needDownload)
     }
 
     private fun detect(classifier: TextClassifier?, text: String): ULocale? {

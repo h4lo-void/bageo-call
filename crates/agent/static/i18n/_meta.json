@@ -1870,6 +1870,23 @@
     "who": "the owner",
     "placeholders": []
   },
+  "d_tr_need": {
+    "where": "on a call's page when the phone needs a language pack to translate on its own; {langs} is the language names. English: This phone has no offline translation for {langs} yet. Download it to translate on the phone without using quota.",
+    "who": "the owner",
+    "placeholders": [
+      "{langs}"
+    ]
+  },
+  "d_tr_get": {
+    "where": "button next to it that opens the phone's translation languages to download one. English: Download",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "d_live_phone": {
+    "where": "a call's summary box while the call goes on, in the phone app (the conversation already shows live). English: The call is still going. The summary appears after it ends.",
+    "who": "the owner",
+    "placeholders": []
+  },
   "d_tr_busy": {
     "where": "the translate button while it works. English: Translating…",
     "who": "the owner",

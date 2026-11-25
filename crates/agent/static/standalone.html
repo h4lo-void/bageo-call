@@ -886,6 +886,10 @@ input[type=text],input[type=search],input[type=password],input[type=url],input[t
             <button type="button" class="btn xs" id="btnCopyDlg" data-i18n="d_copy_dlg"></button>
           </span>
         </h3>
+        <div class="banner info" id="dTrPack" hidden role="status">
+          <span class="grow" id="dTrPackT"></span>
+          <span class="banner-acts"><button type="button" class="btn sm primary" id="dTrPackGo" data-i18n="d_tr_get"></button></span>
+        </div>
         <div class="chat" id="dDialogue"></div>
       </div>
 
@@ -3108,6 +3112,7 @@ async function openCallById(id) {
   detail.track = "";
   detail.contact = undefined;
   detail.trAsk = null;
+  detail.trNeed = [];
   showTr = false;
   if (known) { renderDetail(); showDetailView(); }
   await loadDetail(id);
@@ -3266,7 +3271,7 @@ function renderDetail() {
     const src = n && n.source;
     if (src === "fallback" || src === "no_key") sumNotes.append(h("p", { class: "note", text: t(src === "fallback" ? "d_src_fallback" : "d_src_nokey") }));
   } else if (isLive(c)) {
-    sum.append(h("p", { class: "plain muted", text: t("d_live") }));
+    sum.append(h("p", { class: "plain muted", text: t("d_live_phone") }));
   } else if (n === undefined || (n === null && endedRecently(c))) {
     sum.append(h("p", { class: "plain muted row" }, h("span", { class: "spin" }), h("span", { class: "grow", text: n === undefined ? t("loading") : t("d_pending") })));
   } else {
@@ -3388,21 +3393,42 @@ window.__bageoTranslated = (req, json) => {
   const done = trWaits.get(req);
   if (!done) return;
   trWaits.delete(req);
-  let v = [];
+  let v = null;
   try { v = JSON.parse(json); } catch (_) {}
-  done(Array.isArray(v) ? v : []);
+  // An older app answers a plain list.
+  if (Array.isArray(v)) v = { lines: v };
+  done({ lines: Array.isArray(v && v.lines) ? v.lines : [], need: Array.isArray(v && v.need_download) ? v.need_download : [] });
 };
-// Lines [{i, text}] translated on the phone into target ([] when it cannot).
+// Lines [{i, text}] translated on the phone into target: {lines, need} (need: the
+// languages it could do once their pack is downloaded).
 function phoneTranslate(lines, target, ms) {
-  if (!nativeTr() || !lines.length) return Promise.resolve([]);
+  const none = { lines: [], need: [] };
+  if (!nativeTr() || !lines.length) return Promise.resolve(none);
   const req = "tr" + (++trSeq);
   return new Promise((resolve) => {
-    const timer = setTimeout(() => { trWaits.delete(req); resolve([]); }, ms);
+    const timer = setTimeout(() => { trWaits.delete(req); resolve(none); }, ms);
     trWaits.set(req, (v) => { clearTimeout(timer); resolve(v); });
     try { window.BageoAndroid.translateLines(JSON.stringify({ req, target: target || lang, lines })); }
-    catch (_) { clearTimeout(timer); trWaits.delete(req); resolve([]); }
+    catch (_) { clearTimeout(timer); trWaits.delete(req); resolve(none); }
   });
 }
+// "Japanese" for "ja", in the page's language.
+function langNames(codes) {
+  let dn = null;
+  try { dn = new Intl.DisplayNames([lang], { type: "language" }); } catch (_) {}
+  const names = [...new Set(codes)].map((c) => { try { return (dn && dn.of(c)) || c; } catch (_) { return c; } });
+  return names.join(/^(zh|ja)/.test(lang) ? "、" : ", ");
+}
+// The prompt to download a language pack the phone needs to translate on its own.
+function renderTrPack(need) {
+  const can = !!(window.BageoAndroid && typeof window.BageoAndroid.openTranslateLanguages === "function");
+  $("dTrPack").hidden = !need.length || !can;
+  if (need.length) $("dTrPackT").textContent = t("d_tr_need", { langs: langNames(need) });
+}
+$("dTrPackGo").addEventListener("click", () => {
+  detail.trBack = true;
+  try { window.BageoAndroid.openTranslateLanguages(); } catch (_) {}
+});
 const lineBody = (l) => { const m = String(l).match(/^[^:：]{1,12}?[：:]\s*(.*)$/); return m ? m[1].trim() : ""; };
 function renderDialogue() {
   const c = detail.call;
@@ -3421,7 +3447,9 @@ function renderDialogue() {
   const canAsk = !live && !!ask && !!c && ask.id === c.id && ask.lines.length > 0;
   $("dTrSw").hidden = true;
   $("btnTrDlg").hidden = !(live || hasTr || canAsk);
-  $("btnTrDlg").textContent = t(showTr && (live || hasTr) ? "d_tr_hide" : "d_tr_btn");
+  // Shown and nothing left to translate: the button hides them again.
+  $("btnTrDlg").textContent = t(showTr && (live || (hasTr && !canAsk)) ? "d_tr_hide" : "d_tr_btn");
+  renderTrPack(showTr ? (live ? liveTx.need || [] : detail.trNeed || []) : []);
   $("btnCopyDlg").hidden = live;
   const atEnd = live && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 120;
   const chat = clear($("dDialogue"));
@@ -3439,8 +3467,6 @@ function renderDialogue() {
 // The lines still in another language than the owner's, for the Translate button.
 async function askTranslate(id) {
   detail.trAsk = { id, lines: [], lang: "" };
-  const n = detail.notes;
-  if (n && Array.isArray(n.dialogue_translations) && n.dialogue_translations.some(Boolean)) return;
   try {
     const d = await api("/call/" + encodeURIComponent(id) + "/translate");
     if (detail.id !== id) return;
@@ -3453,35 +3479,46 @@ $("btnTrDlg").addEventListener("click", async () => {
   const ask = detail.trAsk;
   const c = detail.call;
   if (!id || !c) return;
-  if (showTr) { showTr = false; renderDialogue(); return; }
+  const remaining = !!ask && ask.id === id && ask.lines.length > 0;
+  if (showTr && (isLive(c) || !remaining)) { showTr = false; renderDialogue(); return; }
   // Live: translate from now on, as lines are finished.
   if (isLive(c) && liveTx.id === c.id) { showTr = true; renderDialogue(); return; }
   // Kept translations and nothing left to translate: just show them.
-  if (!ask || ask.id !== id || !ask.lines.length) { showTr = true; renderDialogue(); return; }
+  if (!remaining) { showTr = true; renderDialogue(); return; }
+  await translateRest(id);
+});
+// The lines of a finished call still in another language: on the phone first (the
+// words stay on it), the summary's service for the rest.
+async function translateRest(id) {
+  const ask = detail.trAsk;
+  if (!ask || ask.id !== id || !ask.lines.length) return;
   const btn = $("btnTrDlg");
   btn.disabled = true;
   btn.textContent = t("d_tr_busy");
   const path = "/call/" + encodeURIComponent(id) + "/translate";
   try {
-    // On the phone first (the words stay on it), the summary's service for the rest.
-    const got = await phoneTranslate(ask.lines, ask.lang, 60000);
+    const phone = await phoneTranslate(ask.lines, ask.lang, 60000);
+    const got = phone.lines;
     let d = null;
     if (got.length) { try { d = await api(path, jsonBody("POST", { lines: got })); } catch (_) {} }
     if (!d || got.length < ask.lines.length) {
-      try { d = await api(path, jsonBody("POST", {})); } catch (e) { if (!d) throw e; }
+      try { d = await api(path, jsonBody("POST", {})); } catch (e) { if (!d && !phone.need.length) throw e; }
     }
     if (detail.id !== id) return;
-    if (detail.notes) detail.notes.dialogue_translations = d.dialogue_translations || [];
-    detail.trAsk = { id, lines: [], lang: ask.lang };
+    if (d && detail.notes) detail.notes.dialogue_translations = d.dialogue_translations || [];
+    detail.trNeed = phone.need;
     showTr = true;
-    renderDialogue();
+    // What is still left (a language the phone needs a pack for, the service out of quota).
+    await askTranslate(id);
+    const left = detail.trAsk && detail.trAsk.id === id ? detail.trAsk.lines.length : 0;
+    if (left && !phone.need.length) toast(t("d_tr_fail"), true);
   } catch (_) {
     toast(t("d_tr_fail"), true);
   } finally {
     btn.disabled = false;
     renderDialogue();
   }
-});
+}
 async function pollLiveTx(id) {
   clearTimeout(liveTx.timer);
   liveTx.polling = "";
@@ -3490,7 +3527,7 @@ async function pollLiveTx(id) {
   try {
     const d = await api("/call/" + encodeURIComponent(id) + "/live");
     if (detail.id !== id) return;
-    if (liveTx.id !== id) Object.assign(liveTx, { id, dialogue: "", tr: new Map(), asked: new Set() });
+    if (liveTx.id !== id) Object.assign(liveTx, { id, dialogue: "", tr: new Map(), asked: new Set(), need: [] });
     liveTx.lang = d.lang || lang;
     if ((d.dialogue || "") !== liveTx.dialogue || $("dDlgSec").hidden) {
       liveTx.dialogue = d.dialogue || "";
@@ -3518,7 +3555,9 @@ async function liveTranslate() {
   liveTx.busy = true;
   let got = [];
   try {
-    got = await phoneTranslate(lines, liveTx.lang, 30000);
+    const phone = await phoneTranslate(lines, liveTx.lang, 30000);
+    got = phone.lines;
+    if (liveTx.id === id) liveTx.need = [...new Set([...(liveTx.need || []), ...phone.need])];
     // What the phone could not do (or a phone without it): the summary's service, one batch.
     const rest = lines.filter((l) => !got.some((g) => g.i === l.i));
     if (rest.length && liveTx.id === id) {
@@ -6515,6 +6554,19 @@ setInterval(() => {
 }, 1000);
 
 document.addEventListener("visibilitychange", () => {
+  // Back from downloading a translation language: try the lines left again.
+  if (document.visibilityState === "visible" && detail.trBack && detail.id) {
+    detail.trBack = false;
+    const c = detail.call;
+    if (c && isLive(c) && liveTx.id === c.id) {
+      liveTx.need = [];
+      liveTx.asked = new Set(liveTx.tr.keys());
+      if (showTr) liveTranslate();
+    } else if (showTr) {
+      detail.trNeed = [];
+      translateRest(detail.id);
+    }
+  }
   if (!visible()) {
     if (view === "settings" && settingsSub) saveCurrentSettings(false, true);
     else flushAutoSave();
