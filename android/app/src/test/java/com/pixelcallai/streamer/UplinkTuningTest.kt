@@ -672,6 +672,19 @@ class UplinkTuningTest {
     }
 
     @Test
+    fun the_owner_report_note_depends_on_whether_the_phone_can_switch_settings() {
+        assertEquals(OwnerNote.RETEST, ownerReportNote(AudioFit.PROBLEM, "owner_report", false))
+        assertEquals(OwnerNote.NOTED, ownerReportNote(AudioFit.PROBLEM, "owner_report", true))
+        // Any other reason is a problem found by measuring: all settings were tried.
+        assertNull(ownerReportNote(AudioFit.PROBLEM, "audio_lost", false))
+        assertNull(ownerReportNote(AudioFit.PROBLEM, null, true))
+        // Once a call settled, the reason is gone or the fit is not a problem any more.
+        for (fit in AudioFit.entries.filter { it != AudioFit.PROBLEM }) {
+            assertNull(ownerReportNote(fit, "owner_report", false))
+        }
+    }
+
+    @Test
     fun ids_round_trip() {
         for (p in UplinkProfile.entries) assertEquals(p, UplinkProfile.parse(p.id))
         assertEquals(UplinkProfile.PRIMED_48K, UplinkProfile.parse(" Primed-48K "))

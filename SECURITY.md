@@ -61,7 +61,7 @@ phone module together.
   `/calls/api/appointments/{id}/retry-sms`, `/calls/api/calls/clear`,
   `/calls/api/call/{id}/scam-feedback`, the SMS routes (`/calls/api/sms/send`,
   `/calls/api/sms/{id}/retry`, `/calls/api/sms/clear`, `DELETE /calls/api/sms/thread`),
-  `/calls/api/devices/{serial}/mode`, `/audio-problem` and `/sim-number`, `/calls/api/phone-pairing/renew`,
+  `/calls/api/devices/{serial}/mode`, `/audio-problem`, `/audio-heard` and `/sim-number`, `/calls/api/phone-pairing/renew`,
   `/calls/api/initial-password`, contact changes (`POST`, `PUT`, `block`, `batch`;
   `import` needs an `X-Filename` header), every `POST` under `/calls/api/errands`,
   and every backup `POST` route (`/calls/api/backup/import` needs an `X-Filename`

@@ -2828,7 +2828,23 @@ window.addEventListener("scroll", () => {
 // ---------------------------------------------------------------- live status
 let live = { ok: null, count: 0, calls: [], idle: 0, serials: [], normal: [] };
 let labels = {};
-const devName = (serial) => labels[serial] || serial || "";
+// The model a connected (or remembered) phone reported; empty until /devices has loaded.
+function phoneModel(serial) {
+  const list = devices && Array.isArray(devices.phones) ? devices.phones : [];
+  const p = serial ? list.find((x) => x.serial === serial) : null;
+  return p && p.model ? String(p.model).trim() : "";
+}
+// The owner's name for a phone, else the model it reported, else its id (pixel-<number>).
+const devBase = (serial) => labels[serial] || phoneModel(serial) || serial || "";
+// Shown name: two phones with the same name get the end of their id behind it.
+function devName(serial) {
+  const base = devBase(serial);
+  if (!serial || base === serial) return base;
+  const others = new Set([...Object.keys(labels), ...((devices && devices.phones) || []).map((p) => p.serial)]);
+  others.delete(serial);
+  if (![...others].some((s) => devBase(s) === base)) return base;
+  return `${base} (…${String(serial).slice(-4)})`;
+}
 function phoneSims(serial) {
   return (serial && devices && devices.sims && Array.isArray(devices.sims[serial])) ? devices.sims[serial] : [];
 }
@@ -3476,7 +3492,7 @@ function renderDetail() {
   $("btnDeleteCall").hidden = isLive(c);
   const kv = clear($("dKv"));
   const row = (label, value, mono) => { kv.append(h("dt", { text: label }), h("dd", { class: mono ? "mono" : "", text: value })); };
-  row(t("d_phone"), devName(c.serial) === c.serial ? c.serial : `${devName(c.serial)} (${c.serial})`);
+  row(t("d_phone"), devName(c.serial));
   row(t("d_started"), fmtFull(c.started_at, true));
   row(t("d_ended_at"), c.ended_at ? fmtFull(c.ended_at, true) : t(k.label));
   row(t("d_id"), c.id, true);
@@ -7300,7 +7316,6 @@ function renderSystem() {
       const lines = [
         t("ph_seen"),
         seen && seen.last_seen_ms ? t("ph_last_seen", { time: fmtWhen(new Date(seen.last_seen_ms).toISOString()) }) : "",
-        name !== s ? s : "",
       ];
       const act = h("button", {
         type: "button", class: "btn sm danger", disabled: !!forgetBusy[s],
@@ -7322,8 +7337,9 @@ function renderSystem() {
         else if (p.app_installed === false) { level = "bad"; lines = [t("ph_noapp")]; }
         else if (!p.reverse) { level = "warn"; lines = [t("ph_link_bad")]; }
         else lines = [t("ph_link_ok")];
-        if (p.model) lines.push(p.serial);
-        box.append(sysItem(level, p.model || p.serial, lines));
+        // The model alone names it; only two of the same model get the end of the id.
+        const twin = p.model && phones.some((o) => o !== p && o.model === p.model);
+        box.append(sysItem(level, p.model ? (twin ? `${p.model} (…${String(p.serial).slice(-4)})` : p.model) : p.serial, lines));
       }
       if (usb.adb_path) box.append(h("p", { class: "help mono", text: "adb: " + usb.adb_path }));
     }
@@ -7428,9 +7444,9 @@ function phoneItem(s, call, ph) {
   }
   if (ph && ph.link) lines.push(t(ph.link === "wifi" ? "ph_link_wifi" : "ph_link_usb"));
   if (ph && !ph.supports_mode) lines.push(t("ph_need_update"));
+  lines.push(...phoneFitLines(s, ph, normal));
   if (modeErr[s] === "timeout") lines.push(t("pm_err_timeout"));
   else if (modeErr[s]) lines.push(t("ph_mode_fail", { why: modeErrText(modeErr[s]) }));
-  if (devName(s) !== s) lines.push(s);
   let action = null;
   if (ph && ph.supports_mode) {
     const switching = !!modeBusy[s];
@@ -7442,6 +7458,39 @@ function phoneItem(s, call, ph) {
   }
   const name = devName(s) !== s ? devName(s) : (ph && ph.model) || s;
   return sysItem(inCall ? "warn" : normal ? "" : "ok", name, lines, action, phoneSimBlock(s));
+}
+// What the owner needs to know or do about a phone's call audio. Nothing when it works
+// (ok) or when the phone app is too old to report it; nothing either in normal phone
+// mode, where the AI does not answer. After a "No" the next call is the test (retest), or,
+// on a phone that cannot switch settings, the report is only noted.
+const fitBusy = {};
+function phoneFitLines(s, ph, normal) {
+  const fit = ph && ph.audio_fit;
+  if (!fit || normal) return [];
+  const out = [];
+  if (ph.audio_fit_retest) out.push(t("ph_fit_retest"));
+  else if (ph.audio_fit_noted) out.push(t("ph_fit_noted"));
+  else if (["untested", "adjusted", "problem", "unsupported"].includes(fit)) out.push(t("ph_fit_" + fit));
+  if (ph.audio_fit_ask && (fit === "ok" || fit === "adjusted")) {
+    out.push(h("div", { class: "d" },
+      h("span", { text: t("ph_fit_ask") + " " }),
+      h("button", { type: "button", class: "btn xs", disabled: !!fitBusy[s], text: t("ph_fit_yes"), onclick: () => answerAudioFit(s, true) }),
+      " ",
+      h("button", { type: "button", class: "btn xs", disabled: !!fitBusy[s], text: t("ph_fit_no"), onclick: () => answerAudioFit(s, false) })));
+  }
+  return out;
+}
+async function answerAudioFit(serial, heard) {
+  if (fitBusy[serial]) return;
+  fitBusy[serial] = true;
+  renderSystem();
+  try {
+    await api("/devices/" + encodeURIComponent(serial) + (heard ? "/audio-heard" : "/audio-problem"), jsonBody("POST", {}));
+  } catch (e) {
+    if (e.status !== 401) toast(e.message, true);
+  }
+  delete fitBusy[serial];
+  await loadSystem();
 }
 function modeErrText(code) {
   const key = "pm_err_" + String(code || "").toLowerCase().replace(/[^a-z0-9]+/g, "_");
@@ -7648,7 +7697,7 @@ const smsRetryable = (st, sms) => st !== "pending" && !!sms && !["sent", "no_num
 function smsRetryRow(tk, busy) {
   const route = tk.sms_route || null;
   const from = (route && route.serial) || tk.serial;
-  const phone = (route && route.label) || devName(from);
+  const phone = devName(from) !== from ? devName(from) : (route && route.label) || devName(from);
   const sel = h("select", { "aria-label": t("ap_sms_from"), title: t("ap_sms_from") },
     h("option", { value: "", text: t("ap_sms_from_call", { phone }) }));
   for (const s of (devices && devices.connected) || []) {

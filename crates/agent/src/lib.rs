@@ -30,6 +30,7 @@ mod android_jni;
 mod adpcm;
 mod ambience;
 mod appointments;
+mod audio_fit;
 mod backup;
 mod backup_crypt;
 mod calendar;
@@ -1313,7 +1314,7 @@ async fn bootstrap_runtime() -> Result<(AppState, CallsState, Arc<control::Contr
     }
     let control = ControlRegistry::new();
     control.set_sim_book(phone_sims);
-    let phones = calls_http::PhoneDevices::new();
+    let phones = calls_http::PhoneDevices::open(PathBuf::from(&settings.calls_data_dir).join("audio_fit.json"));
     let state = AppState {
         settings: settings.clone(),
         settings_store: settings_store.clone(),
@@ -2889,7 +2890,8 @@ async fn handle_control_idle_ws(
                     // After a call: how the track carrying the AI's voice behaved.
                     "uplink_health" => {
                         info!("{}", uplink_health::log_line(&serial, &parsed));
-                        state.phones.on_audio_fit(&serial, &parsed);
+                        let notice = state.phones.on_audio_fit(&serial, &parsed);
+                        tell_owner_about_call_audio(&state, &serial, notice);
                     }
                     // Answer to `uplink_fit` (the owner said the caller heard nothing).
                     "uplink_fit_result" => {
@@ -2897,7 +2899,8 @@ async fn handle_control_idle_ws(
                             "uplink fit serial={serial} fit={}",
                             uplink_health::AudioFit::from_msg(&parsed).map_or("?", uplink_health::AudioFit::as_str)
                         );
-                        state.phones.on_audio_fit(&serial, &parsed);
+                        let notice = state.phones.on_audio_fit(&serial, &parsed);
+                        tell_owner_about_call_audio(&state, &serial, notice);
                     }
                     // Phone rings (not answered yet): how long to ring, and the AI gets
                     // ready meanwhile (ring once before answering).
@@ -2908,6 +2911,10 @@ async fn handle_control_idle_ws(
                             info!("incoming serial={serial} ignored, owner is on the call (whitelist urgent call) — no AI, no answer plan");
                             continue;
                         }
+                        // A new call: what the last one failed with is not this one's. Cleared
+                        // before this call's ring prewarm starts, so a failure the prewarm
+                        // records while the phone rings is still there at the hangup.
+                        forget_ai_fail(&serial);
                         let caller = extract_caller_id_from_msg(&parsed).unwrap_or_default();
                         note_call_sim(&serial, &parsed);
                         // A new call on this phone: a blocked call still waiting for its
@@ -3339,7 +3346,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         .control
                                         .register_client(serial.clone(), sink.clone())
                                         .await;
-                                    state.phones.connected(&serial, sink.clone(), &parsed);
+                                    let fit_notice = state.phones.connected(&serial, sink.clone(), &parsed);
+                                    tell_owner_about_call_audio(&state, &serial, fit_notice);
                                     state.phones.set_wifi(&serial, link.wifi);
                                     sync_normal_mode(&state, &serial).await;
                                     // An app that lists its SIMs: errands dial from the right one.
@@ -5206,6 +5214,29 @@ fn call_waiting_summary(caller: &str, sim_country: Option<&str>) -> String {
         p.s_todo,
         p.s_call_back_if_needed,
     )
+}
+
+/// Tell the owner about a phone's call audio ([`audio_fit::Notice`]) in the background.
+fn tell_owner_about_call_audio(state: &AppState, serial: &str, notice: Option<audio_fit::Notice>) {
+    let Some(notice) = notice else {
+        return;
+    };
+    let state = state.clone();
+    let serial = serial.to_string();
+    tokio::spawn(async move {
+        let settings = state.settings_store.snapshot().effective(&state.settings);
+        // No channel to take "please test": not done, due again when the phone next reports
+        // untested. The other messages are not repeated.
+        if !notify::can_reach_owner(&settings) {
+            if notice == audio_fit::Notice::AskTest {
+                state.phones.fit_test_unsent(&serial);
+            }
+            info!("call audio notify serial={serial} notice={notice:?} no channel");
+            return;
+        }
+        let ok = notify::notify_audio_fit(&state.http, &settings, &serial, notice).await;
+        info!("call audio notify serial={serial} notice={notice:?} ok={ok}");
+    });
 }
 
 /// `call_waiting_rejected`: a second call came in during a call and the phone
@@ -8550,6 +8581,10 @@ async fn run_gemini_session_to_end(
             return;
         }
     }
+    // A Gemini session that got through its setup is not the failure an earlier one left.
+    if setup_ready.load(Ordering::Relaxed) {
+        forget_ai_fail(&serial);
+    }
     match (result, delivery) {
         (_, Err(e)) => {
             warn!(
@@ -8686,6 +8721,9 @@ async fn run_gemini_session_to_end(
                 "Gemini Live error delivery stats serial={serial} delivered_bytes={} frames={} turns={}",
                 stats.bytes, stats.frames, stats.turns
             );
+            // A reached limit or a key that does not work is told apart here, where the
+            // error's text is; the hangup that may follow writes it into the record.
+            remember_ai_fail(&serial, &format!("{e:#}"));
             let was_open = audio_open.load(Ordering::Relaxed);
             if !was_open {
                 connect_failed.store(true, Ordering::Relaxed);
@@ -9347,7 +9385,8 @@ fn start_voicemail_intro(
 }
 
 /// Gemini unavailable / failed after answer. Assistant mode → voicemail intro WAV.
-/// Persona mode → **no pre-recorded audio at all**: just hang up.
+/// Persona mode → the "not available" announcement a blocked number hears when it
+/// is recorded, then hang up (without it: just hang up).
 fn start_voicemail_intro_for_gemini(
     sink: &WsSink,
     state: &AppState,
@@ -9374,7 +9413,7 @@ fn start_voicemail_intro_for_gemini(
             return;
         }
         if persona {
-            persona_ai_unavailable_hangup(&sink, &serial, &phase, &active_call, &media_call_guard)
+            persona_ai_unavailable_hangup(&sink, &state, &serial, &phase, &active_call, &media_call_guard)
                 .await;
             return;
         }
@@ -9390,16 +9429,66 @@ fn start_voicemail_intro_for_gemini(
     });
 }
 
-/// Persona-mode AI failure: nothing pre-recorded goes to the caller — mark the call
-/// done and hang up (the owner sees `persona_ai_fail_hangup` in the record).
+/// How long the kind of an AI failure is kept for the call it happened in.
+const AI_FAIL_KIND_TTL: Duration = Duration::from_secs(180);
+
+type AiFailKinds = std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, voice_preview::AiFailKind)>>;
+
+fn ai_fail_kinds() -> &'static AiFailKinds {
+    static KINDS: std::sync::OnceLock<AiFailKinds> = std::sync::OnceLock::new();
+    KINDS.get_or_init(Default::default)
+}
+
+/// Tell why Gemini failed from its error and keep it for the hangup that follows
+/// (a session started while the phone rang fails before the call has a record, so
+/// the record cannot be written at this point). Only the kind is kept and logged:
+/// the error's own text never goes further. The latest failure says: one that tells
+/// nothing (`Other`) drops the kind an earlier one left.
+fn remember_ai_fail(serial: &str, error: &str) -> voice_preview::AiFailKind {
+    let kind = voice_preview::ai_fail_kind(error);
+    if kind == voice_preview::AiFailKind::Other {
+        forget_ai_fail(serial);
+    } else {
+        warn!("Gemini failure serial={serial} kind={kind:?}");
+        let now = std::time::Instant::now();
+        let mut map = ai_fail_kinds().lock().unwrap_or_else(|e| e.into_inner());
+        map.retain(|_, (at, _)| now.duration_since(*at) < AI_FAIL_KIND_TTL);
+        map.insert(serial.to_string(), (now, kind));
+    }
+    kind
+}
+
+/// Drop the kind kept for this phone: a new call began, or Gemini's setup went through.
+fn forget_ai_fail(serial: &str) {
+    let now = std::time::Instant::now();
+    let mut map = ai_fail_kinds().lock().unwrap_or_else(|e| e.into_inner());
+    map.remove(serial);
+    map.retain(|_, (at, _)| now.duration_since(*at) < AI_FAIL_KIND_TTL);
+}
+
+/// The kind [`remember_ai_fail`] kept for this phone's call, once.
+fn take_ai_fail(serial: &str) -> Option<voice_preview::AiFailKind> {
+    let (at, kind) = ai_fail_kinds().lock().unwrap_or_else(|e| e.into_inner()).remove(serial)?;
+    (at.elapsed() < AI_FAIL_KIND_TTL).then_some(kind)
+}
+
+/// Persona-mode AI failure: play the announcement a blocked number hears (same voice,
+/// language and sample rate), then hang up; when it is not recorded, hang up as
+/// before — never ask Gemini for it, it is what failed. The record gets
+/// `persona_ai_fail_hangup`, `ai_fail_announced` when it played, and
+/// `ai_fail_quota` / `ai_fail_key` when the error said why.
 async fn persona_ai_unavailable_hangup(
     sink: &WsSink,
+    state: &AppState,
     serial: &str,
     phase: &Arc<std::sync::Mutex<IvrPhase>>,
     active_call: &ActiveCallSlot,
     media_call_guard: &MediaCallGuard,
 ) {
-    ai_fail_then_hang_up(serial, phase, active_call, media_call_guard, move || {
+    if let Some(event) = take_ai_fail(serial).and_then(voice_preview::AiFailKind::event) {
+        push_call_events(active_call, media_call_guard, &[event.to_string()]).await;
+    }
+    let hang_up = move || {
         send_hangup_with_retries(
             sink,
             serial,
@@ -9407,15 +9496,79 @@ async fn persona_ai_unavailable_hangup(
             3,
             Some(media_call_guard),
         )
-    })
-    .await;
+    };
+    let rt = state.settings_store.snapshot();
+    let voice = voice_preview::reject_voice(&rt).to_string();
+    let clip = state
+        .previews
+        .cached_reject_clip(&rt.gemini_live_model, &voice, rt.lang(), state.settings.sample_rate);
+    let Some(pcm) = clip else {
+        info!("AI unavailable serial={serial}: no announcement recorded for voice={voice} — hang up without it");
+        ai_fail_then_hang_up(serial, phase, active_call, media_call_guard, hang_up).await;
+        return;
+    };
+    let play = move || async move {
+        // Reply text and audio are guarded sends: a call that ended or was replaced
+        // while this waited gets nothing (the guards take the lease per message).
+        let _ = send_gemini_media_json(
+            sink,
+            json!({"type":"reply_text","text": voice_preview::reject_announce_text(), "source": "ai_unavailable"}),
+            "ai unavailable reply_text",
+            media_call_guard,
+        )
+        .await;
+        let _ = send_tts_pcm_guarded(
+            sink,
+            state,
+            &pcm,
+            active_call,
+            "ai_unavailable",
+            None,
+            Some(media_call_guard),
+        )
+        .await;
+    };
+    ai_fail_announce_then_hang_up(serial, phase, active_call, media_call_guard, play, hang_up).await;
 }
 
-/// [`persona_ai_unavailable_hangup`] with the hangup passed in. The phase and the
-/// record change under the media call's lease; the lease ends before `hang_up`,
-/// whose guarded sends each take it again — the phone answers the first hangup
-/// with call_end, and the media loop's `invalidate()` must get through between
-/// them.
+/// The part of an AI-fail hangup that changes the call's phase and record, under
+/// the media call's lease. `false`: the call is over or already ending — do nothing.
+/// With an announcement the phase is `Goodbye` (like a blocked number's) until it is played.
+async fn ai_fail_mark(
+    serial: &str,
+    phase: &Arc<std::sync::Mutex<IvrPhase>>,
+    active_call: &ActiveCallSlot,
+    media_call_guard: &MediaCallGuard,
+    announce: bool,
+) -> bool {
+    let Some(_lease) = media_call_guard.lease_current().await else {
+        return false;
+    };
+    {
+        let mut p = phase.lock().unwrap_or_else(|e| e.into_inner());
+        if matches!(*p, IvrPhase::Done | IvrPhase::Goodbye) {
+            info!("persona AI-fail hangup skipped serial={serial} phase={p:?}");
+            return false;
+        }
+        *p = if announce { IvrPhase::Goodbye } else { IvrPhase::Done };
+    }
+    warn!(
+        "真人模式 AI unavailable serial={serial} → hangup, no voicemail (announcement={announce})"
+    );
+    if let Some(c) = active_call.lock().await.as_mut() {
+        c.push_event("persona_ai_fail_hangup");
+        if announce {
+            c.push_event("ai_fail_announced");
+        }
+    }
+    true
+}
+
+/// [`persona_ai_unavailable_hangup`] without an announcement, with the hangup passed
+/// in. The phase and the record change under the media call's lease; the lease
+/// ends before `hang_up`, whose guarded sends each take it again — the phone
+/// answers the first hangup with call_end, and the media loop's `invalidate()`
+/// must get through between them.
 async fn ai_fail_then_hang_up<F, Fut>(
     serial: &str,
     phase: &Arc<std::sync::Mutex<IvrPhase>>,
@@ -9426,24 +9579,34 @@ async fn ai_fail_then_hang_up<F, Fut>(
     F: FnOnce() -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
-    {
-        let Some(_lease) = media_call_guard.lease_current().await else {
-            return;
-        };
-        {
-            let mut p = phase.lock().unwrap_or_else(|e| e.into_inner());
-            if matches!(*p, IvrPhase::Done | IvrPhase::Goodbye) {
-                info!("persona AI-fail hangup skipped serial={serial} phase={p:?}");
-                return;
-            }
-            *p = IvrPhase::Done;
-        }
-        warn!(
-            "真人模式 AI unavailable serial={serial} → hangup, no voicemail / no pre-recorded audio"
-        );
-        if let Some(c) = active_call.lock().await.as_mut() {
-            c.push_event("persona_ai_fail_hangup");
-        }
+    if !ai_fail_mark(serial, phase, active_call, media_call_guard, false).await {
+        return;
+    }
+    hang_up().await;
+}
+
+/// [`ai_fail_then_hang_up`] with the announcement played first (`play`, whose sends
+/// are guarded sends). No lease is held while it plays or while the hangup goes out.
+/// The call is marked done only if it is still this one afterwards.
+async fn ai_fail_announce_then_hang_up<P, PFut, F, Fut>(
+    serial: &str,
+    phase: &Arc<std::sync::Mutex<IvrPhase>>,
+    active_call: &ActiveCallSlot,
+    media_call_guard: &MediaCallGuard,
+    play: P,
+    hang_up: F,
+) where
+    P: FnOnce() -> PFut,
+    PFut: std::future::Future<Output = ()>,
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    if !ai_fail_mark(serial, phase, active_call, media_call_guard, true).await {
+        return;
+    }
+    play().await;
+    if let Some(_lease) = media_call_guard.lease_current().await {
+        *phase.lock().unwrap_or_else(|e| e.into_inner()) = IvrPhase::Done;
     }
     hang_up().await;
 }
@@ -10236,6 +10399,10 @@ fn spawn_ai_talk_tg_summary(
     let errand_store = state.errands.clone();
     // A call-back nobody answered ends the AI's way too: no "AI failed".
     let ai_failed = record_had_ai_fail_hangup(&record.events) && !ai_callback;
+    // The caller heard the not-available message first, and why the AI failed when
+    // the error said (a reached limit, a key that does not work).
+    let ai_fail_played = ai_failed && record.events.iter().any(|e| e == "ai_fail_announced");
+    let ai_fail_kind = record.events.iter().find_map(|e| voice_preview::AiFailKind::from_event(e));
     // Stalled and not let go again by the later check.
     let stalled = record.events.iter().any(|e| e == "persona_stall_spam")
         && !record.events.iter().any(|e| e == "persona_stall_released");
@@ -10441,7 +10608,7 @@ fn spawn_ai_talk_tg_summary(
             }
         } else if ai_failed {
             note_source = "ai_fail";
-            ai_fail_summary_body(secs)
+            ai_fail_summary_body(locale::notify_lang(), secs, ai_fail_played, ai_fail_kind)
         } else {
             note_source = "none";
             let lang = locale::notify_lang();
@@ -10466,6 +10633,14 @@ fn spawn_ai_talk_tg_summary(
         if ai_failed && !body.contains("AI 沒接上") && !body.contains(&ai_failed_line) {
             // The summary model usually writes it (prompt rule); make sure the owner sees it.
             body.insert_str(0, &format!("{}\n", locale::notify_words().s_ai_fail_prefix));
+        }
+        if ai_failed && note_source != "ai_fail" {
+            // The summary of what was said does not name the cause: add it.
+            if let Some((why, fix)) = ai_fail_why_fix(locale::notify_lang(), ai_fail_kind) {
+                let p = locale::notify_words();
+                let sep = p.sep.as_str();
+                body.push_str(&format!("\n{}{sep}{why}\n{}{sep}{fix}", p.n_reason, p.s_todo));
+            }
         }
         if ai_callback && !errand_call {
             let code = if callee_answered { "answered" } else { "no_answer" };
@@ -10778,22 +10953,38 @@ fn caller_side_text(dialogue: &str, caller_track: &str) -> String {
     }
 }
 
-/// Notification body when the AI never spoke and nothing usable was transcribed.
-fn ai_fail_summary_body(secs: f64) -> String {
-    let lang = locale::notify_lang();
+/// Why the AI failed and what to do about it, in `lang`: only when the error said
+/// a limit was reached or the key does not work.
+fn ai_fail_why_fix(lang: locale::Lang, kind: Option<voice_preview::AiFailKind>) -> Option<(&'static str, &'static str)> {
+    let p = locale::words(lang);
+    match kind? {
+        voice_preview::AiFailKind::Quota => Some((p.s_ai_fail_why_quota.as_str(), p.s_ai_fail_todo_quota.as_str())),
+        voice_preview::AiFailKind::Key => Some((p.s_ai_fail_why_key.as_str(), p.s_ai_fail_todo_key.as_str())),
+        voice_preview::AiFailKind::Other => None,
+    }
+}
+
+/// Notification body when the AI never spoke and nothing usable was transcribed:
+/// what happened (the caller heard the not-available message, or nothing), why when
+/// known, and what to do — fix the cause, and call back when the number is known.
+fn ai_fail_summary_body(lang: locale::Lang, secs: f64, played: bool, kind: Option<voice_preview::AiFailKind>) -> String {
     let p = locale::words(lang);
     let sep = p.sep.as_str();
-    format!(
-        "{}{sep}{}\n{}{sep}{}\n{}{sep}{}\n{}{sep}{}",
-        p.s_caller,
-        p.s_unclear,
-        p.s_matter,
-        locale::fill(&p.s_ai_fail_matter, &locale::duration(lang, secs)),
-        p.s_reply,
-        p.s_ai_failed,
-        p.s_todo,
-        p.s_call_back_if_known
-    )
+    let matter = if played { &p.s_ai_fail_matter_played } else { &p.s_ai_fail_matter };
+    let why_fix = ai_fail_why_fix(lang, kind);
+    let mut lines = vec![
+        format!("{}{sep}{}", p.s_caller, p.s_unclear),
+        format!("{}{sep}{}", p.s_matter, locale::fill(matter, &locale::duration(lang, secs))),
+    ];
+    if let Some((why, _)) = why_fix {
+        lines.push(format!("{}{sep}{why}", p.n_reason));
+    }
+    lines.push(format!("{}{sep}{}", p.s_reply, p.s_ai_failed));
+    if let Some((_, fix)) = why_fix {
+        lines.push(format!("{}{sep}{fix}", p.s_todo));
+    }
+    lines.push(format!("{}{sep}{}", p.s_todo, p.s_call_back_if_known));
+    lines.join("\n")
 }
 
 /// Notification lines for a stalled sales / scam call when the summary model is unavailable
@@ -10858,7 +11049,11 @@ fn summary_end_hint(events: &[String], scam: Option<&calls::ScamJudgement>) -> S
     let topic = scam.and_then(scam_topic);
     let w = locale::notify_words();
     if has("persona_ai_fail_hangup") {
-        w.h_ai_fail_hangup.clone()
+        if has("ai_fail_announced") {
+            w.h_ai_fail_announced.clone()
+        } else {
+            w.h_ai_fail_hangup.clone()
+        }
     } else if has("gemini_fail_to_voicemail") || has("gemini_zero_delivery_to_voicemail") {
         w.h_ai_fail_voicemail.clone()
     } else if has("reject_unknown_caller") {
@@ -13005,6 +13200,232 @@ mod call_control_tests {
         // Without a Live dialogue: the caller's own track.
         assert_eq!(caller_side_text("", " 請回電 "), "請回電");
         assert_eq!(caller_side_text("接聽：喂？", ""), "");
+    }
+}
+
+#[cfg(test)]
+mod ai_fail_announce_tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use crate::locale::{Ext, Lang, CORE};
+    use voice_preview::AiFailKind;
+
+    type Sent = Arc<std::sync::Mutex<Vec<&'static str>>>;
+
+    /// A guarded send as `send_gemini_media_json` does it: a call that is over (or
+    /// replaced by the next one) gets nothing.
+    async fn guarded(g: &MediaCallGuard, sent: &Sent, what: &'static str) {
+        if g.lease_current().await.is_some() {
+            sent.lock().unwrap().push(what);
+        }
+    }
+
+    async fn call_slot() -> (ActiveCallSlot, std::path::PathBuf) {
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).expect("time").as_nanos();
+        let dir = std::env::temp_dir().join(format!("pixel-call-aifail-{nanos}"));
+        let store = CallStore::new(dir.clone(), true, false);
+        let call = store.start("pixel-1", "0911111111", 16000, "active").await.unwrap();
+        (Arc::new(Mutex::new(Some(call))), dir)
+    }
+
+    async fn has(slot: &ActiveCallSlot, event: &str) -> bool {
+        slot.lock().await.as_ref().is_some_and(|c| c.has_event(event))
+    }
+
+    #[tokio::test]
+    async fn the_announcement_goes_out_before_the_hangup_and_the_record_says_so() {
+        let guard = MediaCallGuard::inactive().next().await;
+        let phase = Arc::new(std::sync::Mutex::new(IvrPhase::LiveAi));
+        let (slot, dir) = call_slot().await;
+        let sent: Sent = Default::default();
+        let (g, s, ph) = (&guard, &sent, &phase);
+        let run = ai_fail_announce_then_hang_up(
+            "pixel-1",
+            &phase,
+            &slot,
+            &guard,
+            move || async move {
+                // Nothing else takes the line while the announcement plays.
+                assert_eq!(*ph.lock().unwrap(), IvrPhase::Goodbye);
+                guarded(g, s, "reply_text").await;
+                guarded(g, s, "tts").await;
+            },
+            move || async move { guarded(g, s, "hangup").await },
+        );
+        tokio::time::timeout(Duration::from_secs(1), run).await.expect("the announcement and the lease waited on each other");
+        assert_eq!(*sent.lock().unwrap(), ["reply_text", "tts", "hangup"]);
+        assert_eq!(*phase.lock().unwrap(), IvrPhase::Done);
+        assert!(has(&slot, "persona_ai_fail_hangup").await && has(&slot, "ai_fail_announced").await);
+        assert!(!has(&slot, "ai_fail_quota").await && !has(&slot, "ai_fail_key").await);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn without_a_recording_only_the_hangup_goes_out() {
+        let guard = MediaCallGuard::inactive().next().await;
+        let phase = Arc::new(std::sync::Mutex::new(IvrPhase::LiveAi));
+        let (slot, dir) = call_slot().await;
+        let sent: Sent = Default::default();
+        let (g, s) = (&guard, &sent);
+        ai_fail_then_hang_up("pixel-1", &phase, &slot, &guard, move || async move { guarded(g, s, "hangup").await }).await;
+        assert_eq!(*sent.lock().unwrap(), ["hangup"]);
+        assert_eq!(*phase.lock().unwrap(), IvrPhase::Done);
+        assert!(has(&slot, "persona_ai_fail_hangup").await);
+        assert!(!has(&slot, "ai_fail_announced").await);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn a_call_that_is_over_gets_nothing() {
+        let guard = MediaCallGuard::inactive().next().await;
+        let phase = Arc::new(std::sync::Mutex::new(IvrPhase::LiveAi));
+        let (slot, dir) = call_slot().await;
+        let sent: Sent = Default::default();
+        guard.invalidate().await;
+        let (g, s) = (&guard, &sent);
+        ai_fail_announce_then_hang_up(
+            "pixel-1",
+            &phase,
+            &slot,
+            &guard,
+            move || async move { guarded(g, s, "tts").await },
+            move || async move { guarded(g, s, "hangup").await },
+        )
+        .await;
+        assert!(sent.lock().unwrap().is_empty());
+        assert_eq!(*phase.lock().unwrap(), IvrPhase::LiveAi);
+        assert!(!has(&slot, "persona_ai_fail_hangup").await && !has(&slot, "ai_fail_announced").await);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The call ends (and the next one begins) while the announcement plays: what is
+    /// left of it and the hangup never reach the next call.
+    #[tokio::test]
+    async fn a_call_replaced_during_the_announcement_never_gets_the_rest() {
+        let first = MediaCallGuard::inactive().next().await;
+        let phase = Arc::new(std::sync::Mutex::new(IvrPhase::LiveAi));
+        let (slot, dir) = call_slot().await;
+        let sent: Sent = Default::default();
+        let next_call: Arc<std::sync::Mutex<Option<MediaCallGuard>>> = Arc::new(std::sync::Mutex::new(None));
+        let (f, s, nc) = (&first, &sent, next_call.clone());
+        let run = ai_fail_announce_then_hang_up(
+            "pixel-1",
+            &phase,
+            &slot,
+            &first,
+            move || async move {
+                guarded(f, s, "reply_text").await;
+                // The phone's call_end (a writer) and the next hello get through: no lease is held.
+                f.invalidate().await;
+                *nc.lock().unwrap() = Some(f.next().await);
+                guarded(f, s, "tts").await;
+            },
+            move || async move { guarded(f, s, "hangup").await },
+        );
+        tokio::time::timeout(Duration::from_secs(1), run).await.expect("the announcement held the lease");
+        assert_eq!(*sent.lock().unwrap(), ["reply_text"]);
+        assert!(next_call.lock().unwrap().as_ref().expect("next hello").is_current());
+        assert!(!first.is_current());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn why_gemini_failed_is_kept_for_the_hangup_once() {
+        let spend = "Your project has exceeded its monthly spending cap. Please go to AI Studio at https://ai.studio/spend to manage your project spend cap.";
+        assert_eq!(remember_ai_fail("pixel-aifail-a", spend), AiFailKind::Quota);
+        assert_eq!(take_ai_fail("pixel-aifail-a"), Some(AiFailKind::Quota));
+        assert_eq!(take_ai_fail("pixel-aifail-a"), None);
+        assert_eq!(remember_ai_fail("pixel-aifail-b", "API key not valid. Please pass a valid API key."), AiFailKind::Key);
+        // Another phone's call is not this one's.
+        assert_eq!(take_ai_fail("pixel-aifail-c"), None);
+        assert_eq!(take_ai_fail("pixel-aifail-b"), Some(AiFailKind::Key));
+        // A network error says nothing worth keeping.
+        assert_eq!(remember_ai_fail("pixel-aifail-d", "connecting to Gemini timed out"), AiFailKind::Other);
+        assert_eq!(take_ai_fail("pixel-aifail-d"), None);
+    }
+
+    #[test]
+    fn the_latest_gemini_failure_of_a_phone_is_the_one_kept() {
+        let spend = "Your project has exceeded its monthly spending cap.";
+        // A later failure that tells nothing replaces the earlier one.
+        remember_ai_fail("pixel-aifail-e", spend);
+        remember_ai_fail("pixel-aifail-e", "connecting to Gemini timed out");
+        assert_eq!(take_ai_fail("pixel-aifail-e"), None);
+        // A setup that went through clears it.
+        remember_ai_fail("pixel-aifail-f", spend);
+        forget_ai_fail("pixel-aifail-f");
+        assert_eq!(take_ai_fail("pixel-aifail-f"), None);
+        // The next incoming call clears it; another phone's value stays.
+        remember_ai_fail("pixel-aifail-g", spend);
+        remember_ai_fail("pixel-aifail-h", spend);
+        forget_ai_fail("pixel-aifail-g");
+        assert_eq!(take_ai_fail("pixel-aifail-g"), None);
+        assert_eq!(take_ai_fail("pixel-aifail-h"), Some(AiFailKind::Quota));
+        // One call: the ring prewarm fails (Quota), the phone is answered, the call ends.
+        forget_ai_fail("pixel-aifail-i"); // incoming
+        remember_ai_fail("pixel-aifail-i", spend); // prewarm fails while ringing
+        assert_eq!(take_ai_fail("pixel-aifail-i"), Some(AiFailKind::Quota)); // hangup after pickup
+    }
+
+    #[test]
+    fn the_owner_reads_what_happened_why_and_what_to_do_in_every_language() {
+        let en = locale::words(Lang::En);
+        for l in CORE {
+            let w = locale::words(l);
+            let dur = locale::duration(l, 7.0);
+            for (played, kind) in [(true, Some(AiFailKind::Quota)), (true, Some(AiFailKind::Key)), (false, None)] {
+                let body = ai_fail_summary_body(l, 7.0, played, kind);
+                let what = format!("{l:?} played={played} kind={kind:?}: {body}");
+                let matter = if played { &w.s_ai_fail_matter_played } else { &w.s_ai_fail_matter };
+                assert!(body.contains(&locale::fill(matter, &dur)), "{what}");
+                let other_matter = if played { &w.s_ai_fail_matter } else { &w.s_ai_fail_matter_played };
+                assert!(!body.contains(&locale::fill(other_matter, &dur)), "{what}");
+                assert!(body.contains(w.s_ai_failed.as_str()) && body.contains(w.s_call_back_if_known.as_str()), "{what}");
+                assert!(!body.contains('{') && !body.contains('}'), "{what}");
+                let (why, fix, not_why, not_fix) = match kind {
+                    Some(AiFailKind::Quota) => (Some(&w.s_ai_fail_why_quota), Some(&w.s_ai_fail_todo_quota), &w.s_ai_fail_why_key, &w.s_ai_fail_todo_key),
+                    Some(_) => (Some(&w.s_ai_fail_why_key), Some(&w.s_ai_fail_todo_key), &w.s_ai_fail_why_quota, &w.s_ai_fail_todo_quota),
+                    None => (None, None, &w.s_ai_fail_why_quota, &w.s_ai_fail_todo_quota),
+                };
+                for t in [why, fix].into_iter().flatten() {
+                    assert!(body.contains(t.as_str()), "{what}");
+                }
+                assert!(!body.contains(not_why.as_str()) && !body.contains(not_fix.as_str()), "{what}");
+                // One thing a line, as "label: text" (the reason is the line after "matter").
+                if let Some(why) = why {
+                    assert!(body.contains(&format!("{}{}{}", w.n_reason, w.sep, why)), "{what}");
+                    assert!(body.contains(&format!("{}{}{}", w.s_todo, w.sep, fix.unwrap())), "{what}");
+                } else {
+                    assert!(!body.contains(w.n_reason.as_str()), "{what}");
+                }
+                if l != Lang::En {
+                    assert_ne!(w.s_ai_fail_matter_played, en.s_ai_fail_matter_played, "{l:?}");
+                    assert_ne!(w.s_ai_fail_why_quota, en.s_ai_fail_why_quota, "{l:?}");
+                    assert_ne!(w.s_ai_fail_todo_key, en.s_ai_fail_todo_key, "{l:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_language_beyond_the_nine_reads_english_not_nothing() {
+        let vi = Lang::Ext(Ext::from_code("vi").expect("vi"));
+        for (played, kind) in [(true, Some(AiFailKind::Quota)), (true, Some(AiFailKind::Key)), (false, None)] {
+            let body = ai_fail_summary_body(vi, 7.0, played, kind);
+            assert_eq!(body, ai_fail_summary_body(Lang::En, 7.0, played, kind));
+            assert!(body.contains("The AI") && !body.contains('{'), "{body}");
+        }
+        let w = locale::words(vi);
+        assert!(std::ptr::eq(w, locale::words(Lang::En)));
+        assert!(!w.h_ai_fail_announced.is_empty());
+    }
+
+    #[test]
+    fn the_end_of_the_call_says_the_announcement_played() {
+        let w = locale::notify_words();
+        let ev = |e: &[&str]| e.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert_eq!(summary_end_hint(&ev(&["persona_ai_fail_hangup", "ai_fail_announced"]), None), w.h_ai_fail_announced);
+        assert_eq!(summary_end_hint(&ev(&["persona_ai_fail_hangup", "ai_fail_quota"]), None), w.h_ai_fail_hangup);
     }
 }
 

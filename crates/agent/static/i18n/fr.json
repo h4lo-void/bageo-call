@@ -193,7 +193,7 @@
     "who_ai": "IA",
     "who_carrier": "Annonce de l'opérateur",
     "d_ended": "Comment l'appel s'est terminé",
-    "end_ai_fail": "L'IA n'a pas pu se connecter et l'appel a été raccroché. Le correspondant n'a rien entendu.",
+    "end_ai_fail": "L'IA n'a pas pu se connecter et l'appel a été raccroché.",
     "end_voicemail": "L'IA a échoué et l'appel est passé sur la messagerie vocale.",
     "end_hidden": "Numéro masqué : une annonce de refus a été diffusée, puis l'appel a pris fin. L'IA n'a pas répondu.",
     "end_blocked": "Numéro bloqué : l'annonce « non disponible » a été diffusée, puis l'appel a pris fin. L'IA n'a pas répondu.",
@@ -243,6 +243,9 @@
     "f_scam_blind_h": "Activé : les nouvelles ruses sont détectées aussi, pour un peu plus de consommation. Désactivé : seuls les appels contenant des mots courants de démarchage ou d'arnaque sont vérifiés.",
     "ev_ai_callback": "Rappel de l'IA",
     "ev_persona_ai_fail_hangup": "Échec de l'IA, raccroché",
+    "ev_ai_fail_announced": "Annonce d'indisponibilité diffusée",
+    "ev_ai_fail_quota": "Quota Gemini épuisé ou plafond de dépenses atteint",
+    "ev_ai_fail_key": "Clé Gemini non valide",
     "ev_gemini_zero_audio_reconnect": "IA reconnectée (aucun son)",
     "tab_contacts": "Contacts",
     "ct_search_ph": "Rechercher un nom, un numéro ou une note",
@@ -1388,6 +1391,15 @@
     "m_chk_sms_d": "Permet à Bageo d’indiquer par SMS à l’appelant si son rendez-vous est confirmé.",
     "er_need_phone": "Le téléphone n’est pas encore prêt. Attendez quelques secondes ; si cela dure, rouvrez l’app.",
     "bk_err_read_failed": "Impossible de lire ce fichier. Choisissez-le à nouveau.",
-    "bk_app_note": "Les sauvegardes restent dans Bageo et sont supprimées avec l’app. Pour en garder une, touchez « Télécharger » pour l’enregistrer sur le téléphone."
+    "bk_app_note": "Les sauvegardes restent dans Bageo et sont supprimées avec l’app. Pour en garder une, touchez « Télécharger » pour l’enregistrer sur le téléphone.",
+    "ph_fit_untested": "Son des appels non testé : appelez ce téléphone depuis un autre et parlez à l’IA environ 20 secondes. Bageo le règle ensuite tout seul.",
+    "ph_fit_adjusted": "Le son des appels a été réglé automatiquement",
+    "ph_fit_problem": "Le son des appels pose problème et tous les réglages ont été essayés. Voir « First use on a new phone » dans le guide (en anglais).",
+    "ph_fit_unsupported": "Ce téléphone ne peut pas envoyer la voix de l’IA dans les appels",
+    "ph_fit_ask": "Avez-vous entendu la voix de l’IA lors du dernier appel ?",
+    "ph_fit_yes": "Oui",
+    "ph_fit_no": "Non",
+    "ph_fit_retest": "Un autre réglage du son est prêt. Appelez de nouveau ce téléphone pour le tester.",
+    "ph_fit_noted": "Noté : le son des appels de ce téléphone pose problème"
   }
 }

@@ -89,6 +89,14 @@ pub struct Words {
     pub s_call_back_if_known: String,
     /// First line put above a summary when the AI never connected.
     pub s_ai_fail_prefix: String,
+    /// `{}` = a length ([`super::duration`]): the AI never connected and the caller heard
+    /// the not-available message before the system hung up.
+    pub s_ai_fail_matter_played: String,
+    /// Why the AI never connected, and what to do about it, when Gemini said so.
+    pub s_ai_fail_why_quota: String,
+    pub s_ai_fail_why_key: String,
+    pub s_ai_fail_todo_quota: String,
+    pub s_ai_fail_todo_key: String,
     pub s_stall_topic: String,
     pub s_stall_topic_kw: String,
     pub s_stall_reply: String,
@@ -211,6 +219,7 @@ pub struct Words {
     pub h_clip_mark: String,
     // How the call ended, one line for the summary model.
     pub h_ai_fail_hangup: String,
+    pub h_ai_fail_announced: String,
     pub h_ai_fail_voicemail: String,
     pub h_reject_hidden: String,
     pub h_reject_list: String,
@@ -225,6 +234,16 @@ pub struct Words {
     pub h_stall_spam_nokind: String,
     pub h_scam_stalling_off: String,
     pub h_ai_ended: String,
+    // About a phone's call audio ([`crate::audio_fit`]): a new phone needs a test
+    // call, the result, a later problem.
+    pub n_fit_test_title: String,
+    pub n_fit_test_body: String,
+    pub n_fit_result_title: String,
+    pub n_fit_failed_title: String,
+    pub n_fit_ok: String,
+    pub n_fit_adjusted: String,
+    pub n_fit_problem: String,
+    pub n_fit_unsupported: String,
 }
 
 /// The `strings`, `lists` and `formats` of a file in one object; nothing
@@ -300,18 +319,20 @@ mod tests {
     /// SHA-256 (of the text with LF line ends) and key count of every file.
     /// The first 124 keys were written from the old `Phrases` constants, the
     /// next 22 from the lines of the code that were Chinese and English only,
-    /// and `h_urgent_scam_words` came after them; change a value on purpose
+    /// `h_urgent_scam_words` came after them, then the six `s_ai_fail_` and
+    /// `h_ai_fail_announced` texts on why the AI could not answer, and the eight
+    /// `n_fit_` texts about a phone's call audio; change a value on purpose
     /// and update the line here in the same commit.
     const GOLDEN: [(&str, &str, usize); 9] = [
-        ("en", "ae71ba1767c4fc89508e192d8c516a499505521310e97ffb8f7ef2cff5cdb260", 147),
-        ("zh-TW", "fa31430a772a9d4947365a043381dadc88cdde854f26e2f15646a1e8ee403ef6", 147),
-        ("zh-CN", "cbb40fb8f5bae1a422ae06f17b4768e61b192c8c7b67c84ec3ad45196c4b3168", 147),
-        ("ja", "2d5369ef38d7f194df6c483b942d9ca28584a3c7f352ce74ce7252d2c086ccc4", 147),
-        ("ko", "5f385556a0c10e74bd2a642824c65a6d50c19b2ac76a969d916c77b59d1d76a3", 147),
-        ("es", "96619969e6f7516d583c51e5ec8769e5c9006cd5bc32e2c2b09a00de0ede8d2d", 147),
-        ("fr", "80d2c66037c34757284e4b779a3f7e16faf360ddb1a44a94d5ec3c0488342c7a", 147),
-        ("de", "26594eb6fd3963c4e03b05a4971a2997a15a64ba3898bc671a63a44008804afa", 147),
-        ("pt", "be1d99d4fcaa3bf7a0634b42dbab47df79e3befa6384126c055d1731dd77cf43", 147),
+        ("en", "f101f0a1b09f4b9533e17eed29497bf0462630b9fa23cd468d96226ca32f052f", 161),
+        ("zh-TW", "6786d40000d24c7399b7ff7f82c7774b4b245a4acc9829cebf28a119914b4f32", 161),
+        ("zh-CN", "61a22d1f4da87ec06cd492e1d739b9b1de5906c3884ae623040d2e4afabf8fa6", 161),
+        ("ja", "4511055e1e2b1e54be660494161c9180bf280a34dbfd23cc8c06f3531e5d2659", 161),
+        ("ko", "6b7e9676856d0bc541b3d77e07c1bef26b888bf87ccf7cab0bcd2af34b66f0ab", 161),
+        ("es", "033ed303b04415e6bef4161d0ecf48840d8fc22638d2363b238afbbdecfaf125", 161),
+        ("fr", "38f34ee6aef1e46b2b92a37ce36534e3c234cace5f801cb95a6b6e0fa54c6f8e", 161),
+        ("de", "61fdc281953756b4965419557376bcc95387ca31e69454d898e34053f230f7a9", 161),
+        ("pt", "33f46eef4d0d0c96040b06e33e0ffbb549f064f5ff60b3838672b69084ce8108", 161),
     ];
 
     const META: &str = include_str!("../../data/i18n/notify/_meta.json");

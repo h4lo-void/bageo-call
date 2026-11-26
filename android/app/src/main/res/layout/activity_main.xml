@@ -72,6 +72,14 @@
                 android:visibility="gone" />
 
             <TextView
+                android:id="@+id/audioFit"
+                style="@style/PcaBody"
+                android:layout_marginTop="6dp"
+                android:textColor="@color/pca_status_check"
+                android:textSize="15sp"
+                android:visibility="gone" />
+
+            <TextView
                 android:id="@+id/legacyHint"
                 style="@style/PcaBody"
                 android:layout_marginTop="8dp"

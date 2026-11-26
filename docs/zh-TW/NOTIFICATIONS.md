@@ -70,6 +70,7 @@ https://calendar.google.com/calendar/render?action=TEMPLATE&…
 | 同一號碼連續來電 | 同一個號碼一分鐘內一直打來。你會收到一則說明又打了幾通的訊息，不會每通都通知。 | `repeat_calls` |
 | AI 回電：〈號碼〉 | AI 打給來電者告知預約結果。訊息會寫結果（接通並告知、沒人接、撥不出去，或這個號碼不能回電）和那通電話的摘要。 | `ai_callback` |
 | AI 代打：〈名字或號碼〉 | 你交辦的 AI 代打結束了。訊息有結果、細節、需要你決定的選項、下一步、談定的時間，以及「AI 代打」頁的連結。 | `ai_errand` |
+| 新手機：請測試通話聲音／通話聲音測試結果／通話聲音出問題 | 新手機需要測試電話；那次測試的結果；聲音後來變差。見[新手機第一次使用](PHONE.md#新手機第一次使用測試通話聲音)。 | `audio_fit` |
 | 預約待你確認 | 對方跟 AI 約了時間。Telegram 收到有按鈕的卡片，其他管道收到附一鍵「同意／不同意」簽章按鈕或連結的通知（見[行程預約](#行程預約)）。 | `appointment_pending` / `summary` |
 | 來電已轉到你的手機 | 「誰打來可以轉」勾選的人打來、且「轉接方式」是「不接，直接轉到你的手機」時，手機不接，讓電信把電話轉給你，並馬上通知你。 | `whitelist_direct_transfer` |
 | 來電急事通知 | 「誰打來可以轉」勾選的人打來、AI 先接，對方說有急事時馬上通知你；轉接方式選「AI 先接，有急事才轉給你」並填好你的號碼時，手機也會撥給你。 | `whitelist_urgent_transfer` |
@@ -689,6 +690,7 @@ smtps://you@example.com@smtp.example.com:465    一連線就走 TLS
 | `repeat_calls` | 同一個號碼一直打來，多出來的通知被合併 | `caller_id`、`count`、`kind`（`incoming`、`blocked` 或 `call_waiting`） |
 | `ai_callback` | 行程預約的 AI 回電結束，或撥不出去 | `caller_id`、`device`、`time`、`summary` |
 | `ai_errand` | AI 代打結束，或沒能開始 | `number`、`device`、`time`、`summary` |
+| `audio_fit` | 手機的通話聲音需要測試、有測試結果，或變差了 | `device`、`time`、`audio_fit`（`untested`、`ok`、`adjusted`、`problem` 或 `unsupported`） |
 | `appointment_pending` | 對方跟 AI 約了時間，等待你決定 | `task_id`、`caller_id`、`device`、`title`、`start_at`、`accept_url`、`decline_url` |
 | `whitelist_direct_transfer` | 手機不接、由電信把來電轉到你的手機 | `caller_id`、`device`、`time`、`forward_to`、`contact` |
 | `whitelist_urgent_transfer` | 來電者說有急事，已馬上通知你 | `caller_id`、`device`、`time`、`forward_to`、`reason`、`contact` |
