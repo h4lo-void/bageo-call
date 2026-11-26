@@ -196,16 +196,22 @@ fn mask_url(s: &str) -> String {
 }
 
 /// Kinds whose token never goes to the address in `url`: the Discord and Slack
-/// bot tokens go to those services' own APIs, and a Gmail address is only the
-/// login at Gmail's server.
-const TOKEN_HOST_FIXED: &[&str] = &["discord", "slack", "gmail"];
+/// bot tokens go to those services' own APIs.
+const TOKEN_HOST_FIXED: &[&str] = &["discord", "slack"];
 
 /// Whether the token stored with `old` may go out with `new` (same id and
 /// kind): always when the kind's token does not go to the address, else only
-/// when the address is the same.
+/// when the address is the same (a Gmail address in any case: the app
+/// password belongs to that account).
 fn token_may_follow(old: &Channel, new: &Channel) -> bool {
     let uses_url = kind(&new.kind).is_some_and(|k| !k.url.is_empty());
-    !uses_url || TOKEN_HOST_FIXED.contains(&new.kind.as_str()) || old.url_or_default() == new.url_or_default()
+    if !uses_url || TOKEN_HOST_FIXED.contains(&new.kind.as_str()) {
+        return true;
+    }
+    if new.kind == "gmail" {
+        return old.url.trim().to_lowercase() == new.url.trim().to_lowercase();
+    }
+    old.url_or_default() == new.url_or_default()
 }
 
 /// The list from the settings page onto the stored one: a row that comes back
@@ -3555,6 +3561,18 @@ mod tests {
         let (c, withheld) = row(Channel { id: "d1".into(), ..ch("discord", "https://discord.com/api/webhooks/2/y", "", "123") });
         assert_eq!((c.token.as_str(), withheld), ("test-fake-token-4", false));
         assert_eq!(merge_channels(&stored, vec![Channel { id: "w1".into(), ..ch("webhook", "https://hooks.example.net/a", "", "") }])[0].token, "");
+    }
+
+    #[test]
+    fn a_gmail_app_password_stays_only_with_its_address() {
+        let stored = vec![Channel { id: "g1".into(), ..ch("gmail", "alex@example.org", "test-fake-app-pw", "") }];
+        let row = |url: &str| merge_channel_rows(&stored, vec![Channel { id: "g1".into(), ..ch("gmail", url, "", "") }]).remove(0);
+        for url in ["", "alex@example.org", " Alex@Example.ORG "] {
+            let (c, withheld) = row(url);
+            assert_eq!((c.token.as_str(), withheld), ("test-fake-app-pw", false), "{url:?}");
+        }
+        let (c, withheld) = row("sam@example.org");
+        assert_eq!((c.token.as_str(), c.url.as_str(), withheld), ("", "sam@example.org", true));
     }
 
     #[test]
