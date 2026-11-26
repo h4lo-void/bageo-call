@@ -1544,14 +1544,14 @@ fn insert_before_guard(prompt: &str, lang: Lang, block: &str) -> String {
 }
 
 /// The note on the carrier's recorded warning for the languages whose pack has
-/// none (Taiwan's Chinese keeps it in its own pack): the warnings of Korea,
-/// Hong Kong, the mainland, Thailand and the rest are no caller either.
+/// none (Taiwan's Chinese keeps it in its own pack): the warnings of Korea's and
+/// Hong Kong's carriers are no caller either.
 fn scoped_carrier_note(lang: Lang) -> String {
     match lang {
         Lang::ZhTw => String::new(),
         Lang::ZhCn => to_cn(gl::PERSONA_CARRIER_NOTE.get()).replace("掰掰", "拜拜"),
         _ => format!(
-            "\n[Carrier warning] On a call from abroad, the carrier may first play a recorded warning (\"international call, beware of fraud / voice phishing\" or \"new pre-paid SIM card\") — that recording is not the caller: do not answer it, do not decline, do not say goodbye; wait for the real caller to speak, or if the warning ends and nobody speaks, say \"{}\" once.",
+            "\n[Carrier warning] The carrier may first play a short recorded notice (that the call is international or from abroad, or that it comes from a new pre-paid SIM card). That recording is not the caller: do not answer it, decline or say goodbye to it; wait for the real caller to speak, and if it ends and nobody speaks, say \"{}\" once.",
             locale::phrases(lang).hello
         ),
     }
@@ -2596,15 +2596,15 @@ mod tests {
     }
 
     /// Where the carrier's warning can come, every language's call prompt says
-    /// it is not the caller (Korea's, Hong Kong's, the mainland's, Thailand's
-    /// too); where it cannot, none does.
+    /// it is not the caller (Korea's and Hong Kong's too); where it cannot, none
+    /// does.
     #[test]
     fn every_language_gets_the_carrier_note_where_the_warning_can_come() {
         let cases = [
             (Lang::Ko, "kr"),
             (Lang::En, "hk-mo"),
-            (Lang::En, "th"),
-            (Lang::ZhCn, "cn"),
+            (Lang::Es, "kr"),
+            (Lang::ZhCn, "hk-mo"),
             (Lang::Ja, "jp"),
         ];
         for (lang, code) in cases {
@@ -2625,7 +2625,7 @@ mod tests {
             }
         }
         let en = scoped_carrier_note(Lang::En);
-        assert!(en.contains("\"Hello?\"") && en.contains("do not say goodbye"), "{en}");
+        assert!(en.contains("\"Hello?\"") && en.contains("not the caller") && en.contains("say goodbye"), "{en}");
         assert!(scoped_carrier_note(Lang::Ko).contains("\"여보세요?\""));
         let cn = scoped_carrier_note(Lang::ZhCn);
         assert!(cn.contains("电信") && cn.contains("拜拜"), "{cn}");
