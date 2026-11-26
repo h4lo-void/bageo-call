@@ -184,6 +184,8 @@ jobs:
             bash scripts/package-uplink-module.sh
             bash scripts/package-uplink-module.sh --standalone --skip-rust-build
           fi
+      - name: Check the app in each module is not debuggable
+        run: bash android/scripts/check-not-debuggable.sh android/magisk/dist/bageo-phone-*.zip
       - name: Verify APK signing
         env:
           PCA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}

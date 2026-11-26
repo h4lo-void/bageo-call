@@ -49,7 +49,8 @@ android {
 
     // Optional fixed signing key (release builds in CI): set PCA_KEYSTORE_FILE,
     // PCA_KEYSTORE_PASSWORD, PCA_KEY_ALIAS and PCA_KEY_PASSWORD. Without them the
-    // build uses this machine's Android debug key, as before.
+    // build is signed with this machine's Android debug key (the release build type
+    // too, so a build without the project's key is still installable).
     val keystoreFile = System.getenv("PCA_KEYSTORE_FILE").orEmpty()
     if (keystoreFile.isNotEmpty()) {
         signingConfigs {
@@ -63,8 +64,10 @@ android {
     }
 
     buildTypes {
-        // Minify even debug: keeps a single dex with the app entry points. As a priv-app
-        // on Android 16, a secondary dex caused ClassNotFound for MainActivity.
+        // Minify both build types with the same rules: keeps a single dex with the app
+        // entry points. As a priv-app on Android 16, a secondary dex caused
+        // ClassNotFound for MainActivity. The module ships the release build, which is
+        // not debuggable.
         debug {
             if (keystoreFile.isNotEmpty()) {
                 signingConfig = signingConfigs.getByName("fixed")
@@ -76,6 +79,12 @@ android {
             )
         }
         release {
+            signingConfig = if (keystoreFile.isNotEmpty()) {
+                signingConfigs.getByName("fixed")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+            isDebuggable = false
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -95,7 +104,7 @@ android {
 
 dependencies {
     compileOnly(project(":xposed-stub"))
-    // Keep deps tiny so debug builds stay single-dex / load cleanly on Android 16.
+    // Keep deps tiny so the builds stay single-dex / load cleanly on Android 16.
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("org.java-websocket:Java-WebSocket:1.5.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
