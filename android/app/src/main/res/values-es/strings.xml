@@ -168,4 +168,9 @@
     <string name="wifi_not_ready">La conexión Wi-Fi de reserva no está configurada. Conecta el cable USB una vez para configurarla.</string>
     <string name="btn_forget_wifi">Olvidar conexión Wi-Fi</string>
     <string name="msg_wifi_forgotten">Conexión Wi-Fi olvidada. Para usarla de nuevo, conecta el cable USB una vez.</string>
+    <!-- Call audio: how well this phone carries the AI's voice into calls -->
+    <string name="fit_untested">Audio de llamadas sin probar: llama a este teléfono desde otro y habla con la IA unos 20 segundos. Bageo lo ajustará solo.</string>
+    <string name="fit_adjusted">El audio de las llamadas se ajustó automáticamente</string>
+    <string name="fit_problem">El audio de las llamadas tiene un problema y ya se probaron todos los ajustes. Consulta «First use on a new phone» en la guía (en inglés).</string>
+    <string name="fit_unsupported">Este teléfono no puede enviar la voz de la IA a las llamadas</string>
 </resources>

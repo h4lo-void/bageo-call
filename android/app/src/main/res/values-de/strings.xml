@@ -168,4 +168,9 @@
     <string name="wifi_not_ready">Die WLAN-Reserve ist noch nicht eingerichtet. Verbinde das USB-Kabel einmal, dann ist sie eingerichtet.</string>
     <string name="btn_forget_wifi">WLAN-Verbindung vergessen</string>
     <string name="msg_wifi_forgotten">WLAN-Verbindung vergessen. Zum erneuten Einrichten das USB-Kabel einmal anschließen.</string>
+    <!-- Call audio: how well this phone carries the AI's voice into calls -->
+    <string name="fit_untested">Anrufton noch nicht getestet: Ruf dieses Telefon von einem anderen an und sprich etwa 20 Sekunden mit der KI. Bageo stellt ihn dann selbst ein.</string>
+    <string name="fit_adjusted">Der Anrufton wurde automatisch angepasst</string>
+    <string name="fit_problem">Beim Anrufton gibt es ein Problem, und alle Einstellungen wurden probiert. Siehe „First use on a new phone“ in der Anleitung (auf Englisch).</string>
+    <string name="fit_unsupported">Dieses Telefon kann die Stimme der KI nicht in Anrufe einspeisen</string>
 </resources>

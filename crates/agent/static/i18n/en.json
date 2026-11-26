@@ -1388,6 +1388,14 @@
     "m_chk_sms_d": "Lets Bageo text callers whether their booking went through.",
     "er_need_phone": "Your phone isn't ready yet. Wait a few seconds; if this stays, reopen the app.",
     "bk_err_read_failed": "Couldn't read this file. Please pick it again.",
-    "bk_app_note": "Backups are kept inside Bageo and are deleted with the app. To keep one, tap “Download” to save it on your phone."
+    "bk_app_note": "Backups are kept inside Bageo and are deleted with the app. To keep one, tap “Download” to save it on your phone.",
+    "ph_fit_untested": "Call audio not tested yet: call this phone from another phone and talk to the AI for about 20 seconds. Bageo then adjusts it by itself.",
+    "ph_fit_adjusted": "Call audio was adjusted automatically",
+    "ph_fit_problem": "Call audio has a problem and all settings were tried. See “First use on a new phone” in the guide.",
+    "ph_fit_unsupported": "This phone cannot send the AI's voice into calls",
+    "ph_fit_ask": "Did you hear the AI's voice on the last call?",
+    "ph_fit_yes": "Yes",
+    "ph_fit_no": "No",
+    "ph_fit_retest": "Other call audio settings are ready. Call this phone again to test them."
   }
 }

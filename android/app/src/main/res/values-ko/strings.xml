@@ -168,4 +168,9 @@
     <string name="wifi_not_ready">Wi-Fi 예비 연결이 아직 설정되지 않았습니다. USB 케이블로 한 번 연결하면 설정됩니다.</string>
     <string name="btn_forget_wifi">Wi-Fi 연결 삭제</string>
     <string name="msg_wifi_forgotten">Wi-Fi 연결을 삭제했습니다. 다시 사용하려면 USB 케이블로 한 번 연결하세요.</string>
+    <!-- Call audio: how well this phone carries the AI's voice into calls -->
+    <string name="fit_untested">통화 소리를 아직 테스트하지 않았습니다. 다른 전화로 이 휴대전화에 걸어 AI와 20초 정도 이야기하면 Bageo가 자동으로 맞춥니다.</string>
+    <string name="fit_adjusted">통화 소리를 자동으로 조정했습니다</string>
+    <string name="fit_problem">통화 소리에 문제가 있어 모든 설정을 시도했습니다. 안내서(영어)의 \'First use on a new phone\' 항목을 확인하세요.</string>
+    <string name="fit_unsupported">이 휴대전화는 AI 목소리를 통화에 내보낼 수 없습니다</string>
 </resources>

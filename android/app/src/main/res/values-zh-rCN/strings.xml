@@ -168,4 +168,9 @@
     <string name="wifi_not_ready">还没设置 Wi-Fi 备用连接。用 USB 线连接一次就会设置好。</string>
     <string name="btn_forget_wifi">忘记 Wi-Fi 连接</string>
     <string name="msg_wifi_forgotten">已忘记 Wi-Fi 连接。要再使用时，请用 USB 线连接一次。</string>
+    <!-- Call audio: how well this phone carries the AI's voice into calls -->
+    <string name="fit_untested">还没测过通话声音：请用另一部电话打给这部手机，跟 AI 讲 20 秒左右，Bageo 会自动调整。</string>
+    <string name="fit_adjusted">已自动调整通话声音</string>
+    <string name="fit_problem">通话声音有问题，已试过所有设置。请看说明文档里的「新手机第一次使用」。</string>
+    <string name="fit_unsupported">这部手机不支持把 AI 的声音送进通话</string>
 </resources>

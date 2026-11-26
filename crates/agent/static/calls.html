@@ -7428,6 +7428,7 @@ function phoneItem(s, call, ph) {
   }
   if (ph && ph.link) lines.push(t(ph.link === "wifi" ? "ph_link_wifi" : "ph_link_usb"));
   if (ph && !ph.supports_mode) lines.push(t("ph_need_update"));
+  lines.push(...phoneFitLines(s, ph, normal));
   if (modeErr[s] === "timeout") lines.push(t("pm_err_timeout"));
   else if (modeErr[s]) lines.push(t("ph_mode_fail", { why: modeErrText(modeErr[s]) }));
   if (devName(s) !== s) lines.push(s);
@@ -7442,6 +7443,37 @@ function phoneItem(s, call, ph) {
   }
   const name = devName(s) !== s ? devName(s) : (ph && ph.model) || s;
   return sysItem(inCall ? "warn" : normal ? "" : "ok", name, lines, action, phoneSimBlock(s));
+}
+// What the owner needs to know or do about a phone's call audio. Nothing when it works
+// (ok) or when the phone app is too old to report it; nothing either in normal phone
+// mode, where the AI does not answer. After a "No" the next call is the test.
+const fitBusy = {};
+function phoneFitLines(s, ph, normal) {
+  const fit = ph && ph.audio_fit;
+  if (!fit || normal) return [];
+  const out = [];
+  if (ph.audio_fit_retest) out.push(t("ph_fit_retest"));
+  else if (["untested", "adjusted", "problem", "unsupported"].includes(fit)) out.push(t("ph_fit_" + fit));
+  if (ph.audio_fit_ask && (fit === "ok" || fit === "adjusted")) {
+    out.push(h("div", { class: "d" },
+      h("span", { text: t("ph_fit_ask") + " " }),
+      h("button", { type: "button", class: "btn xs", disabled: !!fitBusy[s], text: t("ph_fit_yes"), onclick: () => answerAudioFit(s, true) }),
+      " ",
+      h("button", { type: "button", class: "btn xs", disabled: !!fitBusy[s], text: t("ph_fit_no"), onclick: () => answerAudioFit(s, false) })));
+  }
+  return out;
+}
+async function answerAudioFit(serial, heard) {
+  if (fitBusy[serial]) return;
+  fitBusy[serial] = true;
+  renderSystem();
+  try {
+    await api("/devices/" + encodeURIComponent(serial) + (heard ? "/audio-heard" : "/audio-problem"), jsonBody("POST", {}));
+  } catch (e) {
+    if (e.status !== 401) toast(e.message, true);
+  }
+  delete fitBusy[serial];
+  await loadSystem();
 }
 function modeErrText(code) {
   const key = "pm_err_" + String(code || "").toLowerCase().replace(/[^a-z0-9]+/g, "_");

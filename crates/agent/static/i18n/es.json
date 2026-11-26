@@ -1388,6 +1388,14 @@
     "m_chk_sms_d": "Así Bageo puede avisar por SMS a quien llamó si su cita quedó confirmada.",
     "er_need_phone": "El teléfono aún no está listo. Espera unos segundos; si sigue así, vuelve a abrir la app.",
     "bk_err_read_failed": "No se pudo leer el archivo. Vuelve a elegirlo.",
-    "bk_app_note": "Las copias se guardan dentro de Bageo y se borran con la app. Para conservar una, toca «Descargar» y guárdala en el teléfono."
+    "bk_app_note": "Las copias se guardan dentro de Bageo y se borran con la app. Para conservar una, toca «Descargar» y guárdala en el teléfono.",
+    "ph_fit_untested": "Audio de llamadas sin probar: llama a este teléfono desde otro y habla con la IA unos 20 segundos. Bageo lo ajustará solo.",
+    "ph_fit_adjusted": "El audio de las llamadas se ajustó automáticamente",
+    "ph_fit_problem": "El audio de las llamadas tiene un problema y ya se probaron todos los ajustes. Consulta «First use on a new phone» en la guía (en inglés).",
+    "ph_fit_unsupported": "Este teléfono no puede enviar la voz de la IA a las llamadas",
+    "ph_fit_ask": "¿Oíste la voz de la IA en la última llamada?",
+    "ph_fit_yes": "Sí",
+    "ph_fit_no": "No",
+    "ph_fit_retest": "Hay otro ajuste de audio listo. Vuelve a llamar a este teléfono para probarlo."
   }
 }

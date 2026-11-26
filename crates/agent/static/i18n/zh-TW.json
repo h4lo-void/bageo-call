@@ -1388,6 +1388,14 @@
     "m_chk_sms_d": "允許後，Bageo 才能用簡訊告訴來電者預約有沒有成功。",
     "er_need_phone": "手機還沒準備好，請稍等幾秒；一直這樣就重新開啟 App。",
     "bk_err_read_failed": "讀不到這個檔案，請重新選一次。",
-    "bk_app_note": "備份存在 Bageo 裡，移除 App 就會一起刪掉。要留一份，請按「下載」存到手機。"
+    "bk_app_note": "備份存在 Bageo 裡，移除 App 就會一起刪掉。要留一份，請按「下載」存到手機。",
+    "ph_fit_untested": "還沒測過通話聲音：請用另一支電話打給這支手機，跟 AI 講 20 秒左右，Bageo 會自動調整。",
+    "ph_fit_adjusted": "已自動調整通話聲音",
+    "ph_fit_problem": "通話聲音有問題，已試過所有設定。請看說明文件的「新手機第一次使用」。",
+    "ph_fit_unsupported": "這支手機不支援把 AI 的聲音送進通話",
+    "ph_fit_ask": "最近一通電話，有聽到 AI 的聲音嗎？",
+    "ph_fit_yes": "有",
+    "ph_fit_no": "沒有",
+    "ph_fit_retest": "已換一組通話聲音設定，請再打一通電話測試。"
   }
 }

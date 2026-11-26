@@ -82,7 +82,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - `POST /calls/api/appointments/{id}/retry-sms`；
 - `POST /calls/api/calls/clear`；
 - `POST /calls/api/sms/send`、`…/retry`、`…/clear`、`POST /calls/api/sms/thread/read` 和 `DELETE /calls/api/sms/thread`；
-- `POST /calls/api/devices/{serial}/mode`、`POST /calls/api/devices/{serial}/audio-problem` 和 `PUT /calls/api/devices/{serial}/sim-number`；
+- `POST /calls/api/devices/{serial}/mode`、`POST /calls/api/devices/{serial}/audio-problem`、`POST /calls/api/devices/{serial}/audio-heard` 和 `PUT /calls/api/devices/{serial}/sim-number`；
 - `POST /calls/api/contacts`、`PUT /calls/api/contacts/{id}`、`POST /calls/api/contacts/batch`、`POST /calls/api/contacts/block`（`POST /calls/api/contacts/import` 則改成要帶 `X-Filename` 標頭）；
 - `POST /calls/api/errands`、`…/{id}/cancel`、`…/{id}/retry`、`…/{id}/say`；
 - `POST /calls/api/backup/run`、`…/export`、`…/file-ticket`、`…/restore`、`…/delete`、`…/unlock`、`…/apply`、`…/discard`、`…/open-folder`（`POST /calls/api/backup/import` 則改成要帶 `X-Filename` 標頭）。
@@ -759,6 +759,7 @@ Content-Type: application/json
 | `GET /calls/api/devices` | 手機清單和連線狀態。回應格式見下方。 |
 | `POST /calls/api/devices/{serial}/mode` | Body `{"mode": "ai" \| "normal"}`。叫手機切換，最多等 15 秒等它回覆。回 `{ok, mode, error_code}`（400 時另附說明 `error`）。 |
 | `POST /calls/api/devices/{serial}/audio-problem` | Body `{}`（JSON）。對方在這支手機上聽不到 AI：手機 App 記下 `audio_fit` 為 `problem`，下一通改用別組播放設定。回 `{ok, audio_fit}`；手機沒連線回 HTTP 409 `offline`，App 不回報 `audio_fit` 的舊版回 HTTP 409 `unsupported`。 |
+| `POST /calls/api/devices/{serial}/audio-heard` | Body `{}`（JSON）。主人在這支手機上聽到了 AI：控制台不再問，直到手機又回到 `untested`（系統更新後）。回 `{ok}`；手機從沒回報過 `audio_fit` 回 HTTP 404 `not_found`。 |
 | `DELETE /calls/api/devices/{serial}` | 移除一支沒連線的舊手機（同時清除手機清單、已存名稱與 SIM 紀錄，保留過往通話紀錄）：`{ok, serial}`。手機還在線或通話中回 HTTP 409 `device_online`／`device_in_call`。 |
 | `PUT /calls/api/devices/{serial}/sim-number` | Body `{"sub_id": <整數>, "number": "..."}`。設定（空白代表清除）這支手機某張 SIM 的門號，讓來電與 AI 代打直接顯示並依門號挑選：`{ok, serial, sims}`。 |
 | `POST /calls/api/phone-pairing/renew` | 更換 Wi-Fi 配對金鑰（`phone-pairing.key`）並中斷透過 Wi-Fi 連線的手機，每支手機重新插上 USB 一次即可取得新金鑰：`{ok: true}`（失敗回傳 HTTP 500 `save_failed`）。金鑰本身不會回傳。 |
@@ -774,6 +775,7 @@ Content-Type: application/json
 - `mode` 是 `ai`（AI 接聽）或 `normal`（一般手機，見[手機設定](PHONE.md#一般手機模式)）。
 - 比這個功能舊的 App，`supports_mode` 是 false，永遠是 `ai`。
 - `audio_fit`（新版手機 App 才有，舊版沒有這個欄位）表示這支手機把 AI 的聲音播進通話的情況：`untested`（還沒有夠長的通話）、`ok`、`adjusted`（換過播放設定，已記住新的）、`problem`（還是會掉聲音，或主人說對方聽不到）、`unsupported`（手機沒有通話用的播放裝置，或每組設定都被拒絕）。App 連上時和每通結束時都會送；每通也會在 Bageo 的 log 寫一行 `uplink health …`。
+- `audio_fit_ask` 和 `audio_fit_retest` 只在為 true 時才有。`audio_fit_ask`：一通有 AI 聲音的電話結束時 `audio_fit` 是 `ok` 或 `adjusted`，而主人還沒回答，所以控制台會問「有聽到 AI 的聲音嗎？」。`audio_fit_retest`：主人回答沒有（`audio-problem`），下一通會用別組設定測試。Bageo 把這兩項和通知狀態存在資料資料夾的 `audio_fit.json`；手機又回到 `untested` 就開始新的一輪。
 
 `GET /health` 的內容：
 

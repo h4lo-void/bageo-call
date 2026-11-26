@@ -168,4 +168,9 @@
     <string name="wifi_not_ready">La connexion Wi-Fi de secours n\'est pas configurée. Branchez le câble USB une fois pour la configurer.</string>
     <string name="btn_forget_wifi">Oublier la connexion Wi-Fi</string>
     <string name="msg_wifi_forgotten">Connexion Wi-Fi oubliée. Pour la réutiliser, branchez le câble USB une fois.</string>
+    <!-- Call audio: how well this phone carries the AI's voice into calls -->
+    <string name="fit_untested">Son des appels non testé : appelez ce téléphone depuis un autre et parlez à l\'IA environ 20 secondes. Bageo le règle ensuite tout seul.</string>
+    <string name="fit_adjusted">Le son des appels a été réglé automatiquement</string>
+    <string name="fit_problem">Le son des appels pose problème et tous les réglages ont été essayés. Voir « First use on a new phone » dans le guide (en anglais).</string>
+    <string name="fit_unsupported">Ce téléphone ne peut pas envoyer la voix de l\'IA dans les appels</string>
 </resources>

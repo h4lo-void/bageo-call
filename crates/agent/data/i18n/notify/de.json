@@ -141,7 +141,15 @@
     "h_stall_spam": "das System hielt es für einen Werbe- / Betrugsanruf ({t}); die KI hat den Anrufer deshalb absichtlich hingehalten, um seine Zeit zu verschwenden",
     "h_stall_spam_nokind": "das System hielt es für einen Werbe- / Betrugsanruf; die KI hat den Anrufer deshalb absichtlich hingehalten, um seine Zeit zu verschwenden",
     "h_scam_stalling_off": "das System hielt es für einen Werbe- / Betrugsanruf ({t}); das Hinhalten ist aus, deshalb hat die KI wie gewohnt geantwortet",
-    "h_ai_ended": "die KI hat abgenommen und gesprochen; das Gespräch endete normal (die KI hat sich verabschiedet und aufgelegt, oder der Anrufer hat zuerst aufgelegt)"
+    "h_ai_ended": "die KI hat abgenommen und gesprochen; das Gespräch endete normal (die KI hat sich verabschiedet und aufgelegt, oder der Anrufer hat zuerst aufgelegt)",
+    "n_fit_test_title": "Neues Telefon: Anrufton testen",
+    "n_fit_test_body": "Dieses Telefon wurde noch nicht getestet. Ruf es von einem anderen Telefon an und sprich etwa 20 Sekunden mit der KI. Bageo stellt den Ton dann selbst ein.",
+    "n_fit_result_title": "Ergebnis des Anruftontests",
+    "n_fit_failed_title": "Problem mit dem Anrufton",
+    "n_fit_ok": "Der Anrufton funktioniert.",
+    "n_fit_adjusted": "Bageo hat den Anrufton selbst angepasst. Er funktioniert jetzt.",
+    "n_fit_problem": "Beim Anrufton gibt es ein Problem, und alle Einstellungen wurden probiert. Siehe „First use on a new phone“ in der Anleitung (auf Englisch).",
+    "n_fit_unsupported": "Dieses Telefon kann die Stimme der KI nicht in Anrufe einspeisen."
   },
   "lists": {
     "quote": ["„", "“"],

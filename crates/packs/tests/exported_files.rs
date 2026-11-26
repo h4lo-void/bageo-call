@@ -146,7 +146,9 @@ fn exported_strings_keep_the_english_names_and_arguments() {
     let en = strings(&read(&res().join("values/strings.xml")));
     for (suffix, text) in generated() {
         let tr = strings(&text);
-        assert_eq!(tr.len(), en.len(), "values-{suffix} key count");
+        // A string added to English reaches these files with the next translation export;
+        // until then the app shows the English line (see export.rs). None may be left over.
+        assert!(tr.len() <= en.len(), "values-{suffix} has more keys than English");
         for (name, (literal, value)) in &tr {
             let (_, english) = en.get(name).unwrap_or_else(|| panic!("values-{suffix} has {name}, English does not"));
             if !literal {

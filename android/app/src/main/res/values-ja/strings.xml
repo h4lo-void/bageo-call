@@ -168,4 +168,9 @@
     <string name="wifi_not_ready">Wi-Fi の予備接続はまだ設定されていません。USB ケーブルで一度つなぐと設定されます。</string>
     <string name="btn_forget_wifi">Wi-Fi 接続を削除</string>
     <string name="msg_wifi_forgotten">Wi-Fi 接続を削除しました。もう一度使うには、USB ケーブルで一度つないでください。</string>
+    <!-- Call audio: how well this phone carries the AI's voice into calls -->
+    <string name="fit_untested">通話の音声は未テストです。別の電話からこのスマホにかけて AI と 20 秒ほど話すと、Bageo が自動で調整します。</string>
+    <string name="fit_adjusted">通話の音声を自動で調整しました</string>
+    <string name="fit_problem">通話の音声に問題があり、すべての設定を試しました。ガイド（英語）の「First use on a new phone」をご覧ください。</string>
+    <string name="fit_unsupported">このスマホは AI の声を通話に流せません</string>
 </resources>

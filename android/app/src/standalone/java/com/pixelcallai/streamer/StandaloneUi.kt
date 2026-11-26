@@ -680,6 +680,7 @@ class StandaloneUi(private val activity: Activity) {
             .put("ai_enabled", ai)
             .put("switching", switching)
             .put("mode_error", errText)
+            .put("audio_fit", UplinkTuneStore.fit(activity).id)
             .put("live_ai_call", CallAudioService.isLiveAiCallActive())
             .put("owner_in_call", CallAudioService.isOwnerHandlingCall())
             .put("call_busy", !PhoneModeManager.isPhoneIdle(activity))

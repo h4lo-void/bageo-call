@@ -2335,6 +2335,39 @@ fn ai_errand_message(number: &str, device: &str, when: &str, headline: &str, bod
         )
 }
 
+/// About a phone's call audio (`crate::audio_fit`): a new phone needs a test call, the
+/// result of that test, or the audio turned bad later. Same switch as the call
+/// notifications.
+pub async fn notify_audio_fit(http: &Client, settings: &Settings, serial: &str, notice: crate::audio_fit::Notice) -> bool {
+    if !settings.call_notify {
+        return false;
+    }
+    let msg = audio_fit_message(locale::notify_words(), notice, &device_label(serial), &now_stamp());
+    deliver(http, settings, &msg).await
+}
+
+fn audio_fit_message(p: &locale::Words, notice: crate::audio_fit::Notice, device: &str, when: &str) -> Message {
+    use crate::audio_fit::Notice;
+    use crate::uplink_health::AudioFit;
+    let by_fit = |fit: AudioFit| match fit {
+        AudioFit::Ok => &p.n_fit_ok,
+        AudioFit::Adjusted => &p.n_fit_adjusted,
+        AudioFit::Problem => &p.n_fit_problem,
+        AudioFit::Unsupported => &p.n_fit_unsupported,
+        AudioFit::Untested => &p.n_fit_test_body,
+    };
+    let (title, body, fit) = match notice {
+        Notice::AskTest => (&p.n_fit_test_title, &p.n_fit_test_body, AudioFit::Untested),
+        Notice::Result(fit) => (&p.n_fit_result_title, by_fit(fit), fit),
+        Notice::Failed(fit) => (&p.n_fit_failed_title, by_fit(fit), fit),
+    };
+    Card::new(title)
+        .row(&p.n_phone, device)
+        .row(&p.n_time, when)
+        .tail(body)
+        .message("audio_fit", title.to_string(), json!({ "device": device, "time": when, "audio_fit": fit.as_str() }))
+}
+
 /// A plain title + body message to every channel.
 pub async fn notify_event(http: &Client, settings: &Settings, title: &str, body: &str) -> bool {
     let msg = Message {
@@ -2490,6 +2523,39 @@ pub fn notify_primary_backend(settings: &Settings) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn call_audio_messages_name_the_phone_and_say_one_thing_in_every_core_language() {
+        use crate::audio_fit::Notice;
+        use crate::uplink_health::AudioFit;
+        let notices = [
+            Notice::AskTest,
+            Notice::Result(AudioFit::Ok),
+            Notice::Result(AudioFit::Adjusted),
+            Notice::Result(AudioFit::Problem),
+            Notice::Result(AudioFit::Unsupported),
+            Notice::Failed(AudioFit::Problem),
+            Notice::Failed(AudioFit::Unsupported),
+        ];
+        for lang in locale::CORE {
+            let p = locale::words(lang);
+            let mut bodies = std::collections::BTreeSet::new();
+            for n in notices {
+                let m = audio_fit_message(p, n, "Desk phone", "Nov 5, 09:30");
+                assert_eq!(m.event, "audio_fit");
+                assert!(!m.title.trim().is_empty() && !m.body.contains("{}"), "{lang:?} {n:?}");
+                assert!(m.body.contains("Desk phone") && m.body.contains("Nov 5, 09:30"), "{lang:?} {n:?}: {}", m.body);
+                assert!(m.html.as_deref().is_some_and(|h| h.contains("Desk phone")));
+                bodies.insert(m.body);
+            }
+            assert_eq!(bodies.len(), notices.len(), "{lang:?}: every message reads differently");
+            let ask = audio_fit_message(p, Notice::AskTest, "d", "t");
+            let ok = audio_fit_message(p, Notice::Result(AudioFit::Ok), "d", "t");
+            let bad = audio_fit_message(p, Notice::Failed(AudioFit::Problem), "d", "t");
+            assert_ne!(ask.title, ok.title, "{lang:?}");
+            assert_ne!(ok.title, bad.title, "{lang:?}");
+        }
+    }
 
     fn ch(kind: &str, url: &str, token: &str, target: &str) -> Channel {
         Channel {

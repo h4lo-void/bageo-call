@@ -141,7 +141,15 @@
     "h_stall_spam": "o sistema julgou que era uma ligação de vendas / golpe ({t}); por isso a IA prendeu a pessoa na linha de propósito para fazê-la perder tempo",
     "h_stall_spam_nokind": "o sistema julgou que era uma ligação de vendas / golpe; por isso a IA prendeu a pessoa na linha de propósito para fazê-la perder tempo",
     "h_scam_stalling_off": "o sistema julgou que era uma ligação de vendas / golpe ({t}); a função de enrolar está desligada, então a IA respondeu normalmente",
-    "h_ai_ended": "a IA atendeu e conversou; a chamada terminou normalmente (a IA se despediu e desligou, ou a pessoa desligou primeiro)"
+    "h_ai_ended": "a IA atendeu e conversou; a chamada terminou normalmente (a IA se despediu e desligou, ou a pessoa desligou primeiro)",
+    "n_fit_test_title": "Telefone novo: teste o áudio das chamadas",
+    "n_fit_test_body": "Este telefone ainda não foi testado. Ligue para ele de outro telefone e fale com a IA por cerca de 20 segundos. O Bageo ajusta o áudio sozinho.",
+    "n_fit_result_title": "Resultado do teste de áudio",
+    "n_fit_failed_title": "Problema com o áudio das chamadas",
+    "n_fit_ok": "O áudio das chamadas funciona.",
+    "n_fit_adjusted": "O Bageo ajustou o áudio das chamadas sozinho. Agora funciona.",
+    "n_fit_problem": "O áudio das chamadas tem um problema e todas as configurações foram testadas. Veja “First use on a new phone” no guia (em inglês).",
+    "n_fit_unsupported": "Este telefone não consegue enviar a voz da IA para as chamadas."
   },
   "lists": {
     "quote": ["\"", "\""],

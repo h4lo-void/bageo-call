@@ -207,6 +207,33 @@ The connection is not encrypted (`ws://`): use it only on your own network, or
 put a TLS reverse proxy in front and use `wss://`. Calls are more robust over
 USB.
 
+## First use on a new phone: test the call audio
+
+Phones differ in how they let an app play sound into a call. Bageo finds the setting that works on each phone by itself, from one test call: call the new phone from another phone and talk to the AI for about 20 seconds. Bageo sends a notification when a new phone first connects, and another with the result.
+
+| The console and the app show | What it means | What to do |
+|---|---|---|
+| *Call audio not tested yet* | No call long enough has been made yet. | Make the test call. |
+| Nothing | The first settings worked for a whole call. | Nothing. |
+| *Call audio was adjusted automatically* | The sound dropped, so Bageo switched settings. The new ones work and are remembered. | Nothing. |
+| *Other call audio settings are ready* | You said you heard nothing, so Bageo switched settings. | Call the phone again to test them. |
+| *Call audio has a problem and all settings were tried* | The sound still dropped with every setting. | Report the phone (see below). |
+| *This phone cannot send the AI's voice into calls* | The phone does not allow it. See the three reasons below. | Report the phone (see below). |
+
+After a test call that went well, the phone's card on the console's *System* page asks *Did you hear the AI's voice on the last call?* Answer *Yes* and it does not ask again. Answer *No* and Bageo switches the phone to other settings: call it again to test them, and it asks again after that call. A phone that becomes untested again (after a system update) starts a new round, with a new notification.
+
+You get a notification when a new phone connects untested, one with the result of its test, and after that only if the audio turns bad (a problem, or not supported). A phone that is known to work (Google Pixel) gets none, and neither does a change between *works* and *adjusted*.
+
+**Why a phone is not supported.** Bageo's log has an `uplink health` line after every call; its `reason=` says which of these it is:
+
+- `no_telephony_device`: the phone lists no sound output meant for calls, so there is nowhere to play the AI's voice.
+- `prefer_rejected`: the phone has that output but refuses to send the app's sound to it. Check that the module is installed and the phone was restarted afterwards.
+- `track_rejected`: the output is there, but the phone could not open a sound track on it with any of the settings.
+
+**Which phones.** Tested: Google Pixel and the MediaTek phone Redmi K60 Ultra. Samsung phones with Exynos chips are not supported: they mostly have no system path that carries sound into a call. You can still install on one; after a test call Bageo shows the result. Other phones have not been tested, and the first test call tells.
+
+**Report a phone.** If the console says *has a problem* or *cannot send*, or you keep answering *No*, open an issue with the phone's model and its `uplink health` line (it holds no phone number or call content). See [Reporting a problem](TROUBLESHOOTING.md#reporting-a-problem).
+
 ## Day to day
 
 - While its service runs, the app shows a quiet permanent notification. It
