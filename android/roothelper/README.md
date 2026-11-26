@@ -38,8 +38,9 @@ It quits by itself:
 
 At boot the module runs `bageo-audio-helper restore` once, but only when a call's
 changes were left behind (`/data/adb/pixelcallai/audio_session` exists); it puts them
-back and exits. It runs on its own with a 60-second limit, so the rest of the boot
-script, the mode switch helper above all, never waits for it.
+back and exits. It runs on its own with a 60-second limit (plus a 5-second kill grace
+and a kernel alarm), so the rest of the boot script, the mode switch helper above all,
+never waits for it.
 
 ## Who it serves
 
@@ -119,11 +120,11 @@ Before a change the old value read from the phone is saved to
 when the app ends it, the connection breaks or runs out of time, the call ends, or the
 helper stops. Stopping puts back only while nothing else is being changed; if a change
 does not finish within 3 seconds, the saved values stay in the file and a restore that
-waits for the stopped helper to be gone (`restore --wait`, started by the helper) puts
-them back; a parameter call still running is ended first, and nothing is put back
-until it has gone. If the stopped helper does not go within 10 seconds,
-`restore --wait` puts nothing back and says so (exit code 1). Failing all of those,
-the next start or boot puts them back.
+waits for the stopped helper and any parameter child it started to be gone
+(`restore --wait`, started by the helper) puts them back; once stopping begins no new
+parameter child may start, and nothing is put back until both the helper and its child
+have exited. If they do not go within 10 seconds, `restore --wait` puts nothing back
+and says so (exit code 1). Failing all of those, the next start or boot puts them back.
 
 A value that could not be put back stays in the file and is tried again at the next
 start or boot (a running helper tries again at most every 30 seconds), up to 5 times in

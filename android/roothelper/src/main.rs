@@ -7,7 +7,18 @@ fn main() {
     std::process::exit(bageo_audio_helper::sys::cli::run(args));
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "android")))]
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "android"))))]
+fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    if let Some(code) = bageo_audio_helper::appdir::run_ipc(&refs) {
+        std::process::exit(code);
+    }
+    eprintln!("bageo-audio-helper runs on Android (and Linux) only");
+    std::process::exit(1);
+}
+
+#[cfg(not(unix))]
 fn main() {
     eprintln!("bageo-audio-helper runs on Android (and Linux) only");
     std::process::exit(1);

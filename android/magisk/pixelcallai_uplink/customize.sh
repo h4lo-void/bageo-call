@@ -75,17 +75,20 @@ if [ -d "$HELPER_SRC" ]; then
       cp -f "$HELPER_SRC/$HELPER_ABI/bageo-audio-helper" "$MODPATH/bin/bageo-audio-helper" &&
       chown 0:0 "$MODPATH/bin/bageo-audio-helper" && chmod 0700 "$MODPATH/bin/bageo-audio-helper" ||
       HELPER_OK=0
-    if [ "$HELPER_OK" = 1 ] && [ -f "$HELPER_SRC/bageo-audio-params.jar" ]; then
-      cp -f "$HELPER_SRC/bageo-audio-params.jar" "$MODPATH/bin/bageo-audio-params.jar" &&
-        chown 0:0 "$MODPATH/bin/bageo-audio-params.jar" && chmod 0600 "$MODPATH/bin/bageo-audio-params.jar" ||
-        HELPER_OK=0
-    fi
     if [ "$HELPER_OK" = 1 ]; then
-      ui_print "- audio helper: $HELPER_ABI (runs only when the app asks)"
+      chcon u:object_r:system_file:s0 "$MODPATH/bin/bageo-audio-helper" 2>/dev/null || true
     else
-      rm -rf "$MODPATH/bin"
-      ui_print "! audio helper left out: it cannot be installed with root-only permissions"
+      abort "! FATAL: cannot install bageo-audio-helper with root-only permissions"
     fi
+    if [ -f "$HELPER_SRC/bageo-audio-params.jar" ]; then
+      if cp -f "$HELPER_SRC/bageo-audio-params.jar" "$MODPATH/bin/bageo-audio-params.jar" &&
+          chown 0:0 "$MODPATH/bin/bageo-audio-params.jar" && chmod 0600 "$MODPATH/bin/bageo-audio-params.jar"; then
+        chcon u:object_r:system_file:s0 "$MODPATH/bin/bageo-audio-params.jar" 2>/dev/null || true
+      else
+        rm -f "$MODPATH/bin/bageo-audio-params.jar"
+      fi
+    fi
+    ui_print "- audio helper: $HELPER_ABI (runs only when the app asks)"
   else
     ui_print "- audio helper: none for this phone (${ARCH:-unknown})"
   fi

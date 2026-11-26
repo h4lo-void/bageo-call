@@ -22,6 +22,10 @@ pub const DATA_DIR: &str = "/data/adb/pixelcallai";
 pub const STATE_FILE: &str = "/data/adb/pixelcallai/audio_session";
 /// Held (flock) by the one running helper.
 pub const LOCK_FILE: &str = "/data/adb/pixelcallai/audio_helper.lock";
+/// Shared lock (flock) inherited by any running `app_process` parameter child, so a
+/// handoff restore (`restore --wait`, `disable`, `restore`) can confirm every child from
+/// an earlier helper process has exited before restoring audio settings.
+pub const CHILD_LOCK_FILE: &str = "/data/adb/pixelcallai/audio_child.lock";
 /// The running helper's pid (`mode_daemon.sh` reads it to not start a second one).
 pub const PID_FILE: &str = "/data/adb/pixelcallai/audio_helper.pid";
 /// While this exists the helper does not run (`bageo-audio-helper disable`).

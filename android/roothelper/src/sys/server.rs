@@ -38,11 +38,14 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use super::alsa::{AlsaMixer, Pcm};
-use super::appdir::{AppDir, Labels, Published};
+use super::appdir::{AppDir, Labels, Published, RemoveOutcome};
 use super::calls::{call_status, DumpsysCalls};
 use super::net::{self, AppConn};
 use super::params::{AppProcessParams, CHILD};
-use super::{log, props, APP_DATA_DIR, DATA_DIR, DISABLE_FILE, LOCK_FILE, PACKAGES_LIST, PID_FILE, SOCKET_NAME, STATE_FILE};
+use super::{
+    log, props, APP_DATA_DIR, CHILD_LOCK_FILE, DATA_DIR, DISABLE_FILE, LOCK_FILE, PACKAGES_LIST, PID_FILE, SOCKET_NAME,
+    STATE_FILE,
+};
 use crate::allow::{Allowlist, RULES};
 use crate::auth::{Keys, KEY_FILE};
 use crate::calls::{CallStatus, Watch};
@@ -160,13 +163,53 @@ pub fn take_lock() -> io::Result<Option<fs::File>> {
 
 /// [`take_lock`], waiting up to `wait` for another holder to let go.
 pub fn wait_for_lock(wait: Duration) -> io::Result<Option<fs::File>> {
+    wait_for_flock_file(Path::new(LOCK_FILE), wait)
+}
+
+/// Takes an exclusive `flock` on `CHILD_LOCK_FILE`, succeeding only once every
+/// `app_process` child started by an earlier helper has exited in the kernel.
+pub fn wait_for_child_lock(wait: Duration) -> io::Result<Option<fs::File>> {
+    wait_for_flock_file(Path::new(CHILD_LOCK_FILE), wait)
+}
+
+/// Waits up to `wait` in total for both the helper process lock and any lingering
+/// parameter child process lock to be free, returning both locks held exclusively.
+pub fn wait_for_quiet(wait: Duration) -> io::Result<Option<(fs::File, fs::File)>> {
+    let start = Instant::now();
+    let Some(main_lock) = wait_for_lock(wait)? else {
+        return Ok(None);
+    };
+    let left = wait.saturating_sub(start.elapsed());
+    let Some(child_lock) = wait_for_child_lock(left)? else {
+        return Ok(None);
+    };
+    Ok(Some((main_lock, child_lock)))
+}
+
+pub fn wait_for_flock_file(path: &Path, wait: Duration) -> io::Result<Option<fs::File>> {
+    data_dir()?;
+    let f = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)?;
     let start = Instant::now();
     loop {
-        match take_lock()? {
-            Some(l) => return Ok(Some(l)),
-            None if start.elapsed() < wait => thread::sleep(Duration::from_millis(100)),
-            None => return Ok(None),
+        // SAFETY: flock on a descriptor we own.
+        if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return Ok(Some(f));
         }
+        let e = io::Error::last_os_error();
+        if e.raw_os_error() != Some(libc::EWOULDBLOCK) {
+            return Err(e);
+        }
+        if start.elapsed() >= wait {
+            return Ok(None);
+        }
+        thread::sleep(Duration::from_millis(50));
     }
 }
 
@@ -245,7 +288,9 @@ pub struct Exit {
 
 fn clean_up(exit: &Exit) {
     if let (Some(d), Some(k)) = (&exit.dir, &exit.key) {
-        d.remove_published(KEY_FILE, k);
+        if let RemoveOutcome::Failed(e) = d.remove_published_status(KEY_FILE, k) {
+            log::warn(&format!("quitting: could not remove the published key file ({})", e.kind()));
+        }
     }
     if pid_from_file() == Some(std::process::id() as i32) {
         let _ = fs::remove_file(PID_FILE);
@@ -296,10 +341,13 @@ pub fn spawn_signal_thread(set: libc::sigset_t, life: Arc<Life>, exit: Exit, wat
 /// that change).
 pub fn exit_now(life: &Life, exit: &Exit, code: i32) -> ! {
     life.stop();
-    CHILD.kill();
-    let held = life.hold_for_exit(STOP_WAIT).filter(|_| child_gone(Duration::from_secs(1)));
+    CHILD.close_and_kill();
+    let held = life.hold_for_exit(STOP_WAIT).filter(|_| child_gone(Duration::from_secs(1))).and_then(|g| {
+        let cl = wait_for_child_lock(Duration::from_millis(200)).ok()??;
+        Some((g, cl))
+    });
     match held {
-        Some(_held) => {
+        Some((_held, _child_lock)) => {
             if let Some(r) = restore_state_file(Leftover::Normal) {
                 log_report("stopping", &r);
             }
@@ -345,14 +393,14 @@ fn spawn_restore_after_exit() {
     }
 }
 
-/// `restore --wait`: waits for the stopped helper to be gone, then puts back. `Err`: it
-/// did not go in time, so nothing was put back.
+/// `restore --wait`: waits for both the stopped helper and any parameter child it
+/// started to exit, then puts back. `Err`: they did not go in time, so nothing was put back.
 pub fn restore_after_exit() -> Result<Option<Report>, &'static str> {
-    match wait_for_lock(AFTER_EXIT_WAIT) {
-        Ok(Some(_lock)) => Ok(restore_state_file(Leftover::Normal)),
+    match wait_for_quiet(AFTER_EXIT_WAIT) {
+        Ok(Some(_locks)) => Ok(restore_state_file(Leftover::Normal)),
         Ok(None) => {
-            log::warn("restore after a stop: the helper did not go; nothing put back yet (next start or boot)");
-            Err("the stopped helper did not go in time; nothing was put back yet")
+            log::warn("restore after a stop: the helper or its child did not go; nothing put back yet (next start or boot)");
+            Err("the stopped helper or its child did not go in time; nothing was put back yet")
         }
         Err(_) => Err("cannot take the lock; nothing was put back"),
     }
@@ -402,8 +450,12 @@ pub fn serve() -> i32 {
             return 1;
         }
     };
-    if let Some(r) = restore_state_file(Leftover::Normal) {
-        log_report("left over from the last run", &r);
+    if let Ok(Some(_child_lock)) = wait_for_child_lock(Duration::from_secs(2)) {
+        if let Some(r) = restore_state_file(Leftover::Normal) {
+            log_report("left over from the last run", &r);
+        }
+    } else {
+        log::warn("a previous parameter child has not exited yet; leftover settings stay queued");
     }
     let mut leftover_tried = Instant::now();
     if disabled() {

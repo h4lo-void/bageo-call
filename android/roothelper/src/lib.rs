@@ -7,11 +7,13 @@
 //! and stream call PCM from and to a sound device. Every change is undone when the
 //! call's session ends, however it ends. See `README.md` next to `Cargo.toml`.
 //!
-//! Every module but `sys` is plain logic and is tested on any computer; `sys` is the part
-//! that touches the phone (its own tests run on Linux).
+//! Every module but `sys` is plain logic and is tested on any computer; `appdir` runs on
+//! Unix; `sys` is the part that touches the phone (its own tests run on Linux).
 
 pub mod abi;
 pub mod allow;
+#[cfg(unix)]
+pub mod appdir;
 pub mod auth;
 pub mod calls;
 pub mod control;

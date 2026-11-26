@@ -24,12 +24,14 @@ use std::ffi::{CStr, CString};
 use std::fs;
 use std::io::{self, Read};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::child::{self, ChildSlot};
+use super::{CHILD_LOCK_FILE, DATA_DIR};
 use crate::control::ParamBackend;
 use crate::params;
 
@@ -210,7 +212,13 @@ impl AppProcessParams {
             cmd.env(k, v);
         }
         cmd.env("CLASSPATH", jar).arg("/system/bin").arg(CLASS).args(args);
+        let shared_lock = if Path::new(DATA_DIR).is_dir() {
+            Some(attach_child_shared_lock(&mut cmd, Path::new(CHILD_LOCK_FILE)).map_err(|_| "cannot lock the parameter tool".to_string())?)
+        } else {
+            None
+        };
         let out = child::run(&mut cmd, TIMEOUT, MAX_OUTPUT, Some(&CHILD)).map_err(|_| "cannot start app_process".to_string())?;
+        drop(shared_lock);
         if out.status.is_none() {
             return Err("the audio parameter tool did not answer".into());
         }
@@ -219,6 +227,47 @@ impl AppProcessParams {
         }
         String::from_utf8(out.stdout).map_err(|_| "the audio parameter tool failed".into())
     }
+}
+
+/// Acquires a shared `flock` on `lock_path` and configures `cmd` so the spawned child
+/// inherits one open read-only descriptor to that file description across `exec`. Once
+/// the caller drops the returned `File`, only the running child holds the shared lock, so
+/// an exclusive `flock` on `lock_path` blocks until the child process has exited in the
+/// kernel (even if the parent helper exited earlier).
+pub fn attach_child_shared_lock(cmd: &mut Command, lock_path: &Path) -> io::Result<fs::File> {
+    let f = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(lock_path)?;
+    let start = Instant::now();
+    loop {
+        // SAFETY: flock on our open descriptor.
+        if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) } == 0 {
+            break;
+        }
+        let e = io::Error::last_os_error();
+        if e.raw_os_error() == Some(libc::EWOULDBLOCK) && start.elapsed() < Duration::from_millis(200) {
+            std::thread::sleep(Duration::from_millis(10));
+        } else {
+            return Err(e);
+        }
+    }
+    let raw = f.as_raw_fd();
+    // SAFETY: dup in the forked child creates one descriptor without FD_CLOEXEC sharing
+    // the same open file description (and therefore the shared flock) across exec.
+    unsafe {
+        cmd.pre_exec(move || {
+            if libc::dup(raw) < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    Ok(f)
 }
 
 fn check_jar(jar: &Path) -> Result<(), String> {
@@ -297,5 +346,27 @@ mod tests {
         assert!(!is_zygote(status, "/system/bin/app_process64", "u:r:untrusted_app:s0"));
         assert!(!is_zygote("Uid:\t10123\t10123\t10123\t10123\n", "/system/bin/app_process64", "u:r:zygote:s0"));
         assert!(!is_zygote("", "/system/bin/app_process64", "u:r:zygote:s0"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn inherited_child_lock_blocks_exclusive_wait_until_child_exits() {
+        let lock_path = std::env::temp_dir().join(format!("bageo-child-lock-{}", std::process::id()));
+        let _ = fs::remove_file(&lock_path);
+        let mut cmd = Command::new("/bin/sh");
+        cmd.arg("-c").arg("sleep 0.4");
+        let parent_guard = attach_child_shared_lock(&mut cmd, &lock_path).unwrap();
+        let mut child = cmd.spawn().unwrap();
+        // Drop parent's copy immediately: only the child process holds the shared flock now.
+        drop(parent_guard);
+
+        let f = fs::OpenOptions::new().read(true).write(true).open(&lock_path).unwrap();
+        let locked_early = unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) == 0 };
+        assert!(!locked_early, "exclusive lock must block while the spawned child is still alive");
+
+        let _ = child.wait();
+        let locked_after = unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) == 0 };
+        assert!(locked_after, "exclusive lock must succeed once the child has exited");
+        let _ = fs::remove_file(&lock_path);
     }
 }

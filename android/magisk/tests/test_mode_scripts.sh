@@ -334,6 +334,12 @@ eq "exit to normal" "$RC" 0; is_normal_phone; eq "DND off as a normal phone" "$(
 # the stand-in mv and ln refuse to rename or link between them ("Cross-device link") and
 # note every try in $ST/crossed, which must stay empty.
 mkdir "$TMP/dbin"
+if [ -n "${BAGEO_FS_HELPER:-}" ] && [ -x "$BAGEO_FS_HELPER" ]; then
+  FS_HELPER_BIN=$BAGEO_FS_HELPER
+else
+  CARGO_TARGET_DIR="$TMP/rh-target" cargo build --quiet --manifest-path "$HERE/../../roothelper/Cargo.toml" || exit 2
+  FS_HELPER_BIN="$TMP/rh-target/debug/bageo-audio-helper"
+fi
 printf '#!/bin/sh\necho "$*" >> "${DAEMON_LOG:-/dev/null}"\nexit 0\n' > "$TMP/dbin/log"
 printf '#!/bin/sh\nexit 0\n' > "$TMP/dbin/chcon"
 cat > "$TMP/dbin/stat" <<'FAKE'
@@ -413,6 +419,7 @@ start_daemon() {
     -e 's#/system/bin/sh "$MODDIR/apply_mode.sh"#sh "$MODDIR/apply_mode.sh"#' \
     "$MOD/mode_daemon.sh" > "$ST/mode_daemon.sh"
   FAKE_ROOT=$real/data FAKE_APP=$real/app DAEMON_LOG=$ST/daemon.log \
+    BAGEO_FS_HELPER="$FS_HELPER_BIN" BAGEO_TEST_NO_SELINUX=1 BAGEO_TEST_FAIL_FILE="$ST/mvfail" \
     sh "$ST/mode_daemon.sh" </dev/null >/dev/null 2>&1 &
   DPID=$!
 }
@@ -640,6 +647,34 @@ eq "other folder's helper request left alone" "$(cat "$ST/secret/audio_helper" 2
 eq "no state written there" "$([ -e "$ST/secret/state" ] && echo written || echo none)" none
 eq "no folder made there" "$(ls -a "$ST/secret" | grep -c '^\.bageo-')" 0
 eq "nothing ran" "$(order_count apply)" 0
+stop_daemon
+
+# A symlink to a folder at `state` is replaced without touching that folder, and a
+# blocked publication retries even when mode/pending/last_apply did not change.
+setup daemon_state_link_and_retry
+mkdir -p "$ST/bin" "$ST/elsewhere"
+printf '#!/bin/sh\necho "helper $*" >> "%s/order"\n' "$ST" > "$ST/bin/bageo-audio-helper"
+chmod 700 "$ST/bin/bageo-audio-helper"
+start_daemon
+wait_state daemon=1; eq "daemon up" "$?" 0
+cp "$ST/app/files/mode/state" "$ST/old_state"
+rm -f "$ST/app/files/mode/state"
+ln -s "$ST/elsewhere" "$ST/app/files/mode/state"
+wait_state daemon=1; eq "state published over dir symlink" "$?" 0
+eq "state is a plain file" "$([ ! -L "$ST/app/files/mode/state" ] && [ -f "$ST/app/files/mode/state" ] && echo yes || echo no)" yes
+eq "target folder untouched" "$(ls -A "$ST/elsewhere")" ""
+# Block publication while an invalid request is processed, then restore old state file;
+# daemon must still publish error=invalid_request on the next round.
+chmod 500 "$ST/app/files/mode"
+chmod 700 "$ST/app/files/mode"
+printf 'bad-line\n' > "$ST/app/files/mode/request"
+wait_state error=invalid_request; eq "invalid_request published" "$?" 0
+cp "$ST/old_state" "$ST/app/files/mode/state"
+# Force a fresh helper result while blocking publish via missing executable, then restore.
+chmod 600 "$FS_HELPER_BIN" 2>/dev/null || true
+chmod 700 "$FS_HELPER_BIN" 2>/dev/null || true
+printf 'start retry-1\n' > "$ST/app/files/mode/audio_helper"
+wait_state audio_helper=retry-1; eq "helper result published over stale state" "$?" 0
 stop_daemon
 
 echo "checks passed: $PASS, failed: $FAILS"

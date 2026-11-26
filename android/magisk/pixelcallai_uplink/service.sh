@@ -43,10 +43,24 @@ rm -f /data/adb/pixelcallai/daemon.pid 2>/dev/null || true
   # runs at boot.
   if [ -f /data/adb/pixelcallai/audio_session ] && [ -f "$MODDIR/bin/bageo-audio-helper" ]; then
     chmod 0700 "$MODDIR/bin/bageo-audio-helper" 2>/dev/null || true
-    if command -v timeout >/dev/null 2>&1; then
-      timeout 60 "$MODDIR/bin/bageo-audio-helper" restore </dev/null >/dev/null 2>&1 &
+    if timeout -k 5 60 true >/dev/null 2>&1; then
+      BAGEO_BOOT_RESTORE=1 timeout -k 5 60 "$MODDIR/bin/bageo-audio-helper" restore </dev/null >/dev/null 2>&1 &
     else
-      "$MODDIR/bin/bageo-audio-helper" restore </dev/null >/dev/null 2>&1 &
+      (
+        BAGEO_BOOT_RESTORE=1 "$MODDIR/bin/bageo-audio-helper" restore </dev/null >/dev/null 2>&1 &
+        rpid=$!
+        t=0
+        while [ -d "/proc/$rpid" ] && ! grep -q '^State:.*[XZ]' "/proc/$rpid/status" 2>/dev/null && [ "$t" -lt 60 ]; do
+          sleep 1
+          t=$((t + 1))
+        done
+        if [ -d "/proc/$rpid" ] && ! grep -q '^State:.*[XZ]' "/proc/$rpid/status" 2>/dev/null; then
+          kill -TERM "$rpid" 2>/dev/null || true
+          sleep 5
+          kill -KILL "$rpid" 2>/dev/null || true
+        fi
+        wait "$rpid" 2>/dev/null || true
+      ) </dev/null >/dev/null 2>&1 &
     fi
   fi
 

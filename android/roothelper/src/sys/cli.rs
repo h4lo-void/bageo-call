@@ -155,8 +155,18 @@ fn report_result(when: &str, r: Option<session::Report>) -> i32 {
 }
 
 fn restore(how: Leftover) -> i32 {
+    if std::env::var_os("BAGEO_BOOT_RESTORE").is_some() {
+        // Hard kernel watchdog for background boot restore, independent of external `timeout`.
+        unsafe {
+            libc::alarm(65);
+        }
+    }
     match server::take_lock() {
-        Ok(Some(_lock)) => report_result("restore", server::restore_state_file(how)),
+        Ok(Some(_lock)) => match server::wait_for_child_lock(Duration::from_secs(3)) {
+            Ok(Some(_child_lock)) => report_result("restore", server::restore_state_file(how)),
+            Ok(None) => fail("an earlier parameter child is still exiting; try again shortly"),
+            Err(e) => fail(e.kind()),
+        },
         Ok(None) => {
             println!("the helper is running; stop it first (bageo-audio-helper disable)");
             1
@@ -198,8 +208,8 @@ fn disable() -> i32 {
     // A stop signal when the helper can be pinned down; otherwise it sees the disable
     // file itself within a second.
     server::stop_running();
-    match server::wait_for_lock(Duration::from_secs(8)) {
-        Ok(Some(_lock)) => {
+    match server::wait_for_quiet(Duration::from_secs(8)) {
+        Ok(Some(_locks)) => {
             let r = server::restore_state_file(Leftover::RetryAll);
             match &r {
                 Some(r) => {
@@ -303,6 +313,9 @@ fn mixer_try(card: &str, control: &str, seconds: &str, values: &[&str]) -> i32 {
 
 pub fn run(args: Vec<String>) -> i32 {
     let a: Vec<&str> = args.iter().map(String::as_str).collect();
+    if let Some(code) = crate::appdir::run_ipc(&a) {
+        return code;
+    }
     match a.as_slice() {
         &["serve"] => server::serve(),
         &["status"] => status(),
