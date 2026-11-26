@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">እንደ መደበኛ ስልክ ይጠቀሙ?</string>
     <string name="connection_hint_usb">USB (ነባሪ፣ የሚመከር)፦ ws://127.0.0.1:8765 ይቆይ። የኮምፒውተር ፕሮግራሙ ይህን ወደብ በUSB ገመድ በadb reverse በራስ-ሰር ያስተላልፋል።</string>
     <string name="connection_hint_wifi">Wi-Fi፦ በኮምፒውተር ፕሮግራሙ የሚታየውን አድራሻ ያስገቡ፣ ለምሳሌ ws://192.0.2.10:8787/ws?token=… ስልኩና ኮምፒውተሩ በአንድ አውታረ መረብ ላይ መሆን አለባቸው።</string>
+    <string name="fit_adjusted">የጥሪ ድምፅ በራስ ሰር ተስተካክሏል</string>
+    <string name="fit_noted">ተመዝግቧል፦ የዚህ ስልክ የጥሪ ድምፅ ችግር አለበት</string>
+    <string name="fit_problem">የጥሪ ድምፅ ችግር አለበት፤ ሁሉም ቅንብሮች ተሞክረዋል። በመመሪያው ውስጥ “በአዲስ ስልክ የመጀመሪያ አጠቃቀም” የሚለውን ይመልከቱ።</string>
+    <string name="fit_retest">ሌሎች የጥሪ ድምፅ ቅንብሮች ተዘጋጅተዋል። ለመሞከር ይህን ስልክ እንደገና ይደውሉ።</string>
+    <string name="fit_unsupported">ይህ ስልክ የ AI ድምፅን ወደ ጥሪዎች መላክ አይችልም</string>
+    <string name="fit_untested">የጥሪ ድምፅ ገና አልተሞከረም፦ ይህን ስልክ ከሌላ ስልክ ደውለው ከ AI ጋር ለ20 ሰከንድ ያህል ይነጋገሩ። ከዚያ Bageo በራሱ ያስተካክለዋል።</string>
     <string name="grant_perms">የተጠየቁትን ፈቃዶች ይፍቀዱ፣ ከዚያ እንደገና አገልግሎት ጀምርን ይንኩ።</string>
-    <string name="header_compat">በPixel 7፣ 7a፣ 8 እና 9 ላይ ተሞክሯል። ሌሎች root የተደረጉ ስልኮች ሊሰሩ ይችላሉ፤ በራስዎ ኃላፊነት ይሞክሩ።</string>
+    <string name="header_compat">በ Google Pixel እና በ Redmi K60 Ultra ላይ ተሞክሯል። root የተደረጉ ሌሎች ስልኮችም ይደገፋሉ፤ ነገር ግን የእርስዎን ይሞክሩ፦ ከሌላ ስልክ ደውለው ከ AI ጋር ለ20 ሰከንድ ያህል ይነጋገሩ።</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">ስሪት %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo %1$s ነው (ስሪት ይለያያል)</string>

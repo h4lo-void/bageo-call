@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Kas kasutada tavalise telefonina?</string>
     <string name="connection_hint_usb">USB (vaikimisi, soovitatav): jäta ws://127.0.0.1:8765. Arvutiprogramm suunab selle pordi USB-kaabli kaudu adb reverse abil automaatselt.</string>
     <string name="connection_hint_wifi">Wi-Fi: sisesta arvutiprogrammis näidatud aadress, nt ws://192.0.2.10:8787/ws?token=… Telefon ja arvuti peavad olema samas võrgus.</string>
+    <string name="fit_adjusted">Kõneheli häälestati automaatselt</string>
+    <string name="fit_noted">Märgitud: selle telefoni kõnehelil on probleem</string>
+    <string name="fit_problem">Kõnehelil on probleem ja kõiki seadeid on proovitud. Vaata juhendist jaotist „Esmakordne kasutus uues telefonis“.</string>
+    <string name="fit_retest">Teised kõneheli seaded on valmis. Helista sellele telefonile uuesti, et neid proovida.</string>
+    <string name="fit_unsupported">See telefon ei saa AI häält kõnedesse saata</string>
+    <string name="fit_untested">Kõnehelit pole veel testitud: helista sellele telefonile teisest telefonist ja räägi umbes 20 sekundit AI-ga. Seejärel häälestab Bageo selle ise.</string>
     <string name="grant_perms">Luba küsitud õigused ja puuduta uuesti Käivita teenus.</string>
-    <string name="header_compat">Testitud mudelitel Pixel 7, 7a, 8 ja 9. Teised root-õigustega telefonid võivad töötada; proovi omal vastutusel.</string>
+    <string name="header_compat">Testitud Google Pixelil ja Redmi K60 Ultral. Toetatud on ka teised rootitud telefonid, aga testi enda oma: helista sellele teisest telefonist ja räägi umbes 20 sekundit AI-ga.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versioon %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo on %1$s (erinev versioon)</string>

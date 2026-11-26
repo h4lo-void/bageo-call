@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">გამოვიყენოთ ჩვეულებრივ ტელეფონად?</string>
     <string name="connection_hint_usb">USB (ნაგულისხმევი, რეკომენდებული): დატოვეთ ws://127.0.0.1:8765. კომპიუტერის პროგრამა ამ პორტს USB კაბელით adb reverse-ის მეშვეობით ავტომატურად გადაამისამართებს.</string>
     <string name="connection_hint_wifi">Wi-Fi: შეიყვანეთ კომპიუტერის პროგრამაში ნაჩვენები მისამართი, მაგ. ws://192.0.2.10:8787/ws?token=… ტელეფონი და კომპიუტერი ერთ ქსელში უნდა იყოს.</string>
+    <string name="fit_adjusted">ზარის ხმა ავტომატურად მოეწყო</string>
+    <string name="fit_noted">ჩაიწერა: ამ ტელეფონის ზარის ხმას პრობლემა აქვს</string>
+    <string name="fit_problem">ზარის ხმას პრობლემა აქვს და ყველა პარამეტრი გამოიცადა. იხილეთ ინსტრუქციაში „პირველი გამოყენება ახალ ტელეფონზე“.</string>
+    <string name="fit_retest">ზარის ხმის სხვა პარამეტრები მზადაა. დარეკეთ ამ ტელეფონზე ხელახლა მათი გამოსაცდელად.</string>
+    <string name="fit_unsupported">ეს ტელეფონი ვერ გადასცემს AI-ს ხმას ზარებში</string>
+    <string name="fit_untested">ზარის ხმა ჯერ არ შემოწმებულა: დარეკეთ ამ ტელეფონზე სხვა ტელეფონიდან და დაახლოებით 20 წამი ესაუბრეთ AI-ს. შემდეგ Bageo თავად მოაწესრიგებს მას.</string>
     <string name="grant_perms">დაუშვით მოთხოვნილი ნებართვები, შემდეგ კვლავ დააჭირეთ სერვისის გაშვებას.</string>
-    <string name="header_compat">შემოწმებულია Pixel 7, 7a, 8 და 9-ზე. სხვა root-იან ტელეფონებზეც შეიძლება იმუშაოს; სცადეთ საკუთარი პასუხისმგებლობით.</string>
+    <string name="header_compat">შემოწმებულია Google Pixel-სა და Redmi K60 Ultra-ზე. სხვა root-იანი ტელეფონებიც მხარდაჭერილია, მაგრამ შეამოწმეთ თქვენი: დარეკეთ მასზე სხვა ტელეფონიდან და დაახლოებით 20 წამი ესაუბრეთ AI-ს.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">ვერსია %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo არის %1$s (სხვა ვერსია)</string>

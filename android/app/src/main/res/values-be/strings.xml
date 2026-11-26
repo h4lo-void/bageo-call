@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Выкарыстоўваць як звычайны тэлефон?</string>
     <string name="connection_hint_usb">USB (стандартна, рэкамендуецца): пакіньце ws://127.0.0.1:8765. Праграма на камп\'ютары перанакіроўвае гэты порт па кабелі USB праз adb reverse.</string>
     <string name="connection_hint_wifi">Wi-Fi: увядзіце адрас з праграмы на камп\'ютары, напр. ws://192.0.2.10:8787/ws?token=… Тэлефон і камп\'ютар павінны быць у адной сетцы.</string>
+    <string name="fit_adjusted">Гук выклікаў наладжаны аўтаматычна</string>
+    <string name="fit_noted">Запісана: у гэтага тэлефона праблема з гукам выклікаў</string>
+    <string name="fit_problem">З гукам выклікаў ёсць праблема, спробаваны ўсе налады. Глядзіце «Першае выкарыстанне на новым тэлефоне» ў даведніку.</string>
+    <string name="fit_retest">Іншыя налады гуку выклікаў гатовыя. Патэлефануйце на гэты тэлефон яшчэ раз, каб іх праверыць.</string>
+    <string name="fit_unsupported">Гэты тэлефон не можа перадаваць голас AI у выклікі</string>
+    <string name="fit_untested">Гук падчас выклікаў яшчэ не правераны: патэлефануйце на гэты тэлефон з іншага і пагаворыце з AI каля 20 секунд. Пасля Bageo наладзіць яго сам.</string>
     <string name="grant_perms">Дайце запытаныя дазволы, затым зноў націсніце Запусціць службу.</string>
-    <string name="header_compat">Праверана на Pixel 7, 7a, 8 і 9. Іншыя тэлефоны з root могуць працаваць; выкарыстоўвайце на свой страх і рызыку.</string>
+    <string name="header_compat">Правярана на Google Pixel і Redmi K60 Ultra. Іншыя тэлефоны з правамі root таксама падтрымліваюцца, але праверце свой: патэлефануйце на яго з іншага тэлефона і пагаворыце з AI каля 20 секунд.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Версія %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo версіі %1$s (версія адрозніваецца)</string>

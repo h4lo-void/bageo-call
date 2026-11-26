@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Normál telefonként használja?</string>
     <string name="connection_hint_usb">USB (alapértelmezett, ajánlott): hagyja meg a ws://127.0.0.1:8765 címet. A számítógépes program ezt a portot az USB-kábelen automatikusan továbbítja az adb reverse segítségével.</string>
     <string name="connection_hint_wifi">Wi-Fi: adja meg a számítógépes program által mutatott címet, például ws://192.0.2.10:8787/ws?token=… A telefonnak és a számítógépnek ugyanazon a hálózaton kell lennie.</string>
+    <string name="fit_adjusted">A hívások hangját automatikusan beállítottuk</string>
+    <string name="fit_noted">Feljegyezve: ennek a telefonnak a hívásainál hangprobléma van</string>
+    <string name="fit_problem">A hívások hangjával gond van, és minden beállítást kipróbáltunk. Lásd az útmutatóban az „Első használat új telefonon” részt.</string>
+    <string name="fit_retest">További hívásbeállítások állnak készen. Hívja fel újra ezt a telefont a kipróbálásukhoz.</string>
+    <string name="fit_unsupported">Ez a telefon nem tudja az AI hangját a hívásokba küldeni</string>
+    <string name="fit_untested">A hívások hangját még nem tesztelték: hívja fel ezt a telefont egy másikról, és beszéljen az AI-jal körülbelül 20 másodpercig. Ezután a Bageo magától beállítja.</string>
     <string name="grant_perms">Engedélyezze a kért engedélyeket, majd koppintson újra a Szolgáltatás indítása gombra.</string>
-    <string name="header_compat">Pixel 7, 7a, 8 és 9 készüléken tesztelve. Más root hozzáférésű telefonokon is működhet; csak saját felelősségre próbálja ki.</string>
+    <string name="header_compat">Google Pixelen és Redmi K60 Ultrán tesztelve. Más rootolt telefonok is támogatottak, de tesztelje a sajátját: hívja fel egy másik telefonról, és beszéljen az AI-jal körülbelül 20 másodpercig.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Verzió: %1$s (%2$d)</string>
     <string name="header_version_diff">A Bageo %1$s verziójú (eltérő verzió)</string>

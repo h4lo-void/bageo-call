@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Ut telephonum commune uti?</string>
     <string name="connection_hint_usb">USB (solitum, commendatum): relinque ws://127.0.0.1:8765. Programma computatri hunc portum per funem USB cum adb reverse transmittit.</string>
     <string name="connection_hint_wifi">Wi-Fi: inscribe inscriptionem a computatro ostensam, e.g. ws://192.0.2.10:8787/ws?token=… Telephonum et computatrum in eodem reti esse debent.</string>
+    <string name="fit_adjusted">Sonus vocationum sponte temperatus est</string>
+    <string name="fit_noted">Notatum est: sonus vocationum huius telephoni vitium habet</string>
+    <string name="fit_problem">Sonus vocationum vitium habet et omnia ordinamenta temptata sunt. Vide «Primus usus in telephono novo» in ductu.</string>
+    <string name="fit_retest">Alia sonorum vocationum ordinamenta parata sunt. Hoc telephonum iterum vocate ut ea probetis.</string>
+    <string name="fit_unsupported">Hoc telephonum vocem AI in vocationes mittere non potest</string>
+    <string name="fit_untested">Sonus vocationum nondum probatus est: telephonum hoc ex alio telephono vocate et cum AI per 20 fere secunda loquimini. Deinde Bageo ipse eum temperabit.</string>
     <string name="grant_perms">Da permissiones petitas, deinde iterum preme Incipe ministerium.</string>
-    <string name="header_compat">Probatum in Pixel 7, 7a, 8 et 9. Alia telephona cum root operari possunt; tuo periculo utere.</string>
+    <string name="header_compat">Probatum in Google Pixel et Redmi K60 Ultra. Alia quoque telephona cum root adiuvantur, sed vestrum probate: ex alio telephono id vocate et cum AI per 20 fere secunda loquimini.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versio %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo est %1$s (versio differt)</string>

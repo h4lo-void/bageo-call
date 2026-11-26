@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Dùng như điện thoại bình thường?</string>
     <string name="connection_hint_usb">USB (mặc định, nên dùng): giữ nguyên ws://127.0.0.1:8765. Chương trình trên máy tính sẽ tự chuyển cổng này qua cáp USB bằng adb reverse.</string>
     <string name="connection_hint_wifi">Wi-Fi: nhập địa chỉ do chương trình trên máy tính hiển thị, ví dụ ws://192.0.2.10:8787/ws?token=… Điện thoại và máy tính phải dùng chung một mạng.</string>
+    <string name="fit_adjusted">Âm thanh cuộc gọi đã được điều chỉnh tự động</string>
+    <string name="fit_noted">Đã ghi nhận: âm thanh cuộc gọi của điện thoại này có vấn đề</string>
+    <string name="fit_problem">Âm thanh cuộc gọi có vấn đề và đã thử tất cả cài đặt. Xem “Lần dùng đầu tiên trên điện thoại mới” trong hướng dẫn.</string>
+    <string name="fit_retest">Các cài đặt âm thanh cuộc gọi khác đã sẵn sàng. Hãy gọi lại đến điện thoại này để thử.</string>
+    <string name="fit_unsupported">Điện thoại này không thể gửi giọng nói của AI vào cuộc gọi</string>
+    <string name="fit_untested">Âm thanh cuộc gọi chưa được kiểm tra: hãy gọi đến điện thoại này từ một điện thoại khác và trò chuyện với AI khoảng 20 giây. Sau đó Bageo sẽ tự điều chỉnh.</string>
     <string name="grant_perms">Hãy cho phép các quyền được yêu cầu, rồi bấm Khởi động dịch vụ lần nữa.</string>
-    <string name="header_compat">Đã thử trên Pixel 7, 7a, 8 và 9. Các điện thoại đã root khác có thể chạy được; hãy tự chịu rủi ro khi thử.</string>
+    <string name="header_compat">Đã kiểm tra trên Google Pixel và Redmi K60 Ultra. Các điện thoại khác đã root cũng được hỗ trợ, nhưng hãy tự kiểm tra điện thoại của bạn: gọi đến máy từ một điện thoại khác và trò chuyện với AI khoảng 20 giây.</string>
     <string name="header_device">%1$s · Android phiên bản %2$s (API %3$d)</string>
     <string name="header_version">Phiên bản %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo là %1$s (phiên bản khác)</string>

@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">להשתמש בו כטלפון רגיל?</string>
     <string name="connection_hint_usb">USB (ברירת מחדל, מומלץ): השאירו את ws://127.0.0.1:8765. תוכנית המחשב מעבירה את היציאה הזו אוטומטית דרך כבל ה-USB באמצעות adb reverse.</string>
     <string name="connection_hint_wifi">Wi-Fi: הזינו את הכתובת שתוכנית המחשב מציגה, למשל ws://192.0.2.10:8787/ws?token=… הטלפון והמחשב צריכים להיות באותה רשת.</string>
+    <string name="fit_adjusted">צליל השיחה כוונן אוטומטית</string>
+    <string name="fit_noted">נרשם: יש בעיה בצליל השיחה של הטלפון הזה</string>
+    <string name="fit_problem">יש בעיה בצליל השיחה וכל ההגדרות נוסו. ראו את “שימוש ראשון בטלפון חדש” במדריך.</string>
+    <string name="fit_retest">הגדרות צליל נוספות מוכנות. התקשרו שוב לטלפון הזה כדי לנסות אותן.</string>
+    <string name="fit_unsupported">הטלפון הזה לא יכול לשלוח את הקול של ה-AI לשיחות</string>
+    <string name="fit_untested">צליל השיחה עדיין לא נבדק: התקשרו לטלפון הזה מטלפון אחר ודברו עם ה-AI כ-20 שניות. אחר כך Bageo יכוונן אותו בעצמו.</string>
     <string name="grant_perms">אשרו את ההרשאות המבוקשות ואז לחצו שוב על הפעלת השירות.</string>
-    <string name="header_compat">נבדק ב-Pixel 7, 7a, 8 ו-9. ייתכן שיעבוד גם בטלפונים אחרים עם root; נסו על אחריותכם.</string>
+    <string name="header_compat">נבדק ב-Google Pixel וב-Redmi K60 Ultra. גם טלפונים אחרים עם root נתמכים, אבל כדאי לבדוק את הטלפון שלכם: התקשרו אליו מטלפון אחר ודברו עם ה-AI כ-20 שניות.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">גרסה %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo בגרסה %1$s (גרסה שונה)</string>

@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Telefono arrunt gisa erabili?</string>
     <string name="connection_hint_usb">USB (lehenetsia, gomendatua): utzi ws://127.0.0.1:8765. Ordenagailuko programak ataka hau USB kable bidez birbidaltzen du adb reverse-rekin.</string>
     <string name="connection_hint_wifi">Wi-Fi: sartu ordenagailuko programak erakusten duen helbidea, adib. ws://192.0.2.10:8787/ws?token=… Telefonoak eta ordenagailuak sare berean egon behar dute.</string>
+    <string name="fit_adjusted">Dei-audioa automatikoki doitu da</string>
+    <string name="fit_noted">Oharra hartu da: telefono honen dei-audioak arazo bat du</string>
+    <string name="fit_problem">Dei-audioak arazo bat du eta ezarpen guztiak probatu dira. Ikusi gidako «Telefono berri batean lehen aldiz erabiltzea».</string>
+    <string name="fit_retest">Dei-audioaren beste ezarpen batzuk prest daude. Deitu berriro telefono honetara probatzeko.</string>
+    <string name="fit_unsupported">Telefono honek ezin du AIaren ahotsa deietara bidali</string>
+    <string name="fit_untested">Dei-audioa ez da oraindik probatu: deitu telefono honetara beste telefono batetik eta hitz egin AIarekin 20 segundo inguru. Gero Bageok berak doituko du.</string>
     <string name="grant_perms">Eman eskatutako baimenak eta sakatu berriro Hasi zerbitzua.</string>
-    <string name="header_compat">Pixel 7, 7a, 8 eta 9 modeloetan probatua. Root egindako beste telefono batzuk ibil daitezke; erabili zure ardurapean.</string>
+    <string name="header_compat">Google Pixel eta Redmi K60 Ultra gailuetan probatu da. Root egindako beste telefono batzuk ere bateragarriak dira, baina probatu zurea: deitu beste telefono batetik eta hitz egin AIarekin 20 segundo inguru.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">%1$s bertsioa (%2$d)</string>
     <string name="header_version_diff">Bageo %1$s da (bertsio desberdina)</string>

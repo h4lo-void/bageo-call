@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Als gewone telefoon gebruiken?</string>
     <string name="connection_hint_usb">USB (standaard, aanbevolen): laat ws://127.0.0.1:8765 staan. Bageo op de computer stuurt deze poort automatisch door via de USB-kabel met adb reverse.</string>
     <string name="connection_hint_wifi">Wifi: voer het adres in dat Bageo op de computer toont, bijvoorbeeld ws://192.0.2.10:8787/ws?token=… De telefoon en de computer moeten in hetzelfde netwerk zitten.</string>
+    <string name="fit_adjusted">Het gespreksgeluid is automatisch aangepast</string>
+    <string name="fit_noted">Genoteerd: het gespreksgeluid van deze telefoon heeft een probleem</string>
+    <string name="fit_problem">Het gespreksgeluid heeft een probleem en alle instellingen zijn geprobeerd. Zie “Eerste gebruik op een nieuwe telefoon” in de handleiding.</string>
+    <string name="fit_retest">Andere instellingen voor het gespreksgeluid staan klaar. Bel deze telefoon opnieuw om ze te testen.</string>
+    <string name="fit_unsupported">Deze telefoon kan de stem van de AI niet in gesprekken sturen</string>
+    <string name="fit_untested">Het gespreksgeluid is nog niet getest: bel deze telefoon met een andere telefoon en praat ongeveer 20 seconden met de AI. Daarna stelt Bageo het zelf in.</string>
     <string name="grant_perms">Sta de gevraagde machtigingen toe en tik daarna opnieuw op Service starten.</string>
-    <string name="header_compat">Getest op Pixel 7, 7a, 8 en 9. Andere geroote telefoons werken misschien; op eigen risico.</string>
+    <string name="header_compat">Getest op Google Pixel en Redmi K60 Ultra. Andere geroote telefoons worden ook ondersteund, maar test de jouwe: bel hem met een andere telefoon en praat ongeveer 20 seconden met de AI.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versie %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo is %1$s (andere versie)</string>

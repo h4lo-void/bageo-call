@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">සාමාන්‍ය දුරකථනයක් ලෙස භාවිත කරන්නද?</string>
     <string name="connection_hint_usb">USB (පෙරනිමි, නිර්දේශිත): ws://127.0.0.1:8765 තබන්න. පරිගණක වැඩසටහන USB කේබලය හරහා adb reverse මගින් මෙම පෝට් එක ස්වයංක්‍රීයව යොමු කරයි.</string>
     <string name="connection_hint_wifi">Wi-Fi: පරිගණක වැඩසටහන පෙන්වන ලිපිනය යොදන්න, උදා: ws://192.0.2.10:8787/ws?token=… දුරකථනය සහ පරිගණකය එකම ජාලයේ තිබිය යුතුය.</string>
+    <string name="fit_adjusted">ඇමතුම් ශබ්දය ස්වයංක්‍රීයව සකස් කරන ලදී</string>
+    <string name="fit_noted">සටහන් කළා: මෙම දුරකථනයේ ඇමතුම් ශබ්දයේ ගැටලුවක් ඇත</string>
+    <string name="fit_problem">ඇමතුම් ශබ්දයේ ගැටලුවක් ඇති අතර සියලු සැකසුම් උත්සාහ කර ඇත. මාර්ගෝපදේශයේ “නව දුරකථනයක පළමු භාවිතය” බලන්න.</string>
+    <string name="fit_retest">ඇමතුම් ශබ්දයේ වෙනත් සැකසුම් සූදානම්. ඒවා පරීක්ෂා කිරීමට මෙම දුරකථනයට නැවත ඇමතුමක් ගන්න.</string>
+    <string name="fit_unsupported">මෙම දුරකථනයට ඇමතුම්වලට AI ගේ හඬ යැවිය නොහැක</string>
+    <string name="fit_untested">ඇමතුම් ශබ්දය තවම පරීක්ෂා කර නැත: වෙනත් දුරකථනයකින් මෙම දුරකථනයට ඇමතුමක් ගෙන තත්පර 20 ක් පමණ AI සමඟ කතා කරන්න. ඉන්පසු Bageo එය තනිවම සකසයි.</string>
     <string name="grant_perms">ඉල්ලා ඇති අවසර ලබා දී නැවත සේවාව අරඹන්න ඔබන්න.</string>
-    <string name="header_compat">Pixel 7, 7a, 8 සහ 9 මත පරීක්ෂා කර ඇත. Root කළ වෙනත් දුරකථන වැඩ කළ හැක; ඔබේම වගකීමෙන් උත්සාහ කරන්න.</string>
+    <string name="header_compat">Google Pixel සහ Redmi K60 Ultra මත පරීක්ෂා කර ඇත. root කළ වෙනත් දුරකථනද සහාය දක්වයි, නමුත් ඔබේ දුරකථනය පරීක්ෂා කරන්න: වෙනත් දුරකථනයකින් එයට ඇමතුමක් ගෙන තත්පර 20 ක් පමණ AI සමඟ කතා කරන්න.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">අනුවාදය %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo %1$s වේ (අනුවාදය වෙනස්)</string>

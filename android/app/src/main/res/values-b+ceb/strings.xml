@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Gamiton isip normal nga telepono?</string>
     <string name="connection_hint_usb">USB (default, girekomenda): pasagdi ang ws://127.0.0.1:8765. Awtomatikong i-forward sa computer kini nga port pinaagi sa USB cable uban sa adb reverse.</string>
     <string name="connection_hint_wifi">Wi-Fi: isulod ang adres nga gipakita sa computer, pananglit ws://192.0.2.10:8787/ws?token=… Kinahanglan pareho og network ang telepono ug computer.</string>
+    <string name="fit_adjusted">Ang tingog sa tawag awtomatikong na-adjust</string>
+    <string name="fit_noted">Natala: aduna\'y problema ang tingog sa tawag niini nga telepono</string>
+    <string name="fit_problem">Aduna\'y problema ang tingog sa tawag ug gisulayan na ang tanang setting. Tan-awa ang “Unang paggamit sa bag-ong telepono” sa giya.</string>
+    <string name="fit_retest">Andam na ang uban pang setting sa tingog sa tawag. Tawga pag-usab kini nga telepono aron sulayan kini.</string>
+    <string name="fit_unsupported">Dili makapadala kini nga telepono sa tingog sa AI ngadto sa mga tawag</string>
+    <string name="fit_untested">Wala pa matesti ang tingog sa tawag: tawga kini nga telepono gikan sa laing telepono ug makigsulti sa AI sulod sa mga 20 segundo. Dayon ang Bageo mismo ang mag-adjust niini.</string>
     <string name="grant_perms">Ihatag ang gipangayo nga permiso, dayon pislita pag-usab ang Sugdi ang serbisyo.</string>
-    <string name="header_compat">Nasulayan sa Pixel 7, 7a, 8, ug 9. Ang ubang rooted nga telepono mahimong mogana; gamita sa kaugalingong risgo.</string>
+    <string name="header_compat">Gitesting sa Google Pixel ug Redmi K60 Ultra. Gisuportahan usab ang ubang telepono nga naka-root, apan sulayi ang imo: tawga kini gikan sa laing telepono ug makigsulti sa AI sulod sa mga 20 segundo.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Bersyon %1$s (%2$d)</string>
     <string name="header_version_diff">Ang Bageo kay %1$s (lahi ang bersyon)</string>
