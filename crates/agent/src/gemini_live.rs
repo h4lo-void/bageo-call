@@ -222,6 +222,9 @@ struct CarrierPromptFilter {
     stage: CarrierStage,
     /// Warning words were swallowed since the last turn ended.
     swallowed: bool,
+    /// The transcript swallowed as the warning so far: a word the transcript
+    /// split across two pieces is only whole again with the piece before it.
+    heard: String,
 }
 
 impl CarrierPromptFilter {
@@ -244,18 +247,25 @@ impl CarrierPromptFilter {
                 if looks_like_carrier_intl_prompt(caller_text_all) {
                     self.swallowed = true;
                     self.stage = CarrierStage::After;
+                    self.heard = caller_text_all.to_string();
                     return CarrierHeard::Warning;
                 }
                 CarrierHeard::Caller
             }
             CarrierStage::After => {
-                if prompt_fragment(piece) {
+                // More of the warning adds nothing that is not its own words, read
+                // together with what was swallowed: 「…請注意、小」 then 「心詐騙。」.
+                let before = prompt_leftover(&self.heard);
+                let joined = format!("{}{piece}", self.heard);
+                if prompt_leftover(&joined) <= before {
+                    self.heard = joined;
                     self.swallowed = true;
                     return CarrierHeard::Warning;
                 }
                 self.stage = CarrierStage::Done;
                 if let Some(i) = caller_opener_at_end(piece) {
-                    if !prompt_norm(&piece[..i]).is_empty() && prompt_fragment(&piece[..i]) {
+                    let head = format!("{}{}", self.heard, &piece[..i]);
+                    if !prompt_norm(&piece[..i]).is_empty() && prompt_leftover(&head) <= before {
                         self.swallowed = true;
                         return CarrierHeard::WarningThenCaller(piece[i..].to_string());
                     }
@@ -1108,12 +1118,29 @@ fn hk_new_sim_prompt(caller_text: &str) -> bool {
 
 const HK_NEW_SIM_MARKS: &[&str] = &["來電由新儲值卡打出", "來電由新儲值咭打出", "callmadefromanewprepaidsimcard"];
 
-/// A piece of transcript after a swallowed warning is more of it: nothing is left
-/// once the warnings' own words are dropped. Hello words (「喂」, "hello",
-/// 「여보세요」) are not among them — said after the warning, they are the caller's.
-fn prompt_fragment(piece: &str) -> bool {
+/// How many letters of `text` are not the warnings' own words, not counting the
+/// start of one of them at its very end (a word the transcript has not finished).
+/// A piece after a swallowed warning that adds none is more of it. Hello words
+/// (「喂」, "hello", 「여보세요」) are not among the warnings' words — said after the
+/// warning, they are the caller's.
+fn prompt_leftover(text: &str) -> usize {
+    let mut rest = prompt_norm(text);
+    for w in carrier_words() {
+        rest = rest.replace(w, "");
+    }
+    let chars: Vec<char> = rest.chars().collect();
+    (0..chars.len())
+        .find(|&i| {
+            let end: String = chars[i..].iter().collect();
+            carrier_words().iter().any(|w| w.starts_with(&end))
+        })
+        .unwrap_or(chars.len())
+}
+
+/// The warnings' own words without the hello words, longest first.
+fn carrier_words() -> &'static [&'static str] {
     static WORDS: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
-    let words = WORDS.get_or_init(|| {
+    WORDS.get_or_init(|| {
         let mut w: Vec<&'static str> = PROMPT_WORDS
             .iter()
             .chain(TW_WORDS)
@@ -1127,12 +1154,7 @@ fn prompt_fragment(piece: &str) -> bool {
         w.sort_by_key(|w| std::cmp::Reverse(w.chars().count()));
         w.dedup();
         w
-    });
-    let mut rest = prompt_norm(piece);
-    for w in words {
-        rest = rest.replace(w, "");
-    }
-    rest.is_empty()
+    })
 }
 
 /// Short first words of a caller, in the languages the AI answers in, normalized
@@ -1406,6 +1428,40 @@ mod carrier_filter_tests {
             assert_eq!(call.turn_end(), (true, String::new()), "{pieces:?}");
             // The next turn with no words is the caller's again.
             assert_eq!(call.turn_end(), (false, String::new()), "{pieces:?}");
+        }
+    }
+
+    /// Speech-to-text may cut the warning anywhere, also inside a word
+    /// (「…請注意、小」 + 「心詐騙。」): in two or three pieces it is still all
+    /// swallowed and its turn nobody's, and the caller's short first words after it
+    /// are still theirs.
+    #[test]
+    fn a_warning_cut_anywhere_is_still_the_warning() {
+        let feed = |pieces: &[&str]| {
+            let mut call = Call::default();
+            for p in pieces {
+                call.hear(p);
+            }
+            call
+        };
+        for pieces in WARNINGS {
+            let whole: String = pieces.concat();
+            let cuts: Vec<usize> = whole.char_indices().map(|(i, _)| i).skip(1).collect();
+            for (n, &a) in cuts.iter().enumerate() {
+                let two = [&whole[..a], &whole[a..]];
+                assert_eq!(feed(&two).turn_end(), (true, String::new()), "{two:?}");
+                for &b in &cuts[n + 1..] {
+                    let three = [&whole[..a], &whole[a..b], &whole[b..]];
+                    assert_eq!(feed(&three).turn_end(), (true, String::new()), "{three:?}");
+                }
+            }
+            for &a in cuts.iter().step_by(3) {
+                for words in ["你好", "Hi", "여보세요", "もしもし", "Hola"] {
+                    let mut call = feed(&[&whole[..a], &whole[a..]]);
+                    assert!(!call.hear(words), "{whole} cut at {a}, then {words}");
+                    assert_eq!(call.turn_end(), (false, words.to_string()), "{whole} cut at {a}, then {words}");
+                }
+            }
         }
     }
 
