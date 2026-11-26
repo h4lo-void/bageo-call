@@ -161,8 +161,10 @@ No. Android lets only privileged system apps record a call and play sound into
 it, and iOS does not allow it at all.
 
 **Will it work on my Android phone that is not a Pixel?**
-Nobody knows until someone tries: it depends on the phone's audio hardware
-layer. See [Which phones](PHONE.md#which-phones).
+Other rooted Android phones are supported, but we have not tested them, so test
+yours: call it from another phone and talk to the AI for about 20 seconds.
+Bageo adjusts by itself and shows the result. Samsung phones with Exynos chips
+mostly do not work. See [Which phones](PHONE.md#which-phones).
 
 **Can I keep using the phone normally?**
 For a while, yes: switch it to [normal phone mode](PHONE.md#normal-phone-mode)

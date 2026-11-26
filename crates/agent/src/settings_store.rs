@@ -123,6 +123,10 @@ pub struct RuntimeSettings {
     /// settings.json, not from the environment.
     #[serde(skip)]
     pub summary_key_saved: bool,
+    /// `summary_api_key` itself is saved in settings.json (not only set in
+    /// the environment).
+    #[serde(skip)]
+    pub summary_key_own: bool,
     /// Desk note spoken in the AI opening (next call).
     pub owner_status_enabled: bool,
     pub owner_status_text: String,
@@ -1228,6 +1232,7 @@ impl RuntimeSettings {
             ),
             summary_api_key: base.summary_api_key.clone(),
             summary_key_saved: false,
+            summary_key_own: false,
             owner_status_enabled: env_bool("OWNER_STATUS_ENABLED", false),
             owner_status_text: env_or("OWNER_STATUS_TEXT", ""),
             gemini_persona_mode: env_bool("GEMINI_PERSONA_MODE", true),
@@ -1279,7 +1284,7 @@ impl RuntimeSettings {
             about_extra: String::new(),
             about_message_asks: crate::prompts::default_about_asks(),
             dismissed_pack_prompts: Vec::new(),
-            summary_api_base: env_or("SUMMARY_API_BASE", ""),
+            summary_api_base: base.summary_api_base.clone(),
             summary_model: env_or("SUMMARY_MODEL", ""),
             summary_provider: sanitize_summary_provider(&env_or("SUMMARY_PROVIDER", "auto")),
             notify_channels: Vec::new(),
@@ -1819,7 +1824,8 @@ impl RuntimeSettings {
             ui_password_prompted,
             talk_style_level,
         );
-        self.summary_key_saved = ov.summary_api_key.as_deref().is_some_and(|k| !k.trim().is_empty())
+        self.summary_key_own = ov.summary_api_key.as_deref().is_some_and(|k| !k.trim().is_empty());
+        self.summary_key_saved = self.summary_key_own
             || ov.trtc_llm_config.as_deref().is_some_and(|c| crate::summary::api_key_from_llm_config(c).is_some());
         self.ivr_start_delay_ms = self
             .ivr_start_delay_ms
@@ -1941,8 +1947,15 @@ impl RuntimeSettings {
         s.trtc_ai_max_idle_secs = self.trtc_ai_max_idle_secs.clamp(60, 259_200);
         s.trtc_bridge_enabled = self.trtc_bridge_enabled;
         s.trtc_bridge_url = self.trtc_bridge_url.clone();
-        if !self.summary_api_key.trim().is_empty() {
+        // A summary key of its own goes to the address set beside it; one only
+        // in the environment only to the environment's address.
+        let own_summary_key = !self.summary_api_key.trim().is_empty()
+            && (self.summary_key_own || self.summary_api_key.trim() != base.summary_api_key.trim());
+        let env_summary_address = plain_url(&self.summary_api_base) == plain_url(&base.summary_api_base);
+        if own_summary_key {
             s.summary_api_key = self.summary_api_key.clone();
+        } else if !env_summary_address {
+            s.summary_api_key = String::new();
         }
         s.notify_channels = self.notify_channels.clone();
         s.summary_api_base = self.summary_api_base.clone();
@@ -1952,7 +1965,7 @@ impl RuntimeSettings {
         let old_env_key = base.summary_api_key_old_env
             || (base.summary_api_key.trim().is_empty()
                 && crate::summary::api_key_from_llm_config(base.trtc_llm_config.as_ref()).is_some());
-        if !self.summary_key_saved && old_env_key {
+        if !self.summary_key_saved && old_env_key && env_summary_address {
             let filled = fill_old_summary_service(&self.summary_provider, true, &mut s.summary_api_base, &mut s.summary_model);
             // Only a TRTC LLM config key: it becomes the summary key of that service.
             if filled && s.summary_api_key.trim().is_empty() {
@@ -2516,6 +2529,7 @@ impl SettingsStore {
             if llm_key_only {
                 if let Some(k) = crate::summary::api_key_from_llm_config(&rt.trtc_llm_config) {
                     rt.summary_api_key = k.clone();
+                    rt.summary_key_own = true;
                     overrides.summary_api_key = Some(k);
                 }
             }
@@ -2561,10 +2575,13 @@ impl SettingsStore {
     /// [`RETENTION_FIELDS`] only keep or lengthen. Read the way [`Self::load`]
     /// reads a file (the same changes for older versions), saved, then swapped in.
     pub fn replace_from_backup(&self, text: &str, settings: bool, keys: bool, whole_keys: bool) -> Result<Arc<RuntimeSettings>> {
-        let inc: Value = serde_json::from_str(text).context("not a settings file")?;
+        let mut inc: Value = serde_json::from_str(text).context("not a settings file")?;
         if !inc.is_object() {
             anyhow::bail!("not a settings file");
         }
+        // One name for the summary key before the file and this computer's are
+        // combined, so the key kept is the one [`gives_secret`] counts.
+        let old_name = summary_key_under_new_name(&mut inc);
         let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
         let cur = serde_json::to_value(&st.overrides)?;
         let now = serde_json::to_value(&*st.current)?;
@@ -2576,8 +2593,13 @@ impl SettingsStore {
                 m.insert("ui_password_prompted".into(), json!(true));
             }
         }
-        let (ov, moved, _) = read_overrides_from(Some(&self.path), &merged.to_string()).context("not a settings file")?;
-        let rt = self.swap_in(&mut st, ov, moved)?;
+        let (mut ov, moved, _) = read_overrides_from(Some(&self.path), &merged.to_string()).context("not a settings file")?;
+        // An address from the file with no key of its own does not take this
+        // computer's ([`combine_settings`] keeps a key the file leaves empty).
+        if keys && !whole_keys {
+            withhold_moved_secrets(&self.base, &st.current, &mut ov, |k| gives_secret(&inc, k));
+        }
+        let rt = self.swap_in(&mut st, ov, moved || (keys && old_name))?;
         info!("runtime settings restored from a backup path={} settings={settings} keys={keys}", self.path.display());
         Ok(rt)
     }
@@ -2645,6 +2667,7 @@ impl SettingsStore {
         if crate::config::is_embedded() {
             ov.gemini_live_enabled = Some(true);
         }
+        withhold_moved_secrets(&self.base, &st.current, &mut ov, |k| gives_secret(patch, k));
         let mut rt = RuntimeSettings::from_base(&self.base);
         rt.apply(&ov);
         write_overrides(&self.path, &ov)?;
@@ -2897,6 +2920,124 @@ fn mask_secret(s: &str) -> String {
     }
 }
 
+/// Where a secret is sent, as the settings say it.
+type Destination = fn(&RuntimeSettings) -> String;
+
+/// Secrets that are sent to an address set beside them, with what decides that
+/// address. A secret left empty is kept only while its address stays the same
+/// ([`withhold_moved_secrets`]).
+const SECRET_ROUTES: [(&str, Destination); 7] = [
+    ("summary_api_key", summary_destination),
+    ("openclaw_token", openclaw_destination),
+    ("trtc_secret_id", trtc_api_destination),
+    ("trtc_cloud_secret_key", trtc_api_destination),
+    ("trtc_llm_config", trtc_api_destination),
+    ("trtc_tts_config", trtc_api_destination),
+    // The UserSigs made with it go to the Cloud API and to the sidecar.
+    ("trtc_secret_key", trtc_sig_destination),
+];
+
+fn plain_url(s: &str) -> String {
+    s.trim().trim_end_matches('/').to_string()
+}
+
+fn summary_destination(rt: &RuntimeSettings) -> String {
+    plain_url(&rt.summary_api_base)
+}
+
+fn openclaw_destination(rt: &RuntimeSettings) -> String {
+    plain_url(&rt.openclaw_url)
+}
+
+/// The Cloud API host as [`RuntimeSettings::effective`] uses it (international off).
+fn trtc_api_destination(rt: &RuntimeSettings) -> String {
+    crate::trtc_api::resolve_host(&rt.trtc_api_host, false)
+}
+
+fn trtc_sig_destination(rt: &RuntimeSettings) -> String {
+    format!("{} {}", trtc_api_destination(rt), plain_url(&rt.trtc_bridge_url))
+}
+
+fn route_slot<'a>(ov: &'a mut Overrides, secret: &str) -> Option<&'a mut Option<String>> {
+    Some(match secret {
+        "summary_api_key" => &mut ov.summary_api_key,
+        "openclaw_token" => &mut ov.openclaw_token,
+        "trtc_secret_id" => &mut ov.trtc_secret_id,
+        "trtc_cloud_secret_key" => &mut ov.trtc_cloud_secret_key,
+        "trtc_llm_config" => &mut ov.trtc_llm_config,
+        "trtc_tts_config" => &mut ov.trtc_tts_config,
+        "trtc_secret_key" => &mut ov.trtc_secret_key,
+        _ => return None,
+    })
+}
+
+fn route_value<'a>(rt: &'a RuntimeSettings, secret: &str) -> &'a str {
+    match secret {
+        "summary_api_key" => &rt.summary_api_key,
+        "openclaw_token" => &rt.openclaw_token,
+        "trtc_secret_id" => &rt.trtc_secret_id,
+        "trtc_cloud_secret_key" => &rt.trtc_cloud_secret_key,
+        "trtc_llm_config" => &rt.trtc_llm_config,
+        "trtc_tts_config" => &rt.trtc_tts_config,
+        "trtc_secret_key" => &rt.trtc_secret_key,
+        _ => "",
+    }
+}
+
+/// The summary key a request or settings file has under the key's former
+/// name: taken only when the new name (or clearing it) is not there at all.
+fn old_named_summary_key(v: &Value) -> Option<&Value> {
+    if v.get("summary_api_key").is_some() || v.get("summary_api_key_clear").is_some() {
+        return None;
+    }
+    v.get("deepseek_api_key")
+}
+
+/// A settings file with the summary key under its former name has it under
+/// the new one, the way a request's is read ([`old_named_summary_key`]). True
+/// only when a key under the former name was taken (not empty).
+fn summary_key_under_new_name(v: &mut Value) -> bool {
+    let old = old_named_summary_key(v).cloned();
+    let Some(m) = v.as_object_mut() else {
+        return false;
+    };
+    m.remove("deepseek_api_key");
+    let taken = old.as_ref().and_then(Value::as_str).is_some_and(|s| !s.trim().is_empty());
+    if let Some(old) = old {
+        m.insert("summary_api_key".into(), old);
+    }
+    taken
+}
+
+/// A request or settings file that brings this secret (not empty), under its
+/// own name or the summary key's former one.
+fn gives_secret(v: &Value, secret: &str) -> bool {
+    let filled = |x: Option<&Value>| x.and_then(Value::as_str).is_some_and(|s| !s.trim().is_empty());
+    filled(v.get(secret)) || (secret == "summary_api_key" && filled(old_named_summary_key(v)))
+}
+
+/// Clears in `ov` each secret of [`SECRET_ROUTES`] whose address is no longer
+/// the one it had in `before` while no new secret came with the change
+/// (`given`): it is not sent to the new address and has to be entered again.
+fn withhold_moved_secrets(base: &Settings, before: &RuntimeSettings, ov: &mut Overrides, given: impl Fn(&str) -> bool) {
+    let mut after = RuntimeSettings::from_base(base);
+    after.apply(ov);
+    for (secret, destination) in SECRET_ROUTES {
+        if given(secret) || destination(before) == destination(&after) || route_value(&after, secret).trim().is_empty() {
+            continue;
+        }
+        let Some(slot) = route_slot(ov, secret) else {
+            continue;
+        };
+        // A summary key only in the environment is not saved here:
+        // [`RuntimeSettings::effective`] gives it only to the environment's address.
+        if secret == "summary_api_key" && slot.is_none() {
+            continue;
+        }
+        *slot = Some(String::new());
+    }
+}
+
 fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     fn p_string(patch: &Value, key: &str, slot: &mut Option<String>) {
         if let Some(v) = patch.get(key).and_then(|v| v.as_str()) {
@@ -3043,7 +3184,7 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     }
     p_secret(patch, "summary_api_key", &mut ov.summary_api_key);
     // Reading requests of older versions: the key's former name.
-    if patch.get("summary_api_key").is_none() && patch.get("summary_api_key_clear").is_none() {
+    if old_named_summary_key(patch).is_some() {
         p_secret(patch, "deepseek_api_key", &mut ov.summary_api_key);
     }
     p_bool(patch, "owner_status_enabled", &mut ov.owner_status_enabled);
@@ -4743,6 +4884,202 @@ mod tests {
         base.summary_api_key_old_env = false;
         let rt = SettingsStore::load(base.clone()).snapshot();
         assert_eq!(summary_endpoint_for(&rt.effective(&base), Provider::Custom), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_saved_key_is_kept_only_while_its_address_stays_the_same() {
+        let dir = std::env::temp_dir().join(format!("bageo-key-address-{}", uuid::Uuid::new_v4()));
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        base.summary_api_key = String::new();
+        base.summary_api_key_old_env = false;
+        base.trtc_secret_id = "".into();
+        base.trtc_cloud_secret_key = "".into();
+        base.trtc_secret_key = "".into();
+        base.trtc_llm_config = "".into();
+        base.trtc_tts_config = "".into();
+        base.trtc_api_host = String::new();
+        base.trtc_bridge_url = String::new();
+        let store = SettingsStore::load(base.clone());
+
+        // Summary service. The same address (given again, written with a
+        // slash, or not sent at all) with the key left empty: kept.
+        store
+            .apply_patch(&json!({"summary_api_base": "https://summary-a.example/v1", "summary_api_key": "test-fake-sum-1"}))
+            .unwrap();
+        for patch in [
+            json!({"summary_api_base": "https://summary-a.example/v1", "summary_api_key": ""}),
+            json!({"summary_api_base": " https://summary-a.example/v1/ "}),
+            json!({"owner_name": "Alex"}),
+        ] {
+            assert_eq!(store.apply_patch(&patch).unwrap().summary_api_key, "test-fake-sum-1", "{patch}");
+        }
+        // Another address with the key left empty: no key, after a restart too.
+        let rt = store
+            .apply_patch(&json!({"summary_api_base": "https://summary-b.example/v1", "summary_api_key": ""}))
+            .unwrap();
+        assert_eq!((rt.summary_api_base.as_str(), rt.summary_api_key.as_str()), ("https://summary-b.example/v1", ""));
+        assert_eq!(rt.effective(&base).summary_api_key, "");
+        assert_eq!(SettingsStore::load(base.clone()).snapshot().summary_api_key, "");
+        // Another address with a new key (or one under its former name): the new key.
+        let rt = store
+            .apply_patch(&json!({"summary_api_base": "https://summary-c.example/v1", "summary_api_key": "test-fake-sum-2"}))
+            .unwrap();
+        assert_eq!(rt.summary_api_key, "test-fake-sum-2");
+        let rt = store
+            .apply_patch(&json!({"summary_api_base": "https://summary-d.example/v1", "deepseek_api_key": "test-fake-sum-3"}))
+            .unwrap();
+        assert_eq!(rt.summary_api_key, "test-fake-sum-3");
+
+        // OpenClaw.
+        store.apply_patch(&json!({"openclaw_url": "https://claw-a.example", "openclaw_token": "test-fake-claw-1"})).unwrap();
+        assert_eq!(store.apply_patch(&json!({"openclaw_url": "https://claw-a.example/"})).unwrap().openclaw_token, "test-fake-claw-1");
+        assert_eq!(store.apply_patch(&json!({"openclaw_url": "https://claw-b.example"})).unwrap().openclaw_token, "");
+        let rt = store.apply_patch(&json!({"openclaw_url": "https://claw-c.example", "openclaw_token": "test-fake-claw-2"})).unwrap();
+        assert_eq!(rt.openclaw_token, "test-fake-claw-2");
+
+        // TRTC: the Cloud API host gets the CAM key pair and the LLM / TTS
+        // configs; UserSigs of the SDK key also go to the sidecar.
+        store
+            .apply_patch(&json!({
+                "trtc_secret_id": "test-fake-id-1",
+                "trtc_cloud_secret_key": "test-fake-cloud-1",
+                "trtc_llm_config": "{\"Model\":\"test-fake-llm\"}",
+                "trtc_tts_config": "{\"Voice\":\"test-fake-tts\"}",
+                "trtc_secret_key": "test-fake-sdk-1",
+            }))
+            .unwrap();
+        let rt = store.apply_patch(&json!({"trtc_api_host": "https://trtc.tencentcloudapi.com/", "owner_name": "Sam"})).unwrap();
+        assert_eq!((rt.trtc_secret_id.as_str(), rt.trtc_secret_key.as_str()), ("test-fake-id-1", "test-fake-sdk-1"), "the default host written out");
+        let rt = store.apply_patch(&json!({"trtc_bridge_url": "http://192.168.1.20:8791"})).unwrap();
+        assert_eq!(
+            (rt.trtc_secret_key.as_str(), rt.trtc_secret_id.as_str(), rt.trtc_cloud_secret_key.as_str()),
+            ("", "test-fake-id-1", "test-fake-cloud-1"),
+            "only the sidecar moved"
+        );
+        let rt = store.apply_patch(&json!({"trtc_api_host": "trtc.example.net", "trtc_secret_key": "test-fake-sdk-2"})).unwrap();
+        assert_eq!(
+            (rt.trtc_secret_id.as_str(), rt.trtc_cloud_secret_key.as_str(), rt.trtc_llm_config.as_str(), rt.trtc_tts_config.as_str()),
+            ("", "", "", "")
+        );
+        assert_eq!(rt.trtc_secret_key, "test-fake-sdk-2", "a key given with the change is the new one");
+
+        // A restored file: an address without a key of its own does not take
+        // the one here; with its own key it brings that one.
+        let rt = store.replace_from_backup(r#"{"openclaw_url":"https://claw-c.example/"}"#, false, true, false).unwrap();
+        assert_eq!(rt.openclaw_token, "test-fake-claw-2", "the same address");
+        let rt = store.replace_from_backup(r#"{"openclaw_url":"https://claw-x.example"}"#, false, true, false).unwrap();
+        assert_eq!((rt.openclaw_url.as_str(), rt.openclaw_token.as_str()), ("https://claw-x.example", ""));
+        let rt = store
+            .replace_from_backup(r#"{"openclaw_url":"https://claw-y.example","openclaw_token":"test-fake-claw-3"}"#, false, true, false)
+            .unwrap();
+        assert_eq!(rt.openclaw_token, "test-fake-claw-3");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_summary_key_only_in_the_environment_goes_only_to_the_environments_address() {
+        let dir = std::env::temp_dir().join(format!("bageo-env-summary-key-{}", uuid::Uuid::new_v4()));
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        base.summary_api_key = "test-fake-env-sum".into();
+        base.summary_api_key_old_env = false;
+        base.summary_api_base = "https://summary-env.example/v1".into();
+        base.trtc_llm_config = "".into();
+        let store = SettingsStore::load(base.clone());
+        let key = |rt: &RuntimeSettings| rt.effective(&base).summary_api_key;
+
+        // Key and address only in the environment: as before.
+        assert_eq!(key(&store.snapshot()), "test-fake-env-sum");
+        assert_eq!(key(&store.apply_patch(&json!({"summary_api_base": " https://summary-env.example/v1/ "})).unwrap()), "test-fake-env-sum");
+        // Another address from the console: no key, after a restart too.
+        let rt = store.apply_patch(&json!({"summary_api_base": "https://summary-other.example/v1"})).unwrap();
+        let eff = rt.effective(&base);
+        assert_eq!((eff.summary_api_base.as_str(), eff.summary_api_key.as_str()), ("https://summary-other.example/v1", ""));
+        assert_eq!(key(&SettingsStore::load(base.clone()).snapshot()), "");
+        let rt = store.apply_patch(&json!({"summary_api_base": "https://summary-other.example/v1", "summary_api_key": ""})).unwrap();
+        assert_eq!(key(&rt), "");
+        // A key typed in the console goes with the console's address.
+        let rt = store
+            .apply_patch(&json!({"summary_api_base": "https://summary-other.example/v1", "summary_api_key": "test-fake-own-sum"}))
+            .unwrap();
+        assert_eq!(key(&rt), "test-fake-own-sum");
+        // The same key as the environment's, typed in: it is the console's own.
+        let rt = store.apply_patch(&json!({"summary_api_key": "test-fake-env-sum"})).unwrap();
+        assert_eq!(key(&rt), "test-fake-env-sum");
+        // Back to the environment's address without a key of its own: the environment's key.
+        let rt = store
+            .apply_patch(&json!({"summary_api_base": "https://summary-env.example/v1", "summary_api_key_clear": true}))
+            .unwrap();
+        assert_eq!(key(&rt), "test-fake-env-sum");
+
+        // Under the variable's former name, without an address: the older
+        // service it went to, but not an address set in the console.
+        let old_dir = dir.join("old");
+        let mut old_base = base.clone();
+        old_base.calls_data_dir = old_dir.to_string_lossy().to_string();
+        old_base.summary_api_base = String::new();
+        old_base.summary_api_key_old_env = true;
+        let old = SettingsStore::load(old_base.clone());
+        let rt = old.apply_patch(&json!({"summary_provider": "custom"})).unwrap();
+        let eff = rt.effective(&old_base);
+        assert_eq!((eff.summary_api_base.as_str(), eff.summary_api_key.as_str()), (OLD_SUMMARY_API_BASE, "test-fake-env-sum"));
+        let rt = old.apply_patch(&json!({"summary_api_base": "https://summary-other.example/v1"})).unwrap();
+        assert_eq!(rt.effective(&old_base).summary_api_key, "");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_summary_keys_former_name_counts_only_when_it_is_the_key_written() {
+        let dir = std::env::temp_dir().join(format!("bageo-summary-old-name-{}", uuid::Uuid::new_v4()));
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        base.summary_api_key = String::new();
+        base.summary_api_key_old_env = false;
+        base.summary_api_base = String::new();
+        base.trtc_llm_config = "".into();
+        let store = SettingsStore::load(base.clone());
+        let saved = || store.apply_patch(&json!({"summary_api_base": "https://summary-a.example/v1", "summary_api_key": "test-fake-sum-1"})).unwrap();
+
+        // The new name is there (empty or null): the former one is not read,
+        // and the saved key does not go to the new address.
+        for empty in [json!(""), Value::Null] {
+            saved();
+            let rt = store
+                .apply_patch(&json!({"summary_api_base": "https://summary-b.example/v1", "summary_api_key": empty.clone(), "deepseek_api_key": "test-fake-sum-x"}))
+                .unwrap();
+            assert_eq!((rt.summary_api_key.as_str(), rt.effective(&base).summary_api_key.as_str()), ("", ""), "{empty}");
+        }
+        // A restored file the same way.
+        for empty in ["\"\"", "null"] {
+            saved();
+            let file = format!(r#"{{"summary_api_base":"https://summary-c.example/v1","summary_api_key":{empty},"deepseek_api_key":"test-fake-sum-x"}}"#);
+            let rt = store.replace_from_backup(&file, false, true, false).unwrap();
+            assert_eq!((rt.summary_api_base.as_str(), rt.summary_api_key.as_str()), ("https://summary-c.example/v1", ""), "{file}");
+        }
+        // Only the former name: that key.
+        saved();
+        let rt = store
+            .replace_from_backup(r#"{"summary_api_base":"https://summary-d.example/v1","deepseek_api_key":"test-fake-sum-y"}"#, false, true, false)
+            .unwrap();
+        assert_eq!(rt.summary_api_key, "test-fake-sum-y");
+        let saved_file = std::fs::read_to_string(store.storage_path()).unwrap();
+        assert!(!saved_file.contains("deepseek_api_key"), "{saved_file}");
+        // A former name that is empty, null or not read does not make the file
+        // an older one (which would point a stored key at the old service).
+        for v in [
+            json!({"deepseek_api_key": ""}),
+            json!({"deepseek_api_key": null}),
+            json!({"summary_api_key": "", "deepseek_api_key": "test-fake-sum-x"}),
+        ] {
+            let mut v2 = v.clone();
+            assert!(!summary_key_under_new_name(&mut v2), "{v}");
+            assert!(v2.get("deepseek_api_key").is_none(), "{v}");
+        }
+        let mut v = json!({"deepseek_api_key": "test-fake-sum-y"});
+        assert!(summary_key_under_new_name(&mut v));
+        assert_eq!(v["summary_api_key"], "test-fake-sum-y");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -12,18 +12,18 @@
 
 建置 App、它的權限與通訊協定，寫在 [`android/README.md`](../../android/README.md)（英文）。
 
-這一頁說明的是 **Bageo 2.0**：root 模組 `v2.0.0`（versionCode 30），裡面的 App 是 `2.0.0`（versionCode 38）。
+這一頁說明的是 **Bageo 2.1**：root 模組 `v2.1.0`（versionCode 31），裡面的 App 是 `2.1.0`（versionCode 39）。
 
-安裝檔有兩個：`bageo-phone-module-2.0.0.zip`（電腦連動版 **Bageo Uplink**，配合電腦或 NAS 使用）與 `bageo-phone-standalone-2.0.0.zip`（手機獨立版 **Bageo AI Call Agent**，不需要電腦，把完整 Bageo 與控制台裝在手機裡）。App 的版本在「進階」畫面看得到，控制台則在「系統 → 手機」。
+安裝檔有兩個：`bageo-phone-module-2.1.0.zip`（電腦連動版 **Bageo Uplink**，配合電腦或 NAS 使用）與 `bageo-phone-standalone-2.1.0.zip`（手機獨立版 **Bageo AI Call Agent**，不需要電腦，把完整 Bageo 與控制台裝在手機裡）。App 的版本在「進階」畫面看得到，控制台則在「系統 → 手機」。
 
 | 安裝檔 | 用途 | 模組 ID |
 |---|---|---|
-| `bageo-phone-standalone-2.0.0.zip` | **Bageo AI Call Agent**（手機獨立版）：不用電腦，整個 Bageo 在手機上。 | `bageo_ai_call_agent`（管理器顯示 Bageo AI Call Agent） |
-| `bageo-phone-module-2.0.0.zip` | 配電腦用：搭配 Windows、macOS、Linux 安裝檔或 Docker。 | `pixelcallai_uplink`（管理器顯示 **Bageo Uplink (for Bageo on a computer)**） |
+| `bageo-phone-standalone-2.1.0.zip` | **Bageo AI Call Agent**（手機獨立版）：不用電腦，整個 Bageo 在手機上。 | `bageo_ai_call_agent`（管理器顯示 Bageo AI Call Agent） |
+| `bageo-phone-module-2.1.0.zip` | 配電腦用：搭配 Windows、macOS、Linux 安裝檔或 Docker。 | `pixelcallai_uplink`（管理器顯示 **Bageo Uplink (for Bageo on a computer)**） |
 
 兩個只能裝一個；裝其中一個，另一個會在下次重新開機自動移除。
 
-> **想完全不靠電腦？** 直接改刷 `bageo-phone-standalone-2.0.0.zip` 即可。用 Google AI Studio 的免費 Gemini 金鑰就不用付 API 費用；我們實測免費額度每天 10 通以上夠用（免費額度的上限由 Google 決定，可能會變）。兩個版本的模組 ID 不同：手機獨立版是 `bageo_ai_call_agent`（管理器裡顯示 Bageo AI Call Agent），電腦連動版是 `pixelcallai_uplink`（顯示 Bageo Uplink (for Bageo on a computer)）。裝其中一版時，另一版會在下次重新開機自動移除，App 與設定都會保留。手機獨立版的控制台只能在手機上的 Bageo App 裡開啟，其他手機或電腦都打不開。
+> **想完全不靠電腦？** 直接改刷 `bageo-phone-standalone-2.1.0.zip` 即可。用 Google AI Studio 的免費 Gemini 金鑰就不用付 API 費用；我們實測免費額度每天 10 通以上夠用（免費額度的上限由 Google 決定，可能會變）。兩個版本的模組 ID 不同：手機獨立版是 `bageo_ai_call_agent`（管理器裡顯示 Bageo AI Call Agent），電腦連動版是 `pixelcallai_uplink`（顯示 Bageo Uplink (for Bageo on a computer)）。裝其中一版時，另一版會在下次重新開機自動移除，App 與設定都會保留。手機獨立版的控制台只能在手機上的 Bageo App 裡開啟，其他手機或電腦都打不開。
 
 ## 手機會做哪些事
 
@@ -40,9 +40,10 @@
 
 ## 支援哪些手機
 
-- **實測過：** Google Pixel 7、7a、8、9，以 Magisk 或 KernelSU root。
+- **實測過：** Google Pixel（7、7a、8、9）和聯發科手機 Redmi K60 Ultra，以 Magisk 或 KernelSU root。
 - **Android 10 或更新版本。**
-- **其他手機：風險自負。** App 需要手機開放兩件事，很多手機連特權 App 都不給：通話中錄下對方的聲音，以及把聲音播「進」通話裡。缺一樣，電話會被接起來，但有一方什麼都聽不到。目前實測過的機型寫在[新手機第一次使用](#新手機第一次使用測試通話聲音)；如果你試了別的機型，歡迎回報結果。
+- **其他已 root 的 Android 手機也支援，但我們沒測過，請自己測。** 裝好後用另一支電話打給它，跟 AI 講 20 秒左右，Bageo 會自動調整，並在控制台和 App 告訴你結果（見[新手機第一次使用](#新手機第一次使用測試通話聲音)）。App 需要手機開放兩件事，很多手機連特權 App 都不給：通話中錄下對方的聲音，以及把聲音播「進」通話裡。缺一樣，電話會被接起來，但有一方什麼都聽不到，測試電話會看出來。如果你試了別的機型，歡迎回報結果。
+- **三星 Exynos 晶片的手機多半不支援。** 它們沒有把聲音送進通話的系統通道。想試的話還是可以安裝，第一通測試電話會顯示結果。
 
 不同手機還有一項差異，Bageo 會在每通電話一開始自己測：手機的通話錄音裡，會不會錄到 AI 自己的聲音。
 
@@ -65,7 +66,7 @@
 
 1. 用 Magisk 或 KernelSU 把手機 **root**（這裡不說明）。
 2. 如果你曾經把這個 App 當一般 APK 安裝過，請先解除安裝。兩種絕對不要同時存在。
-3. 把 `bageo-phone-module-<version>.zip` 複製到手機（這一版是 `bageo-phone-module-2.0.0.zip`）。在 Magisk 或 KernelSU App 裡：「模組」（Modules）→「從本機安裝」（Install from storage）→ 選那個 zip → 重新開機。
+3. 把 `bageo-phone-module-<version>.zip` 複製到手機（這一版是 `bageo-phone-module-2.1.0.zip`）。在 Magisk 或 KernelSU App 裡：「模組」（Modules）→「從本機安裝」（Install from storage）→ 選那個 zip → 重新開機。
 4. 打開 **Bageo**。最上面的卡片用一句話說明手機現在的狀態。下面的「**設定步驟**」列出還沒完成的事，每一步都有按鈕：
 
    | 步驟 | 要做什麼 |
@@ -151,7 +152,7 @@ USB 還能讓手機一直充電，沒有 Wi-Fi 也能用。一台電腦可以接
 - `prefer_rejected`：手機有這個輸出，但拒絕把 App 的聲音送過去。請確認模組已安裝，而且之後重開過機。
 - `track_rejected`：輸出在，但每一組設定都沒辦法在上面開出聲音通道。
 
-**哪些手機。** 實測過：Google Pixel 和聯發科手機 Redmi K60 Ultra。搭載三星 Exynos 晶片的手機不支援：它們多半沒有把聲音送進通話的系統通道。想試的人還是可以安裝，打一通測試電話後 Bageo 會顯示結果。其他手機沒測過，一樣靠第一通測試電話判斷。
+**哪些手機。** 實測過：Google Pixel 和聯發科手機 Redmi K60 Ultra。其他已 root 的 Android 手機也支援但沒測過：打一通測試電話，Bageo 會顯示結果。三星 Exynos 晶片的手機多半不支援，因為它們沒有把聲音送進通話的系統通道；想試的人還是可以安裝，測試電話會顯示結果。
 
 **回報手機。** 控制台顯示「有問題」或「不支援」，或你一直按「沒有」時，請開一個 issue，附上手機型號和那行 `uplink health`（裡面沒有電話號碼或通話內容）。見[回報問題](TROUBLESHOOTING.md#回報問題)。
 

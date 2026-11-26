@@ -6,7 +6,7 @@ summaries, change settings, accept the appointments callers made with the AI,
 manage contacts, switch a phone between AI answering and a normal phone, and
 send the AI to make a phone call for you.
 
-This page covers every route the console and the phones use in Bageo 2.0,
+This page covers every route the console and the phones use in Bageo 2.1,
 including the WebSocket protocol the rooted Android phone speaks.
 
 | | |

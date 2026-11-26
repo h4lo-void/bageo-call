@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.0.0"><img src="https://img.shields.io/badge/release-v2.0.0-brightgreen.svg" alt="Release v2.0.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.1.0"><img src="https://img.shields.io/badge/release-v2.1.0-brightgreen.svg" alt="Release v2.1.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="许可证：AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/商业授权-双重授权-gold.svg" alt="提供商业授权"></a>
 </p>
@@ -230,7 +230,7 @@ AI 一确定对方是推销或诈骗，就变成一个有兴趣、反应慢、�
 
 ## 需要准备什么
 
-1. **一部备用 Android 手机**，插着你的 SIM 卡，用 Magisk 或 KernelSU root，Android 10 及以上。实测过 Google Pixel 7、7a、8、9。
+1. **一部备用 Android 手机**，插着你的 SIM 卡，用 Magisk 或 KernelSU root，Android 10 及以上。实测过 Google Pixel（7、7a、8、9）和 Redmi K60 Ultra；其他已 root 的手机也支持，但请自己测（见下方）。
 2. **一台电脑**，需要接电话的时段开着：Windows 10/11、macOS、Linux 或 Docker。用手机独立版就不需要电脑。
 3. **一根 USB 线**（也可以用 Wi-Fi）。
 4. **一个 Gemini API 密钥**，到 [Google AI Studio](https://aistudio.google.com/apikey) 免费申请。免费额度内不用付费，我们实测每天 10 通以上够用；超过免费额度或改用付费方案时，才由 Google 按用量计费。
@@ -256,7 +256,7 @@ AI 一确定对方是推销或诈骗，就变成一个有兴趣、反应慢、�
 | **深入** | [架构](docs/zh-CN/ARCHITECTURE.md) · [API](docs/zh-CN/API.md) · [MCP](docs/zh-CN/MCP.md) · [路线图](docs/zh-CN/ROADMAP.md) · [更新日志](CHANGELOG.md) · [`android/`（英文）](android/README.md) · [`tools/sms_forward/`（英文）](tools/sms_forward/README.md) |
 | **法律** | [隐私、安全与法律](docs/zh-CN/PRIVACY_AND_LEGAL.md) · [法律免责声明与使用限制](LEGAL.md) · [双重授权与商业授权](COMMERCIAL_LICENSE.md) · [全项目技术与安全审计报告](AUDIT_REPORT.md) |
 
-**测试状态**：超过 1,400 个自动化测试、234 通模拟通话（28 种语言），并在 Pixel 7、7a、9 上实机测过。[详细状态](docs/zh-CN/FEATURES.md#测试状态)。其他手机和语言的使用反馈最有帮助，请见 [CONTRIBUTING.md](CONTRIBUTING.md)（英文）。
+**测试状态**：超过 1,400 个自动化测试、234 通模拟通话（28 种语言），并在 Pixel 7、7a、9 和 Redmi K60 Ultra 上实机测过。[详细状态](docs/zh-CN/FEATURES.md#测试状态)。其他手机和语言的使用反馈最有帮助，请见 [CONTRIBUTING.md](CONTRIBUTING.md)（英文）。
 
 ## 常见问题
 
@@ -277,7 +277,7 @@ AI 一确定对方是推销或诈骗，就变成一个有兴趣、反应慢、�
 <details>
 <summary><strong>支持哪些手机？</strong></summary>
 
-实测过 Google Pixel 7、7a、8、9，需要 Android 10 及以上。其他已 root 的手机，要它的音频硬件层允许应用录下通话并把声音播进通话才能用；不允许的话，电话会接起来，但有一方听不到声音。见[支持哪些手机](docs/zh-CN/PHONE.md#支持哪些手机)。
+实测过 Google Pixel（7、7a、8、9）和联发科手机 Redmi K60 Ultra，需要 Android 10 及以上。其他已 root 的 Android 手机也支持，但我们没测过，请自己测：装好后用另一部电话打给它，跟 AI 讲 20 秒左右，Bageo 会自动调整，并在控制台和应用里告诉你结果。三星 Exynos 芯片的手机多半不支持，因为它们没有把声音送进通话的系统通道。见[支持哪些手机](docs/zh-CN/PHONE.md#支持哪些手机)和[新手机第一次使用](docs/zh-CN/PHONE.md#新手机第一次使用测试通话声音)。
 
 </details>
 

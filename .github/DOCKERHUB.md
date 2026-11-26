@@ -39,7 +39,7 @@ The phone only carries the call. Everything else runs in this container.
 
 ## What you need
 
-1. **A spare Android phone** with your SIM, rooted with Magisk or KernelSU, Android 10 or newer. Tested: Google Pixel 7, 7a, 8 and 9. Install `bageo-phone-module-<version>.zip` from [Releases](https://github.com/h4lo-void/bageo-call/releases) as a module.
+1. **A spare Android phone** with your SIM, rooted with Magisk or KernelSU, Android 10 or newer. Tested: Google Pixel (7, 7a, 8 and 9) and Redmi K60 Ultra; other rooted phones are supported too, but test yours. Install `bageo-phone-module-<version>.zip` from [Releases](https://github.com/h4lo-void/bageo-call/releases) as a module.
 2. **A Gemini API key** from [Google AI Studio](https://aistudio.google.com/apikey). Google bills per use.
 3. **A computer or NAS that stays on** and runs Docker, on the same network as the phone.
 

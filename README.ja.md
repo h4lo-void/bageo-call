@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.0.0"><img src="https://img.shields.io/badge/release-v2.0.0-brightgreen.svg" alt="リリース v2.0.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.1.0"><img src="https://img.shields.io/badge/release-v2.1.0-brightgreen.svg" alt="リリース v2.1.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="ライセンス：AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/commercial-dual%20license-gold.svg" alt="商用ライセンスあり"></a>
 </p>
@@ -230,7 +230,7 @@
 
 ## 必要なもの
 
-1. **予備の Android スマホ**：自分の SIM を入れ、Magisk か KernelSU で root 化した Android 10 以上のもの。動作確認済み：Google Pixel 7、7a、8、9。
+1. **予備の Android スマホ**：自分の SIM を入れ、Magisk か KernelSU で root 化した Android 10 以上のもの。動作確認済み：Google Pixel（7、7a、8、9）と Redmi K60 Ultra。ほかの root 化したスマホも対応していますが、ご自身で試してください（下記参照）。
 2. **パソコン**：電話に出てほしい間、電源が入っているもの。Windows 10/11、macOS、Linux、または Docker。スマホ単体版ならパソコンは要りません。
 3. **USB ケーブル**（Wi-Fi でも使えます）。
 4. **Gemini API キー**：[Google AI Studio](https://aistudio.google.com/apikey) で無料で取得できます。無料枠の範囲内なら料金はかからず、私たちの実測では 1 日 10 件以上の通話をまかなえました。無料枠を超えた場合や有料プランに切り替えた場合だけ、使った分が Google から請求されます。
@@ -258,7 +258,7 @@
 | **さらに深く** | [アーキテクチャ](docs/en/ARCHITECTURE.md) · [API](docs/en/API.md) · [MCP](docs/en/MCP.md) · [ロードマップ](docs/en/ROADMAP.md) · [変更履歴](CHANGELOG.md) · [`android/`](android/README.md) · [`tools/sms_forward/`](tools/sms_forward/README.md) |
 | **法務** | [プライバシー・安全・法律](docs/en/PRIVACY_AND_LEGAL.md) · [免責事項と運用者向け規約](LEGAL.md) · [デュアルライセンスと商用ライセンス](COMMERCIAL_LICENSE.md) · [プロジェクトのセキュリティ・コンプライアンス監査](AUDIT_REPORT.md) |
 
-**テスト状況：** CI で 1,400 件を超える自動テスト、28 言語・234 通の模擬通話、Pixel 7、7a、9 での実際の通話。[詳細](docs/en/FEATURES.md#test-status)。ほかのスマホや言語での報告がいちばん助かります：[CONTRIBUTING.md](CONTRIBUTING.md)。
+**テスト状況：** CI で 1,400 件を超える自動テスト、28 言語・234 通の模擬通話、Pixel 7、7a、9 と Redmi K60 Ultra での実際の通話。[詳細](docs/en/FEATURES.md#test-status)。ほかのスマホや言語での報告がいちばん助かります：[CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## FAQ
 
@@ -288,11 +288,12 @@ iOS では、そもそもできません。
 <details>
 <summary><strong>どのスマホに対応していますか？</strong></summary>
 
-動作確認済みなのは、Android 10 以上の Google Pixel 7、7a、8、9 です。
-ほかの root 化したスマホは、オーディオのハードウェア層が、アプリによる通話の録音と
-通話への再生を許す場合だけ動きます。
-そうでないと、電話には出られても、片方に何も聞こえません。
-[対応機種](docs/en/PHONE.md#which-phones) をご覧ください。
+動作確認済みなのは、Android 10 以上の Google Pixel（7、7a、8、9）と、MediaTek 搭載の Redmi K60 Ultra です。
+ほかの root 化した Android スマホも対応していますが、こちらでは試していないので、ご自身で試してください。
+入れたら別の電話からかけて、AI と 20 秒ほど話します。Bageo が自動で調整し、結果をコンソールとアプリでお知らせします。
+Samsung の Exynos 搭載機は、通話に音を送るシステム上の経路がなく、多くの場合動きません。
+[対応機種](docs/en/PHONE.md#which-phones) と
+[新しいスマホで最初にすること](docs/en/PHONE.md#first-use-on-a-new-phone-test-the-call-audio) をご覧ください。
 
 </details>
 
