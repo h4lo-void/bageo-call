@@ -86,7 +86,7 @@ jobs:
         run: bash android/scripts/build-rust-android.sh
       - name: Build APKs and run unit tests (bridge + standalone)
         working-directory: android
-        run: sh ./gradlew :app:assembleBridgeDebug :app:assembleStandaloneDebug :app:testBridgeDebugUnitTest :app:testStandaloneDebugUnitTest --no-daemon
+        run: sh ./gradlew :app:assembleBridgeRelease :app:assembleStandaloneRelease :app:testBridgeDebugUnitTest :app:testStandaloneDebugUnitTest --no-daemon
       - name: Build the phone audio helper (arm64-v8a, armeabi-v7a)
         env:
           BAGEO_RUST_TOOLCHAIN: "1.97.0"
@@ -108,6 +108,8 @@ jobs:
         with:
           name: bageo-audio-helper
           path: android/magisk/pixelcallai_uplink/roothelper/
+      - name: Check the app in both modules is not debuggable
+        run: bash android/scripts/check-not-debuggable.sh android/magisk/dist/bageo-phone-module-*.zip android/magisk/dist/bageo-phone-standalone-*.zip
       - name: Test the phone module's mode scripts
         run: sh android/magisk/tests/test_mode_scripts.sh
 

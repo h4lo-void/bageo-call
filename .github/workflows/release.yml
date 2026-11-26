@@ -194,6 +194,8 @@ jobs:
           fi
       - name: Check the audio helper is in the phone modules
         run: bash android/scripts/check-roothelper-in-module.sh android/magisk/dist/bageo-phone-*.zip
+      - name: Check the app in each module is not debuggable
+        run: bash android/scripts/check-not-debuggable.sh android/magisk/dist/bageo-phone-*.zip
       - name: Verify APK signing
         env:
           PCA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}

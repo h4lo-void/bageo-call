@@ -382,20 +382,22 @@ class UplinkTuningTest {
         val t = UplinkTuner(UplinkProfile.STANDARD, StartSource.FORCED, autoSwitch = true, defaultStart = UplinkProfile.PRIMED)
         t.markLive()
         assertEquals(2426L, firstStorm(t.meter(), k60Restarts, 807, 10_964))
-        assertEquals(UplinkProfile.PRIMED, failTwice(t))
+        assertEquals(UplinkProfile.PRIMED, retryStormThenSwitch(t))
         t.meter().beginTrack(11_367, 48000, 0)
         t.meter().addAudioFrames(48000L * 29)
         for (at in k60Restarts) if (at > 11_367) t.meter().noteRestart(at)
+        t.meter().endTrack(18_000)
         assertFalse(t.finalClean())
         assertEquals(TuneDecision(), t.decision())
         // The same without a forced start does not store it either.
         val plain = UplinkTuner(UplinkProfile.STANDARD, StartSource.DEFAULT, autoSwitch = true, defaultStart = UplinkProfile.PRIMED)
         plain.markLive()
         firstStorm(plain.meter(), k60Restarts, 807, 10_964)
-        assertEquals(UplinkProfile.PRIMED, failTwice(plain))
+        assertEquals(UplinkProfile.PRIMED, retryStormThenSwitch(plain))
         plain.meter().beginTrack(11_367, 48000, 0)
         plain.meter().addAudioFrames(48000L * 29)
         for (at in k60Restarts) if (at > 11_367) plain.meter().noteRestart(at)
+        plain.meter().endTrack(18_000)
         assertEquals(TuneDecision(), plain.decision())
     }
 
@@ -404,12 +406,192 @@ class UplinkTuningTest {
         val t = UplinkTuner(UplinkProfile.STANDARD, StartSource.FORCED, autoSwitch = true, defaultStart = UplinkProfile.PRIMED)
         t.markLive()
         firstStorm(t.meter(), k60Restarts, 807, 10_964)
-        assertEquals(UplinkProfile.PRIMED, failTwice(t))
+        assertEquals(UplinkProfile.PRIMED, retryStormThenSwitch(t))
         t.meter().beginTrack(14_000, 48000, 0)
         t.meter().noteRestart(14_020) // the one restart every new track gets
         t.meter().addAudioFrames(48000L * 20)
+        t.meter().endTrack(34_000)
         assertTrue(t.finalClean())
         assertEquals(TuneDecision(remember = UplinkProfile.PRIMED, fit = AudioFit.ADJUSTED), t.decision())
+    }
+
+    @Test
+    fun only_the_starting_profile_retries_a_storm_once() {
+        val t = UplinkTuner(UplinkProfile.STANDARD, StartSource.DEFAULT, autoSwitch = true)
+        t.markLive()
+        fun storm(at: Long) {
+            val m = t.meter()
+            m.beginTrack(at, 48000, 0)
+            m.sample(at + 40, 48000 * 40 / 1000)
+            for (i in 1..5) m.noteRestart(at + 200L * i)
+            assertTrue(m.isStorm(at + 1_000))
+        }
+        val seen = ArrayList<UplinkProfile>()
+        var cool = 0L
+        var at = 0L
+        var guard = 0
+        while (guard++ < 8) {
+            storm(at)
+            val next = t.onUnhealthy(storm = true) ?: break
+            seen.add(next)
+            cool += t.nextCooldownMs()
+            at += 3_000
+        }
+        // standard is retried once, then each rung moves at once, then back to the least bad.
+        assertEquals(
+            listOf(
+                UplinkProfile.STANDARD,
+                UplinkProfile.PRIMED,
+                UplinkProfile.PRIMED_48K,
+                UplinkProfile.PRIMED_48K_STEREO,
+                UplinkProfile.STANDARD,
+            ),
+            seen,
+        )
+        assertEquals(12_000L, cool)
+        assertEquals(4, t.switches)
+        assertTrue(seen.drop(1).zipWithNext().none { (a, b) -> a == b })
+    }
+
+    @Test
+    fun k60_ultra_call_retries_standard_once_then_keeps_primed() {
+        // Times in ms after the first track went live. Forced standard storms at 1.5 s
+        // (five restarts, the judgment stays on standard), the retry storms at 4.0 s and
+        // the ladder moves to primed, and primed keeps one start restart through 40 s of voice.
+        val t = UplinkTuner(
+            UplinkProfile.STANDARD,
+            StartSource.FORCED,
+            autoSwitch = true,
+            defaultStart = UplinkProfile.PRIMED,
+        )
+        t.markLive()
+        t.meter().beginTrack(0, 16000, 0)
+        for (at in longArrayOf(40, 761, 1_025, 1_272, 1_503)) t.meter().noteRestart(at)
+        assertTrue(t.meter().isStorm(1_505))
+        assertEquals(UplinkProfile.STANDARD, t.onUnhealthy(storm = true))
+        assertEquals(800L, t.nextCooldownMs())
+
+        t.meter().beginTrack(2_451, 16000, 0)
+        for (at in longArrayOf(2_600, 2_900, 3_248, 3_700, 4_029)) t.meter().noteRestart(at)
+        assertTrue(t.meter().isStorm(4_029))
+        assertEquals(UplinkProfile.PRIMED, t.onUnhealthy(storm = true))
+        assertEquals(1_600L, t.nextCooldownMs())
+        assertEquals(1, t.switches)
+
+        t.meter().beginTrack(5_804, 48000, 0)
+        t.meter().noteRestart(5_840)
+        t.meter().addAudioFrames(48000L * 40_058 / 1000)
+        t.meter().endTrack(48_703)
+        assertTrue(t.finalClean())
+        assertEquals(40_058L, t.meter().trackAudioMs)
+        assertEquals(TuneDecision(remember = UplinkProfile.PRIMED, fit = AudioFit.ADJUSTED), t.decision())
+    }
+
+    @Test
+    fun a_short_last_track_is_not_clean() {
+        val t = UplinkTuner(UplinkProfile.STANDARD, StartSource.DEFAULT, autoSwitch = true)
+        t.markLive()
+        t.meter().beginTrack(0, 48000, 0)
+        t.meter().addAudioFrames(48000L * 12)
+        t.meter().endTrack(1_500)
+        assertEquals(0, t.meter().lateEvents)
+        assertTrue(t.meter().trackAudioMs >= MIN_MEASURED_AUDIO_MS)
+        assertTrue(t.meter().lastTrackLivedMs < UplinkHealthMeter.SETTLE_MS)
+        assertFalse(t.finalClean())
+        assertEquals(TuneDecision(), t.decision())
+    }
+
+    @Test
+    fun remembered_audio_is_only_the_last_track() {
+        val t = UplinkTuner(UplinkProfile.STANDARD, StartSource.DEFAULT, autoSwitch = true)
+        t.markLive()
+        t.meter().beginTrack(0, 48000, 0)
+        t.meter().addAudioFrames(48000L * 8)
+        t.meter().endTrack(8_000)
+        assertEquals(UplinkProfile.STANDARD, t.onUnhealthy(storm = true))
+        t.meter().beginTrack(9_000, 48000, 0)
+        t.meter().addAudioFrames(48000L * 3)
+        t.meter().noteRestart(9_100)
+        t.meter().endTrack(13_000)
+        assertTrue(t.finalClean())
+        assertEquals(11_000L, t.meter().audioMs)
+        assertEquals(3_000L, t.meter().trackAudioMs)
+        assertEquals(TuneDecision(), t.decision())
+    }
+
+    @Test
+    fun begin_track_forgets_restarts_left_by_the_track_it_replaces() {
+        val m = UplinkHealthMeter()
+        m.beginTrack(0, 48000, 0)
+        // Four restarts, then one more as the track is torn down.
+        for (at in longArrayOf(1_000, 1_200, 1_400, 1_600, 1_800)) m.noteRestart(at)
+        assertTrue(m.isStorm(1_800))
+        m.beginTrack(1_850, 48000, 0)
+        assertFalse(m.isStorm(1_850))
+        // 50 ms later, still inside the old restart's merge window: it has to count.
+        m.noteRestart(1_900)
+        m.noteRestart(2_100)
+        m.noteRestart(2_300)
+        m.noteRestart(2_500)
+        assertFalse(m.isStorm(2_500))
+        m.noteRestart(2_700)
+        assertTrue(m.isStorm(2_700))
+    }
+
+    @Test
+    fun pixel9_calls_stay_on_standard_and_ok() {
+        // Two measured calls: one restart at the start, then voice until hang-up.
+        // A route change and a rebuild at hang-up are not fed in, because the call is down.
+        val calls = arrayOf(
+            longArrayOf(31_304, 29_900),
+            longArrayOf(31_694, 30_856),
+        )
+        assertFalse(uplinkEventCounts(stopped = false, callConnected = false))
+        assertFalse(uplinkEventCounts(stopped = true, callConnected = true))
+        assertTrue(uplinkEventCounts(stopped = false, callConnected = true))
+        for (call in calls) {
+            val lived = call[0]
+            val audio = call[1]
+            val t = UplinkTuner(
+                UplinkProfile.STANDARD,
+                StartSource.DEFAULT,
+                autoSwitch = false,
+                defaultStart = UplinkProfile.STANDARD,
+            )
+            t.markLive()
+            t.meter().beginTrack(0, 16000, 0)
+            t.meter().noteRestart(20)
+            t.meter().addAudioFrames(16000L * audio / 1000)
+            t.meter().endTrack(lived)
+            assertEquals(0, t.meter().lateEvents)
+            assertTrue(t.finalClean())
+            assertEquals(0, t.switches)
+            assertEquals(UplinkProfile.STANDARD, t.current)
+            assertEquals(TuneDecision(fit = AudioFit.OK), t.decision())
+        }
+    }
+
+    @Test
+    fun a_hangup_rebuild_would_make_a_settled_call_not_clean() {
+        // The same first call as [pixel9_calls_stay_on_standard_and_ok], if the hang-up
+        // route change and rebuild were scored: it would no longer be stored as ok.
+        val t = UplinkTuner(
+            UplinkProfile.STANDARD,
+            StartSource.DEFAULT,
+            autoSwitch = false,
+            defaultStart = UplinkProfile.STANDARD,
+        )
+        t.markLive()
+        t.meter().beginTrack(0, 16000, 0)
+        t.meter().noteRestart(20)
+        t.meter().addAudioFrames(16000L * 29_900 / 1000)
+        t.meter().noteRestart(31_304)
+        t.meter().noteRebuild(31_304, 200)
+        t.meter().endTrack(31_304)
+        assertTrue(t.meter().lateEvents > 0)
+        assertFalse(t.finalClean())
+        assertEquals(0, t.switches)
+        assertEquals(TuneDecision(), t.decision())
     }
 
     @Test
@@ -434,14 +616,14 @@ class UplinkTuningTest {
     }
 
     /**
-     * The current profile is judged unhealthy twice: the first time it gets one fresh
-     * try with the same settings, the second time the ladder moves. @return the move.
+     * The starting profile is judged a storm twice: the first time it is retried with
+     * the same settings, the second time the ladder moves. @return the move.
      */
-    private fun failTwice(t: UplinkTuner): UplinkProfile? {
+    private fun retryStormThenSwitch(t: UplinkTuner): UplinkProfile? {
         val profile = t.current
-        assertEquals(profile, t.onUnhealthy())
+        assertEquals(profile, t.onUnhealthy(storm = true))
         assertEquals(profile, t.current)
-        return t.onUnhealthy()
+        return t.onUnhealthy(storm = true)
     }
 
     @Test
@@ -449,14 +631,15 @@ class UplinkTuningTest {
         val t = UplinkTuner(UplinkProfile.STANDARD, StartSource.DEFAULT, autoSwitch = true)
         t.markLive()
         lose(t, 16000, 1000)
-        assertEquals(UplinkProfile.PRIMED, failTwice(t))
+        assertEquals(UplinkProfile.PRIMED, t.onUnhealthy())
         lose(t, 16000, 50)
-        assertEquals(UplinkProfile.PRIMED_48K, failTwice(t))
+        assertEquals(UplinkProfile.PRIMED_48K, t.onUnhealthy())
         lose(t, 48000, 900)
-        assertEquals(UplinkProfile.PRIMED_48K_STEREO, failTwice(t))
+        assertEquals(UplinkProfile.PRIMED_48K_STEREO, t.onUnhealthy())
         lose(t, 48000, 900)
-        // Every profile tried: back to the one that lost the least, once, with no retry.
-        assertEquals(UplinkProfile.PRIMED, failTwice(t))
+        // Every profile tried: back to the one that lost the least, once. A loss that
+        // is not a storm does not retry, not even on the profile the call started on.
+        assertEquals(UplinkProfile.PRIMED, t.onUnhealthy())
         assertNull(t.onUnhealthy())
         assertEquals(4, t.switches)
         val d = t.decision()
@@ -471,8 +654,8 @@ class UplinkTuningTest {
             planTrack(a, k60Caps, 16000) == planTrack(b, k60Caps, 16000)
         }
         val t = UplinkTuner(UplinkProfile.PRIMED, StartSource.CHIP, autoSwitch = true, samePlan = same)
-        assertEquals(UplinkProfile.PRIMED_48K_STEREO, failTwice(t))
-        assertEquals(UplinkProfile.STANDARD, failTwice(t))
+        assertEquals(UplinkProfile.PRIMED_48K_STEREO, t.onUnhealthy())
+        assertEquals(UplinkProfile.STANDARD, t.onUnhealthy())
     }
 
     @Test
@@ -494,16 +677,20 @@ class UplinkTuningTest {
         assertFalse(d.forget)
     }
 
-    /** Call audio long enough to count on the current profile. */
+    /** Call audio long enough to count, on a last track that outlived settle. */
     private fun longCall(t: UplinkTuner, rate: Int = 48000) {
-        t.meter().apply { beginTrack(0, rate, 0); addAudioFrames(rate.toLong() * 15) }
+        t.meter().apply {
+            beginTrack(0, rate, 0)
+            addAudioFrames(rate.toLong() * 15)
+            endTrack(15_000)
+        }
     }
 
     @Test
     fun forced_profile_that_lost_audio_and_a_healthy_switch_is_adjusted_and_remembered() {
         val t = UplinkTuner(UplinkProfile.STANDARD, StartSource.FORCED, autoSwitch = true, defaultStart = UplinkProfile.PRIMED)
         t.markLive()
-        assertEquals(UplinkProfile.PRIMED, failTwice(t))
+        assertEquals(UplinkProfile.PRIMED, t.onUnhealthy())
         longCall(t)
         // PRIMED is this phone's default first profile, yet the switch makes it adjusted.
         assertEquals(TuneDecision(remember = UplinkProfile.PRIMED, fit = AudioFit.ADJUSTED), t.decision())
@@ -556,7 +743,7 @@ class UplinkTuningTest {
         val t = UplinkTuner(UplinkProfile.STANDARD, StartSource.DEFAULT, autoSwitch = true)
         t.markLive()
         lose(t, 16000, 1000)
-        assertEquals(UplinkProfile.PRIMED, failTwice(t))
+        assertEquals(UplinkProfile.PRIMED, t.onUnhealthy())
         assertEquals(UplinkProfile.PRIMED_48K, t.onOpenFailed("track_rejected"))
         longCall(t)
         assertEquals(TuneDecision(remember = UplinkProfile.PRIMED_48K, fit = AudioFit.ADJUSTED), t.decision())
