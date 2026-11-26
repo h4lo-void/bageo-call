@@ -159,12 +159,15 @@ mod tests {
     fn a_listener_that_never_accepts_does_not_hold_the_helper() {
         let name = format!("bageo-helper-full-{}", std::process::id());
         let addr = SocketAddr::from_abstract_name(name.as_bytes()).unwrap();
-        let _listener = UnixListener::bind_addr(&addr).unwrap();
-        // Fill its queue; each connect returns at once, and soon fails.
+        let listener = UnixListener::bind_addr(&addr).unwrap();
+        // A queue of one that nobody accepts from (std listens with a long queue).
+        // SAFETY: listen on a socket we own.
+        assert_eq!(unsafe { libc::listen(listener.as_raw_fd(), 1) }, 0);
+        // Fill it; each connect returns at once, and soon fails.
         let start = std::time::Instant::now();
         let mut held = Vec::new();
         let mut refused = false;
-        for _ in 0..4096 {
+        for _ in 0..64 {
             match connect_abstract(&name) {
                 Ok(s) => held.push(s),
                 Err(_) => {
