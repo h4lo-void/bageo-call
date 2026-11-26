@@ -2995,17 +2995,18 @@ fn old_named_summary_key(v: &Value) -> Option<&Value> {
 
 /// A settings file with the summary key under its former name has it under
 /// the new one, the way a request's is read ([`old_named_summary_key`]). True
-/// when the former name was there.
+/// only when a key under the former name was taken (not empty).
 fn summary_key_under_new_name(v: &mut Value) -> bool {
     let old = old_named_summary_key(v).cloned();
     let Some(m) = v.as_object_mut() else {
         return false;
     };
-    let had = m.remove("deepseek_api_key").is_some();
+    m.remove("deepseek_api_key");
+    let taken = old.as_ref().and_then(Value::as_str).is_some_and(|s| !s.trim().is_empty());
     if let Some(old) = old {
         m.insert("summary_api_key".into(), old);
     }
-    had
+    taken
 }
 
 /// A request or settings file that brings this secret (not empty), under its
@@ -5065,6 +5066,20 @@ mod tests {
         assert_eq!(rt.summary_api_key, "test-fake-sum-y");
         let saved_file = std::fs::read_to_string(store.storage_path()).unwrap();
         assert!(!saved_file.contains("deepseek_api_key"), "{saved_file}");
+        // A former name that is empty, null or not read does not make the file
+        // an older one (which would point a stored key at the old service).
+        for v in [
+            json!({"deepseek_api_key": ""}),
+            json!({"deepseek_api_key": null}),
+            json!({"summary_api_key": "", "deepseek_api_key": "test-fake-sum-x"}),
+        ] {
+            let mut v2 = v.clone();
+            assert!(!summary_key_under_new_name(&mut v2), "{v}");
+            assert!(v2.get("deepseek_api_key").is_none(), "{v}");
+        }
+        let mut v = json!({"deepseek_api_key": "test-fake-sum-y"});
+        assert!(summary_key_under_new_name(&mut v));
+        assert_eq!(v["summary_api_key"], "test-fake-sum-y");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
