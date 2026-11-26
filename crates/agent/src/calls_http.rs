@@ -1654,7 +1654,7 @@ async fn settings_put(
 #[derive(Deserialize)]
 pub struct NotifyTestBody {
     /// The row as it is on the page (saved or not). An empty address / token
-    /// means the stored one of the same id.
+    /// means the stored one of the same id (a token only for the same address).
     pub channel: crate::notify::Channel,
 }
 
@@ -1669,12 +1669,15 @@ async fn notify_test(
         return unauthorized();
     }
     let rt = state.settings_store.snapshot();
-    let Some(channel) = crate::notify::merge_channels(&rt.notify_channels, vec![body.channel])
+    let Some((channel, withheld)) = crate::notify::merge_channel_rows(&rt.notify_channels, vec![body.channel])
         .into_iter()
         .next()
     else {
         return api_error(StatusCode::BAD_REQUEST, "unknown_channel", "unknown channel kind");
     };
+    if withheld {
+        return channel_error_response(StatusCode::BAD_REQUEST, &channel.kind, &crate::notify::token_needed_again());
+    }
     match crate::notify::send_channel(&state.http, &channel, &crate::notify::test_message()).await {
         Ok(()) => Json(json!({"ok": true})).into_response(),
         Err(e) => {
@@ -5578,6 +5581,89 @@ pub(crate) mod tests {
         let skipped_json = recent_json(skipped).await;
         assert_eq!((skipped_json["ok"].clone(), skipped_json["password_set"].clone()), (json!(true), json!(false)));
         assert!(open.settings_store.snapshot().ui_password_prompted);
+    }
+
+    /// A local address that takes one HTTP request and answers 200; the task
+    /// gives the request as it came (head and body).
+    async fn take_one_request() -> (String, tokio::task::JoinHandle<String>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://127.0.0.1:{}/hook", listener.local_addr().unwrap().port());
+        let task = tokio::spawn(async move {
+            let (mut s, _) = listener.accept().await.unwrap();
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 4096];
+            loop {
+                if let Some(end) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let head = String::from_utf8_lossy(&buf[..end]).to_ascii_lowercase();
+                    let len = head
+                        .lines()
+                        .find_map(|l| l.strip_prefix("content-length:"))
+                        .and_then(|v| v.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    if buf.len() >= end + 4 + len {
+                        break;
+                    }
+                }
+                let n = s.read(&mut chunk).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                buf.extend_from_slice(&chunk[..n]);
+            }
+            let _ = s.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok").await;
+            String::from_utf8_lossy(&buf).into_owned()
+        });
+        (url, task)
+    }
+
+    async fn channel_test(state: &CallsState, channel: crate::notify::Channel) -> Response {
+        notify_test(State(state.clone()), HeaderMap::new(), Query(TokenQuery { token: None }), Json(NotifyTestBody { channel })).await
+    }
+
+    #[tokio::test]
+    async fn the_channel_test_sends_a_stored_token_only_to_its_own_address() {
+        let state = recent_state("notify-test-token");
+        let (own, at_own) = take_one_request().await;
+        state
+            .settings_store
+            .apply_patch(&json!({"notify_channels": [{"id": "w1", "kind": "webhook", "url": own, "token": "test-fake-token-1"}]}))
+            .unwrap();
+        let row = |url: &str, token: &str| crate::notify::Channel {
+            id: "w1".into(),
+            kind: "webhook".into(),
+            url: url.into(),
+            token: token.into(),
+            ..Default::default()
+        };
+
+        // Another address with the token left empty: refused, nothing sent there.
+        let (other, at_other) = take_one_request().await;
+        let r = channel_test(&state, row(&other, "")).await;
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        let v: Value = serde_json::from_str(&body_text(r).await).unwrap();
+        assert_eq!((v["code"].as_str(), v["field"].as_str()), (Some("missing_field"), Some("token")), "{v}");
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(300), at_other).await.is_err(),
+            "no request reached the other address"
+        );
+
+        // The saved address (left empty on the page): the saved token goes with it.
+        let r = channel_test(&state, row("", "")).await;
+        let (status, text) = (r.status(), body_text(r).await);
+        assert_eq!(status, StatusCode::OK, "{text}");
+        let req = at_own.await.unwrap().to_ascii_lowercase();
+        assert!(req.contains("authorization: bearer test-fake-token-1"), "{req}");
+
+        // Another address with a token of its own: only that token.
+        let (third, at_third) = take_one_request().await;
+        let r = channel_test(&state, row(&third, "test-fake-token-new")).await;
+        let (status, text) = (r.status(), body_text(r).await);
+        assert_eq!(status, StatusCode::OK, "{text}");
+        let req = at_third.await.unwrap().to_ascii_lowercase();
+        assert!(req.contains("authorization: bearer test-fake-token-new") && !req.contains("test-fake-token-1"), "{req}");
+        // The test saves nothing.
+        assert_eq!(state.settings_store.snapshot().notify_channels[0].token, "test-fake-token-1");
     }
 
     #[tokio::test]

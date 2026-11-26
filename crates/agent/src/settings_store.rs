@@ -2576,7 +2576,12 @@ impl SettingsStore {
                 m.insert("ui_password_prompted".into(), json!(true));
             }
         }
-        let (ov, moved, _) = read_overrides_from(Some(&self.path), &merged.to_string()).context("not a settings file")?;
+        let (mut ov, moved, _) = read_overrides_from(Some(&self.path), &merged.to_string()).context("not a settings file")?;
+        // An address from the file with no key of its own does not take this
+        // computer's ([`combine_settings`] keeps a key the file leaves empty).
+        if keys && !whole_keys {
+            withhold_moved_secrets(&self.base, &st.current, &mut ov, |k| gives_secret(&inc, k));
+        }
         let rt = self.swap_in(&mut st, ov, moved)?;
         info!("runtime settings restored from a backup path={} settings={settings} keys={keys}", self.path.display());
         Ok(rt)
@@ -2645,6 +2650,7 @@ impl SettingsStore {
         if crate::config::is_embedded() {
             ov.gemini_live_enabled = Some(true);
         }
+        withhold_moved_secrets(&self.base, &st.current, &mut ov, |k| gives_secret(patch, k));
         let mut rt = RuntimeSettings::from_base(&self.base);
         rt.apply(&ov);
         write_overrides(&self.path, &ov)?;
@@ -2894,6 +2900,99 @@ fn mask_secret(s: &str) -> String {
         format!("{head}…{tail}")
     } else {
         "••••".to_string()
+    }
+}
+
+/// Where a secret is sent, as the settings say it.
+type Destination = fn(&RuntimeSettings) -> String;
+
+/// Secrets that are sent to an address set beside them, with what decides that
+/// address. A secret left empty is kept only while its address stays the same
+/// ([`withhold_moved_secrets`]).
+const SECRET_ROUTES: [(&str, Destination); 7] = [
+    ("summary_api_key", summary_destination),
+    ("openclaw_token", openclaw_destination),
+    ("trtc_secret_id", trtc_api_destination),
+    ("trtc_cloud_secret_key", trtc_api_destination),
+    ("trtc_llm_config", trtc_api_destination),
+    ("trtc_tts_config", trtc_api_destination),
+    // The UserSigs made with it go to the Cloud API and to the sidecar.
+    ("trtc_secret_key", trtc_sig_destination),
+];
+
+fn plain_url(s: &str) -> String {
+    s.trim().trim_end_matches('/').to_string()
+}
+
+fn summary_destination(rt: &RuntimeSettings) -> String {
+    plain_url(&rt.summary_api_base)
+}
+
+fn openclaw_destination(rt: &RuntimeSettings) -> String {
+    plain_url(&rt.openclaw_url)
+}
+
+/// The Cloud API host as [`RuntimeSettings::effective`] uses it (international off).
+fn trtc_api_destination(rt: &RuntimeSettings) -> String {
+    crate::trtc_api::resolve_host(&rt.trtc_api_host, false)
+}
+
+fn trtc_sig_destination(rt: &RuntimeSettings) -> String {
+    format!("{} {}", trtc_api_destination(rt), plain_url(&rt.trtc_bridge_url))
+}
+
+fn route_slot<'a>(ov: &'a mut Overrides, secret: &str) -> Option<&'a mut Option<String>> {
+    Some(match secret {
+        "summary_api_key" => &mut ov.summary_api_key,
+        "openclaw_token" => &mut ov.openclaw_token,
+        "trtc_secret_id" => &mut ov.trtc_secret_id,
+        "trtc_cloud_secret_key" => &mut ov.trtc_cloud_secret_key,
+        "trtc_llm_config" => &mut ov.trtc_llm_config,
+        "trtc_tts_config" => &mut ov.trtc_tts_config,
+        "trtc_secret_key" => &mut ov.trtc_secret_key,
+        _ => return None,
+    })
+}
+
+fn route_value<'a>(rt: &'a RuntimeSettings, secret: &str) -> &'a str {
+    match secret {
+        "summary_api_key" => &rt.summary_api_key,
+        "openclaw_token" => &rt.openclaw_token,
+        "trtc_secret_id" => &rt.trtc_secret_id,
+        "trtc_cloud_secret_key" => &rt.trtc_cloud_secret_key,
+        "trtc_llm_config" => &rt.trtc_llm_config,
+        "trtc_tts_config" => &rt.trtc_tts_config,
+        "trtc_secret_key" => &rt.trtc_secret_key,
+        _ => "",
+    }
+}
+
+/// A request or settings file that brings this secret (not empty), under its
+/// own name or the summary key's former one.
+fn gives_secret(v: &Value, secret: &str) -> bool {
+    let filled = |k: &str| v.get(k).and_then(Value::as_str).is_some_and(|s| !s.trim().is_empty());
+    filled(secret) || (secret == "summary_api_key" && filled("deepseek_api_key"))
+}
+
+/// Clears in `ov` each secret of [`SECRET_ROUTES`] whose address is no longer
+/// the one it had in `before` while no new secret came with the change
+/// (`given`): it is not sent to the new address and has to be entered again.
+fn withhold_moved_secrets(base: &Settings, before: &RuntimeSettings, ov: &mut Overrides, given: impl Fn(&str) -> bool) {
+    let mut after = RuntimeSettings::from_base(base);
+    after.apply(ov);
+    for (secret, destination) in SECRET_ROUTES {
+        if given(secret) || destination(before) == destination(&after) || route_value(&after, secret).trim().is_empty() {
+            continue;
+        }
+        let Some(slot) = route_slot(ov, secret) else {
+            continue;
+        };
+        // A summary key from the environment applies whatever is saved
+        // ([`RuntimeSettings::effective`]): only a saved one can be cleared.
+        if secret == "summary_api_key" && slot.is_none() {
+            continue;
+        }
+        *slot = Some(String::new());
     }
 }
 
@@ -4743,6 +4842,97 @@ mod tests {
         base.summary_api_key_old_env = false;
         let rt = SettingsStore::load(base.clone()).snapshot();
         assert_eq!(summary_endpoint_for(&rt.effective(&base), Provider::Custom), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_saved_key_is_kept_only_while_its_address_stays_the_same() {
+        let dir = std::env::temp_dir().join(format!("bageo-key-address-{}", uuid::Uuid::new_v4()));
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        base.summary_api_key = String::new();
+        base.summary_api_key_old_env = false;
+        base.trtc_secret_id = "".into();
+        base.trtc_cloud_secret_key = "".into();
+        base.trtc_secret_key = "".into();
+        base.trtc_llm_config = "".into();
+        base.trtc_tts_config = "".into();
+        base.trtc_api_host = String::new();
+        base.trtc_bridge_url = String::new();
+        let store = SettingsStore::load(base.clone());
+
+        // Summary service. The same address (given again, written with a
+        // slash, or not sent at all) with the key left empty: kept.
+        store
+            .apply_patch(&json!({"summary_api_base": "https://summary-a.example/v1", "summary_api_key": "test-fake-sum-1"}))
+            .unwrap();
+        for patch in [
+            json!({"summary_api_base": "https://summary-a.example/v1", "summary_api_key": ""}),
+            json!({"summary_api_base": " https://summary-a.example/v1/ "}),
+            json!({"owner_name": "Alex"}),
+        ] {
+            assert_eq!(store.apply_patch(&patch).unwrap().summary_api_key, "test-fake-sum-1", "{patch}");
+        }
+        // Another address with the key left empty: no key, after a restart too.
+        let rt = store
+            .apply_patch(&json!({"summary_api_base": "https://summary-b.example/v1", "summary_api_key": ""}))
+            .unwrap();
+        assert_eq!((rt.summary_api_base.as_str(), rt.summary_api_key.as_str()), ("https://summary-b.example/v1", ""));
+        assert_eq!(rt.effective(&base).summary_api_key, "");
+        assert_eq!(SettingsStore::load(base.clone()).snapshot().summary_api_key, "");
+        // Another address with a new key (or one under its former name): the new key.
+        let rt = store
+            .apply_patch(&json!({"summary_api_base": "https://summary-c.example/v1", "summary_api_key": "test-fake-sum-2"}))
+            .unwrap();
+        assert_eq!(rt.summary_api_key, "test-fake-sum-2");
+        let rt = store
+            .apply_patch(&json!({"summary_api_base": "https://summary-d.example/v1", "deepseek_api_key": "test-fake-sum-3"}))
+            .unwrap();
+        assert_eq!(rt.summary_api_key, "test-fake-sum-3");
+
+        // OpenClaw.
+        store.apply_patch(&json!({"openclaw_url": "https://claw-a.example", "openclaw_token": "test-fake-claw-1"})).unwrap();
+        assert_eq!(store.apply_patch(&json!({"openclaw_url": "https://claw-a.example/"})).unwrap().openclaw_token, "test-fake-claw-1");
+        assert_eq!(store.apply_patch(&json!({"openclaw_url": "https://claw-b.example"})).unwrap().openclaw_token, "");
+        let rt = store.apply_patch(&json!({"openclaw_url": "https://claw-c.example", "openclaw_token": "test-fake-claw-2"})).unwrap();
+        assert_eq!(rt.openclaw_token, "test-fake-claw-2");
+
+        // TRTC: the Cloud API host gets the CAM key pair and the LLM / TTS
+        // configs; UserSigs of the SDK key also go to the sidecar.
+        store
+            .apply_patch(&json!({
+                "trtc_secret_id": "test-fake-id-1",
+                "trtc_cloud_secret_key": "test-fake-cloud-1",
+                "trtc_llm_config": "{\"Model\":\"test-fake-llm\"}",
+                "trtc_tts_config": "{\"Voice\":\"test-fake-tts\"}",
+                "trtc_secret_key": "test-fake-sdk-1",
+            }))
+            .unwrap();
+        let rt = store.apply_patch(&json!({"trtc_api_host": "https://trtc.tencentcloudapi.com/", "owner_name": "Sam"})).unwrap();
+        assert_eq!((rt.trtc_secret_id.as_str(), rt.trtc_secret_key.as_str()), ("test-fake-id-1", "test-fake-sdk-1"), "the default host written out");
+        let rt = store.apply_patch(&json!({"trtc_bridge_url": "http://192.168.1.20:8791"})).unwrap();
+        assert_eq!(
+            (rt.trtc_secret_key.as_str(), rt.trtc_secret_id.as_str(), rt.trtc_cloud_secret_key.as_str()),
+            ("", "test-fake-id-1", "test-fake-cloud-1"),
+            "only the sidecar moved"
+        );
+        let rt = store.apply_patch(&json!({"trtc_api_host": "trtc.example.net", "trtc_secret_key": "test-fake-sdk-2"})).unwrap();
+        assert_eq!(
+            (rt.trtc_secret_id.as_str(), rt.trtc_cloud_secret_key.as_str(), rt.trtc_llm_config.as_str(), rt.trtc_tts_config.as_str()),
+            ("", "", "", "")
+        );
+        assert_eq!(rt.trtc_secret_key, "test-fake-sdk-2", "a key given with the change is the new one");
+
+        // A restored file: an address without a key of its own does not take
+        // the one here; with its own key it brings that one.
+        let rt = store.replace_from_backup(r#"{"openclaw_url":"https://claw-c.example/"}"#, false, true, false).unwrap();
+        assert_eq!(rt.openclaw_token, "test-fake-claw-2", "the same address");
+        let rt = store.replace_from_backup(r#"{"openclaw_url":"https://claw-x.example"}"#, false, true, false).unwrap();
+        assert_eq!((rt.openclaw_url.as_str(), rt.openclaw_token.as_str()), ("https://claw-x.example", ""));
+        let rt = store
+            .replace_from_backup(r#"{"openclaw_url":"https://claw-y.example","openclaw_token":"test-fake-claw-3"}"#, false, true, false)
+            .unwrap();
+        assert_eq!(rt.openclaw_token, "test-fake-claw-3");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
