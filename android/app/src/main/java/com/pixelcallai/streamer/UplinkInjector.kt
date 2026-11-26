@@ -495,7 +495,9 @@ class TelephonyUplinkInjector(
         } catch (_: Exception) {
             IntArray(0)
         }
-        val mediatek = isMediaTekChip(Build.VERSION.SDK_INT, Build.SOC_MANUFACTURER, Build.HARDWARE)
+        // Build.SOC_MANUFACTURER exists from API 31; reading it on Android 10/11 throws.
+        val soc = if (Build.VERSION.SDK_INT >= 31) Build.SOC_MANUFACTURER else null
+        val mediatek = isMediaTekChip(Build.VERSION.SDK_INT, soc, Build.HARDWARE)
         val trackRate = pickTelephonyTrackRate(deviceRates, sampleRate, mediatek)
         Log.i(
             TAG,
