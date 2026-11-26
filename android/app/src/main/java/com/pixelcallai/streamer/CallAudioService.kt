@@ -1583,6 +1583,7 @@ class CallAudioService : Service() {
                 },
                 requireInCallMode = !smoke,
                 onHealthReport = { report -> sendUplinkHealth(report) },
+                isCallConnected = { SilentInCallService.hasAnsweredCall() },
             )
             if (!mutateCurrentSession(generation, callInstanceId) { injector = inj }) {
                 inj.stop()
@@ -1872,6 +1873,9 @@ class CallAudioService : Service() {
             .put("write_errors", r.writeErrors)
             .put("underruns", r.underruns)
             .put("switches", r.switches)
+            .put("restarts", r.restarts)
+            .put("cooldowns", r.cooldowns)
+            .put("final_clean", r.finalClean)
             .put("measure_only", r.measureOnly)
             .put("audio_ms", r.audioMs)
             .put("live", r.live)

@@ -1,8 +1,10 @@
 //! `uplink_health`: after each call the phone app reports how the track that plays the
 //! AI's voice into the call behaved (which settings it started and ended with, how much
 //! audio the audio server threw away, how often the track was rebuilt). Bageo writes one
-//! log line per report and keeps the phone's `audio_fit` for the phone list. Nothing in
-//! the report identifies a person: no serial number, IMEI, phone number or call content.
+//! log line per report and keeps the phone's `audio_fit` for the phone list. The report
+//! carries Bageo's own phone id (the one every other log line uses), the phone's maker,
+//! model, chip and Android version; no hardware serial number, IMEI, phone number, system
+//! build fingerprint or call content.
 
 use serde_json::Value;
 
@@ -70,23 +72,25 @@ fn flag(msg: &Value, key: &str) -> bool {
     msg.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
-/// Device and chip names: printable ASCII without spaces, at most 32 characters.
-fn word(msg: &Value, key: &str) -> String {
-    let s: String = msg
-        .get(key)
-        .and_then(Value::as_str)
-        .unwrap_or("")
+/// `s` as printable ASCII without spaces, at most `max` characters; `-` when nothing is left.
+fn clean(s: &str, max: usize) -> String {
+    let s: String = s
         .trim()
         .chars()
         .map(|c| if c == ' ' { '_' } else { c })
         .filter(|c| c.is_ascii_graphic())
-        .take(32)
+        .take(max)
         .collect();
     if s.is_empty() {
         "-".to_string()
     } else {
         s
     }
+}
+
+/// Device and chip names: [`clean`] to 32 characters.
+fn word(msg: &Value, key: &str) -> String {
+    clean(msg.get(key).and_then(Value::as_str).unwrap_or(""), 32)
 }
 
 /// Up to 16 numbers of a capability list, as `[a,b]`.
@@ -103,9 +107,11 @@ fn list(msg: &Value, key: &str) -> String {
 /// The log line for one report: starts with `uplink health`, then `key=value` pairs.
 pub fn log_line(serial: &str, msg: &Value) -> String {
     let fit = AudioFit::from_msg(msg).map_or("?", AudioFit::as_str);
+    let serial = clean(serial, 64);
     format!(
         "uplink health serial={serial} start={} final={} source={} rate={} channels={} buffer_ms={} \
          lost_ms={} loss_events={} rebuilds={} write_errors={} underruns={} switches={} \
+         restarts={} cooldowns={} final_clean={} \
          measure_only={} audio_ms={} live={} fit={fit} reason={} maker={} model={} soc={} \
          soc_model={} sdk={} caps_rates={} caps_channels={} caps_masks={} caps_encodings={}",
         known(msg, "start_profile", PROFILES),
@@ -120,6 +126,13 @@ pub fn log_line(serial: &str, msg: &Value) -> String {
         num(msg, "write_errors"),
         num(msg, "underruns"),
         num(msg, "switches"),
+        num(msg, "restarts"),
+        num(msg, "cooldowns"),
+        match msg.get("final_clean").and_then(Value::as_bool) {
+            Some(true) => "true",
+            Some(false) => "false",
+            None => "-",
+        },
         flag(msg, "measure_only"),
         num(msg, "audio_ms"),
         flag(msg, "live"),
@@ -163,6 +176,9 @@ mod tests {
             "write_errors": 0,
             "underruns": 3,
             "switches": 1,
+            "restarts": 9,
+            "cooldowns": 2,
+            "final_clean": true,
             "measure_only": false,
             "audio_ms": 31000,
             "live": true,
@@ -184,10 +200,17 @@ mod tests {
             line,
             "uplink health serial=pixel-1 start=standard final=primed source=forced rate=48000 \
              channels=1 buffer_ms=160 lost_ms=2400 loss_events=21 rebuilds=0 write_errors=0 \
-             underruns=3 switches=1 measure_only=false audio_ms=31000 live=true fit=adjusted \
+             underruns=3 switches=1 restarts=9 cooldowns=2 final_clean=true measure_only=false \
+             audio_ms=31000 live=true fit=adjusted \
              reason=- maker=Xiaomi model=Phone_Model_X soc=Mediatek soc_model=MT6985 sdk=34 \
              caps_rates=[44100,48000] caps_channels=[] caps_masks=[12] caps_encodings=[2]"
         );
+        // A report from an app that does not send the newer fields.
+        let mut older = report();
+        for key in ["restarts", "cooldowns", "final_clean"] {
+            older.as_object_mut().unwrap().remove(key);
+        }
+        assert!(log_line("pixel-1", &older).contains(" restarts=0 cooldowns=0 final_clean=- "));
     }
 
     #[test]
@@ -213,6 +236,17 @@ mod tests {
         assert!(!line.contains('\n') && !line.contains('\u{1b}'), "{line}");
         let model = line.split(" model=").nth(1).unwrap().split(' ').next().unwrap();
         assert!(model.len() <= 32, "{model}");
+    }
+
+    #[test]
+    fn the_phone_id_is_cleaned_too() {
+        let long = "p".repeat(100);
+        let line = log_line(&format!("pixel 1\nfake=1\u{1b}[0m{long}"), &json!({}));
+        let serial = line.strip_prefix("uplink health serial=").unwrap().split(' ').next().unwrap();
+        assert!(serial.starts_with("pixel_1fake=1[0m"), "{serial}");
+        assert_eq!(serial.len(), 64, "{serial}");
+        assert!(!line.contains('\n') && !line.contains('\u{1b}'), "{line}");
+        assert!(log_line("", &json!({})).starts_with("uplink health serial=- start="));
     }
 
     #[test]
