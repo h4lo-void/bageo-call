@@ -1582,6 +1582,7 @@ class CallAudioService : Service() {
                     if (isSessionCurrent(generation, callInstanceId)) notifyUplinkMissing()
                 },
                 requireInCallMode = !smoke,
+                onHealthReport = { report -> sendUplinkHealth(report) },
             )
             if (!mutateCurrentSession(generation, callInstanceId) { injector = inj }) {
                 inj.stop()
@@ -1803,6 +1804,7 @@ class CallAudioService : Service() {
                 reportedInCall = busy
                 hello.put("phone_mode", Prefs.phoneMode(this))
                 hello.put("in_call", busy)
+                hello.put("audio_fit", UplinkTuneStore.fit(this).id)
                 // The agent sends console_url and agent_version again after this hello.
                 Prefs.setConsoleUrl(this, null)
                 Prefs.setAgentVersion(this, null)
@@ -1828,6 +1830,72 @@ class CallAudioService : Service() {
     private fun stopControlClient() {
         controlClient?.close()
         controlClient = null
+    }
+
+    /**
+     * `uplink_fit` from Bageo: the owner said the caller did not hear the AI. The state
+     * becomes problem and the next call starts with the next profile; the answer carries
+     * the stored state.
+     */
+    private fun handleUplinkFit(obj: org.json.JSONObject) {
+        val wanted = AudioFit.parse(obj.optString("audio_fit"))
+        val fit = if (wanted == AudioFit.PROBLEM) {
+            UplinkTuneStore.markOwnerProblem(this)
+        } else {
+            UplinkTuneStore.fit(this)
+        }
+        Log.i(TAG, "uplink_fit asked=${wanted?.id ?: "?"} stored=${fit.id}")
+        sendControlOrQueue(
+            org.json.JSONObject()
+                .put("type", "uplink_fit_result")
+                .put("id", obj.optString("id"))
+                .put("serial", deviceSerial())
+                .put("audio_fit", fit.id),
+        )
+    }
+
+    /** `uplink_health`: one call's measurement of the AI voice track, for Bageo's log. */
+    private fun sendUplinkHealth(r: UplinkHealthReport) {
+        fun ints(values: List<Int>) = org.json.JSONArray().also { a -> values.forEach { a.put(it) } }
+        val msg = org.json.JSONObject()
+            .put("type", "uplink_health")
+            .put("serial", deviceSerial())
+            .put("start_profile", r.startProfile.id)
+            .put("final_profile", r.finalProfile.id)
+            .put("start_source", r.source.id)
+            .put("track_rate", r.trackRate)
+            .put("channels", r.channels)
+            .put("buffer_ms", r.bufferMs)
+            .put("lost_ms", r.lostMs)
+            .put("loss_events", r.lossEvents)
+            .put("rebuilds", r.rebuilds)
+            .put("write_errors", r.writeErrors)
+            .put("underruns", r.underruns)
+            .put("switches", r.switches)
+            .put("measure_only", r.measureOnly)
+            .put("audio_ms", r.audioMs)
+            .put("live", r.live)
+            .put("audio_fit", r.fit.id)
+            .put("manufacturer", android.os.Build.MANUFACTURER.orEmpty())
+            .put("model", android.os.Build.MODEL.orEmpty())
+            .put("android", android.os.Build.VERSION.RELEASE.orEmpty())
+            .put("sdk", android.os.Build.VERSION.SDK_INT)
+            .put(
+                "caps",
+                org.json.JSONObject()
+                    .put("sample_rates", ints(r.caps.sampleRates))
+                    .put("channel_counts", ints(r.caps.channelCounts))
+                    .put("channel_masks", ints(r.caps.channelMasks))
+                    .put("encodings", ints(r.caps.encodings)),
+            )
+        r.reason?.let { msg.put("reason", it) }
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            msg.put("soc_manufacturer", android.os.Build.SOC_MANUFACTURER.orEmpty())
+            msg.put("soc_model", android.os.Build.SOC_MODEL.orEmpty())
+        } else {
+            msg.put("hardware", android.os.Build.HARDWARE.orEmpty())
+        }
+        sendControlOrQueue(msg)
     }
 
     /** Idle control WS + in-call bridge WS both route agent JSON here for dial commands. */
@@ -1865,6 +1933,7 @@ class CallAudioService : Service() {
                 }
             }
             "set_mode" -> handleSetMode(obj)
+            "uplink_fit" -> handleUplinkFit(obj)
             "send_sms" -> smsSender?.handle(obj)
             "local_notice" -> if (BuildConfig.STANDALONE) showStandaloneSummaryNotification(this, obj)
             "agent_info" -> {
