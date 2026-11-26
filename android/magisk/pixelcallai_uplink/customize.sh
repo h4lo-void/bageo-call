@@ -50,6 +50,49 @@ fi
 ui_print "- priv-app APK: ${APK_SIZE} bytes"
 ui_print "- rollback: touch \$MODDIR/disable && reboot"
 
+# bageo-audio-helper: handles FD-pinned mode-switch file exchange in the app's folder
+# for mode_daemon.sh and provides the root call-audio fallback when the app asks for it.
+# Supported architectures: arm64-v8a and armeabi-v7a.
+HELPER_SRC="$MODPATH/roothelper"
+if [ -d "$HELPER_SRC" ]; then
+  HELPER_ABI=
+  case "${ARCH:-}" in
+    arm64) HELPER_ABI=arm64-v8a ;;
+    arm) HELPER_ABI=armeabi-v7a ;;
+    '')
+      case "$(getprop ro.product.cpu.abi)" in
+        arm64-v8a) HELPER_ABI=arm64-v8a ;;
+        armeabi-v7a|armeabi) HELPER_ABI=armeabi-v7a ;;
+      esac ;;
+  esac
+  if [ -n "$HELPER_ABI" ] && [ -f "$HELPER_SRC/$HELPER_ABI/bageo-audio-helper" ]; then
+    # Root's alone: the helper refuses a parameter tool others could write.
+    HELPER_OK=1
+    mkdir -p "$MODPATH/bin" &&
+      chown 0:0 "$MODPATH/bin" && chmod 0755 "$MODPATH/bin" &&
+      cp -f "$HELPER_SRC/$HELPER_ABI/bageo-audio-helper" "$MODPATH/bin/bageo-audio-helper" &&
+      chown 0:0 "$MODPATH/bin/bageo-audio-helper" && chmod 0700 "$MODPATH/bin/bageo-audio-helper" ||
+      HELPER_OK=0
+    if [ "$HELPER_OK" = 1 ]; then
+      chcon u:object_r:system_file:s0 "$MODPATH/bin/bageo-audio-helper" 2>/dev/null || true
+    else
+      abort "! FATAL: cannot install bageo-audio-helper with root-only permissions"
+    fi
+    if [ -f "$HELPER_SRC/bageo-audio-params.jar" ]; then
+      if cp -f "$HELPER_SRC/bageo-audio-params.jar" "$MODPATH/bin/bageo-audio-params.jar" &&
+          chown 0:0 "$MODPATH/bin/bageo-audio-params.jar" && chmod 0600 "$MODPATH/bin/bageo-audio-params.jar"; then
+        chcon u:object_r:system_file:s0 "$MODPATH/bin/bageo-audio-params.jar" 2>/dev/null || true
+      else
+        rm -f "$MODPATH/bin/bageo-audio-params.jar"
+      fi
+    fi
+    ui_print "- audio helper: $HELPER_ABI (runs only when the app asks)"
+  else
+    abort "! FATAL: unsupported CPU architecture (${ARCH:-unknown}); arm64-v8a or armeabi-v7a required"
+  fi
+  rm -rf "$HELPER_SRC"
+fi
+
 # pixelcallai_uplink (computer-linked) and bageo_ai_call_agent (phone-only)
 # install the same app. Keep only the module being installed: the other one
 # is removed at the next reboot.

@@ -8,28 +8,29 @@
 # so service.sh starts this helper once per boot, in its own session. Every 2
 # seconds it looks for a request from the app in the app's device-protected folder:
 #
-#   APPDIR/request   one line: <ai|normal> <id> [0 to 6 volumes]
+#   APPDIR/request   one line ending in a newline, nothing else, at most 128 bytes:
+#                    <ai|normal> <id> [0 to 6 volumes], single spaces
 #                    id: letters, digits and dashes, at most 64; volume: 1 to 3 digits
+#   APPDIR/audio_helper
+#                    one line ending in a newline, at most 80 bytes: start <id>
+#                    starts bin/bageo-audio-helper, the root audio helper for phones
+#                    whose call audio path the app cannot use by itself. Only when no
+#                    switch request was taken in the same round, at most once every 10
+#                    seconds, not while one runs, and not while
+#                    /data/adb/pixelcallai/audio_helper.disabled exists. Nothing starts
+#                    it otherwise.
 #
-# It takes the request (a rename, so the app can still withdraw one nobody took),
-# checks it, runs apply_mode.sh with it and reports to the app in APPDIR/state:
+# Taking a request and publishing APPDIR/state are performed by `bageo-audio-helper`
+# (`ipc-take`, `ipc-publish`, `ipc-sweep`), which opens APPDIR step by step with
+# O_NOFOLLOW, verifies owner and SELinux label on the open descriptors, stages inside a
+# pinned 0700 root working folder under APPDIR (same fscrypt policy), and moves entries
+# with pure renameat only — never shell mv, never copy fallback.
 #
-#   daemon=1
-#   mode=ai|normal          /data/adb/pixelcallai/mode (no file = ai)
-#   pending=0|1             a switch has not finished all its steps
-#   running=0|1             a switch is running
-#   updated=<epoch>         when this was written
-#   uptime=<seconds>        time since boot then (the app tells an old boot's state apart)
-#   request=<id>            the last request taken
-#   exit=<code>             apply_mode.sh's exit code, once that run ended
-#   error=invalid_request   the last request was malformed and was not run
-#   log.<key>=<value>       every line of /data/adb/pixelcallai/last_apply
-#
-# The state is written when this starts, before and after every run, whenever the
-# folder has no state file (the app was just installed or its data cleared), and
-# whenever the mode, pending or last_apply file or the run lock changed since it was
-# last written (apply_mode.sh run by hand or by another script), so the app never
-# acts on an old mode. It belongs to the app and only the app can read it.
+# A request (switch or audio helper) is run only for the app the system lists
+# (packages.list) exactly once, not debuggable (a debuggable app can be entered with
+# `adb shell run-as` by anyone with adb), with a user ID no other package shares, that
+# owns its folder, and with its usual data folder; anything else is refused
+# (error=app_refused). The module installs a release build of the app.
 trap '' HUP
 
 # Run like a root shell from adb: the system shell and toybox. Boot scripts run in the
@@ -44,6 +45,7 @@ DIR=/data/adb/pixelcallai
 PIDFILE=$DIR/daemon.pid
 APPHOME=/data/user_de/0/$PKG
 APPDIR=$APPHOME/files/mode
+PKGLIST=/data/system/packages.list
 TAG=pixelcallai_mode
 # Same rule as service.sh, apply_mode.sh and the app: drop blanks and a UTF-8 BOM.
 STRIP=' \t\r\n\v\f\357\273\277'
@@ -51,8 +53,6 @@ NL='
 '
 
 mkdir -p "$DIR" || exit 3
-# One helper only. service.sh removes the pid file at boot; after that the pid
-# counts only while it is alive and really is this script.
 OLD=$(cat "$PIDFILE" 2>/dev/null)
 if [ -n "$OLD" ] && [ "$OLD" != "$$" ] && kill -0 "$OLD" 2>/dev/null &&
     grep -q mode_daemon "/proc/$OLD/cmdline" 2>/dev/null; then
@@ -60,17 +60,29 @@ if [ -n "$OLD" ] && [ "$OLD" != "$$" ] && kill -0 "$OLD" 2>/dev/null &&
 fi
 echo $$ > "$PIDFILE"
 trap '[ "$(cat "$PIDFILE" 2>/dev/null)" = "$$" ] && rm -f "$PIDFILE"' EXIT
-trap 'exit 0' INT TERM
+STOP=
+trap 'STOP=1' INT TERM
+rm -f "$DIR/request.taken" "$DIR/audio_helper.taken" "$DIR"/request.taken.* "$DIR"/audio_helper.taken.* \
+  "$DIR/request.stuck" "$DIR/audio_helper.stuck" 2>/dev/null
 
 LAST_REQ=
 LAST_EXIT=
 LAST_ERR=
 PUB_SIG=
+PUB_PENDING=1
+HELPER=$MODDIR/bin/bageo-audio-helper
+FS_HELPER=${BAGEO_FS_HELPER:-$HELPER}
+HELPER_PID=$DIR/audio_helper.pid
+HELPER_OFF=$DIR/audio_helper.disabled
+HELPER_GAP=10
+LAST_HELPER=
+LAST_HELPER_RESULT=
+LAST_HELPER_START=0
 
-# QSIG: the files the state reports (mode, pending, last_apply) and whether the run
-# lock is held, read with shell builtins only so the 2 second loop stays cheap.
+# QSIG: everything the published state depends on, read with shell builtins so the 2 s
+# loop stays cheap.
 quick_sig() {
-  QSIG=
+  QSIG="$LAST_REQ|$LAST_EXIT|$LAST_ERR|$LAST_HELPER|$LAST_HELPER_RESULT"
   for f in mode pending last_apply; do
     QSIG="$QSIG|$f"
     [ -f "$DIR/$f" ] || continue
@@ -83,7 +95,7 @@ quick_sig() {
   return 0
 }
 
-# The state lines (see the top of this file). $1 = 1: a run starts now.
+# The state lines. $1 = 1: a run starts now.
 state_lines() {
   run=$1
   if [ "$run" != 1 ]; then
@@ -110,58 +122,119 @@ state_lines() {
   [ -n "$LAST_REQ" ] && echo "request=$LAST_REQ"
   [ -n "$LAST_EXIT" ] && echo "exit=$LAST_EXIT"
   [ -n "$LAST_ERR" ] && echo "error=$LAST_ERR"
+  [ -n "$LAST_HELPER" ] && echo "audio_helper=$LAST_HELPER"
+  [ -n "$LAST_HELPER_RESULT" ] && echo "audio_helper_result=$LAST_HELPER_RESULT"
   [ -f "$DIR/last_apply" ] && sed 's/^/log./' "$DIR/last_apply"
   return 0
 }
 
-# The app owns files/ and files/mode/ and could put links there to send root's file
-# operations elsewhere. So every file is made or taken inside root's own $DIR, and
-# moved in or out with "mv -T" (a link at the target is replaced, never followed).
-app_dir_ok() {
-  [ -d "$APPDIR" ] && [ ! -L "$APPHOME/files" ] && [ ! -L "$APPDIR" ]
-}
-
-# Write the state: a temporary file in $DIR, given to the app (owner, mode 600, the
-# app folder's SELinux label), then moved over the old one. Skipped while the folder
-# is missing.
-publish() {
-  app_dir_ok || return 1
-  quick_sig
-  sig=$QSIG
-  own=$(stat -c %u:%g "$APPHOME" 2>/dev/null)
-  case "$own" in ''|:*|*:|*[!0-9:]*) return 1 ;; esac
-  tmp=$DIR/state.tmp
-  rm -rf "$tmp"
-  state_lines "$1" > "$tmp" 2>/dev/null
-  if [ ! -s "$tmp" ] || ! chown "$own" "$tmp" 2>/dev/null || ! chmod 600 "$tmp" 2>/dev/null; then
-    rm -f "$tmp"
-    return 1
-  fi
-  label=$(stat -c %C "$APPHOME" 2>/dev/null)
-  case "$label" in u:object_r:*) chcon "$label" "$tmp" 2>/dev/null ;; esac
-  if ! app_dir_ok || ! mv -fT "$tmp" "$APPDIR/state" 2>/dev/null; then
-    rm -f "$tmp"
-    return 1
-  fi
-  PUB_SIG=$sig
+APP_UID=
+app_uid() {
+  [ ! -L "$APPHOME" ] && [ -d "$APPHOME" ] || { APP_UID=; return 1; }
+  APP_UID=$(stat -c %u "$APPHOME" 2>/dev/null)
+  case "$APP_UID" in ''|0|*[!0-9]*) APP_UID=; return 1 ;; esac
   return 0
 }
 
-# Take one request, check it and run it.
-handle_request() {
-  # A rename: the app deletes a request nobody took in time, and that one must not run.
-  # Only a plain file is read (a link or a pipe is dropped unread).
-  taken=$DIR/request.taken
-  rm -rf "$taken"
-  app_dir_ok || return 0
-  mv -fT "$APPDIR/request" "$taken" 2>/dev/null || return 0
-  req=
-  [ -f "$taken" ] && [ ! -L "$taken" ] && req=$(head -c 200 "$taken" 2>/dev/null)
-  rm -rf "$taken"
+ensure_fs_helper() {
+  [ -f "$FS_HELPER" ] || return 1
+  [ -x "$FS_HELPER" ] || chmod 0700 "$FS_HELPER" 2>/dev/null
+  [ -x "$FS_HELPER" ]
+}
 
-  ok=1
-  case "$req" in *"$NL"*) ok=0 ;; esac
-  [ "${#req}" -le 128 ] || ok=0
+# Takes the app's file $1 (at most $2 bytes with its trailing newline) through
+# `FS_HELPER ipc-take` (FD-pinned pure renameat). Returns 0 (line printed), 1 (nothing
+# there), 2 (dropped invalid/non-plain entry), or 3 (present but could not be taken).
+take_app_file() {
+  ensure_fs_helper || return 3
+  line=$("$FS_HELPER" ipc-take "$APPHOME" "$1" "$2" 2>/dev/null)
+  rc=$?
+  case "$rc" in
+    0) printf '%s' "$line"; return 0 ;;
+    1|3) return "$rc" ;;
+    *)
+      log -t "$TAG" "$1 dropped: not one line in a plain file of the app's" 2>/dev/null
+      return 2
+      ;;
+  esac
+}
+
+# Whether a request may be run; REFUSED says why not.
+APP_LIST_MAX=8388608
+app_allowed() {
+  REFUSED=
+  if [ -L "$PKGLIST" ] || [ ! -f "$PKGLIST" ]; then
+    REFUSED="package list unreadable"
+    return 1
+  fi
+  size=$(stat -c %s "$PKGLIST" 2>/dev/null)
+  case "$size" in ''|*[!0-9]*) REFUSED="package list unreadable"; return 1 ;; esac
+  if [ "$size" -gt "$APP_LIST_MAX" ]; then
+    REFUSED="package list too large"
+    return 1
+  fi
+  lines=$(grep '^com\.pixelcallai\.streamer ' "$PKGLIST" 2>/dev/null)
+  case "$lines" in ''|*"$NL"*) REFUSED="app not listed exactly once"; return 1 ;; esac
+  set -f
+  set -- $lines
+  set +f
+  if [ "$2" != "$APP_UID" ]; then
+    REFUSED="app user ID differs from its folder's owner"
+    return 1
+  fi
+  if [ "$3" != 0 ]; then
+    REFUSED="app is debuggable or its entry malformed"
+    return 1
+  fi
+  if [ "$4" != "/data/user/0/$PKG" ]; then
+    REFUSED="app data folder unexpected"
+    return 1
+  fi
+  shared=$(grep -c "^[^ ]* $APP_UID " "$PKGLIST" 2>/dev/null)
+  if [ "$shared" != 1 ]; then
+    REFUSED="app shares its user ID"
+    return 1
+  fi
+  return 0
+}
+
+# Publishes `APPDIR/state` through `FS_HELPER ipc-publish` (FD-pinned pure renameat and
+# required SELinux label). `PUB_PENDING` stays set until publication succeeds, so a
+# temporarily blocked state is retried even when QSIG has not changed since.
+publish() {
+  PUB_PENDING=1
+  app_uid || return 1
+  ensure_fs_helper || return 1
+  quick_sig
+  sig=$QSIG
+  if ! state_lines "$1" | "$FS_HELPER" ipc-publish "$APPHOME" >/dev/null 2>&1; then
+    return 1
+  fi
+  PUB_SIG=$sig
+  PUB_PENDING=
+  return 0
+}
+
+# Take one request, check it and run it. Returns 1 when nothing was there.
+handle_request() {
+  app_uid || return 1
+  req=$(take_app_file request 129)
+  case $? in
+    0) ok=1 ;;
+    2) ok=0; req= ;;
+    3)
+      if [ "$LAST_ERR" != take_failed ]; then
+        log -t "$TAG" "cannot take the request; left where it is" 2>/dev/null
+        LAST_REQ=
+        LAST_EXIT=2
+        LAST_ERR=take_failed
+        publish 0
+      fi
+      return 1
+      ;;
+    *) return 1 ;;
+  esac
+
   set -f
   old_ifs=$IFS
   IFS=' '
@@ -176,11 +249,14 @@ handle_request() {
   if [ "$#" -lt 2 ] || [ "$#" -gt 8 ]; then
     ok=0
   else
+    canon="$1 $2"
     shift 2
     for v in "$@"; do
       case "$v" in ''|*[!0-9]*) ok=0 ;; esac
       [ "${#v}" -le 3 ] || ok=0
+      canon="$canon $v"
     done
+    [ "$canon" = "$req" ] || ok=0
   fi
 
   LAST_REQ=$id
@@ -191,27 +267,115 @@ handle_request() {
     publish 0
     return 0
   fi
+  if ! app_allowed; then
+    LAST_EXIT=2
+    LAST_ERR=app_refused
+    log -t "$TAG" "request refused: $REFUSED" 2>/dev/null
+    publish 0
+    return 0
+  fi
   LAST_EXIT=
   LAST_ERR=
-  log -t "$TAG" "switch to $mode (id=$id)" 2>/dev/null
+  log -t "$TAG" "switch to $mode" 2>/dev/null
   publish 1
   /system/bin/sh "$MODDIR/apply_mode.sh" "$mode" "$id" "$@" </dev/null >/dev/null 2>&1
   LAST_EXIT=$?
-  log -t "$TAG" "switch id=$id ended with exit code $LAST_EXIT" 2>/dev/null
+  log -t "$TAG" "switch to $mode ended with exit code $LAST_EXIT" 2>/dev/null
+  publish 0
+  return 0
+}
+
+helper_running() {
+  p=$(head -c 16 "$HELPER_PID" 2>/dev/null)
+  case "$p" in ''|*[!0-9]*) return 1 ;; esac
+  kill -0 "$p" 2>/dev/null && grep -q bageo-audio-helper "/proc/$p/cmdline" 2>/dev/null
+}
+
+handle_helper() {
+  app_uid || return 1
+  req=$(take_app_file audio_helper 81)
+  case $? in
+    0) ok=1 ;;
+    2) ok=0; req= ;;
+    3)
+      if [ "$LAST_HELPER_RESULT" != take_failed ]; then
+        log -t "$TAG" "cannot take the audio helper request; left where it is" 2>/dev/null
+        LAST_HELPER_RESULT=take_failed
+        publish 0
+      fi
+      return 1
+      ;;
+    *) return 1 ;;
+  esac
+
+  set -f
+  old_ifs=$IFS
+  IFS=' '
+  set -- $req
+  IFS=$old_ifs
+  set +f
+  [ "$#" -eq 2 ] && [ "$1" = start ] || ok=0
+  hid=$2
+  case "$hid" in ''|*[!A-Za-z0-9-]*) ok=0 ;; esac
+  [ "${#hid}" -le 64 ] || ok=0
+  [ "start $hid" = "$req" ] || ok=0
+
+  now=$(date +%s)
+  since=$((now - LAST_HELPER_START))
+  if [ "$ok" != 1 ]; then
+    LAST_HELPER_RESULT=invalid_request
+  elif ! app_allowed; then
+    LAST_HELPER=$hid
+    LAST_HELPER_RESULT=app_refused
+    log -t "$TAG" "audio helper request refused: $REFUSED" 2>/dev/null
+  else
+    LAST_HELPER=$hid
+    if [ -e "$HELPER_OFF" ]; then
+      LAST_HELPER_RESULT=disabled
+    elif [ ! -f "$HELPER" ]; then
+      LAST_HELPER_RESULT=missing
+    elif helper_running; then
+      LAST_HELPER_RESULT=running
+    elif [ "$since" -ge 0 ] && [ "$since" -lt "$HELPER_GAP" ]; then
+      LAST_HELPER_RESULT=busy
+    else
+      [ -x "$HELPER" ] || chmod 0700 "$HELPER" 2>/dev/null
+      if command -v setsid >/dev/null 2>&1; then
+        setsid "$HELPER" serve </dev/null >/dev/null 2>&1 &
+      else
+        "$HELPER" serve </dev/null >/dev/null 2>&1 &
+      fi
+      LAST_HELPER_START=$now
+      LAST_HELPER_RESULT=started
+    fi
+  fi
+  log -t "$TAG" "audio helper request: $LAST_HELPER_RESULT" 2>/dev/null
   publish 0
   return 0
 }
 
 log -t "$TAG" "mode helper started (pid $$)" 2>/dev/null
+if app_uid && ensure_fs_helper; then
+  "$FS_HELPER" ipc-sweep "$APPHOME" </dev/null >/dev/null 2>&1
+fi
 publish 0
-while :; do
-  if [ -f "$APPDIR/request" ]; then
-    handle_request
-  elif [ -d "$APPDIR" ] && [ ! -f "$APPDIR/state" ]; then
-    publish 0
-  else
-    quick_sig
-    [ "$QSIG" != "$PUB_SIG" ] && publish 0
+while [ -z "$STOP" ]; do
+  took=0
+  if [ -e "$APPDIR/request" ] || [ -L "$APPDIR/request" ]; then
+    handle_request && took=1
+  fi
+  if [ "$took" = 0 ] && { [ -e "$APPDIR/audio_helper" ] || [ -L "$APPDIR/audio_helper" ]; }; then
+    handle_helper && took=1
+  fi
+  if [ "$took" = 0 ]; then
+    if [ -n "$PUB_PENDING" ]; then
+      publish 0
+    elif [ -d "$APPDIR" ] && [ ! -L "$APPDIR" ] && { [ -L "$APPDIR/state" ] || [ ! -f "$APPDIR/state" ]; }; then
+      publish 0
+    else
+      quick_sig
+      [ "$QSIG" != "$PUB_SIG" ] && publish 0
+    fi
   fi
   sleep 2
 done

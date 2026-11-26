@@ -36,6 +36,34 @@ rm -f /data/adb/pixelcallai/daemon.pid 2>/dev/null || true
   done
   sleep 10
 
+  # A call served by the audio helper (bin/bageo-audio-helper) ended without its
+  # clean-up (the phone restarted mid-call, or the helper was killed): put the mixer
+  # and audio settings it changed back. On its own, with a time limit, so the rest of
+  # this (the mode helper above all) never waits for it. Nothing else about the helper
+  # runs at boot.
+  if [ -f /data/adb/pixelcallai/audio_session ] && [ -f "$MODDIR/bin/bageo-audio-helper" ]; then
+    chmod 0700 "$MODDIR/bin/bageo-audio-helper" 2>/dev/null || true
+    if timeout -k 5 60 true >/dev/null 2>&1; then
+      BAGEO_BOOT_RESTORE=1 timeout -k 5 60 "$MODDIR/bin/bageo-audio-helper" restore </dev/null >/dev/null 2>&1 &
+    else
+      (
+        BAGEO_BOOT_RESTORE=1 "$MODDIR/bin/bageo-audio-helper" restore </dev/null >/dev/null 2>&1 &
+        rpid=$!
+        t=0
+        while [ -d "/proc/$rpid" ] && ! grep -q '^State:.*[XZ]' "/proc/$rpid/status" 2>/dev/null && [ "$t" -lt 60 ]; do
+          sleep 1
+          t=$((t + 1))
+        done
+        if [ -d "/proc/$rpid" ] && ! grep -q '^State:.*[XZ]' "/proc/$rpid/status" 2>/dev/null; then
+          kill -TERM "$rpid" 2>/dev/null || true
+          sleep 5
+          kill -KILL "$rpid" 2>/dev/null || true
+        fi
+        wait "$rpid" 2>/dev/null || true
+      ) </dev/null >/dev/null 2>&1 &
+    fi
+  fi
+
   # Wait until PackageManager sees our priv-app before touching Dialer.
   j=0
   while [ "$j" -lt 30 ]; do

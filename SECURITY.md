@@ -43,6 +43,12 @@ phone module together.
   (`.bageo`). Protect the `data/` folder and its backups accordingly.
 - The phone module installs a privileged system app. Install only builds you
   trust.
+- The phone module also carries a root program, `bageo-audio-helper`, for phones
+  whose call audio the app cannot reach by itself. It does not stay in the
+  background: it starts when the app asks and quits about a minute after the app
+  stops using it; at boot it runs briefly only to put back settings a call left
+  changed. `bageo-audio-helper disable` (as root) turns it off; see
+  [Phone setup](docs/en/PHONE.md#the-audio-helper).
 
 ## Built-in protections
 
@@ -74,6 +80,19 @@ phone module together.
   short codes or premium-rate numbers, call each errand once (with Redial until
   answered on, at most 30 times, a minute apart), and hang up before
   the AI speaks when the phone used another SIM than the one asked for.
+- **The phone's root audio helper serves only the Bageo app, and only for listed
+  changes.** `bageo-audio-helper` serves the app only when the system lists it once,
+  as a non-debuggable app with a user ID of its own in the main user, and only over a
+  connection whose listener has that user ID and a privileged-app SELinux context
+  and presents a one-time key that only the app can read; the helper proves itself
+  to the app with a second key. Requests are versioned and size- and time-limited.
+  The app may only set mixer controls, audio parameters and sound devices that a
+  list built into the helper names for that phone (empty for now), open sound
+  devices only while the phone is in a call, and read nothing. Old values are saved
+  to a root-only file first and put back when the call ends; values that cannot be
+  put back are kept and retried at the next start or boot, and no new call session
+  starts until they are. The module's root scripts handle the app's requests without
+  following links the app could plant. The module adds no SELinux rule.
 - **Secrets stay hidden.** The settings API returns keys and notification tokens
   masked. `/health` returns only a short status unless the request carries the
   console password, or, with no password set, comes from this computer itself

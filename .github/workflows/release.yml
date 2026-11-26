@@ -171,6 +171,14 @@ jobs:
           echo "PCA_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
       - name: Build Android arm64 Rust library
         run: bash android/scripts/build-rust-android.sh
+      - name: Build the phone audio helper (arm64-v8a, armeabi-v7a)
+        env:
+          BAGEO_RUST_TOOLCHAIN: "1.97.0"
+          BAGEO_NDK_VERSION: "27.3.13750724"
+          BAGEO_BUILD_TOOLS_VERSION: "35.0.0"
+        run: |
+          rustup toolchain install "$BAGEO_RUST_TOOLCHAIN" --profile minimal --target aarch64-linux-android --target armv7-linux-androideabi
+          bash android/scripts/build-roothelper.sh
       - name: Build and package bridge and standalone modules
         working-directory: android
         env:
@@ -184,6 +192,8 @@ jobs:
             bash scripts/package-uplink-module.sh
             bash scripts/package-uplink-module.sh --standalone --skip-rust-build
           fi
+      - name: Check the audio helper is in the phone modules
+        run: bash android/scripts/check-roothelper-in-module.sh android/magisk/dist/bageo-phone-*.zip
       - name: Check the app in each module is not debuggable
         run: bash android/scripts/check-not-debuggable.sh android/magisk/dist/bageo-phone-*.zip
       - name: Verify APK signing
