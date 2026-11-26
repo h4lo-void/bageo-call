@@ -13,9 +13,10 @@
 #   APPDIR/audio_helper
 #                    one line: start <id>
 #                    starts bin/bageo-audio-helper, the root audio helper for phones
-#                    whose call audio path the app cannot use by itself. It connects
-#                    to the app's socket, serves it, and quits after a minute without
-#                    the app; only one copy runs. Nothing starts it otherwise.
+#                    whose call audio path the app cannot use by itself. Only when no
+#                    switch request waits, at most once every 10 seconds, not while
+#                    one runs, and not while /data/adb/pixelcallai/audio_helper.disabled
+#                    exists. Nothing starts it otherwise.
 #
 # It takes the request (a rename, so the app can still withdraw one nobody took),
 # checks it, runs apply_mode.sh with it and reports to the app in APPDIR/state:
@@ -29,8 +30,10 @@
 #   request=<id>            the last request taken
 #   exit=<code>             apply_mode.sh's exit code, once that run ended
 #   error=invalid_request   the last request was malformed and was not run
-#   audio_helper=<id>       the last audio_helper request taken
-#   audio_helper_result=started|missing|invalid_request
+#   audio_helper=<id>       the last valid audio_helper request taken
+#   audio_helper_result=started|running|busy|disabled|missing|invalid_request
+#                           running: one runs already; busy: one was started less
+#                           than 10 seconds ago; disabled: the owner turned it off;
 #                           missing: this module has no helper for the phone
 #   log.<key>=<value>       every line of /data/adb/pixelcallai/last_apply
 #
@@ -76,8 +79,12 @@ LAST_EXIT=
 LAST_ERR=
 PUB_SIG=
 HELPER=$MODDIR/bin/bageo-audio-helper
+HELPER_PID=$DIR/audio_helper.pid
+HELPER_OFF=$DIR/audio_helper.disabled
+HELPER_GAP=10
 LAST_HELPER=
 LAST_HELPER_RESULT=
+LAST_HELPER_START=0
 
 # QSIG: the files the state reports (mode, pending, last_apply) and whether the run
 # lock is held, read with shell builtins only so the 2 second loop stays cheap.
@@ -128,24 +135,72 @@ state_lines() {
   return 0
 }
 
-# The app owns files/ and files/mode/ and could put links there to send root's file
-# operations elsewhere. So every file is made or taken inside root's own $DIR, and
-# moved in or out with "mv -T" (a link at the target is replaced, never followed).
-app_dir_ok() {
-  [ -d "$APPDIR" ] && [ ! -L "$APPHOME/files" ] && [ ! -L "$APPDIR" ]
+# The app owns files/ and files/mode/ and can rename or replace them at any moment,
+# for example with a link into a root folder, also between a check and the step after
+# it. So nothing here walks that path to act on a file: every step first enters the
+# folder (cd -P), checks that the folder it is now in really is APPDIR and belongs to
+# the app, and then works on names inside it relative to that folder; renames of the
+# path afterwards cannot send it elsewhere. Files go between that folder and root's own
+# $DIR by rename only (a rename never follows a link), and nothing the app made is ever
+# deleted recursively. Each step runs in a subshell, so this shell stays where it is.
+APP_UID=
+app_uid() {
+  # APPHOME's parent belongs to the system, so the app cannot swap APPHOME itself.
+  APP_UID=$(stat -c %u "$APPHOME" 2>/dev/null)
+  case "$APP_UID" in ''|0|*[!0-9]*) APP_UID=; return 1 ;; esac
+  return 0
+}
+enter_app_dir() {
+  [ -n "$APP_UID" ] || return 1
+  cd -P "$APPDIR" 2>/dev/null || return 1
+  [ "$(pwd -P)" = "$APPDIR" ] || return 1
+  [ "$(stat -c %u . 2>/dev/null)" = "$APP_UID" ] || return 1
+}
+
+# Takes the app's file $1 into $DIR and prints at most $2 bytes of it, when it is a
+# plain file of the app's. Anything else is never opened: a link is dropped (only the
+# link itself), a folder or pipe is handed back to the app under another name.
+# Returns 1 when nothing was read.
+take_app_file() {
+  tname=$1
+  taken=$DIR/$tname.taken
+  if [ -L "$taken" ] || [ -f "$taken" ]; then
+    rm -f "$taken"
+  elif [ -e "$taken" ]; then
+    return 1
+  fi
+  ( enter_app_dir && { [ -e "$tname" ] || [ -L "$tname" ]; } && mv -fT "$tname" "$taken" ) 2>/dev/null || return 1
+  if [ -L "$taken" ]; then
+    rm -f "$taken"
+    return 1
+  fi
+  if [ ! -f "$taken" ]; then
+    ( enter_app_dir && mv -fT "$taken" "$tname.rejected.$$.$(date +%s)" ) 2>/dev/null
+    return 1
+  fi
+  if [ "$(stat -c %u "$taken" 2>/dev/null)" != "$APP_UID" ]; then
+    rm -f "$taken"
+    return 1
+  fi
+  head -c "$2" "$taken" 2>/dev/null
+  rm -f "$taken"
+  return 0
 }
 
 # Write the state: a temporary file in $DIR, given to the app (owner, mode 600, the
-# app folder's SELinux label), then moved over the old one. Skipped while the folder
-# is missing.
+# app folder's SELinux label), then renamed over the old one inside the app's folder.
+# Skipped while the folder is missing or not the app's.
 publish() {
-  app_dir_ok || return 1
+  app_uid || return 1
   quick_sig
   sig=$QSIG
   own=$(stat -c %u:%g "$APPHOME" 2>/dev/null)
   case "$own" in ''|:*|*:|*[!0-9:]*) return 1 ;; esac
   tmp=$DIR/state.tmp
-  rm -rf "$tmp"
+  if [ -e "$tmp" ] && [ ! -f "$tmp" ] && [ ! -L "$tmp" ]; then
+    return 1
+  fi
+  rm -f "$tmp"
   state_lines "$1" > "$tmp" 2>/dev/null
   if [ ! -s "$tmp" ] || ! chown "$own" "$tmp" 2>/dev/null || ! chmod 600 "$tmp" 2>/dev/null; then
     rm -f "$tmp"
@@ -153,7 +208,7 @@ publish() {
   fi
   label=$(stat -c %C "$APPHOME" 2>/dev/null)
   case "$label" in u:object_r:*) chcon "$label" "$tmp" 2>/dev/null ;; esac
-  if ! app_dir_ok || ! mv -fT "$tmp" "$APPDIR/state" 2>/dev/null; then
+  if ! ( enter_app_dir && mv -fT "$tmp" state ) 2>/dev/null; then
     rm -f "$tmp"
     return 1
   fi
@@ -164,14 +219,8 @@ publish() {
 # Take one request, check it and run it.
 handle_request() {
   # A rename: the app deletes a request nobody took in time, and that one must not run.
-  # Only a plain file is read (a link or a pipe is dropped unread).
-  taken=$DIR/request.taken
-  rm -rf "$taken"
-  app_dir_ok || return 0
-  mv -fT "$APPDIR/request" "$taken" 2>/dev/null || return 0
-  req=
-  [ -f "$taken" ] && [ ! -L "$taken" ] && req=$(head -c 200 "$taken" 2>/dev/null)
-  rm -rf "$taken"
+  app_uid || return 0
+  req=$(take_app_file request 200) || return 0
 
   ok=1
   case "$req" in *"$NL"*) ok=0 ;; esac
@@ -207,26 +256,27 @@ handle_request() {
   fi
   LAST_EXIT=
   LAST_ERR=
-  log -t "$TAG" "switch to $mode (id=$id)" 2>/dev/null
+  log -t "$TAG" "switch to $mode" 2>/dev/null
   publish 1
   /system/bin/sh "$MODDIR/apply_mode.sh" "$mode" "$id" "$@" </dev/null >/dev/null 2>&1
   LAST_EXIT=$?
-  log -t "$TAG" "switch id=$id ended with exit code $LAST_EXIT" 2>/dev/null
+  log -t "$TAG" "switch to $mode ended with exit code $LAST_EXIT" 2>/dev/null
   publish 0
   return 0
 }
 
+# Whether the audio helper runs: the pid it wrote is alive and is that program.
+helper_running() {
+  p=$(head -c 16 "$HELPER_PID" 2>/dev/null)
+  case "$p" in ''|*[!0-9]*) return 1 ;; esac
+  kill -0 "$p" 2>/dev/null && grep -q bageo-audio-helper "/proc/$p/cmdline" 2>/dev/null
+}
+
 # Take one audio helper request ("start <id>"), check it and start the helper in its
-# own session. The helper keeps a single copy running by itself (a lock file), so a
-# second start while one runs quits at once.
+# own session, unless it is turned off, runs already or was started just now.
 handle_helper() {
-  taken=$DIR/audio_helper.taken
-  rm -rf "$taken"
-  app_dir_ok || return 0
-  mv -fT "$APPDIR/audio_helper" "$taken" 2>/dev/null || return 0
-  req=
-  [ -f "$taken" ] && [ ! -L "$taken" ] && req=$(head -c 100 "$taken" 2>/dev/null)
-  rm -rf "$taken"
+  app_uid || return 0
+  req=$(take_app_file audio_helper 100) || return 0
 
   ok=1
   case "$req" in *"$NL"*) ok=0 ;; esac
@@ -239,24 +289,35 @@ handle_helper() {
   set +f
   [ "$#" -eq 2 ] && [ "$1" = start ] || ok=0
   hid=$2
-  case "$hid" in ''|*[!A-Za-z0-9-]*) ok=0; hid= ;; esac
-  [ "${#hid}" -le 64 ] || { ok=0; hid=; }
+  case "$hid" in ''|*[!A-Za-z0-9-]*) ok=0 ;; esac
+  [ "${#hid}" -le 64 ] || ok=0
 
-  LAST_HELPER=$hid
+  now=$(date +%s)
+  since=$((now - LAST_HELPER_START))
   if [ "$ok" != 1 ]; then
     LAST_HELPER_RESULT=invalid_request
-  elif [ ! -f "$HELPER" ]; then
-    LAST_HELPER_RESULT=missing
   else
-    [ -x "$HELPER" ] || chmod 0700 "$HELPER" 2>/dev/null
-    if command -v setsid >/dev/null 2>&1; then
-      setsid "$HELPER" serve </dev/null >/dev/null 2>&1 &
+    LAST_HELPER=$hid
+    if [ -e "$HELPER_OFF" ]; then
+      LAST_HELPER_RESULT=disabled
+    elif [ ! -f "$HELPER" ]; then
+      LAST_HELPER_RESULT=missing
+    elif helper_running; then
+      LAST_HELPER_RESULT=running
+    elif [ "$since" -ge 0 ] && [ "$since" -lt "$HELPER_GAP" ]; then
+      LAST_HELPER_RESULT=busy
     else
-      "$HELPER" serve </dev/null >/dev/null 2>&1 &
+      [ -x "$HELPER" ] || chmod 0700 "$HELPER" 2>/dev/null
+      if command -v setsid >/dev/null 2>&1; then
+        setsid "$HELPER" serve </dev/null >/dev/null 2>&1 &
+      else
+        "$HELPER" serve </dev/null >/dev/null 2>&1 &
+      fi
+      LAST_HELPER_START=$now
+      LAST_HELPER_RESULT=started
     fi
-    LAST_HELPER_RESULT=started
   fi
-  log -t "$TAG" "audio helper request (id=$hid): $LAST_HELPER_RESULT" 2>/dev/null
+  log -t "$TAG" "audio helper request: $LAST_HELPER_RESULT" 2>/dev/null
   publish 0
   return 0
 }
@@ -264,9 +325,11 @@ handle_helper() {
 log -t "$TAG" "mode helper started (pid $$)" 2>/dev/null
 publish 0
 while :; do
-  [ -f "$APPDIR/audio_helper" ] && handle_helper
-  if [ -f "$APPDIR/request" ]; then
+  # A phone mode switch always goes first; the audio helper waits for the next round.
+  if [ -e "$APPDIR/request" ] || [ -L "$APPDIR/request" ]; then
     handle_request
+  elif [ -e "$APPDIR/audio_helper" ] || [ -L "$APPDIR/audio_helper" ]; then
+    handle_helper
   elif [ -d "$APPDIR" ] && [ ! -f "$APPDIR/state" ]; then
     publish 0
   else

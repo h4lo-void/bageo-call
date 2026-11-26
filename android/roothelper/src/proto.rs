@@ -23,6 +23,7 @@
 //! On a PCM connection the hello frame is followed by raw s16le PCM, interleaved.
 
 use std::io::{self, Read, Write};
+use std::time::Duration;
 
 pub const MAGIC: [u8; 2] = *b"BA";
 pub const VERSION: u8 = 1;
@@ -57,6 +58,8 @@ impl Kind {
 pub enum ProtoError {
     /// Reading or writing the connection failed (or it closed inside a frame).
     Io(io::ErrorKind),
+    /// No frame began in the time allowed.
+    Idle,
     BadMagic,
     BadVersion(u8),
     BadKind(u8),
@@ -74,6 +77,7 @@ impl ProtoError {
         matches!(
             self,
             ProtoError::Io(_)
+                | ProtoError::Idle
                 | ProtoError::BadMagic
                 | ProtoError::BadVersion(_)
                 | ProtoError::BadKind(_)
@@ -84,6 +88,7 @@ impl ProtoError {
     pub fn message(&self) -> String {
         match self {
             ProtoError::Io(k) => format!("connection error: {k:?}"),
+            ProtoError::Idle => "nothing received in time".into(),
             ProtoError::BadMagic => "not a helper frame".into(),
             ProtoError::BadVersion(v) => format!("protocol version {v} not supported (this helper speaks {VERSION})"),
             ProtoError::BadKind(k) => format!("unknown frame kind {k}"),
@@ -135,6 +140,45 @@ pub fn read_frame<R: Read>(r: &mut R, max: usize) -> Result<Option<(Kind, Vec<u8
     let (kind, len) = parse_header(&h, max)?;
     let mut payload = vec![0u8; len];
     r.read_exact(&mut payload).map_err(|e| ProtoError::Io(e.kind()))?;
+    Ok(Some((kind, payload)))
+}
+
+/// Once a frame has begun, the rest of it must arrive within this.
+pub const FRAME_TIME: Duration = Duration::from_secs(5);
+
+/// A connection whose reads can be given a time limit.
+pub trait Conn: Read + Write {
+    /// Limits how long each following read may wait; `None`: no limit.
+    fn set_read_limit(&mut self, limit: Option<Duration>) -> io::Result<()>;
+}
+
+fn timed_out(k: io::ErrorKind) -> bool {
+    matches!(k, io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut)
+}
+
+/// Reads one frame from a connection: waits at most `idle` for it to begin (`None`:
+/// as long as it takes) and [`FRAME_TIME`] for the rest of it.
+pub fn read_frame_timed<C: Conn>(
+    c: &mut C,
+    max: usize,
+    idle: Option<Duration>,
+) -> Result<Option<(Kind, Vec<u8>)>, ProtoError> {
+    c.set_read_limit(idle).map_err(|e| ProtoError::Io(e.kind()))?;
+    let mut h = [0u8; HEADER_LEN];
+    loop {
+        match c.read(&mut h[..1]) {
+            Ok(0) => return Ok(None),
+            Ok(_) => break,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) if timed_out(e.kind()) => return Err(ProtoError::Idle),
+            Err(e) => return Err(ProtoError::Io(e.kind())),
+        }
+    }
+    c.set_read_limit(Some(FRAME_TIME)).map_err(|e| ProtoError::Io(e.kind()))?;
+    c.read_exact(&mut h[1..]).map_err(|e| ProtoError::Io(e.kind()))?;
+    let (kind, len) = parse_header(&h, max)?;
+    let mut payload = vec![0u8; len];
+    c.read_exact(&mut payload).map_err(|e| ProtoError::Io(e.kind()))?;
     Ok(Some((kind, payload)))
 }
 
@@ -264,6 +308,56 @@ mod tests {
         let mut out = Vec::new();
         assert!(write_frame(&mut out, Kind::Request, &vec![0u8; MAX_REQUEST + 1]).is_err());
         assert!(out.is_empty());
+    }
+
+    /// A connection that has nothing to read, or a frame cut off after `cut` bytes.
+    struct Slow {
+        data: Vec<u8>,
+        pos: usize,
+        limits: Vec<Option<Duration>>,
+    }
+    impl Read for Slow {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if self.pos >= self.data.len() {
+                return Err(io::Error::from(io::ErrorKind::WouldBlock));
+            }
+            let n = buf.len().min(self.data.len() - self.pos);
+            buf[..n].copy_from_slice(&self.data[self.pos..self.pos + n]);
+            self.pos += n;
+            Ok(n)
+        }
+    }
+    impl Write for Slow {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    impl Conn for Slow {
+        fn set_read_limit(&mut self, limit: Option<Duration>) -> io::Result<()> {
+            self.limits.push(limit);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn timed_reads_end_quiet_or_stalled_connections() {
+        let idle = Some(Duration::from_secs(5));
+        let mut quiet = Slow { data: Vec::new(), pos: 0, limits: Vec::new() };
+        assert_eq!(read_frame_timed(&mut quiet, MAX_REQUEST, idle), Err(ProtoError::Idle));
+        assert_eq!(quiet.limits, vec![idle]);
+        let mut stalled = Slow { data: frame(1, b"ping")[..5].to_vec(), pos: 0, limits: Vec::new() };
+        assert_eq!(
+            read_frame_timed(&mut stalled, MAX_REQUEST, idle),
+            Err(ProtoError::Io(io::ErrorKind::WouldBlock))
+        );
+        assert_eq!(stalled.limits, vec![idle, Some(FRAME_TIME)]);
+        let mut good = Slow { data: frame(1, b"ping"), pos: 0, limits: Vec::new() };
+        let (k, p) = read_frame_timed(&mut good, MAX_REQUEST, None).unwrap().unwrap();
+        assert_eq!((k, p.as_slice()), (Kind::Request, &b"ping"[..]));
+        assert!(ProtoError::Idle.is_fatal());
     }
 
     #[test]

@@ -12,6 +12,11 @@
 # The module's customize.sh keeps the one for the phone's ABI. Needs the Android NDK
 # (ANDROID_NDK_HOME or an SDK with ndk/), the Rust targets aarch64-linux-android and
 # armv7-linux-androideabi, a JDK (javac) and the SDK build-tools (d8).
+#
+# Fixed versions (CI sets them; each must be installed, nothing falls back):
+#   BAGEO_RUST_TOOLCHAIN       e.g. 1.97.0         (cargo +<toolchain>)
+#   BAGEO_NDK_VERSION          e.g. 27.3.13750724  (<sdk>/ndk/<version>)
+#   BAGEO_BUILD_TOOLS_VERSION  e.g. 35.0.0         (<sdk>/build-tools/<version>/d8)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -51,10 +56,22 @@ find_ndk() {
   return 1
 }
 
-NDK_DIR="$(find_ndk)" || {
-  echo "error: Android NDK not found (set ANDROID_NDK_HOME)" >&2
-  exit 1
-}
+if [ -n "${BAGEO_NDK_VERSION:-}" ]; then
+  NDK_DIR="$(find_sdk)/ndk/$BAGEO_NDK_VERSION"
+  if [ ! -d "$NDK_DIR" ]; then
+    echo "error: NDK $BAGEO_NDK_VERSION is not installed" >&2
+    exit 1
+  fi
+else
+  NDK_DIR="$(find_ndk)" || {
+    echo "error: Android NDK not found (set ANDROID_NDK_HOME)" >&2
+    exit 1
+  }
+fi
+CARGO=(cargo)
+if [ -n "${BAGEO_RUST_TOOLCHAIN:-}" ]; then
+  CARGO=(cargo "+$BAGEO_RUST_TOOLCHAIN")
+fi
 BIN_DIR=""
 for host_tag in linux-x86_64 darwin-arm64 darwin-x86_64; do
   if [ -d "$NDK_DIR/toolchains/llvm/prebuilt/$host_tag/bin" ]; then
@@ -79,7 +96,7 @@ for pair in aarch64-linux-android:arm64-v8a armv7-linux-androideabi:armeabi-v7a;
   triple="${pair%%:*}"
   abi="${pair##*:}"
   echo "==> Building bageo-audio-helper for $abi"
-  cargo build --manifest-path "$CRATE/Cargo.toml" --locked --release --target "$triple"
+  "${CARGO[@]}" build --manifest-path "$CRATE/Cargo.toml" --locked --release --target "$triple"
   mkdir -p "$OUT/$abi"
   cp -f "$TARGET_DIR/$triple/release/bageo-audio-helper" "$OUT/$abi/bageo-audio-helper"
   "$BIN_DIR/llvm-strip" --strip-all "$OUT/$abi/bageo-audio-helper"
@@ -90,7 +107,12 @@ SDK_DIR="$(find_sdk)" || {
   echo "error: Android SDK not found (set ANDROID_HOME)" >&2
   exit 1
 }
-D8="$(find "$SDK_DIR/build-tools" -name d8 -type f 2>/dev/null | sort -V | tail -n 1)"
+if [ -n "${BAGEO_BUILD_TOOLS_VERSION:-}" ]; then
+  D8="$SDK_DIR/build-tools/$BAGEO_BUILD_TOOLS_VERSION/d8"
+  [ -f "$D8" ] || D8=
+else
+  D8="$(find "$SDK_DIR/build-tools" -name d8 -type f 2>/dev/null | sort -V | tail -n 1)"
+fi
 if [ -z "$D8" ]; then
   echo "error: d8 not found under $SDK_DIR/build-tools" >&2
   exit 1

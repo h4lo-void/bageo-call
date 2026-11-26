@@ -172,8 +172,12 @@ jobs:
       - name: Build Android arm64 Rust library
         run: bash android/scripts/build-rust-android.sh
       - name: Build the phone audio helper (arm64-v8a, armeabi-v7a)
+        env:
+          BAGEO_RUST_TOOLCHAIN: "1.97.0"
+          BAGEO_NDK_VERSION: "27.3.13750724"
+          BAGEO_BUILD_TOOLS_VERSION: "35.0.0"
         run: |
-          rustup target add armv7-linux-androideabi
+          rustup toolchain install "$BAGEO_RUST_TOOLCHAIN" --profile minimal --target aarch64-linux-android --target armv7-linux-androideabi
           bash android/scripts/build-roothelper.sh
       - name: Build and package bridge and standalone modules
         working-directory: android

@@ -207,15 +207,34 @@ pub struct Xferi<W> {
     pub frames: W,
 }
 
+mod sealed {
+    pub trait Sealed {}
+    impl Sealed for u32 {}
+    impl Sealed for u64 {}
+    impl Sealed for usize {}
+}
+
+/// The word types the generic structs may be built with: `u32`, `u64`, `usize`.
+pub trait Word: Copy + sealed::Sealed {}
+impl Word for u32 {}
+impl Word for u64 {}
+impl Word for usize {}
+
 // SAFETY: all of these are `#[repr(C)]` integers and arrays of integers.
 unsafe impl Pod for ElemId {}
 unsafe impl Pod for CardInfo {}
-unsafe impl<W: Copy> Pod for ElemList<W> {}
+unsafe impl<W: Word> Pod for ElemList<W> {}
 unsafe impl Pod for ElemInfo {}
-unsafe impl<const N: usize> Pod for ElemValue<N> {}
-unsafe impl<W: Copy> Pod for HwParams<W> {}
-unsafe impl<W: Copy> Pod for SwParams<W> {}
-unsafe impl<W: Copy> Pod for Xferi<W> {}
+unsafe impl Pod for ElemValue<512> {}
+unsafe impl Pod for ElemValue<1024> {}
+unsafe impl<W: Word> Pod for HwParams<W> {}
+unsafe impl<W: Word> Pod for SwParams<W> {}
+unsafe impl<W: Word> Pod for Xferi<W> {}
+
+/// The struct size an ioctl request number carries.
+pub const fn ioctl_size(req: u32) -> usize {
+    ((req >> 16) & 0x3fff) as usize
+}
 
 pub const PCM_ACCESS_RW_INTERLEAVED: u32 = 3;
 pub const PCM_FORMAT_S16_LE: u32 = 2;
@@ -415,6 +434,15 @@ mod tests {
         assert_eq!(SNDRV_CTL_IOCTL_ELEM_WRITE & 0xffff, 0x5513);
         assert_eq!(SNDRV_PCM_IOCTL_SW_PARAMS & 0xffff, 0x4113);
         assert_eq!(SNDRV_PCM_IOCTL_WRITEI_FRAMES & 0xffff, 0x4150);
+    }
+
+    #[test]
+    fn request_numbers_carry_the_struct_sizes() {
+        assert_eq!(ioctl_size(SNDRV_CTL_IOCTL_ELEM_READ), size_of::<NativeElemValue>());
+        assert_eq!(ioctl_size(SNDRV_CTL_IOCTL_ELEM_LIST), size_of::<NativeElemList>());
+        assert_eq!(ioctl_size(SNDRV_PCM_IOCTL_HW_PARAMS), size_of::<NativeHwParams>());
+        assert_eq!(ioctl_size(SNDRV_PCM_IOCTL_READI_FRAMES), size_of::<NativeXferi>());
+        assert_eq!(ioctl_size(SNDRV_PCM_IOCTL_PREPARE), 0);
     }
 
     #[test]

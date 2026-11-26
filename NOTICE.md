@@ -61,7 +61,9 @@ code from them is included either.
 The phone module's root audio helper (`android/roothelper/`) talks to the sound
 driver directly, one build per CPU type, as gsm2sip's `tinymix` and `tinypcm`
 tools do, and looks for the call-related entries gsm2sip's `check-device.sh`
-checks. It is this project's own code; it includes no gsm2sip code or binaries.
+checks. Its PCM opening steps and start thresholds follow gsm2sip's
+`tools/tinypcm` (MIT, Copyright (c) 2026 pulpoff). It is this project's own code; it
+includes no gsm2sip code or binaries.
 Its one Rust dependency, `libc` (`MIT OR Apache-2.0`), is listed in
 `android/roothelper/Cargo.lock`.
 

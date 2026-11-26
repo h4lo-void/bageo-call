@@ -11,7 +11,6 @@ use std::path::Path;
 use super::alsa::Control;
 use super::props;
 use crate::abi;
-use crate::control::Prober;
 use crate::json::Json;
 use crate::mixer::MAX_CARD;
 use crate::probe::{self, CardFacts, ProbeInput, MAX_FILES, PROPS};
@@ -111,10 +110,6 @@ pub fn gather() -> ProbeInput {
     }
 }
 
-pub struct SysProber;
-
-impl Prober for SysProber {
-    fn probe(&mut self) -> Json {
-        probe::build(&gather())
-    }
+pub fn probe_json() -> Json {
+    probe::build(&gather())
 }

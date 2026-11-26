@@ -11,7 +11,11 @@
 //! the part that touches the phone.
 
 pub mod abi;
+pub mod allow;
+pub mod auth;
+pub mod calls;
 pub mod control;
+pub mod feeder;
 pub mod json;
 pub mod mixer;
 pub mod params;

@@ -5,6 +5,8 @@
 //! the connection to the app, audio parameters, system properties, signals.
 
 pub mod alsa;
+pub mod appdir;
+pub mod calls;
 pub mod cli;
 pub mod log;
 pub mod net;
@@ -15,10 +17,14 @@ pub mod server;
 
 /// Root's folder for the phone module's state (shared with `mode_daemon.sh`).
 pub const DATA_DIR: &str = "/data/adb/pixelcallai";
-/// The session state file: present while a session has unsaved-back changes.
+/// The session state file: present while a session has values not put back yet.
 pub const STATE_FILE: &str = "/data/adb/pixelcallai/audio_session";
 /// Held (flock) by the one running helper.
 pub const LOCK_FILE: &str = "/data/adb/pixelcallai/audio_helper.lock";
+/// The running helper's pid (`mode_daemon.sh` reads it to not start a second one).
+pub const PID_FILE: &str = "/data/adb/pixelcallai/audio_helper.pid";
+/// While this exists the helper does not run (`bageo-audio-helper disable`).
+pub const DISABLE_FILE: &str = "/data/adb/pixelcallai/audio_helper.disabled";
 /// The app listens on this abstract socket name while it wants the helper.
 pub const SOCKET_NAME: &str = "com.pixelcallai.streamer.audio_helper";
 pub const PACKAGES_LIST: &str = "/data/system/packages.list";

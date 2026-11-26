@@ -332,14 +332,25 @@ To switch without touching the phone's screen, from a computer with `adb`:
 
 Some phones do not let the app put its voice into a call by itself. For those, the
 module carries a small root program, `bageo-audio-helper`, that the app can ask to
-adjust the phone's audio for a call. Phones that do not need it never run it.
+adjust the phone's audio during a call. Phones that do not need it never run it.
+This version does not change anything yet: no phone has been added to its list, and
+it only serves a release build of the app (the module currently ships a debug build).
 
-- It starts only when the app asks for it, never at boot, and quits by itself a
-  minute after the app stops using it.
-- Every audio setting it changes during a call is put back when the call ends, also
-  when the app or the phone stops unexpectedly (at the latest at the next boot).
-- To check that it is not running: `adb shell su -c 'pidof bageo-audio-helper'`
-  prints nothing.
+- It does not run in the background. It starts only when the app asks for it, and
+  quits by itself about a minute after the app stops using it.
+- At boot it runs briefly only if a call left changed audio settings behind, to put
+  them back.
+- Settings it changed during a call are put back when the call ends. If that fails,
+  they are kept and tried again at the next start or boot.
+
+If something seems wrong, as root (`adb shell su -c '…'`), with the helper at
+`/data/adb/modules/pixelcallai_uplink/bin/bageo-audio-helper`
+(`bageo_ai_call_agent` for the phone-only edition):
+
+1. Check whether it runs: `pidof bageo-audio-helper` prints nothing when it does not.
+2. Put the settings back: `bageo-audio-helper restore`.
+3. Turn it off: `bageo-audio-helper disable` (`enable` turns it back on).
+4. If that does not help, restart the phone.
 
 ## Rollback
 

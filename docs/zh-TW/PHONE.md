@@ -201,11 +201,18 @@ USB 還能讓手機一直充電，沒有 Wi-Fi 也能用。一台電腦可以接
 
 ## 音訊小幫手
 
-有些手機不讓 App 自己把聲音送進通話。為了這種手機，模組帶了一支 root 小程式 `bageo-audio-helper`，App 可以請它在通話時調整手機的音訊。用不到它的手機完全不會執行它。
+有些手機不讓 App 自己把聲音送進通話。為了這種手機，模組帶了一支 root 小程式 `bageo-audio-helper`，App 可以請它在通話時調整手機的音訊。用不到它的手機不會執行它。這一版還不會改任何設定：清單上還沒有任何手機，而且它只服務正式版的 App（目前模組裝的是除錯版）。
 
-- 只有 App 要用時才啟動，開機不會啟動；App 不用之後一分鐘，它會自己結束。
-- 通話中改過的音訊設定，通話結束時都會改回原樣；App 或手機中途停掉也一樣（最晚下次開機時改回）。
-- 確認它沒在執行：`adb shell su -c 'pidof bageo-audio-helper'` 沒有輸出就是沒在跑。
+- 它不會在背景常駐。只有 App 要用時才啟動，App 不用之後約一分鐘自己結束。
+- 開機時，只有上一通電話留下改過的音訊設定時，才會短暫執行一次，把設定改回來。
+- 通話中改過的設定，通話結束時改回原樣；改不回來的會保留，下次啟動或開機時再試。
+
+覺得不對勁時，用 root 執行（`adb shell su -c '…'`），小程式在 `/data/adb/modules/pixelcallai_uplink/bin/bageo-audio-helper`（手機獨立版是 `bageo_ai_call_agent`）：
+
+1. 確認它有沒有在跑：`pidof bageo-audio-helper` 沒有輸出就是沒在跑。
+2. 把設定改回來：`bageo-audio-helper restore`。
+3. 停用它：`bageo-audio-helper disable`（`enable` 重新啟用）。
+4. 還是不行就重新開機。
 
 ## 還原
 

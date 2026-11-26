@@ -66,14 +66,16 @@ if [ -d "$HELPER_SRC" ]; then
       esac ;;
   esac
   if [ -n "$HELPER_ABI" ] && [ -f "$HELPER_SRC/$HELPER_ABI/bageo-audio-helper" ]; then
-    mkdir -p "$MODPATH/bin"
-    cp -f "$HELPER_SRC/$HELPER_ABI/bageo-audio-helper" "$MODPATH/bin/bageo-audio-helper"
-    chown 0:0 "$MODPATH/bin/bageo-audio-helper"
-    chmod 0700 "$MODPATH/bin/bageo-audio-helper"
+    # Root's alone: the helper refuses a parameter tool others could write.
+    mkdir -p "$MODPATH/bin" &&
+      chown 0:0 "$MODPATH/bin" && chmod 0755 "$MODPATH/bin" &&
+      cp -f "$HELPER_SRC/$HELPER_ABI/bageo-audio-helper" "$MODPATH/bin/bageo-audio-helper" &&
+      chown 0:0 "$MODPATH/bin/bageo-audio-helper" && chmod 0700 "$MODPATH/bin/bageo-audio-helper" ||
+      abort "! cannot install the audio helper with root-only permissions"
     if [ -f "$HELPER_SRC/bageo-audio-params.jar" ]; then
-      cp -f "$HELPER_SRC/bageo-audio-params.jar" "$MODPATH/bin/bageo-audio-params.jar"
-      chown 0:0 "$MODPATH/bin/bageo-audio-params.jar"
-      chmod 0600 "$MODPATH/bin/bageo-audio-params.jar"
+      cp -f "$HELPER_SRC/bageo-audio-params.jar" "$MODPATH/bin/bageo-audio-params.jar" &&
+        chown 0:0 "$MODPATH/bin/bageo-audio-params.jar" && chmod 0600 "$MODPATH/bin/bageo-audio-params.jar" ||
+        abort "! cannot install the audio parameter tool with root-only permissions"
     fi
     ui_print "- audio helper: $HELPER_ABI (runs only when the app asks)"
   else

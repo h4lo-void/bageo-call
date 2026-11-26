@@ -3,27 +3,32 @@
 
 //! ALSA through its kernel ioctls: the control device (`/dev/snd/controlC<card>`) for
 //! the mixer, and PCM devices (`/dev/snd/pcmC<card>D<device><c|p>`) for call audio.
-//! (Talking to the kernel directly instead of through tinyalsa follows gsm2sip's
-//! tinymix and tinypcm, MIT; the code is this project's own.)
+//! (Talking to the kernel directly instead of through tinyalsa, and the PCM opening
+//! steps and start thresholds, follow gsm2sip's tinymix and tinypcm, MIT; the code is
+//! this project's own.)
 
 use std::collections::HashMap;
 use std::ffi::{c_int, CString};
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::abi::{self, zeroed, CardInfo, ElemId, ElemInfo, NativeElemList, NativeElemValue, Pod, WORD};
 use crate::control::{Direction, MixerBackend, PcmRequest};
-use crate::mixer::{CtlInfo, CtlKey, CtlType, Selector};
+use crate::mixer::{CtlInfo, CtlKey, CtlType, Selector, MAX_CARD};
+use crate::session::Failure;
 
 /// Most controls listed per card, and most enumerated items read per control.
 const MAX_CONTROLS: u32 = 16_384;
 const MAX_ENUM_ITEMS: u32 = 1_024;
 
 fn ioctl<T: Pod>(fd: RawFd, req: u32, arg: &mut T) -> io::Result<()> {
+    // The request number carries the size of the struct it expects.
+    if abi::ioctl_size(req) != std::mem::size_of::<T>() {
+        return Err(io::Error::from(io::ErrorKind::InvalidInput));
+    }
     loop {
-        // SAFETY: `arg` is a live, correctly sized kernel struct for `req` (the request
-        // numbers are built from these very types, see `abi`).
+        // SAFETY: `arg` is a live kernel struct whose size matches `req` (checked above).
         let r = unsafe { libc::ioctl(fd, req as _, arg as *mut T) };
         if r >= 0 {
             return Ok(());
@@ -36,8 +41,11 @@ fn ioctl<T: Pod>(fd: RawFd, req: u32, arg: &mut T) -> io::Result<()> {
 }
 
 fn ioctl_none(fd: RawFd, req: u32) -> io::Result<()> {
+    if abi::ioctl_size(req) != 0 {
+        return Err(io::Error::from(io::ErrorKind::InvalidInput));
+    }
     loop {
-        // SAFETY: requests without an argument.
+        // SAFETY: a request without an argument.
         let r = unsafe { libc::ioctl(fd, req as _, 0usize) };
         if r >= 0 {
             return Ok(());
@@ -132,6 +140,7 @@ impl Control {
             numid: info.id.numid,
             key: CtlKey {
                 card: self.card,
+                card_id: String::new(),
                 iface: info.id.iface,
                 device: info.id.device,
                 subdevice: info.id.subdevice,
@@ -192,7 +201,7 @@ pub struct AlsaMixer {
 }
 
 fn err(e: io::Error) -> String {
-    e.to_string()
+    e.kind().to_string()
 }
 
 impl AlsaMixer {
@@ -202,19 +211,28 @@ impl AlsaMixer {
 
     fn ctl(&mut self, card: u32) -> Result<&Control, String> {
         if let std::collections::hash_map::Entry::Vacant(slot) = self.cards.entry(card) {
-            slot.insert(Control::open(card).map_err(|e| format!("sound card {card}: {e}"))?);
+            slot.insert(Control::open(card).map_err(|e| format!("sound card {card}: {}", e.kind()))?);
         }
         Ok(&self.cards[&card])
     }
-}
 
-impl MixerBackend for AlsaMixer {
-    fn list(&mut self, card: u32) -> Result<Vec<CtlInfo>, String> {
+    /// Every control of a card (for the command line).
+    pub fn list(&mut self, card: u32) -> Result<Vec<CtlInfo>, String> {
         let c = self.ctl(card)?;
         let ids = c.ids().map_err(err)?;
         Ok(ids.iter().filter_map(|id| c.info(id, true).ok()).collect())
     }
 
+    /// The card number whose ID string is `id`.
+    fn card_by_id(&mut self, id: &str) -> Option<u32> {
+        (0..=MAX_CARD).find(|&c| {
+            std::path::Path::new(&format!("/dev/snd/controlC{c}")).exists()
+                && self.card_id(c).ok().as_deref() == Some(id)
+        })
+    }
+}
+
+impl MixerBackend for AlsaMixer {
     fn find(&mut self, card: u32, sel: &Selector) -> Result<CtlInfo, String> {
         let c = self.ctl(card)?;
         let id = match sel {
@@ -223,31 +241,46 @@ impl MixerBackend for AlsaMixer {
                 id.numid = *n;
                 id
             }
-            Selector::Name { .. } => *c
-                .ids()
-                .map_err(err)?
-                .iter()
-                .find(|id| sel.matches(id.numid, &abi::cstr(&id.name), id.index))
-                .ok_or("no such control")?,
+            Selector::Name { .. } => {
+                let ids = c.ids().map_err(err)?;
+                let mut hits = ids.iter().filter(|id| sel.matches(id.numid, &abi::cstr(&id.name), id.index));
+                let first = *hits.next().ok_or("no such control")?;
+                if hits.next().is_some() {
+                    return Err("several controls have this name; give it as numid=<n>".into());
+                }
+                first
+            }
         };
-        c.info(&id, true).map_err(|e| format!("no such control ({e})"))
+        c.info(&id, true).map_err(|_| "no such control".to_string())
     }
 
-    fn find_key(&mut self, key: &CtlKey) -> Result<CtlInfo, String> {
-        let c = self.ctl(key.card)?;
-        let id = *c
-            .ids()
-            .map_err(err)?
-            .iter()
-            .find(|id| {
-                id.iface == key.iface
-                    && id.device == key.device
-                    && id.subdevice == key.subdevice
-                    && id.index == key.index
-                    && abi::cstr(&id.name) == key.name
-            })
-            .ok_or("the control is gone")?;
-        c.info(&id, true).map_err(err)
+    fn find_key(&mut self, key: &CtlKey) -> Result<CtlInfo, Failure> {
+        let card = self.card_by_id(&key.card_id).ok_or(Failure::Gone)?;
+        let c = self.ctl(card).map_err(|_| Failure::Gone)?;
+        let ids = c.ids().map_err(|_| Failure::Device)?;
+        let mut hits = ids.iter().filter(|id| {
+            id.iface == key.iface
+                && id.device == key.device
+                && id.subdevice == key.subdevice
+                && id.index == key.index
+                && abi::cstr(&id.name) == key.name
+        });
+        let id = *hits.next().ok_or(Failure::Gone)?;
+        if hits.next().is_some() {
+            return Err(Failure::Changed);
+        }
+        let mut info = c.info(&id, true).map_err(|_| Failure::Device)?;
+        info.key.card_id = key.card_id.clone();
+        Ok(info)
+    }
+
+    fn card_id(&mut self, card: u32) -> Result<String, String> {
+        let ci = self.ctl(card)?.card_info().map_err(err)?;
+        let id = abi::cstr(&ci.id);
+        if id.is_empty() {
+            return Err("the sound card has no ID".into());
+        }
+        Ok(id)
     }
 
     fn read(&mut self, info: &CtlInfo) -> Result<Vec<i64>, String> {
@@ -261,7 +294,9 @@ impl MixerBackend for AlsaMixer {
 
 // ------------------------------------------------------------------ PCM
 
-/// An open PCM stream, s16le interleaved, set up and prepared.
+/// An open PCM stream, s16le interleaved, set up and prepared. Shared between the
+/// stream's thread and whoever closes it: a blocked read or write is cut short with
+/// [`Pcm::drop_now`] from another thread.
 pub struct Pcm {
     fd: OwnedFd,
     pub dir: Direction,
@@ -272,6 +307,7 @@ pub struct Pcm {
     pub buffer_frames: usize,
     frame_bytes: usize,
     pub xruns: AtomicU64,
+    pub io_errors: AtomicU64,
 }
 
 fn set_mask(hw: &mut abi::NativeHwParams, param: usize, bit: u32) {
@@ -295,8 +331,21 @@ fn interval(hw: &abi::NativeHwParams, param: usize) -> u32 {
     hw.intervals[param - abi::HW_PARAM_FIRST_INTERVAL].min
 }
 
-/// Consecutive under- or overruns after which a stream gives up.
+/// Under- or overruns in a row after which a stream gives up.
 const MAX_XRUNS_IN_A_ROW: u32 = 50;
+/// I/O errors (the device did not deliver in time) in a row after which it gives up.
+const MAX_IO_ERRORS_IN_A_ROW: u32 = 3;
+/// Most frames a period or a buffer may have.
+const MAX_FRAMES: usize = 1 << 16;
+
+/// Whether what the driver chose is sane enough to do arithmetic with.
+pub fn driver_choice_ok(req: &PcmRequest, period: usize, periods: usize, buffer: usize) -> bool {
+    (16..=MAX_FRAMES).contains(&period)
+        && (2..=64).contains(&periods)
+        && buffer >= period * 2
+        && buffer <= MAX_FRAMES * 4
+        && period <= (req.period_frames as usize).saturating_mul(4)
+}
 
 impl Pcm {
     pub fn open(req: &PcmRequest) -> io::Result<Pcm> {
@@ -337,19 +386,19 @@ impl Pcm {
 
         let period = interval(&hw, abi::HW_PARAM_PERIOD_SIZE) as usize;
         let periods = interval(&hw, abi::HW_PARAM_PERIODS) as usize;
-        let mut buffer = interval(&hw, abi::HW_PARAM_BUFFER_SIZE) as usize;
-        if period == 0 || periods == 0 || period > 65_536 {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "the device chose no usable period"));
-        }
-        if buffer < period {
-            buffer = period * periods;
+        let buffer = interval(&hw, abi::HW_PARAM_BUFFER_SIZE) as usize;
+        if interval(&hw, abi::HW_PARAM_CHANNELS) != req.channels
+            || interval(&hw, abi::HW_PARAM_RATE) != req.rate
+            || !driver_choice_ok(req, period, periods, buffer)
+        {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "the device chose an unusable setup"));
         }
 
         let mut sw: abi::NativeSwParams = zeroed();
         sw.period_step = 1;
         sw.avail_min = period;
         // Capture starts with the first read; playback once two periods are queued.
-        sw.start_threshold = if req.dir == Direction::Capture { 1 } else { (period * 2).min(buffer) };
+        sw.start_threshold = if req.dir == Direction::Capture { 1 } else { period * 2 };
         sw.stop_threshold = buffer;
         ioctl(raw, abi::SNDRV_PCM_IOCTL_SW_PARAMS, &mut sw)?;
         ioctl_none(raw, abi::SNDRV_PCM_IOCTL_PREPARE)?;
@@ -364,6 +413,7 @@ impl Pcm {
             buffer_frames: buffer,
             frame_bytes: 2 * req.channels as usize,
             xruns: AtomicU64::new(0),
+            io_errors: AtomicU64::new(0),
         })
     }
 
@@ -371,33 +421,68 @@ impl Pcm {
         self.period_frames * self.frame_bytes
     }
 
-    fn transfer(&self, ptr: *mut u8, len: usize) -> io::Result<()> {
+    pub fn frame_bytes(&self) -> usize {
+        self.frame_bytes
+    }
+
+    /// Stops the stream at once; a read or write blocked in another thread returns.
+    pub fn drop_now(&self) {
+        let _ = ioctl_none(self.fd.as_raw_fd(), abi::SNDRV_PCM_IOCTL_DROP);
+    }
+
+    /// Drops what is queued and makes the stream ready to start again.
+    pub fn reset(&self) -> io::Result<()> {
+        ioctl_none(self.fd.as_raw_fd(), abi::SNDRV_PCM_IOCTL_DROP)?;
+        ioctl_none(self.fd.as_raw_fd(), abi::SNDRV_PCM_IOCTL_PREPARE)
+    }
+
+    fn transfer(&self, ptr: *mut u8, len: usize, stop: &AtomicBool) -> io::Result<()> {
         let frames = len / self.frame_bytes;
         let req = if self.dir == Direction::Capture {
             abi::SNDRV_PCM_IOCTL_READI_FRAMES
         } else {
             abi::SNDRV_PCM_IOCTL_WRITEI_FRAMES
         };
+        let stopped = || io::Error::new(io::ErrorKind::Interrupted, "stream stopped");
         let mut done = 0usize;
-        let mut xruns_in_a_row = 0;
+        let (mut xruns, mut io_errors) = (0u32, 0u32);
         while done < frames {
+            if stop.load(Ordering::Relaxed) {
+                return Err(stopped());
+            }
             let mut x: abi::NativeXferi = zeroed();
             x.buf = ptr as usize + done * self.frame_bytes;
             x.frames = frames - done;
             match ioctl(self.fd.as_raw_fd(), req, &mut x) {
                 Ok(()) => {
                     let n = x.result as isize;
-                    if n <= 0 {
-                        return Err(io::Error::other("the device moved no frames"));
+                    if n <= 0 || n as usize > frames - done {
+                        return Err(io::Error::other("the device reported an impossible frame count"));
                     }
                     done += n as usize;
-                    xruns_in_a_row = 0;
+                    xruns = 0;
+                    io_errors = 0;
                 }
                 Err(e) if matches!(e.raw_os_error(), Some(libc::EPIPE | libc::ESTRPIPE | libc::EBADFD)) => {
-                    // An under- or overrun (or a suspend): set the stream up again.
+                    // An under- or overrun, a suspend, or a stop from another thread.
+                    if stop.load(Ordering::Relaxed) {
+                        return Err(stopped());
+                    }
                     self.xruns.fetch_add(1, Ordering::Relaxed);
-                    xruns_in_a_row += 1;
-                    if xruns_in_a_row > MAX_XRUNS_IN_A_ROW {
+                    xruns += 1;
+                    if xruns > MAX_XRUNS_IN_A_ROW {
+                        return Err(e);
+                    }
+                    ioctl_none(self.fd.as_raw_fd(), abi::SNDRV_PCM_IOCTL_PREPARE)?;
+                }
+                Err(e) if e.raw_os_error() == Some(libc::EIO) => {
+                    // The device did not deliver in time; a few in a row are tolerated.
+                    if stop.load(Ordering::Relaxed) {
+                        return Err(stopped());
+                    }
+                    self.io_errors.fetch_add(1, Ordering::Relaxed);
+                    io_errors += 1;
+                    if io_errors > MAX_IO_ERRORS_IN_A_ROW {
                         return Err(e);
                     }
                     ioctl_none(self.fd.as_raw_fd(), abi::SNDRV_PCM_IOCTL_PREPARE)?;
@@ -408,20 +493,53 @@ impl Pcm {
         Ok(())
     }
 
-    /// Reads whole frames into `buf` (capture streams).
-    pub fn read_frames(&self, buf: &mut [u8]) -> io::Result<()> {
-        self.transfer(buf.as_mut_ptr(), buf.len())
+    /// Reads whole frames into `buf` (capture streams); gives up once `stop` is set.
+    pub fn read_frames(&self, buf: &mut [u8], stop: &AtomicBool) -> io::Result<()> {
+        self.transfer(buf.as_mut_ptr(), buf.len(), stop)
     }
 
-    /// Writes whole frames from `buf` (playback streams).
-    pub fn write_frames(&self, buf: &[u8]) -> io::Result<()> {
+    /// Writes whole frames from `buf` (playback streams); gives up once `stop` is set.
+    pub fn write_frames(&self, buf: &[u8], stop: &AtomicBool) -> io::Result<()> {
         // The kernel only reads from the buffer for a playback stream.
-        self.transfer(buf.as_ptr() as *mut u8, buf.len())
+        self.transfer(buf.as_ptr() as *mut u8, buf.len(), stop)
     }
 }
 
 impl Drop for Pcm {
     fn drop(&mut self) {
         let _ = ioctl_none(self.fd.as_raw_fd(), abi::SNDRV_PCM_IOCTL_DROP);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn driver_choices_are_checked() {
+        let req = PcmRequest {
+            dir: Direction::Capture,
+            card: 0,
+            device: 20,
+            rate: 48000,
+            channels: 1,
+            period_frames: 960,
+            periods: 4,
+        };
+        assert!(driver_choice_ok(&req, 960, 4, 3840));
+        assert!(driver_choice_ok(&req, 1024, 4, 4096));
+        assert!(!driver_choice_ok(&req, 0, 4, 3840));
+        assert!(!driver_choice_ok(&req, 960, 1, 960));
+        assert!(!driver_choice_ok(&req, 960, 4, 960), "buffer shorter than two periods");
+        assert!(!driver_choice_ok(&req, 8000, 4, 32000), "period far larger than asked");
+        assert!(!driver_choice_ok(&req, 960, 4, usize::MAX));
+    }
+
+    #[test]
+    fn ioctls_refuse_a_struct_of_the_wrong_size() {
+        let mut ci: CardInfo = zeroed();
+        let e = ioctl(-1, abi::SNDRV_CTL_IOCTL_ELEM_READ, &mut ci).unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(ioctl_none(-1, abi::SNDRV_CTL_IOCTL_CARD_INFO).unwrap_err().kind(), io::ErrorKind::InvalidInput);
     }
 }

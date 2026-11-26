@@ -10,11 +10,13 @@ use crate::json::Json;
 /// Highest sound card number accepted (`/dev/snd/controlC0` to `controlC31`).
 pub const MAX_CARD: u32 = 31;
 
-/// Names one control across reboots (the kernel's own lookup key, minus `numid`, which
-/// can change when the sound driver loads again).
+/// Names one control across reboots: the sound card by its ID string (its number can
+/// change) and the kernel's own lookup key, minus `numid`, which can change when the
+/// sound driver loads again. `card` is the card's number when the key was made.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CtlKey {
     pub card: u32,
+    pub card_id: String,
     pub iface: i32,
     pub device: u32,
     pub subdevice: u32,
@@ -274,7 +276,7 @@ pub fn info_json(info: &CtlInfo, value: Option<Result<Vec<i64>, String>>) -> Jso
 pub(crate) fn test_ctl(numid: u32, name: &str, ty: CtlType, count: u32) -> CtlInfo {
     CtlInfo {
         numid,
-        key: CtlKey { card: 0, iface: 2, device: 0, subdevice: 0, index: 0, name: name.to_string() },
+        key: CtlKey { card: 0, card_id: "testcard".into(), iface: 2, device: 0, subdevice: 0, index: 0, name: name.to_string() },
         ty,
         access: abi::CTL_ACCESS_READ | abi::CTL_ACCESS_WRITE,
         count,

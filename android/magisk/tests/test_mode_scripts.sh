@@ -334,9 +334,17 @@ printf '#!/bin/sh\nexit 0\n' > "$TMP/dbin/log"
 printf '#!/bin/sh\nexit 0\n' > "$TMP/dbin/chcon"
 cat > "$TMP/dbin/stat" <<'FAKE'
 #!/bin/sh
-# stat -c %u:%g only (the owner); anything else is unknown.
-if [ "$1" = -c ] && [ "$2" = %u:%g ]; then echo "$(id -u):$(id -g)"; exit 0; fi
-exit 1
+# toybox stat -c with %u, %g, %u:%g and %s, read from ls; anything else is unknown.
+[ "$1" = -c ] || exit 1
+[ -e "$3" ] || [ -L "$3" ] || exit 1
+set -- "$2" $(ls -lnd "$3")
+case "$1" in
+  %u) echo "$4" ;;
+  %g) echo "$5" ;;
+  %u:%g) echo "$4:$5" ;;
+  %s) echo "$6" ;;
+  *) exit 1 ;;
+esac
 FAKE
 cat > "$TMP/dbin/mv" <<'FAKE'
 #!/bin/sh
@@ -355,15 +363,28 @@ wait_state() {
   done
   return 1
 }
+# The daemon for a case: its folders in the case folder (by their real path, as on a
+# phone), the 2 s loop shortened, apply_mode.sh replaced by a stub that logs its run.
+start_daemon() {
+  mkdir -p "$ST/app/files/mode"
+  real=$(cd "$ST" && pwd -P)
+  printf '#!/bin/sh\necho "apply $*" >> "%s/order"\n' "$ST" > "$ST/apply_mode.sh"
+  sed -e "s#/data/adb/pixelcallai#$ST/data#g" -e "s#^APPHOME=.*#APPHOME=$real/app#" \
+    -e "s#^PATH=.*#PATH=$TMP/dbin:/usr/bin:/bin:/usr/sbin:/sbin#" -e 's#^  sleep 2$#  sleep 0.2#' \
+    -e 's#/system/bin/sh "$MODDIR/apply_mode.sh"#sh "$MODDIR/apply_mode.sh"#' \
+    "$MOD/mode_daemon.sh" > "$ST/mode_daemon.sh"
+  sh "$ST/mode_daemon.sh" </dev/null >/dev/null 2>&1 &
+  DPID=$!
+}
+stop_daemon() {
+  kill "$DPID" 2>/dev/null
+  wait "$DPID" 2>/dev/null
+}
+order_count() { c=$(grep -c "^$1" "$ST/order" 2>/dev/null); echo "${c:-0}"; }
 
 setup daemon_follows_hand_run
-mkdir -p "$ST/app/files/mode"
-sed -e "s#/data/adb/pixelcallai#$ST/data#g" -e "s#^APPHOME=.*#APPHOME=$ST/app#" \
-  -e "s#^PATH=.*#PATH=$TMP/dbin:/usr/bin:/bin:/usr/sbin:/sbin#" -e 's#^  sleep 2$#  sleep 0.2#' \
-  "$MOD/mode_daemon.sh" > "$ST/mode_daemon.sh"
 echo normal > "$ST/data/mode"
-sh "$ST/mode_daemon.sh" </dev/null >/dev/null 2>&1 &
-DPID=$!
+start_daemon
 wait_state mode=normal; eq "state at start" "$?" 0
 echo ai > "$ST/data/mode"
 printf 'id=byhand-1\nmode=ai\nresult=ok\ndone=1\n' > "$ST/data/last_apply"
@@ -375,38 +396,74 @@ rm -f "$ST/data/pending"
 wait_state pending=0; eq "pending gone reported" "$?" 0
 echo normal > "$ST/data/mode"
 wait_state mode=normal; eq "back to normal reported" "$?" 0
-kill "$DPID" 2>/dev/null
-wait "$DPID" 2>/dev/null
+stop_daemon
 
-# The app asks for the audio helper: the helper starts once per valid request, a bad
-# request starts nothing, and a module without a helper says so.
+# The app asks for the audio helper: it starts once, a second request right after is
+# turned away, a bad request starts nothing, and turned off or missing it says so.
 setup daemon_audio_helper
-mkdir -p "$ST/app/files/mode" "$ST/bin"
-printf '#!/bin/sh\necho "$*" >> "%s/helper_runs"\n' "$ST" > "$ST/bin/bageo-audio-helper"
+mkdir -p "$ST/bin"
+printf '#!/bin/sh\necho "helper $*" >> "%s/order"\n' "$ST" > "$ST/bin/bageo-audio-helper"
 chmod 600 "$ST/bin/bageo-audio-helper"
-sed -e "s#/data/adb/pixelcallai#$ST/data#g" -e "s#^APPHOME=.*#APPHOME=$ST/app#" \
-  -e "s#^PATH=.*#PATH=$TMP/dbin:/usr/bin:/bin:/usr/sbin:/sbin#" -e 's#^  sleep 2$#  sleep 0.2#' \
-  "$MOD/mode_daemon.sh" > "$ST/mode_daemon.sh"
-sh "$ST/mode_daemon.sh" </dev/null >/dev/null 2>&1 &
-DPID=$!
+start_daemon
 wait_state daemon=1; eq "daemon up" "$?" 0
-helper_runs() { [ -f "$ST/helper_runs" ] && grep -c . "$ST/helper_runs" || echo 0; }
 printf 'start call-1\n' > "$ST/app/files/mode/audio_helper"
 wait_state audio_helper_result=started; eq "helper started" "$?" 0
 state_has audio_helper=call-1; eq "its request reported" "$?" 0
-n=0; while [ "$(helper_runs)" -lt 1 ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
-eq "helper ran once" "$(helper_runs)" 1
-eq "helper asked to serve" "$(cat "$ST/helper_runs" 2>/dev/null)" serve
+n=0; while [ "$(order_count helper)" -lt 1 ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+eq "helper ran once" "$(order_count helper)" 1
+eq "helper asked to serve" "$(cat "$ST/order" 2>/dev/null)" "helper serve"
 eq "request taken" "$([ -e "$ST/app/files/mode/audio_helper" ] && echo left || echo taken)" taken
+printf 'start call-2\n' > "$ST/app/files/mode/audio_helper"
+wait_state audio_helper_result=busy; eq "second start within 10 s turned away" "$?" 0
 printf 'start ../../x\n' > "$ST/app/files/mode/audio_helper"
 wait_state audio_helper_result=invalid_request; eq "bad id refused" "$?" 0
-rm -f "$ST/bin/bageo-audio-helper"
-printf 'start call-2\n' > "$ST/app/files/mode/audio_helper"
+: > "$ST/data/audio_helper.disabled"
+printf 'start call-3\n' > "$ST/app/files/mode/audio_helper"
+wait_state audio_helper_result=disabled; eq "turned off reported" "$?" 0
+rm -f "$ST/data/audio_helper.disabled" "$ST/bin/bageo-audio-helper"
+printf 'start call-4\n' > "$ST/app/files/mode/audio_helper"
 wait_state audio_helper_result=missing; eq "no helper reported" "$?" 0
-state_has audio_helper=call-2; eq "that request reported" "$?" 0
-eq "nothing else ran" "$(helper_runs)" 1
-kill "$DPID" 2>/dev/null
-wait "$DPID" 2>/dev/null
+state_has audio_helper=call-4; eq "that request reported" "$?" 0
+eq "nothing else ran" "$(order_count helper)" 1
+stop_daemon
+
+# A phone mode switch goes before the audio helper when both wait.
+setup daemon_switch_first
+mkdir -p "$ST/bin"
+printf '#!/bin/sh\necho "helper $*" >> "%s/order"\n' "$ST" > "$ST/bin/bageo-audio-helper"
+chmod 700 "$ST/bin/bageo-audio-helper"
+mkdir -p "$ST/app/files/mode"
+printf 'start call-1\n' > "$ST/app/files/mode/audio_helper"
+printf 'ai sw-1\n' > "$ST/app/files/mode/request"
+start_daemon
+wait_state audio_helper_result=started; eq "helper started after" "$?" 0
+n=0; while [ "$(order_count helper)" -lt 1 ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+eq "switch ran first" "$(head -n 1 "$ST/order" 2>/dev/null)" "apply ai sw-1"
+stop_daemon
+
+# The app swaps its folder for a link to a folder that is not its own: nothing there is
+# taken, run, deleted or written. A folder sent as a request is handed back whole.
+setup daemon_swapped_folder
+start_daemon
+wait_state daemon=1; eq "daemon up" "$?" 0
+mkdir -p "$ST/secret"
+printf 'ai evil-1\n' > "$ST/secret/request"
+printf 'start evil-2\n' > "$ST/secret/audio_helper"
+rm -rf "$ST/app/files/mode"
+ln -s "$ST/secret" "$ST/app/files/mode"
+sleep 1
+eq "other folder's request left alone" "$(cat "$ST/secret/request" 2>/dev/null)" "ai evil-1"
+eq "other folder's helper request left alone" "$(cat "$ST/secret/audio_helper" 2>/dev/null)" "start evil-2"
+eq "no state written there" "$([ -e "$ST/secret/state" ] && echo written || echo none)" none
+eq "nothing ran" "$(order_count apply)" 0
+rm -f "$ST/app/files/mode"
+mkdir -p "$ST/app/files/mode/request"
+: > "$ST/app/files/mode/request/keep"
+sleep 1
+eq "folder handed back whole" "$(ls "$ST"/app/files/mode/request.rejected.*/keep 2>/dev/null | wc -l | tr -d ' ')" 1
+eq "nothing ran from it" "$(order_count apply)" 0
+eq "nothing left in root's folder" "$(ls "$ST/data" | grep -c taken)" 0
+stop_daemon
 
 echo "checks passed: $PASS, failed: $FAILS"
 [ "$FAILS" -eq 0 ]
