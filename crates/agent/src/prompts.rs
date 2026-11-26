@@ -1543,6 +1543,20 @@ fn insert_before_guard(prompt: &str, lang: Lang, block: &str) -> String {
     }
 }
 
+/// The note on the carrier's recorded warning for the languages whose pack has
+/// none (Taiwan's Chinese keeps it in its own pack): the warnings of Korea,
+/// Hong Kong, the mainland, Thailand and the rest are no caller either.
+fn scoped_carrier_note(lang: Lang) -> String {
+    match lang {
+        Lang::ZhTw => String::new(),
+        Lang::ZhCn => to_cn(gl::PERSONA_CARRIER_NOTE.get()).replace("掰掰", "拜拜"),
+        _ => format!(
+            "\n[Carrier warning] On a call from abroad, the carrier may first play a recorded warning (\"international call, beware of fraud / voice phishing\" or \"new pre-paid SIM card\") — that recording is not the caller: do not answer it, do not decline, do not say goodbye; wait for the real caller to speak, or if the warning ends and nobody speaks, say \"{}\" once.",
+            locale::phrases(lang).hello
+        ),
+    }
+}
+
 /// Put the region's identity and speaking-style sentence right at the front of
 /// `prompt` (after `【你是誰】` / `[Who you are] ` when present, else at index 0).
 fn prepend_identity(prompt: &str, lang: Lang, region: Region) -> String {
@@ -1582,6 +1596,12 @@ pub fn scope_to_region(prompt: &str, lang: Lang, scope: Scope<'_>) -> String {
     let mut out = prompt.to_string();
     if !scope.carrier_note && !p.carrier_note.is_empty() {
         out = out.replace(p.carrier_note.as_str(), "");
+    }
+    if scope.carrier_note && p.carrier_note.is_empty() {
+        let note = scoped_carrier_note(lang);
+        if !note.is_empty() && !out.contains(note.as_str()) {
+            out = insert_before_guard(&out, lang, &note);
+        }
     }
     // The built-in Chinese persona's short "follow the caller's language" line
     // says once more what the full note says: with the note there, it goes.
@@ -2573,6 +2593,46 @@ mod tests {
         let gone = scope_to_region(&p, Lang::ZhTw, Scope { region: None, carrier_note: false, ..Default::default() });
         assert_eq!(gone, p.replace(pack(Lang::ZhTw).carrier_note.as_str(), "").replacen(ZH_FOLLOW_LANGUAGE.get(), "", 1));
         assert!(!gone.contains("【方言】") && !gone.contains("【當地】"));
+    }
+
+    /// Where the carrier's warning can come, every language's call prompt says
+    /// it is not the caller (Korea's, Hong Kong's, the mainland's, Thailand's
+    /// too); where it cannot, none does.
+    #[test]
+    fn every_language_gets_the_carrier_note_where_the_warning_can_come() {
+        let cases = [
+            (Lang::Ko, "kr"),
+            (Lang::En, "hk-mo"),
+            (Lang::En, "th"),
+            (Lang::ZhCn, "cn"),
+            (Lang::Ja, "jp"),
+        ];
+        for (lang, code) in cases {
+            let mut c = ctx(lang, false, StallPrompt::Off);
+            c.carrier_note = false;
+            let built = build(&c);
+            let marker = if lang == Lang::ZhCn { "【电信提示音】" } else { "[Carrier warning]" };
+            for region in [Some(r(code)), None] {
+                let on = scope_to_region(&built, lang, Scope { region, carrier_note: true, ..Default::default() });
+                let off = scope_to_region(&built, lang, Scope { region, carrier_note: false, ..Default::default() });
+                assert!(on.contains(marker), "{lang:?} {code}: {on}");
+                assert!(!off.contains(marker), "{lang:?} {code}: {off}");
+                assert_eq!(on.matches(marker).count(), 1, "{lang:?} {code}");
+                // Before the injection guard, which keeps the last word.
+                assert!(on.rfind(marker) < on.rfind(pack(lang).injection_guard.as_str()), "{lang:?} {code}");
+                // Said once, not again by a second pass.
+                assert_eq!(scope_to_region(&on, lang, Scope { region, carrier_note: true, ..Default::default() }).matches(marker).count(), 1);
+            }
+        }
+        let en = scoped_carrier_note(Lang::En);
+        assert!(en.contains("\"Hello?\"") && en.contains("do not say goodbye"), "{en}");
+        assert!(scoped_carrier_note(Lang::Ko).contains("\"여보세요?\""));
+        let cn = scoped_carrier_note(Lang::ZhCn);
+        assert!(cn.contains("电信") && cn.contains("拜拜"), "{cn}");
+        for w in ["台灣", "台湾", "繁體", "繁体", "掰掰", "管理室", "電"] {
+            assert!(!cn.contains(w), "{w}: {cn}");
+        }
+        assert_eq!(scoped_carrier_note(Lang::ZhTw), "");
     }
 
     #[test]

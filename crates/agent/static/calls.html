@@ -3328,15 +3328,49 @@ $("dTracks").addEventListener("click", (e) => {
 
 // Speech-to-text arrives in fragments: join one speaker's fragments into a
 // bubble, and start a new bubble after the end of a sentence.
-// Taiwan carriers open calls from abroad with a recorded warning; it is not the caller.
+// Carriers (Taiwan, Hong Kong, mainland China, Korea, Thailand) open calls from abroad
+// with a recorded warning; it is not the caller. Same rules as gemini_live.rs
+// looks_like_carrier_intl_prompt; Simplified Chinese is read as Traditional first.
+const CARRIER_S2T = {
+  这: "這", 国: "國", 际: "際", 电: "電", 话: "話", 来: "來", 诈: "詐", 骗: "騙", 谨: "謹", 范: "範", 请: "請", 为: "為",
+  号: "號", 码: "碼", 该: "該", 隐: "隱", 储: "儲", 网: "網", 络: "絡", 觉: "覺", 挂: "掛", 断: "斷", 里: "裡",
+};
 const CARRIER_MARKS = ["國際電話", "國際來電", "小心詐騙", "注意詐騙", "謹防詐騙", "慎防詐騙", "防範詐騙"];
 const CARRIER_WORDS = ["這是", "此為", "這裡是", "國際電話", "國際來電", "國外來電", "請您", "請", "注意", "小心", "詐騙", "接通", "掛斷", "防範", "謹防", "慎防", "提防", "以免", "受騙", "喂"];
+const PROMPT_ABROAD = [
+  "國際電話", "國際來電", "香港境外", "境外來電", "國際及港澳", "境外及港澳", "境外號碼", "隱藏號碼電話", "隱藏號碼來電",
+  "callisfromoutsidehongkong", "국제전화입니다", "해외에서걸려온전화", "โทรจากต่างประเทศ", "สายเรียกเข้าจากต่างประเทศ",
+];
+const PROMPT_BEWARE = ["詐騙", "騙去", "提高警惕", "提高警覺", "bewareofdeception", "보이스피싱에주의", "ระวังมิจฉาชีพ"];
+const PROMPT_WORDS = [
+  "callisfromoutsidehongkong", "bewareofdeception", "hello",
+  "해외에서걸려온전화입니다", "국제전화입니다", "보이스피싱에주의하세요", "보이스피싱에주의", "여보세요",
+  "หมายเลขนี้", "สายเรียกเข้า", "สายนี้", "โทรจากต่างประเทศ", "จากต่างประเทศ", "ระวังมิจฉาชีพ", "โปรด", "ฮัลโหล",
+  "這通是", "來電源自", "該來電為", "香港境外", "境外來電", "境外及港澳臺號碼", "境外及港澳台號碼", "隱藏號碼電話", "隱藏號碼來電",
+  "境外號碼", "國際及港澳臺來電", "國際及港澳台來電", "電信詐騙", "電信網絡", "電信網路", "提高警惕",
+  "提高警覺", "毋通", "乎人", "騙去",
+  "這是", "此為", "這裡是", "國際電話", "國際來電", "國外來電", "請您", "請", "注意", "小心",
+  "詐騙", "接通", "掛斷", "防範", "謹防", "慎防", "提防", "以免", "受騙", "喂",
+];
+const NEW_SIM_PROMPTS = ["來電由新儲值卡打出", "thiscallismadefromanewprepaidsimcard", "callmadefromanewprepaidsimcard", "callisfromanewprepaidsimcard"];
+const hanCount = (x) => (x.match(/[\u4e00-\u9fff]/g) || []).length;
+const dropWords = (x, words) => words.reduce((r, w) => r.split(w).join(""), x);
 function isCarrierPrompt(text) {
-  const s = String(text).replace(/[^\p{L}\p{N}]/gu, "");
-  if (s.length > 40 || !CARRIER_MARKS.some((m) => s.includes(m))) return false;
-  let rest = s;
-  for (const w of CARRIER_WORDS) rest = rest.split(w).join("");
-  return (rest.match(/[\u4e00-\u9fff]/g) || []).length <= 5;
+  const norm = Array.from(String(text), (c) => CARRIER_S2T[c] || c).join("").toLowerCase();
+  const s = norm.replace(/[^\p{Alphabetic}\p{N}]/gu, "");
+  // Thai vowel and tone marks are no letters: the whole Thai block is kept.
+  const th = norm.replace(/[^\p{Alphabetic}\p{N}\u0e00-\u0e7f]/gu, "");
+  if (s.length <= 40 && CARRIER_MARKS.some((m) => s.includes(m)) && hanCount(dropWords(s, CARRIER_WORDS)) <= 5) return true;
+  if (PROMPT_ABROAD.some((m) => th.includes(m)) && PROMPT_BEWARE.some((m) => th.includes(m)) && hanCount(th) <= 40 && Array.from(th).length <= 160) {
+    const rest = dropWords(th, PROMPT_WORDS);
+    if (hanCount(rest) <= 5 && (rest.match(/\p{Alphabetic}/gu) || []).filter((c) => !/[\u4e00-\u9fff]/.test(c)).length <= 4) return true;
+  }
+  if ((s.includes("국제전화입니다") || s.includes("해외에서걸려온전화입니다")) && dropWords(s, ["해외에서걸려온전화입니다", "국제전화입니다", "여보세요"]) === "") return true;
+  if (NEW_SIM_PROMPTS.some((m) => s.includes(m)) && Array.from(s).length <= 160 && hanCount(s) <= 40) {
+    const rest = dropWords(dropWords(s, NEW_SIM_PROMPTS), ["此", "請注意", "慎防詐騙", "謹防詐騙", "小心詐騙", "bewareofdeception", "喂", "hello"]);
+    return hanCount(rest) <= 2 && (rest.match(/\p{Alphabetic}/gu) || []).filter((c) => !/[\u4e00-\u9fff]/.test(c)).length <= 4;
+  }
+  return false;
 }
 // Scripts written without spaces between words (Korean spaces its words).
 const CJK = /[\u2e80-\u9fff\uff00-\uffef]/;
