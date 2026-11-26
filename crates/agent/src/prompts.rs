@@ -1544,14 +1544,14 @@ fn insert_before_guard(prompt: &str, lang: Lang, block: &str) -> String {
 }
 
 /// The note on the carrier's recorded warning for the languages whose pack has
-/// none (Taiwan's Chinese keeps it in its own pack): the warnings of Korea's and
-/// Hong Kong's carriers are no caller either.
+/// none (Taiwan's Chinese keeps it in its own pack): Korea's carriers' warning,
+/// or Taiwan's heard in another language, is no caller either.
 fn scoped_carrier_note(lang: Lang) -> String {
     match lang {
         Lang::ZhTw => String::new(),
         Lang::ZhCn => to_cn(gl::PERSONA_CARRIER_NOTE.get()).replace("掰掰", "拜拜"),
         _ => format!(
-            "\n[Carrier warning] The carrier may first play a short recorded notice (that the call is international or from abroad, or that it comes from a new pre-paid SIM card). That recording is not the caller: do not answer it, decline or say goodbye to it; wait for the real caller to speak, and if it ends and nobody speaks, say \"{}\" once.",
+            "\n[Carrier warning] The carrier may first play a short recorded notice (that the call is international or from abroad, or that the number is hidden). That recording is not the caller: do not answer it, decline or say goodbye to it; wait for the real caller to speak, and if it ends and nobody speaks, say \"{}\" once.",
             locale::phrases(lang).hello
         ),
     }
@@ -2596,15 +2596,15 @@ mod tests {
     }
 
     /// Where the carrier's warning can come, every language's call prompt says
-    /// it is not the caller (Korea's and Hong Kong's too); where it cannot, none
-    /// does.
+    /// it is not the caller (Korea's too, and Taiwan's heard in another
+    /// language); where it cannot, none does.
     #[test]
     fn every_language_gets_the_carrier_note_where_the_warning_can_come() {
         let cases = [
             (Lang::Ko, "kr"),
-            (Lang::En, "hk-mo"),
+            (Lang::En, "tw"),
             (Lang::Es, "kr"),
-            (Lang::ZhCn, "hk-mo"),
+            (Lang::ZhCn, "tw"),
             (Lang::Ja, "jp"),
         ];
         for (lang, code) in cases {

@@ -187,23 +187,82 @@ fn only_carrier_prompt_so_far(
         || prompt_until.is_some_and(|until| last_caller_voice_at.map_or(true, |t| t <= until))
 }
 
+/// What a piece of the caller's transcript was ([`CarrierPromptFilter::hear`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CarrierHeard {
+    /// The caller's words.
+    Caller,
+    /// Only the carrier's warning so far: the caller's windows are emptied and
+    /// the piece goes no further.
+    Warning,
+    /// The warning, then the caller's first words (「你好」, "Hi", 「여보세요」) in the
+    /// same piece: the windows are emptied and keep only these words.
+    WarningThenCaller(String),
+}
+
+/// Where the warning stands on this call.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum CarrierStage {
+    /// Nothing swallowed yet: the transcript so far is looked at as a whole.
+    #[default]
+    Before,
+    /// Swallowed: each new piece is looked at on its own, the rest of the warning
+    /// or the caller's first words.
+    After,
+    /// The caller has spoken after the warning: nothing more is swallowed.
+    Done,
+}
+
 /// A carrier's recorded warning in the caller's transcript of a persona call
 /// that came in (`active`): its words are no caller's words, and a turn that
-/// held nothing else is no caller's turn.
+/// held nothing else is no caller's turn. The caller's first words after it —
+/// however short — are theirs.
 #[derive(Debug, Default)]
 struct CarrierPromptFilter {
+    stage: CarrierStage,
     /// Warning words were swallowed since the last turn ended.
     swallowed: bool,
 }
 
 impl CarrierPromptFilter {
-    /// A piece of caller transcript came in and `caller_text_all` now holds it:
-    /// `true` = all of it so far is the warning — the caller's windows are to be
-    /// emptied and the piece goes no further.
-    fn swallow(&mut self, active: bool, caller_text_all: &str) -> bool {
-        let warning = active && looks_like_carrier_intl_prompt(caller_text_all);
-        self.swallowed |= warning;
-        warning
+    /// A piece of caller transcript (`piece`) came in and `caller_text_all` now
+    /// holds it.
+    fn hear(&mut self, active: bool, caller_text_all: &str, piece: &str) -> CarrierHeard {
+        if !active {
+            return CarrierHeard::Caller;
+        }
+        match self.stage {
+            CarrierStage::Done => CarrierHeard::Caller,
+            CarrierStage::Before => {
+                if let Some(i) = caller_opener_at_end(caller_text_all) {
+                    if looks_like_carrier_intl_prompt(&caller_text_all[..i]) {
+                        self.swallowed = true;
+                        self.stage = CarrierStage::Done;
+                        return CarrierHeard::WarningThenCaller(caller_text_all[i..].to_string());
+                    }
+                }
+                if looks_like_carrier_intl_prompt(caller_text_all) {
+                    self.swallowed = true;
+                    self.stage = CarrierStage::After;
+                    return CarrierHeard::Warning;
+                }
+                CarrierHeard::Caller
+            }
+            CarrierStage::After => {
+                if prompt_fragment(piece) {
+                    self.swallowed = true;
+                    return CarrierHeard::Warning;
+                }
+                self.stage = CarrierStage::Done;
+                if let Some(i) = caller_opener_at_end(piece) {
+                    if !prompt_norm(&piece[..i]).is_empty() && prompt_fragment(&piece[..i]) {
+                        self.swallowed = true;
+                        return CarrierHeard::WarningThenCaller(piece[i..].to_string());
+                    }
+                }
+                CarrierHeard::Caller
+            }
+        }
     }
 
     /// The caller's turn ended with `caller_turn` left of it: `true` = it held
@@ -895,7 +954,9 @@ pub fn persona_system_prompt(
 /// The carrier's international-call warning as it was first recognized: Taiwan's
 /// 「這通是國際電話，請注意、小心詐騙」 (then 「…要小心喔，毋通乎人騙去」 in Taiwanese),
 /// played on pickup of every call from abroad. Kept as it is; Hong Kong's is added
-/// in [paired_carrier_prompt].
+/// in [paired_carrier_prompt]. Mobile lines since October 2023 (carrier news):
+/// https://www.feg.com.tw/tw/news/news_detail.aspx?id=10958
+/// The exact wording, as Chunghwa Telecom publishes it for fixed lines:
 /// https://www.cht.com.tw/home/consumer/broadband/service/valueadded/878
 fn tw_carrier_prompt(caller_text: &str) -> bool {
     let t: String = crate::zh_tw::norm(caller_text)
@@ -913,15 +974,18 @@ fn tw_carrier_prompt(caller_text: &str) -> bool {
     // of non-Han auto-detect garble right after the prompt (경품기 / हेलो) do not
     // count; a Japanese caller's 「もしもし、国際電話ですが…」 leaves more.
     let mut rest = t;
-    for w in [
-        "這是", "此為", "這裡是", "國際電話", "國際來電", "國外來電", "請您", "請", "注意", "小心",
-        "詐騙", "接通", "掛斷", "防範", "謹防", "慎防", "提防", "以免", "受騙", "喂",
-    ] {
+    for w in TW_WORDS {
         rest = rest.replace(w, "");
     }
     rest.chars().filter(is_han).count() <= 5
         && rest.chars().filter(|c| c.is_alphabetic() && !is_han(c)).count() <= PROMPT_REST_LETTERS
 }
+
+/// [tw_carrier_prompt]'s own words, dropped before counting what is left.
+const TW_WORDS: &[&str] = &[
+    "這是", "此為", "這裡是", "國際電話", "國際來電", "國外來電", "請您", "請", "注意", "小心",
+    "詐騙", "接通", "掛斷", "防範", "謹防", "慎防", "提防", "以免", "受騙", "喂",
+];
 
 /// "This call comes from abroad" in the warnings with a fraud half, as the words
 /// read once normalized (Traditional characters, lower case, no spaces or
@@ -1000,46 +1064,103 @@ fn paired_carrier_prompt(caller_text: &str) -> bool {
 /// lines, from 2026-07-01).
 /// https://www.ncc.gov.tw/chncc/app/data/view?module=news&id=50&serno=97343cff-79e1-4bee-8851-4b58928b30e2
 fn tw_hidden_number_prompt(caller_text: &str) -> bool {
-    const MARKS: [&str; 4] = ["隱藏號碼電話", "嘸號碼電話", "無號碼電話", "沒號碼電話"];
     let t = prompt_norm(caller_text);
-    if !MARKS.iter().any(|m| t.contains(m)) || t.chars().count() > 40 {
+    if !TW_HIDDEN_MARKS.iter().any(|m| t.contains(m)) || t.chars().count() > 40 {
         return false;
     }
-    let words: Vec<&str> = MARKS
-        .into_iter()
-        .chain(["這通是", "這是", "要小心喔", "要小心哦", "要小心", "請注意", "注意", "小心", "喂"])
-        .collect();
+    let words: Vec<&str> = TW_HIDDEN_MARKS.iter().chain(TW_HIDDEN_WORDS).copied().chain(["喂"]).collect();
     prompt_rest_is_noise(t, &words, 3)
 }
+
+const TW_HIDDEN_MARKS: &[&str] = &["隱藏號碼電話", "嘸號碼電話", "無號碼電話", "沒號碼電話"];
+const TW_HIDDEN_WORDS: &[&str] = &["這通是", "這是", "要小心喔", "要小心哦", "要小心", "請注意", "注意", "小心"];
 
 /// Korea's three carriers (and the budget ones) on pickup of every call from
 /// abroad, since July 2023: 「국제전화입니다」 or 「해외에서 걸려온 전화입니다」, one sentence
 /// with no fraud half. Nothing else may be left but 「여보세요」.
-/// https://www.msit.go.kr/bbs/view.do?sCode=user&mId=&mPid=&bbsSeqNo=94&nttSeqNo=3183234
+/// https://www.msit.go.kr/bbs/view.do?sCode=user&mId=307&mPid=208&bbsSeqNo=94&nttSeqNo=3183234
 fn kr_carrier_prompt(caller_text: &str) -> bool {
     let t = prompt_norm(caller_text);
-    if !(t.contains("국제전화입니다") || t.contains("해외에서걸려온전화입니다")) {
+    if !KR_PROMPTS.iter().any(|m| t.contains(m)) {
         return false;
     }
     let mut rest = t;
-    for w in ["해외에서걸려온전화입니다", "국제전화입니다", "여보세요"] {
+    for w in KR_PROMPTS.iter().chain(&["여보세요"]) {
         rest = rest.replace(w, "");
     }
     rest.is_empty()
 }
+
+const KR_PROMPTS: &[&str] = &["해외에서걸려온전화입니다", "국제전화입니다"];
 
 /// Hong Kong's carriers, before putting through a call from a newly activated
 /// local pre-paid SIM (from 2024-12-31), in Cantonese and Putonghua:
 /// 「來電由新儲值卡打出」 ("Call made from a new pre-paid SIM card").
 /// https://www.ofca.gov.hk/tc/consumer_focus/guide/hot_topics/fraudulent_calls/index.html
 fn hk_new_sim_prompt(caller_text: &str) -> bool {
-    const MARKS: [&str; 3] = ["來電由新儲值卡打出", "來電由新儲值咭打出", "callmadefromanewprepaidsimcard"];
     let t = prompt_norm(caller_text);
-    if !MARKS.iter().any(|m| t.contains(m)) || t.chars().count() > 160 || t.chars().filter(is_han).count() > 40 {
+    if !HK_NEW_SIM_MARKS.iter().any(|m| t.contains(m)) || t.chars().count() > 160 || t.chars().filter(is_han).count() > 40 {
         return false;
     }
-    let words: Vec<&str> = MARKS.into_iter().chain(["喂", "hello"]).collect();
+    let words: Vec<&str> = HK_NEW_SIM_MARKS.iter().copied().chain(["喂", "hello"]).collect();
     prompt_rest_is_noise(t, &words, 2)
+}
+
+const HK_NEW_SIM_MARKS: &[&str] = &["來電由新儲值卡打出", "來電由新儲值咭打出", "callmadefromanewprepaidsimcard"];
+
+/// A piece of transcript after a swallowed warning is more of it: nothing is left
+/// once the warnings' own words are dropped. Hello words (「喂」, "hello",
+/// 「여보세요」) are not among them — said after the warning, they are the caller's.
+fn prompt_fragment(piece: &str) -> bool {
+    static WORDS: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    let words = WORDS.get_or_init(|| {
+        let mut w: Vec<&'static str> = PROMPT_WORDS
+            .iter()
+            .chain(TW_WORDS)
+            .chain(TW_HIDDEN_MARKS)
+            .chain(TW_HIDDEN_WORDS)
+            .chain(KR_PROMPTS)
+            .chain(HK_NEW_SIM_MARKS)
+            .copied()
+            .filter(|w| !matches!(*w, "喂" | "hello"))
+            .collect();
+        w.sort_by_key(|w| std::cmp::Reverse(w.chars().count()));
+        w.dedup();
+        w
+    });
+    let mut rest = prompt_norm(piece);
+    for w in words {
+        rest = rest.replace(w, "");
+    }
+    rest.is_empty()
+}
+
+/// Short first words of a caller, in the languages the AI answers in, normalized
+/// as [prompt_norm] reads them (Simplified forms too: the transcript may be in either).
+const CALLER_OPENERS: &[&str] = &[
+    "喂你好", "喂您好", "你好", "您好", "哈囉", "嗯", "好的", "對", "对", "hello", "hi", "hey", "hola", "diga",
+    "bueno", "allô", "allo", "oui", "hallo", "ja", "olá", "alô", "sim", "pronto", "yes", "okay", "ok", "もしもし",
+    "はい", "여보세요", "네", "예",
+];
+
+/// Where `text` ends with a caller's short first words ([CALLER_OPENERS]), with
+/// something before them: the byte index they start at.
+fn caller_opener_at_end(text: &str) -> Option<usize> {
+    let mut norm = String::new();
+    let mut starts = Vec::new();
+    for (i, c) in text.char_indices().filter(|(_, c)| c.is_alphanumeric()) {
+        for l in c.to_lowercase() {
+            norm.push(l);
+            starts.push(i);
+        }
+    }
+    let n = starts.len();
+    let mut openers: Vec<&str> = CALLER_OPENERS.to_vec();
+    openers.sort_by_key(|o| std::cmp::Reverse(o.chars().count()));
+    openers
+        .into_iter()
+        .find(|o| norm.ends_with(o) && o.chars().count() < n)
+        .map(|o| starts[n - o.chars().count()])
 }
 
 #[cfg(test)]
@@ -1227,7 +1348,7 @@ mod carrier_prompt_tests {
 
 #[cfg(test)]
 mod carrier_filter_tests {
-    use super::CarrierPromptFilter;
+    use super::{caller_opener_at_end, CarrierHeard, CarrierPromptFilter};
 
     /// One persona call's caller transcript as `run_session` keeps it: everything
     /// so far, and the current turn's words.
@@ -1239,15 +1360,22 @@ mod carrier_filter_tests {
     }
 
     impl Call {
-        /// A piece of transcript comes in: `true` = swallowed as the warning.
+        /// A piece of transcript comes in: `true` = swallowed as the warning
+        /// (the caller's first words after it, in the same piece, are kept).
         fn hear(&mut self, piece: &str) -> bool {
             self.all.push_str(piece);
             self.turn.push_str(piece);
-            let swallowed = self.filter.swallow(true, &self.all);
-            if swallowed {
-                self.turn.clear();
+            match self.filter.hear(true, &self.all, piece) {
+                CarrierHeard::Caller => false,
+                CarrierHeard::Warning => {
+                    self.turn.clear();
+                    true
+                }
+                CarrierHeard::WarningThenCaller(words) => {
+                    self.turn = words;
+                    true
+                }
             }
-            swallowed
         }
 
         /// The caller's turn ends: whether it held only the warning, and what is
@@ -1341,9 +1469,71 @@ mod carrier_filter_tests {
     #[test]
     fn off_for_calls_it_does_not_apply_to() {
         let mut f = CarrierPromptFilter::default();
-        assert!(!f.swallow(false, "這通是國際電話，請注意、小心詐騙。"));
+        let w = "這通是國際電話，請注意、小心詐騙。";
+        assert_eq!(f.hear(false, w, w), CarrierHeard::Caller);
         assert!(!f.turn_is_carrier_only(false, ""));
-        assert!(!f.turn_is_carrier_only(false, "這通是國際電話，請注意、小心詐騙。"));
+        assert!(!f.turn_is_carrier_only(false, w));
+    }
+
+    /// A caller's first words after the warning, however short, in each language.
+    const SHORT: &[&str] = &["你好", "喂你好", "Hi", "嗯", "好的", "對", "もしもし", "여보세요", "Hola", "喂？", "您好！"];
+
+    /// The warning has been swallowed; the caller then says only a word or two
+    /// (a piece of its own): theirs, kept, and their turn.
+    #[test]
+    fn a_short_first_word_after_the_warning_is_the_callers() {
+        for pieces in WARNINGS {
+            for words in SHORT {
+                let mut call = Call::default();
+                for p in *pieces {
+                    call.hear(p);
+                }
+                assert!(!call.hear(words), "{pieces:?} then {words}");
+                assert_eq!(call.turn_end(), (false, words.to_string()), "{pieces:?} then {words}");
+                // Later words are the caller's too, whatever they say.
+                assert!(!call.hear("國際電話，請小心詐騙"), "{pieces:?} then {words}");
+            }
+        }
+    }
+
+    /// The warning and the caller's short first words come in one piece: the
+    /// warning is swallowed, the words are kept as the caller's turn.
+    #[test]
+    fn a_short_first_word_in_the_warnings_own_piece_is_kept() {
+        for pieces in WARNINGS {
+            let warning = pieces.concat();
+            for words in SHORT.iter().filter(|w| !matches!(**w, "喂？")) {
+                let mut call = Call::default();
+                let piece = format!("{warning}{words}");
+                assert!(call.hear(&piece), "{piece}");
+                assert_eq!(call.turn_end(), (false, words.to_string()), "{piece}");
+                assert!(!call.hear("嗯"), "{piece}");
+            }
+            // Its own pieces, then the last one carries the caller's "Hi".
+            let mut call = Call::default();
+            for p in &pieces[..pieces.len() - 1] {
+                call.hear(p);
+            }
+            let last = format!("{}Hi", pieces[pieces.len() - 1]);
+            assert!(call.hear(&last), "{last}");
+            assert_eq!(call.turn_end(), (false, "Hi".to_string()), "{last}");
+        }
+    }
+
+    /// The opener check: short first words at the very end, with something before.
+    #[test]
+    fn caller_openers_are_found_at_the_end_only() {
+        for (text, at) in [
+            ("這通是國際電話。你好", Some("你好")),
+            ("국제전화입니다. 여보세요?", Some("여보세요?")),
+            ("Beware of deception. Hola", Some("Hola")),
+            ("…小心詐騙。もしもし", Some("もしもし")),
+            ("你好", None),
+            ("這通是國際電話，請注意、小心詐騙。", None),
+            ("這通是國際電話。喂？", None),
+        ] {
+            assert_eq!(caller_opener_at_end(text).map(|i| &text[i..]), at, "{text}");
+        }
     }
 }
 
@@ -1677,11 +1867,22 @@ fn stt_codes(langs: &[crate::locale::Lang]) -> Vec<&'static str> {
 
 /// SIM countries (ISO 3166 alpha-2, lowercase) whose carriers play a recorded
 /// warning to us right after pickup, each on its own calls ([`carrier_warns`]):
-/// Taiwan's, Korea's and Hong Kong's. The mainland's and Thailand's carriers show
-/// a notice on the screen only, nothing on the line: their SIMs never wait.
-/// https://www.mps.gov.cn/n2255079/n4876594/n5104076/n5104077/c10117761/content.html
-/// https://www.nationthailand.com/thailand/general/40021975
-const CARRIER_INTL_PROMPT_SIMS: &[&str] = &["tw", "kr", "hk"];
+/// Taiwan's and Korea's.
+///
+/// Not waited for:
+/// - Hong Kong: its "+852" alert ([`paired_carrier_prompt`]) is Cantonese,
+///   Putonghua and English, about 10 s — longer than [`CARRIER_PROMPT_SPAN`], so
+///   the AI would talk over its end — and a carrier may send it as text instead;
+///   nor is it known how the phone gets a local number (`9123 4567` or
+///   `+852 9123 4567`). Its words, and the new pre-paid SIM ones
+///   ([`hk_new_sim_prompt`]), are still not taken for the caller. To be turned on
+///   only once tried on a real Hong Kong SIM.
+/// - The mainland: the carriers' alert is a notice on the screen.
+///   https://news.cctv.cn/2025/06/20/ARTIIKy6K4h6Gdvfk1nrn7yG250620.shtml
+/// - Thailand: only the number prefix (+697 / +698) is on record; no notice of a
+///   recording played on the line was found.
+///   https://www.nationthailand.com/thailand/general/40021975
+const CARRIER_INTL_PROMPT_SIMS: &[&str] = &["tw", "kr"];
 
 /// Whether the carrier of a SIM of country `sim` plays its warning on a call from
 /// `caller_id` (`hidden`: it has no digit at all). A number is read the way the
@@ -1691,21 +1892,11 @@ const CARRIER_INTL_PROMPT_SIMS: &[&str] = &["tw", "kr", "hk"];
 ///   [`tw_hidden_number_prompt`]).
 /// - kr: a number of another country ([`kr_carrier_prompt`]); nothing is on record
 ///   for hidden numbers.
-/// - hk: a number written `+852…` — every call from outside Hong Kong is shown with
-///   a "+", and the warning is for those showing Hong Kong's own code
-///   ([`paired_carrier_prompt`]); a call from another country's number gets none.
-///   A local number does not wait: the new pre-paid SIM warning
-///   ([`hk_new_sim_prompt`]) comes on a few local calls only, and waiting on every
-///   local call would hold every caller's 「喂？」.
 fn carrier_warns(sim: &str, caller_id: &str, hidden: bool) -> bool {
     let foreign = || crate::phone_region::normalize(caller_id, Some(sim)).is_some_and(|n| n.country != sim);
     match sim {
         "tw" => hidden || foreign(),
         "kr" => !hidden && foreign(),
-        "hk" => {
-            let d: String = caller_id.chars().filter(|c| c.is_ascii_digit() || *c == '+').collect();
-            d.strip_prefix("+852").is_some_and(|rest| rest.len() >= 8)
-        }
         _ => false,
     }
 }
@@ -2990,15 +3181,13 @@ fn session_prompt(prompt: &str, outbound: Outbound) -> String {
 
 /// The call can hear a carrier's recorded warning, so its prompt keeps the note
 /// on it ([`carrier_warns`]): on a Taiwan SIM a number from abroad or a hidden
-/// one, on a Korean SIM a number from abroad, on a Hong Kong SIM any call (its
-/// `+852` warning comes on numbers that read as local, the new pre-paid SIM one
-/// on local numbers). SIM not known (older app): as before, only when the
-/// setting's language is Traditional Chinese (`zh_tw`, a Taiwan SIM assumed).
+/// one, on a Korean SIM a number from abroad. SIM not known (older app): as
+/// before, only when the setting's language is Traditional Chinese (`zh_tw`, a
+/// Taiwan SIM assumed).
 fn carrier_note_due(plan: &CallLangPlan, zh_tw: bool) -> bool {
     match plan.sim_country.as_deref() {
         Some("tw") => plan.sim_local != Some(true),
         Some("kr") => plan.sim_local == Some(false),
-        Some("hk") => true,
         Some(_) => false,
         None => zh_tw,
     }
@@ -8665,13 +8854,25 @@ pub async fn run_session(
                                     push_tx_window(&mut caller_turn_text, s_raw, 400);
                                     // Only the carrier's recorded warning so far: the caller has
                                     // not spoken. Its words (its "fraud" too, in any language)
-                                    // count for nothing and are not left in the windows.
-                                    if carrier_filter.swallow(persona && !callback, &caller_text_all) {
+                                    // count for nothing and are not left in the windows; the
+                                    // caller's first words right after it are kept.
+                                    let heard = carrier_filter.hear(persona && !callback, &caller_text_all, s_raw);
+                                    if heard != CarrierHeard::Caller {
                                         in_tx_window.clear();
                                         caller_recent.clear();
                                         caller_turn_text.clear();
-                                        continue;
                                     }
+                                    let first_words = match heard {
+                                        CarrierHeard::Caller => String::new(),
+                                        CarrierHeard::Warning => continue,
+                                        CarrierHeard::WarningThenCaller(words) => {
+                                            push_tx_window(&mut in_tx_window, &words, 800);
+                                            push_tx_window(&mut caller_recent, &words, 400);
+                                            push_tx_window(&mut caller_turn_text, &words, 400);
+                                            words
+                                        }
+                                    };
+                                    let s = if first_words.is_empty() { s } else { first_words.trim() };
                                     // The caller speaks a language the AI's own
                                     // speech-to-text has no hint for: its goodbye in
                                     // it would go unnoticed. Added at the next pause.
@@ -10760,12 +10961,11 @@ mod tests {
         assert!(!carrier_note_due(&local, true));
         let abroad = call_lang_plan("+12025550143", Some("tw"), Lang::ZhTw, "886", &none);
         assert!(carrier_note_due(&abroad, true));
-        // Hong Kong: the "+852" warning comes on numbers that read as local, the
-        // new pre-paid SIM one on local numbers: every call keeps the note.
+        // Hong Kong is not waited for (not tried on a real Hong Kong SIM): no note.
         let hk = call_lang_plan("+85291234567", Some("hk"), Lang::ZhTw, "886", &none);
         assert_eq!(hk.region, Some(r("hk-mo")));
-        assert!(carrier_note_due(&hk, true));
-        assert!(carrier_note_due(&call_lang_plan("91234567", Some("hk"), Lang::En, "852", &none), false));
+        assert!(!carrier_note_due(&hk, true));
+        assert!(!carrier_note_due(&call_lang_plan("91234567", Some("hk"), Lang::En, "852", &none), false));
         let kr_abroad = call_lang_plan("+12025550143", Some("kr"), Lang::Ko, "82", &none);
         assert!(carrier_note_due(&kr_abroad, false));
         assert!(!carrier_note_due(&call_lang_plan("01012345678", Some("kr"), Lang::Ko, "82", &none), false));
@@ -13813,35 +14013,20 @@ mod tests {
             assert!(!expects_carrier_intl_prompt(true, hidden, Some("jp")), "{hidden:?}");
         }
         // Korea plays its warning on every number from abroad; nothing is on record
-        // for hidden numbers. Hong Kong plays it on "+852" calls from outside Hong
-        // Kong only; a local number does not wait (the new pre-paid SIM warning
-        // comes on a few of them), nor does another country's.
-        let regional: &[(&str, &[&str], &[&str])] = &[
-            (
-                "kr",
-                &["+12025550143", "+81312345678", "0012025550143", "+886912345678"],
-                &["+821012345678", "01012345678", "", "unknown", "Anonymous"],
-            ),
-            (
-                "hk",
-                &["+85291234567", "+852 9123 4567", "+85221234567"],
-                &["91234567", "21234567", "+12025550143", "+8613800138000", "+85361234567", "", "unknown", "+852"],
-            ),
-        ];
-        for (sim, wait, no_wait) in regional {
-            for n in *wait {
-                assert!(expects_carrier_intl_prompt(false, n, Some(sim)), "{sim} {n}");
-                assert!(expects_carrier_intl_prompt(true, n, Some(&sim.to_uppercase())), "{sim} {n}");
-            }
-            for n in *no_wait {
-                assert!(!expects_carrier_intl_prompt(true, n, Some(sim)), "{sim} {n:?}");
-                assert!(!expects_carrier_intl_prompt(false, n, Some(sim)), "{sim} {n:?}");
-            }
+        // for hidden numbers.
+        for n in ["+12025550143", "+81312345678", "0012025550143", "+886912345678"] {
+            assert!(expects_carrier_intl_prompt(false, n, Some("kr")), "{n}");
+            assert!(expects_carrier_intl_prompt(true, n, Some("KR")), "{n}");
         }
-        // Carriers with no such warning on the line (the mainland's and Thailand's
-        // show one on the screen): nothing waits, from abroad or hidden.
-        for sim in ["us", "jp", "de", "gb", "sg", "cn", "th"] {
-            for n in ["+12025550143", "+886912345678", "+69712345678", "", "unknown"] {
+        for n in ["+821012345678", "01012345678", "", "unknown", "Anonymous"] {
+            assert!(!expects_carrier_intl_prompt(true, n, Some("kr")), "{n:?}");
+            assert!(!expects_carrier_intl_prompt(false, n, Some("kr")), "{n:?}");
+        }
+        // No wait: Hong Kong (not tried on a real Hong Kong SIM, its "+852" alert
+        // too long for the span), the mainland and Thailand (nothing played on the
+        // line on record), and carriers with no such warning.
+        for sim in ["hk", "us", "jp", "de", "gb", "sg", "cn", "th"] {
+            for n in ["+12025550143", "+886912345678", "+69712345678", "+85291234567", "91234567", "", "unknown"] {
                 assert!(!expects_carrier_intl_prompt(true, n, Some(sim)), "{sim} {n:?}");
                 assert!(!expects_carrier_intl_prompt(false, n, Some(sim)), "{sim} {n:?}");
             }
