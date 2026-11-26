@@ -3493,7 +3493,9 @@ mod tests {
                 "gemini_api_key": "test-fake-b-key-0005",
                 "telegram_chat_id": "fake-chat-b",
                 "whitelist_forward_number": "+15555550199",
+                // Another address takes its key again.
                 "summary_api_base": "https://summary-b.example/v1",
+                "summary_api_key": FAKE_SUMMARY,
                 "mcp_enabled": false,
                 "backup_keep": 3,
             }))

@@ -195,11 +195,37 @@ fn mask_url(s: &str) -> String {
     }
 }
 
+/// Kinds whose token never goes to the address in `url`: the Discord and Slack
+/// bot tokens go to those services' own APIs.
+const TOKEN_HOST_FIXED: &[&str] = &["discord", "slack"];
+
+/// Whether the token stored with `old` may go out with `new` (same id and
+/// kind): always when the kind's token does not go to the address, else only
+/// when the address is the same (a Gmail address in any case: the app
+/// password belongs to that account).
+fn token_may_follow(old: &Channel, new: &Channel) -> bool {
+    let uses_url = kind(&new.kind).is_some_and(|k| !k.url.is_empty());
+    if !uses_url || TOKEN_HOST_FIXED.contains(&new.kind.as_str()) {
+        return true;
+    }
+    if new.kind == "gmail" {
+        return old.url.trim().to_lowercase() == new.url.trim().to_lowercase();
+    }
+    old.url_or_default() == new.url_or_default()
+}
+
 /// The list from the settings page onto the stored one: a row that comes back
-/// with an empty address or token keeps what was stored under the same id; rows
-/// without an id get one; unknown kinds are dropped.
+/// with an empty address or token keeps what was stored under the same id (a
+/// token only while it still goes to the same address, [`token_may_follow`]);
+/// rows without an id get one; unknown kinds are dropped.
 pub fn merge_channels(stored: &[Channel], incoming: Vec<Channel>) -> Vec<Channel> {
-    let mut out: Vec<Channel> = Vec::new();
+    merge_channel_rows(stored, incoming).into_iter().map(|(c, _)| c).collect()
+}
+
+/// [`merge_channels`], each row with whether a stored token was left out
+/// because the row's address changed.
+pub fn merge_channel_rows(stored: &[Channel], incoming: Vec<Channel>) -> Vec<(Channel, bool)> {
+    let mut out: Vec<(Channel, bool)> = Vec::new();
     for mut c in incoming.into_iter().take(30) {
         c.kind = c.kind.trim().to_ascii_lowercase();
         if kind(&c.kind).is_none() {
@@ -210,18 +236,24 @@ pub fn merge_channels(stored: &[Channel], incoming: Vec<Channel>) -> Vec<Channel
         c.url = c.url.trim().to_string();
         c.token = c.token.trim().to_string();
         c.app_token = if app_token_label(&c.kind).is_empty() { String::new() } else { c.app_token.trim().to_string() };
+        let mut withheld = false;
         if let Some(old) = old {
             if c.url.is_empty() {
                 c.url = old.url.clone();
             }
             if c.token.is_empty() {
-                c.token = old.token.clone();
+                if token_may_follow(old, &c) {
+                    c.token = old.token.clone();
+                } else {
+                    withheld = !old.token.trim().is_empty();
+                }
             }
+            // Slack's app-level token only ever goes to Slack.
             if c.app_token.is_empty() && !app_token_label(&c.kind).is_empty() {
                 c.app_token = old.app_token.clone();
             }
         }
-        if c.id.is_empty() || out.iter().any(|o| o.id == c.id) {
+        if c.id.is_empty() || out.iter().any(|(o, _)| o.id == c.id) {
             c.id = uuid::Uuid::new_v4().simple().to_string()[..12].to_string();
         }
         c.name = c.name.trim().chars().take(60).collect();
@@ -229,9 +261,15 @@ pub fn merge_channels(stored: &[Channel], incoming: Vec<Channel>) -> Vec<Channel
         // Commands only where an adapter exists; who may give them, as ids.
         c.control = c.control && crate::control::COMMAND_KINDS.contains(&c.kind.as_str());
         c.control_users = crate::settings_store::sanitize_sender_ids(&c.control_users);
-        out.push(c);
+        out.push((c, withheld));
     }
     out
+}
+
+/// A row whose address changed while its token was left empty: the stored
+/// token does not go to the new address, it has to be typed in again.
+pub fn token_needed_again() -> anyhow::Error {
+    ChannelError::new("missing_field", "token", "the address changed: enter the token again").into()
 }
 
 /// An interactive action button / signed one-tap link on a notification.
@@ -3484,6 +3522,57 @@ mod tests {
         // The same id on another kind does not inherit a secret.
         let moved = merge_channels(&stored, vec![Channel { id: "b2".into(), ..ch("pushover", "", "", "u") }]);
         assert_eq!(moved[0].token, "");
+    }
+
+    #[test]
+    fn a_stored_token_goes_only_to_the_address_it_was_saved_with() {
+        let stored = vec![
+            Channel { id: "w1".into(), ..ch("webhook", "https://hooks.example.org/a", "test-fake-token-1", "") },
+            Channel { id: "n1".into(), ..ch("ntfy", "", "test-fake-token-2", "calls") },
+            Channel { id: "t1".into(), ..ch("telegram", "", "test-fake-token-3", "42") },
+            Channel { id: "d1".into(), ..ch("discord", "https://discord.com/api/webhooks/1/x", "test-fake-token-4", "123") },
+            Channel { id: "s1".into(), ..ch("smtp", "smtp://me@example.org@smtp.example.org:587", "test-fake-pw", "") },
+        ];
+        let row = |c: Channel| merge_channel_rows(&stored, vec![c]).remove(0);
+        // The same address (left empty, given again, written with a slash): kept.
+        for url in ["", "https://hooks.example.org/a", " https://hooks.example.org/a/ "] {
+            let (c, withheld) = row(Channel { id: "w1".into(), name: "Renamed".into(), ..ch("webhook", url, "", "") });
+            assert_eq!((c.token.as_str(), withheld), ("test-fake-token-1", false), "{url:?}");
+        }
+        let (c, _) = row(Channel { id: "n1".into(), ..ch("ntfy", "https://ntfy.sh", "", "other") });
+        assert_eq!(c.token, "test-fake-token-2", "the default server written out is the same server");
+        // Another address with the token left empty: not carried over.
+        for (id, kind, url) in [
+            ("w1", "webhook", "https://hooks.example.net/a"),
+            ("w1", "webhook", "https://hooks.example.org/b"),
+            ("n1", "ntfy", "https://ntfy.example.net"),
+            ("s1", "smtp", "smtp://me@example.org@mail.example.net:587"),
+        ] {
+            let (c, withheld) = row(Channel { id: id.into(), ..ch(kind, url, "", "") });
+            assert_eq!((c.token.as_str(), c.url.as_str(), withheld), ("", url, true), "{kind} {url}");
+        }
+        // Another address with a new token: the new one.
+        let (c, withheld) = row(Channel { id: "w1".into(), ..ch("webhook", "https://hooks.example.net/a", "test-fake-token-new", "") });
+        assert_eq!((c.token.as_str(), withheld), ("test-fake-token-new", false));
+        // Tokens that never go to the address stay with the row: another
+        // Telegram chat, another Discord webhook.
+        let (c, withheld) = row(Channel { id: "t1".into(), ..ch("telegram", "", "", "43") });
+        assert_eq!((c.token.as_str(), withheld), ("test-fake-token-3", false));
+        let (c, withheld) = row(Channel { id: "d1".into(), ..ch("discord", "https://discord.com/api/webhooks/2/y", "", "123") });
+        assert_eq!((c.token.as_str(), withheld), ("test-fake-token-4", false));
+        assert_eq!(merge_channels(&stored, vec![Channel { id: "w1".into(), ..ch("webhook", "https://hooks.example.net/a", "", "") }])[0].token, "");
+    }
+
+    #[test]
+    fn a_gmail_app_password_stays_only_with_its_address() {
+        let stored = vec![Channel { id: "g1".into(), ..ch("gmail", "alex@example.org", "test-fake-app-pw", "") }];
+        let row = |url: &str| merge_channel_rows(&stored, vec![Channel { id: "g1".into(), ..ch("gmail", url, "", "") }]).remove(0);
+        for url in ["", "alex@example.org", " Alex@Example.ORG "] {
+            let (c, withheld) = row(url);
+            assert_eq!((c.token.as_str(), withheld), ("test-fake-app-pw", false), "{url:?}");
+        }
+        let (c, withheld) = row("sam@example.org");
+        assert_eq!((c.token.as_str(), c.url.as_str(), withheld), ("", "sam@example.org", true));
     }
 
     #[test]
