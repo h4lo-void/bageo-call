@@ -6,8 +6,8 @@
 - **Phones adjust themselves.** If the AI's voice drops in a call, the phone switches to other settings and remembers them. A new phone asks for one test call, and the console then asks whether you heard the AI.
 - **Steadier on MediaTek phones.** The AI's voice no longer breaks up on the Redmi K60 Ultra.
 - **If the AI cannot answer,** the caller hears a "please call again later" message and you get the reason, for example a used-up Gemini quota.
-- **International calls:** the AI greets first once the carrier's warning tone ends, and the console shows phones by name.
-- **Texts you have read stay read,** also in another browser or the phone app.
+- **International calls on a Taiwan or Korea SIM:** the AI greets first once the carrier's warning tone ends, and the console shows phones by name.
+- **Safer phone app:** the modules carry the release build, so the app can no longer be opened up over USB debugging.
 
 ## 繁體中文
 
@@ -17,8 +17,8 @@
 - **手機會自己調整。** 通話中 AI 的聲音掉了，手機會換一組設定並記住。新手機要先打一通測試電話，之後控制台會問你有沒有聽到 AI。
 - **聯發科手機更穩。** Redmi K60 Ultra 上 AI 的聲音不再斷斷續續。
 - **AI 接不了時，** 來電的人會聽到「請稍後再撥」的語音，你也會收到原因，例如 Gemini 額度用完。
-- **國際電話：** 電信提示音播完後 AI 會先打招呼，控制台也用手機名稱顯示手機。
-- **看過的簡訊維持已讀，** 換瀏覽器或用手機 App 看也一樣。
+- **台灣、韓國 SIM 的國際電話：** 電信提示音播完後 AI 會先打招呼，控制台也用手機名稱顯示手機。
+- **手機 App 更安全：** 模組改帶正式版 App，不能再透過 USB 偵錯打開它。
 
 Full notes / 完整說明：[CHANGELOG.md](https://github.com/h4lo-void/bageo-call/blob/v2.1.0/CHANGELOG.md)
 

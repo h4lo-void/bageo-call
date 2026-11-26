@@ -12,9 +12,15 @@
 - **If the AI cannot answer, the caller hears a message.** When the Gemini quota is used up or the key is not valid, Bageo plays the "not available, please call again later" message instead of hanging up in silence, and your notification says the reason.
 - **AI 接不了時，來電的人會聽到語音。** Gemini 額度用完或金鑰失效時，Bageo 不再默默掛斷，而是先播「目前無法接通，請稍後再撥」，通知也會告訴你原因。
 - **AI 接不了时，来电的人会听到语音。** Gemini 额度用完或密钥失效时，Bageo 不再默默挂断，而是先播“目前无法接通，请稍后再拨”，通知也会告诉你原因。
-- **International calls: the AI greets first.** After the carrier's warning tone ends, the AI opens the call itself instead of waiting for the caller to speak, and the console shows each phone by its name.
-- **國際電話：AI 先打招呼。** 電信的提示音播完後，AI 會自己開口，不再等對方先說話；控制台也用手機名稱顯示手機。
-- **国际电话：AI 先打招呼。** 运营商的提示音播完后，AI 会自己开口，不再等对方先说话；控制台也用手机名称显示手机。
+- **International calls: the AI greets first.** On a Taiwan or Korea SIM, the carrier plays a warning tone on calls from abroad (Taiwan also on hidden numbers). Once it ends, the AI opens the call itself instead of waiting for the caller to speak, and it never takes the tone for the caller, also when the caller's first word is a short hello. Hong Kong's warning is recognized but not waited for. The console shows each phone by its name.
+- **國際電話：AI 先打招呼。** 台灣和韓國的 SIM 接到國外來電時，電信會先播一段提示音（台灣的隱藏號碼也會）。播完後 AI 會自己開口，不再等對方先說話；提示音不會被當成對方說的話，對方第一句只說「你好」也聽得到。香港的提示音認得出來，但不會等它。控制台也用手機名稱顯示手機。
+- **国际电话：AI 先打招呼。** 台湾和韩国的 SIM 接到境外来电时，运营商会先播一段提示音（台湾的隐藏号码也会）。播完后 AI 会自己开口，不再等对方先说话；提示音不会被当成对方说的话，对方第一句只说“你好”也听得到。香港的提示音能识别，但不会等它。控制台也用手机名称显示手机。
+- **The phone app can no longer be opened up over USB debugging.** The phone modules now carry the release build of the app instead of the debug build, so someone with your phone and a USB cable cannot use adb to read the app's data or switch its mode. Nothing else changes; settings are kept.
+- **手機上的 App 不能再透過 USB 偵錯打開。** 手機模組改帶正式版 App，不再是偵錯版：拿到你的手機、接上 USB 的人，不能再用 adb 讀 App 的資料或切換模式。其他行為不變，設定都保留。
+- **手机上的应用不能再通过 USB 调试打开。** 手机模块改带正式版应用，不再是调试版：拿到你的手机、接上 USB 的人，不能再用 adb 读取应用的数据或切换模式。其他行为不变，设置都保留。
+- **The phone app in 79 languages.** The new call audio lines and the updated supported-phones line in the phone app are translated into all 79 languages (they were English outside the nine main ones).
+- **手機 App 的 79 種語言都補齊。** 通話聲音的新提示和更新過的支援機型說明，在手機 App 裡 79 種語言都有翻譯（之前九種主要語言以外會顯示英文）。
+- **手机应用的 79 种语言都补齐。** 通话声音的新提示和更新过的支持机型说明，在手机应用里 79 种语言都有翻译（之前九种主要语言以外会显示英文）。
 - **Texts you have read stay read.** Which texts you have read is now kept in Bageo, so another browser or the phone app no longer shows old texts as unread.
 - **看過的簡訊維持已讀。** 哪些簡訊讀過，改存在 Bageo 裡，換個瀏覽器或用手機 App 看，舊簡訊不會再變回未讀。
 - **看过的短信保持已读。** 哪些短信读过，改存在 Bageo 里，换个浏览器或用手机应用看，旧短信不会再变回未读。
