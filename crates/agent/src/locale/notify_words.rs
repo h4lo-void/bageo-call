@@ -89,6 +89,14 @@ pub struct Words {
     pub s_call_back_if_known: String,
     /// First line put above a summary when the AI never connected.
     pub s_ai_fail_prefix: String,
+    /// `{}` = a length ([`super::duration`]): the AI never connected and the caller heard
+    /// the not-available message before the system hung up.
+    pub s_ai_fail_matter_played: String,
+    /// Why the AI never connected, and what to do about it, when Gemini said so.
+    pub s_ai_fail_why_quota: String,
+    pub s_ai_fail_why_key: String,
+    pub s_ai_fail_todo_quota: String,
+    pub s_ai_fail_todo_key: String,
     pub s_stall_topic: String,
     pub s_stall_topic_kw: String,
     pub s_stall_reply: String,
@@ -211,6 +219,7 @@ pub struct Words {
     pub h_clip_mark: String,
     // How the call ended, one line for the summary model.
     pub h_ai_fail_hangup: String,
+    pub h_ai_fail_announced: String,
     pub h_ai_fail_voicemail: String,
     pub h_reject_hidden: String,
     pub h_reject_list: String,
@@ -303,15 +312,15 @@ mod tests {
     /// and `h_urgent_scam_words` came after them; change a value on purpose
     /// and update the line here in the same commit.
     const GOLDEN: [(&str, &str, usize); 9] = [
-        ("en", "ae71ba1767c4fc89508e192d8c516a499505521310e97ffb8f7ef2cff5cdb260", 147),
-        ("zh-TW", "fa31430a772a9d4947365a043381dadc88cdde854f26e2f15646a1e8ee403ef6", 147),
-        ("zh-CN", "cbb40fb8f5bae1a422ae06f17b4768e61b192c8c7b67c84ec3ad45196c4b3168", 147),
-        ("ja", "2d5369ef38d7f194df6c483b942d9ca28584a3c7f352ce74ce7252d2c086ccc4", 147),
-        ("ko", "5f385556a0c10e74bd2a642824c65a6d50c19b2ac76a969d916c77b59d1d76a3", 147),
-        ("es", "96619969e6f7516d583c51e5ec8769e5c9006cd5bc32e2c2b09a00de0ede8d2d", 147),
-        ("fr", "80d2c66037c34757284e4b779a3f7e16faf360ddb1a44a94d5ec3c0488342c7a", 147),
-        ("de", "26594eb6fd3963c4e03b05a4971a2997a15a64ba3898bc671a63a44008804afa", 147),
-        ("pt", "be1d99d4fcaa3bf7a0634b42dbab47df79e3befa6384126c055d1731dd77cf43", 147),
+        ("en", "6d5028a1f207321a4c015a0a90943e01a202e7a8f5f1a9219c8de27d4e247b35", 153),
+        ("zh-TW", "0b626c42a46561ca5ea957c62c2b702ec21be07370159918f6cf654f91c93a98", 153),
+        ("zh-CN", "b1667689b8faf71a2a5e08f7924fdd9afd6da7d577b9e37c4a4ddb05077b85f4", 153),
+        ("ja", "a0bc5904d874a50d1dd0cba9907fe0c2d5bee1bc92ff4e70a114341cd39276d9", 153),
+        ("ko", "4f80e1ad462b0315e6d9d9f1c4dccfb11c95ac3fb4ea654d218db78dc0f26867", 153),
+        ("es", "2504333d9296622294862901e48f6e75f9e2dcfec55332a5a81b2262f54fbfbd", 153),
+        ("fr", "d61c99eea5ddf53afaf716a82ef5bdd0513425dd0c4d624871246554ddddfeac", 153),
+        ("de", "94c0a9c332bedc83ec18d25ed193db342e83db256aa2aa8013038194caff9dad", 153),
+        ("pt", "242a82d88a420e046ec81e0bcb7a860ed7678613d3ac6d96f2ab6482c898d1a3", 153),
     ];
 
     const META: &str = include_str!("../../data/i18n/notify/_meta.json");
