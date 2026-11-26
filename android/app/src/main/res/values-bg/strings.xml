@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Ползване като обикновен телефон?</string>
     <string name="connection_hint_usb">USB (по подразбиране, препоръчително): оставете ws://127.0.0.1:8765. Програмата на компютъра пренасочва порта по USB кабела с adb reverse автоматично.</string>
     <string name="connection_hint_wifi">Wi-Fi: въведете адреса от програмата на компютъра, напр. ws://192.0.2.10:8787/ws?token=… Телефонът и компютърът трябва да са в една мрежа.</string>
+    <string name="fit_adjusted">Звукът при разговори е настроен автоматично</string>
+    <string name="fit_noted">Отбелязано: има проблем със звука при разговори на този телефон</string>
+    <string name="fit_problem">Има проблем със звука при разговори и всички настройки са опитани. Вижте „Първо използване на нов телефон“ в ръководството.</string>
+    <string name="fit_retest">Други настройки за звука при разговори са готови. Обадете се отново на този телефон, за да ги изпробвате.</string>
+    <string name="fit_unsupported">Този телефон не може да изпраща гласа на AI в разговорите</string>
+    <string name="fit_untested">Звукът при разговори още не е тестван: обадете се на този телефон от друг и говорете с AI около 20 секунди. После Bageo сам ще го настрои.</string>
     <string name="grant_perms">Разрешете исканите права и пак натиснете Пусни услугата.</string>
-    <string name="header_compat">Тествано на Pixel 7, 7a, 8 и 9. Други телефони с root също може да работят; пробвайте на свой риск.</string>
+    <string name="header_compat">Тествано на Google Pixel и Redmi K60 Ultra. Други телефони с root също се поддържат, но тествайте своя: обадете му се от друг телефон и говорете с AI около 20 секунди.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Версия %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo е версия %1$s (версията е различна)</string>

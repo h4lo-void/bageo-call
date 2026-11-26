@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">ໃຊ້ເປັນໂທລະສັບທຳມະດາບໍ່?</string>
     <string name="connection_hint_usb">USB (ຄ່າເລີ່ມຕົ້ນ, ແນະນຳ): ປະໄວ້ເປັນ ws://127.0.0.1:8765. ໂປຣແກຣມຄອມພິວເຕີຈະສົ່ງຕໍ່ພອດນີ້ຜ່ານສາຍ USB ດ້ວຍ adb reverse ອັດຕະໂນມັດ.</string>
     <string name="connection_hint_wifi">Wi-Fi: ປ້ອນທີ່ຢູ່ຈາກໂປຣແກຣມຄອມພິວເຕີ ເຊັ່ນ ws://192.0.2.10:8787/ws?token=… ໂທລະສັບ ແລະ ຄອມພິວເຕີຕ້ອງຢູ່ເຄືອຂ່າຍດຽວກັນ.</string>
+    <string name="fit_adjusted">ປັບສຽງໂທໃຫ້ອັດຕະໂນມັດແລ້ວ</string>
+    <string name="fit_noted">ບັນທຶກແລ້ວ: ສຽງໂທຂອງໂທລະສັບເຄື່ອງນີ້ມີບັນຫາ</string>
+    <string name="fit_problem">ສຽງໂທມີບັນຫາ ແລະ ລອງທຸກການຕັ້ງຄ່າແລ້ວ. ເບິ່ງ “ການໃຊ້ຄັ້ງທຳອິດໃນໂທລະສັບເຄື່ອງໃໝ່” ໃນຄູ່ມື</string>
+    <string name="fit_retest">ການຕັ້ງຄ່າສຽງໂທອື່ນພ້ອມແລ້ວ. ໂທຫາໂທລະສັບເຄື່ອງນີ້ອີກເທື່ອໜຶ່ງເພື່ອທົດສອບ</string>
+    <string name="fit_unsupported">ໂທລະສັບເຄື່ອງນີ້ບໍ່ສາມາດສົ່ງສຽງຂອງ AI ເຂົ້າໃນສາຍໂທໄດ້</string>
+    <string name="fit_untested">ສຽງໂທຍັງບໍ່ໄດ້ທົດສອບ: ໂທຫາໂທລະສັບເຄື່ອງນີ້ຈາກໂທລະສັບເຄື່ອງອື່ນ ແລ້ວລົມກັບ AI ປະມານ 20 ວິນາທີ. ຈາກນັ້ນ Bageo ຈະປັບໃຫ້ເອງ</string>
     <string name="grant_perms">ອະນຸຍາດສິດທີ່ຮ້ອງຂໍ ແລ້ວກົດເລີ່ມບໍລິການອີກຄັ້ງ.</string>
-    <string name="header_compat">ທົດສອບໃນ Pixel 7, 7a, 8 ແລະ 9 ແລ້ວ. ເຄື່ອງອື່ນທີ່ root ແລ້ວອາດໃຊ້ໄດ້; ລອງໃຊ້ດ້ວຍຄວາມສ່ຽງຂອງທ່ານເອງ.</string>
+    <string name="header_compat">ທົດສອບແລ້ວກັບ Google Pixel ແລະ Redmi K60 Ultra. ໂທລະສັບເຄື່ອງອື່ນທີ່ root ແລ້ວກໍຮອງຮັບ ແຕ່ກະລຸນາທົດສອບເຄື່ອງຂອງທ່ານ: ໂທຫາມັນຈາກໂທລະສັບເຄື່ອງອື່ນ ແລ້ວລົມກັບ AI ປະມານ 20 ວິນາທີ</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">ເວີຊັນ %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo ແມ່ນ %1$s (ເວີຊັນຕ່າງກັນ)</string>

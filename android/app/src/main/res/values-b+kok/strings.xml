@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">सामान्य फोन म्हणून वापरचो?</string>
     <string name="connection_hint_usb">USB (डीफॉल्ट, शिफारस केल्लें): ws://127.0.0.1:8765 दवरात. कॉम्प्युटर प्रोग्राम USB केबला वरवीं adb reverse सयत हो पोर्ट आपसूक फॉरवर्ड करता.</string>
     <string name="connection_hint_wifi">Wi-Fi: कॉम्प्युटर प्रोग्रामान दाखयिल्लो पत्तो घालात, देखिक ws://192.0.2.10:8787/ws?token=… फोन आनी कॉम्प्युटर एकाच नेटवर्काचेर आसचे.</string>
+    <string name="fit_adjusted">कॉलाचो आवाज आपसूक सुदारला</string>
+    <string name="fit_noted">नोंद जाली: ह्या फोनाच्या कॉलाच्या आवाजांत समस्या आसा</string>
+    <string name="fit_problem">कॉलाच्या आवाजांत समस्या आसा आनी सगळ्यो सेटिंग्स पळयल्यो. मार्गदर्शकांतलें “नव्या फोनार पयलो वापर” पळयात.</string>
+    <string name="fit_retest">कॉलाच्या आवाजाच्यो आनीक सेटिंग्स तयार आसात. तांकां तपासपाक हो फोन परतून कॉल करात.</string>
+    <string name="fit_unsupported">हो फोन कॉलांत AI चो आवाज धाडूंक शकना</string>
+    <string name="fit_untested">कॉलाचो आवाज अजून तपासूंक ना: हो फोन दुसऱ्या फोनान कॉल करात आनी सुमार 20 सेकंद AI कडेन उलयात. मागीर Bageo तो स्वता सुदारतलो.</string>
     <string name="grant_perms">मागिल्ल्यो परवानग्यो दियात, मागीर परतून सेवा सुरू करात चेर टॅप करात.</string>
-    <string name="header_compat">Pixel 7, 7a, 8 आनी 9 चेर तपासलां. हेर रूट केल्ले फोन काम करूंक शकतात; स्वताच्या जापसालदारकेर वापरात.</string>
+    <string name="header_compat">Google Pixel आनी Redmi K60 Ultra चेर तपासलां. root केल्ले दुसरे फोनय चलतात, पूण तुमचो फोन तपासात: दुसऱ्या फोनान ताका कॉल करात आनी सुमार 20 सेकंद AI कडेन उलयात.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">आवृत्ती %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo %1$s आसा (आवृत्ती वेगळी आसा)</string>

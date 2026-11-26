@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
 # SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
 
-# Build the debug APK and package the Magisk / KernelSU module zip (Windows).
+# Build the release APK and package the Magisk / KernelSU module zip (Windows).
 #
 #   .\scripts\package-uplink-module.ps1                  # bridge (PC-connected) module
 #   .\scripts\package-uplink-module.ps1 -Standalone      # standalone phone-only module
@@ -49,12 +49,12 @@ if ($Standalone) {
         & (Join-Path $PSScriptRoot "build-rust-android.ps1")
         if ($LASTEXITCODE -ne 0) { throw "build-rust-android.ps1 failed: $LASTEXITCODE" }
     }
-    $gradleTask = ":app:assembleStandaloneDebug"
-    $apk = Join-Path $android "app\build\outputs\apk\standalone\debug\app-standalone-debug.apk"
+    $gradleTask = ":app:assembleStandaloneRelease"
+    $apk = Join-Path $android "app\build\outputs\apk\standalone\release\app-standalone-release.apk"
     $zipOut = Join-Path $outDir "bageo-phone-standalone-$version.zip"
 } else {
-    $gradleTask = ":app:assembleBridgeDebug"
-    $apk = Join-Path $android "app\build\outputs\apk\bridge\debug\app-bridge-debug.apk"
+    $gradleTask = ":app:assembleBridgeRelease"
+    $apk = Join-Path $android "app\build\outputs\apk\bridge\release\app-bridge-release.apk"
     $zipOut = Join-Path $outDir "bageo-phone-module-$version.zip"
 }
 

@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">عام فون کے طور پر استعمال کریں؟</string>
     <string name="connection_hint_usb">USB (ڈیفالٹ، تجویز کردہ): ws://127.0.0.1:8765 رہنے دیں۔ کمپیوٹر پروگرام اس پورٹ کو USB کیبل پر adb reverse سے خودکار بھیجتا ہے۔</string>
     <string name="connection_hint_wifi">Wi-Fi: کمپیوٹر پروگرام کا دکھایا گیا پتہ درج کریں، مثلاً ws://192.0.2.10:8787/ws?token=… فون اور کمپیوٹر ایک ہی نیٹ ورک پر ہوں۔</string>
+    <string name="fit_adjusted">کال کی آواز خود بخود ٹھیک کر دی گئی</string>
+    <string name="fit_noted">نوٹ کر لیا گیا: اس فون کی کال کی آواز میں مسئلہ ہے</string>
+    <string name="fit_problem">کال کی آواز میں مسئلہ ہے اور تمام سیٹنگز آزمائی جا چکی ہیں۔ گائیڈ میں “نئے فون پر پہلا استعمال” دیکھیں۔</string>
+    <string name="fit_retest">کال کی آواز کی دوسری سیٹنگز تیار ہیں۔ انہیں آزمانے کے لیے اس فون پر دوبارہ کال کریں۔</string>
+    <string name="fit_unsupported">یہ فون کال میں AI کی آواز نہیں بھیج سکتا</string>
+    <string name="fit_untested">کال کی آواز ابھی جانچی نہیں گئی: کسی دوسرے فون سے اس فون پر کال کریں اور تقریباً 20 سیکنڈ AI سے بات کریں۔ پھر Bageo خود اسے ٹھیک کر لے گا۔</string>
     <string name="grant_perms">مطلوبہ اجازتیں دیں، پھر دوبارہ سروس شروع کریں پر ٹیپ کریں۔</string>
-    <string name="header_compat">Pixel 7، 7a، 8 اور 9 پر ٹیسٹ شدہ۔ دیگر روٹ شدہ فون کام کر سکتے ہیں؛ اپنی ذمہ داری پر آزمائیں۔</string>
+    <string name="header_compat">Google Pixel اور Redmi K60 Ultra پر جانچا گیا ہے۔ root کیے ہوئے دوسرے فون بھی سپورٹڈ ہیں، لیکن اپنا فون ضرور جانچیں: کسی دوسرے فون سے اس پر کال کریں اور تقریباً 20 سیکنڈ AI سے بات کریں۔</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">ورژن %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo %1$s ہے (ورژن مختلف ہے)</string>

@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Bruke som vanlig telefon?</string>
     <string name="connection_hint_usb">USB (standard, tilrådd): behald ws://127.0.0.1:8765. Dataprogrammet vidaresender denne porten over USB-kabel med adb reverse.</string>
     <string name="connection_hint_wifi">Wi-Fi: skriv inn adressa frå dataprogrammet, t.d. ws://192.0.2.10:8787/ws?token=… Telefon og datamaskin må vere på same nettverk.</string>
+    <string name="fit_adjusted">Samtaleljoden vart justert automatisk</string>
+    <string name="fit_noted">Notert: samtaleljoden på denne telefonen har eit problem</string>
+    <string name="fit_problem">Samtaleljoden har eit problem, og alle innstillingar er prøvde. Sjå «Fyrste gongs bruk på ein ny telefon» i rettleiinga.</string>
+    <string name="fit_retest">Andre innstillingar for samtaleljod er klare. Ring til denne telefonen att for å teste dei.</string>
+    <string name="fit_unsupported">Denne telefonen kan ikkje sende stemma til AI-en inn i samtalar</string>
+    <string name="fit_untested">Samtaleljoden er ikkje testa enno: ring til denne telefonen frå ein annan telefon og snakk med AI-en i om lag 20 sekund. Deretter justerer Bageo han sjølv.</string>
     <string name="grant_perms">Gi dei etterspurde løyva, og trykk så på Start teneste igjen.</string>
-    <string name="header_compat">Testa på Pixel 7, 7a, 8 og 9. Andre roota telefonar kan fungere; bruk på eige ansvar.</string>
+    <string name="header_compat">Testa på Google Pixel og Redmi K60 Ultra. Andre roota telefonar blir òg støtta, men test din eigen: ring til han frå ein annan telefon og snakk med AI-en i om lag 20 sekund.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versjon %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo er %1$s (annan versjon)</string>

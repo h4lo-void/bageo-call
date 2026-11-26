@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Usar como teléfono normal?</string>
     <string name="connection_hint_usb">USB (por defecto, recomendado): deixe ws://127.0.0.1:8765. O programa de ordenador redirixe este porto por cable USB con adb reverse.</string>
     <string name="connection_hint_wifi">Wi-Fi: introduza o enderezo que mostra o ordenador, p. ex. ws://192.0.2.10:8787/ws?token=… O teléfono e o ordenador deben estar na mesma rede.</string>
+    <string name="fit_adjusted">O son das chamadas axustouse automaticamente</string>
+    <string name="fit_noted">Anotado: o son das chamadas deste teléfono ten un problema</string>
+    <string name="fit_problem">O son das chamadas ten un problema e probáronse todos os axustes. Consulta «Primeiro uso nun teléfono novo» na guía.</string>
+    <string name="fit_retest">Hai outros axustes do son das chamadas preparados. Volve chamar a este teléfono para probalos.</string>
+    <string name="fit_unsupported">Este teléfono non pode enviar a voz da AI ás chamadas</string>
+    <string name="fit_untested">O son das chamadas aínda non se probou: chama a este teléfono desde outro e fala coa AI durante uns 20 segundos. Despois Bageo axustarao por si mesmo.</string>
     <string name="grant_perms">Conceda os permisos solicitados e toque de novo Iniciar servizo.</string>
-    <string name="header_compat">Probado en Pixel 7, 7a, 8 e 9. Outros teléfonos con root poden funcionar; úseo baixo a súa responsabilidade.</string>
+    <string name="header_compat">Probado en Google Pixel e Redmi K60 Ultra. Tamén son compatibles outros teléfonos con root, pero proba o teu: chámao desde outro teléfono e fala coa AI durante uns 20 segundos.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versión %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo é %1$s (versión diferente)</string>

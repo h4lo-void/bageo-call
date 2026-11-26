@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Pakai sebagai ponsel biasa?</string>
     <string name="connection_hint_usb">USB (default, disarankan): biarkan ws://127.0.0.1:8765. Program di PC meneruskan port ini lewat kabel USB dengan adb reverse secara otomatis.</string>
     <string name="connection_hint_wifi">Wi-Fi: masukkan alamat yang ditampilkan program di PC, misalnya ws://192.0.2.10:8787/ws?token=… Ponsel dan PC harus berada di jaringan yang sama.</string>
+    <string name="fit_adjusted">Suara panggilan disesuaikan secara otomatis</string>
+    <string name="fit_noted">Dicatat: suara panggilan ponsel ini bermasalah</string>
+    <string name="fit_problem">Suara panggilan bermasalah dan semua pengaturan sudah dicoba. Lihat “Penggunaan pertama di ponsel baru” di panduan.</string>
+    <string name="fit_retest">Pengaturan suara panggilan lainnya sudah siap. Telepon ponsel ini lagi untuk mengujinya.</string>
+    <string name="fit_unsupported">Ponsel ini tidak dapat mengirim suara AI ke dalam panggilan</string>
+    <string name="fit_untested">Suara panggilan belum diuji: telepon ponsel ini dari ponsel lain dan bicaralah dengan AI selama sekitar 20 detik. Setelah itu Bageo akan menyesuaikannya sendiri.</string>
     <string name="grant_perms">Izinkan semua izin yang diminta, lalu ketuk Mulai layanan lagi.</string>
-    <string name="header_compat">Diuji di Pixel 7, 7a, 8, dan 9. Ponsel root lain mungkin bisa dipakai; coba dengan risiko sendiri.</string>
+    <string name="header_compat">Diuji di Google Pixel dan Redmi K60 Ultra. Ponsel lain yang sudah di-root juga didukung, tetapi ujilah ponsel Anda: telepon dari ponsel lain dan bicaralah dengan AI selama sekitar 20 detik.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versi %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo versi %1$s (versi berbeda)</string>

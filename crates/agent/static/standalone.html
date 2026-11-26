@@ -3223,14 +3223,44 @@ $("dTracks").addEventListener("click", (e) => {
   if (b && detail.call) setTrack(b.dataset.tr, true);
 });
 
+// Carriers' recorded warnings (Taiwan: calls from abroad and hidden numbers;
+// Korea: calls from abroad; Hong Kong: "+852" calls from outside Hong Kong and
+// calls from a new pre-paid SIM) are not the caller. Same rules as gemini_live.rs
+// looks_like_carrier_intl_prompt; Simplified Chinese is read as Traditional first.
+const CARRIER_S2T = {
+  这: "這", 国: "國", 际: "際", 电: "電", 话: "話", 来: "來", 诈: "詐", 骗: "騙", 谨: "謹", 范: "範", 请: "請", 为: "為",
+  号: "號", 码: "碼", 隐: "隱", 储: "儲", 无: "無", 没: "沒", 给: "給", 挂: "掛", 断: "斷", 里: "裡",
+};
 const CARRIER_MARKS = ["國際電話", "國際來電", "小心詐騙", "注意詐騙", "謹防詐騙", "慎防詐騙", "防範詐騙"];
 const CARRIER_WORDS = ["這是", "此為", "這裡是", "國際電話", "國際來電", "國外來電", "請您", "請", "注意", "小心", "詐騙", "接通", "掛斷", "防範", "謹防", "慎防", "提防", "以免", "受騙", "喂"];
+const PROMPT_ABROAD = ["國際電話", "國際來電", "香港境外", "callisfromoutsidehongkong"];
+const PROMPT_BEWARE = ["詐騙", "騙去", "bewareofdeception"];
+const PROMPT_WORDS = [
+  "callisfromoutsidehongkong", "bewareofdeception", "hello",
+  "這通是", "來電源自", "香港境外", "要小心喔", "要小心哦", "毋通", "無通", "不通", "乎人", "呼人", "互人", "給人", "騙去",
+  "這是", "此為", "這裡是", "國際電話", "國際來電", "國外來電", "請您", "請", "注意", "小心",
+  "詐騙", "接通", "掛斷", "防範", "謹防", "慎防", "提防", "以免", "受騙", "喂",
+];
+const HIDDEN_MARKS = ["隱藏號碼電話", "嘸號碼電話", "無號碼電話", "沒號碼電話"];
+const HIDDEN_WORDS = HIDDEN_MARKS.concat(["這通是", "這是", "要小心喔", "要小心哦", "要小心", "請注意", "注意", "小心", "喂"]);
+const KR_PROMPTS = ["해외에서걸려온전화입니다", "국제전화입니다"];
+const NEW_SIM_MARKS = ["來電由新儲值卡打出", "來電由新儲值咭打出", "callmadefromanewprepaidsimcard"];
+const hanCount = (x) => (x.match(/[\u4e00-\u9fff]/g) || []).length;
+const otherLetters = (x) => (x.match(/\p{Alphabetic}/gu) || []).filter((c) => !/[\u4e00-\u9fff]/.test(c)).length;
+const dropWords = (x, words) => words.reduce((r, w) => r.split(w).join(""), x);
+const restIsNoise = (x, words, han) => {
+  const rest = dropWords(x, words);
+  return hanCount(rest) <= han && otherLetters(rest) <= 4;
+};
 function isCarrierPrompt(text) {
-  const s = String(text).replace(/[^\p{L}\p{N}]/gu, "");
-  if (s.length > 40 || !CARRIER_MARKS.some((m) => s.includes(m))) return false;
-  let rest = s;
-  for (const w of CARRIER_WORDS) rest = rest.split(w).join("");
-  return (rest.match(/[\u4e00-\u9fff]/g) || []).length <= 5;
+  const s = Array.from(String(text), (c) => CARRIER_S2T[c] || c).join("").toLowerCase().replace(/[^\p{Alphabetic}\p{N}]/gu, "");
+  const len = Array.from(s).length;
+  const has = (marks) => marks.some((m) => s.includes(m));
+  if (len <= 40 && has(CARRIER_MARKS) && restIsNoise(s, CARRIER_WORDS, 5)) return true;
+  if (len <= 40 && has(HIDDEN_MARKS) && restIsNoise(s, HIDDEN_WORDS, 3)) return true;
+  if (len <= 160 && hanCount(s) <= 40 && has(PROMPT_ABROAD) && has(PROMPT_BEWARE) && restIsNoise(s, PROMPT_WORDS, 5)) return true;
+  if (has(KR_PROMPTS) && dropWords(s, KR_PROMPTS.concat(["여보세요"])) === "") return true;
+  return len <= 160 && hanCount(s) <= 40 && has(NEW_SIM_MARKS) && restIsNoise(s, NEW_SIM_MARKS.concat(["喂", "hello"]), 2);
 }
 const CJK = /[\u2e80-\u9fff\uff00-\uffef]/;
 const DIALOGUE_LABELS = {

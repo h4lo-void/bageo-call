@@ -91,7 +91,7 @@ Build the APK and package the module zip in one step, from the `android` folder:
 ./scripts/package-uplink-module.sh
 ```
 
-Both scripts run `:app:assembleBridgeDebug`, copy the APK into the module as
+Both scripts run `:app:assembleBridgeRelease`, copy the APK into the module as
 `system/priv-app/com.pixelcallai.streamer/base.apk`, and write
 
 ```text
@@ -100,22 +100,26 @@ magisk/dist/bageo-phone-module-<versionName>.zip
 
 Pass `-Standalone` (Windows) or `--standalone` (macOS / Linux) to cross-compile
 the Rust agent into `arm64-v8a` `libbageo_agent.so` (requires Android NDK and
-`rustup target add aarch64-linux-android`), assemble `:app:assembleStandaloneDebug`,
+`rustup target add aarch64-linux-android`), assemble `:app:assembleStandaloneRelease`,
 bundle `bageo_assets/` (ambience WAVs and default `en` voices), and output
 `magisk/dist/bageo-phone-standalone-<versionName>.zip`.
 
-To build only the APKs, run `.\gradlew.bat :app:assembleBridgeDebug :app:assembleStandaloneDebug` (Windows) or
-`sh ./gradlew :app:assembleBridgeDebug :app:assembleStandaloneDebug` (macOS / Linux). They are written to
-`app/build/outputs/apk/bridge/debug/app-bridge-debug.apk` and
-`app/build/outputs/apk/standalone/debug/app-standalone-debug.apk` (legacy fallback `:app:assembleDebug` is replaced by the `bridge` and `standalone` flavors).
+To build only the APKs, run `.\gradlew.bat :app:assembleBridgeRelease :app:assembleStandaloneRelease` (Windows) or
+`sh ./gradlew :app:assembleBridgeRelease :app:assembleStandaloneRelease` (macOS / Linux). They are written to
+`app/build/outputs/apk/bridge/release/app-bridge-release.apk` and
+`app/build/outputs/apk/standalone/release/app-standalone-release.apk` (legacy fallback `:app:assembleDebug` is replaced by the `bridge` and `standalone` flavors).
 
-The debug build is minified on purpose so the app stays in a single dex file: as a
-privileged app on Android 16, a second dex file caused `ClassNotFoundException` at
-start-up.
+The module ships the release build, which is not debuggable: someone with USB
+debugging on cannot use `run-as` to act as the app. `check-not-debuggable.sh` (run by
+CI and the Release workflow) fails if a module zip contains a debuggable app.
+
+Release and debug builds use the same R8 rules and are both minified on purpose so
+the app stays in a single dex file: as a privileged app on Android 16, a second dex
+file caused `ClassNotFoundException` at start-up.
 
 ### Signing keys
 
-- **Your own build** is signed with the debug key of the machine that builds it,
+- **Your own build** (the release build too) is signed with the debug key of the machine that builds it,
   unless `PCA_KEYSTORE_FILE`, `PCA_KEYSTORE_PASSWORD`, `PCA_KEY_ALIAS` and
   `PCA_KEY_PASSWORD` point to a key of your own.
 - **GitHub releases** are signed with the project's key, kept as repository secrets

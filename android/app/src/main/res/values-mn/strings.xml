@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Энгийн утас болгон ашиглах уу?</string>
     <string name="connection_hint_usb">USB (үндсэн, зөвлөсөн): ws://127.0.0.1:8765 хэвээр үлдээнэ үү. Компьютерын програм USB кабелиар adb reverse ашиглан автоматаар дамжуулна.</string>
     <string name="connection_hint_wifi">Wi-Fi: компьютерын програм дээрх хаягийг оруулна уу, ж.нь ws://192.0.2.10:8787/ws?token=… Утас болон компьютер нэг сүлжээнд байх ёстой.</string>
+    <string name="fit_adjusted">Дуудлагын дууг автоматаар тохирууллаа</string>
+    <string name="fit_noted">Тэмдэглэв: энэ утасны дуудлагын дуунд асуудал байна</string>
+    <string name="fit_problem">Дуудлагын дуунд асуудал гарсан бөгөөд бүх тохиргоог оролдлоо. Гарын авлагын «Шинэ утсанд анх удаа ашиглах» хэсгийг үзнэ үү.</string>
+    <string name="fit_retest">Дуудлагын дууны бусад тохиргоо бэлэн боллоо. Шалгахын тулд энэ утас руу дахин залгана уу.</string>
+    <string name="fit_unsupported">Энэ утас AI-н дууг дуудлага руу дамжуулж чадахгүй</string>
+    <string name="fit_untested">Дуудлагын дууг одоо болтол шалгаагүй байна: энэ утас руу өөр утаснаас залгаад AI-тай 20 секундийн орчим ярина уу. Дараа нь Bageo өөрөө тохируулна.</string>
     <string name="grant_perms">Шаардлагатай эрхүүдийг зөвшөөрөөд Үйлчилгээг эхлүүлэх товчийг дахин дарна уу.</string>
-    <string name="header_compat">Pixel 7, 7a, 8 болон 9 дээр туршсан. Бусад root хийсэн утаснууд ажиллаж магадгүй; өөрийн эрсдэлээр туршина уу.</string>
+    <string name="header_compat">Google Pixel болон Redmi K60 Ultra дээр шалгасан. root хийсэн бусад утсыг мөн дэмждэг боловч өөрийнхөө утсыг шалгана уу: өөр утаснаас залгаад AI-тай 20 секундийн орчим ярина уу.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Хувилбар %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo нь %1$s (хувилбар өөр)</string>

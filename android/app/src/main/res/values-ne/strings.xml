@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">सामान्य फोनका रूपमा चलाउने?</string>
     <string name="connection_hint_usb">USB (डिफल्ट, सिफारिस): ws://127.0.0.1:8765 नै राख्नुहोस्। कम्प्युटर प्रोग्रामले USB केबलबाट adb reverse मार्फत यो पोर्ट स्वतः फर्वार्ड गर्छ।</string>
     <string name="connection_hint_wifi">Wi-Fi: कम्प्युटर प्रोग्रामले देखाएको ठेगाना राख्नुहोस्, जस्तै ws://192.0.2.10:8787/ws?token=… फोन र कम्प्युटर एउटै नेटवर्कमा हुनुपर्छ।</string>
+    <string name="fit_adjusted">कलको आवाज स्वतः मिलाइयो</string>
+    <string name="fit_noted">टिपियो: यो फोनको कलको आवाजमा समस्या छ</string>
+    <string name="fit_problem">कलको आवाजमा समस्या छ र सबै सेटिङ प्रयास गरिसकिएको छ। गाइडमा “नयाँ फोनमा पहिलो पटक प्रयोग” हेर्नुहोस्।</string>
+    <string name="fit_retest">कलको आवाजका अन्य सेटिङ तयार छन्। तिनलाई जाँच्न यो फोनमा फेरि कल गर्नुहोस्।</string>
+    <string name="fit_unsupported">यो फोनले कलमा AI को आवाज पठाउन सक्दैन</string>
+    <string name="fit_untested">कलको आवाज अझै जाँच गरिएको छैन: अर्को फोनबाट यो फोनमा कल गर्नुहोस् र लगभग 20 सेकेन्ड AI सँग कुरा गर्नुहोस्। त्यसपछि Bageo ले आफैं यसलाई मिलाउँछ।</string>
     <string name="grant_perms">माग गरिएका अनुमति दिनुहोस्, अनि फेरि सेवा सुरु गर्नुहोस् थिच्नुहोस्।</string>
-    <string name="header_compat">Pixel 7, 7a, 8 र 9 मा परीक्षित। अन्य रुट गरिएका फोनले काम गर्न सक्छन्; आफ्नै जोखिममा प्रयास गर्नुहोस्।</string>
+    <string name="header_compat">Google Pixel र Redmi K60 Ultra मा जाँचिएको छ। root गरिएका अन्य फोन पनि समर्थित छन्, तर आफ्नो फोन जाँच्नुहोस्: अर्को फोनबाट त्यसमा कल गर्नुहोस् र लगभग 20 सेकेन्ड AI सँग कुरा गर्नुहोस्।</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">संस्करण %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo %1$s हो (संस्करण फरक छ)</string>

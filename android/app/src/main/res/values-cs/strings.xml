@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Používat jako běžný telefon?</string>
     <string name="connection_hint_usb">USB (výchozí, doporučeno): ponechte ws://127.0.0.1:8765. Program v počítači tento port přes kabel USB předá automaticky pomocí adb reverse.</string>
     <string name="connection_hint_wifi">Wi-Fi: zadejte adresu, kterou ukazuje program v počítači, například ws://192.0.2.10:8787/ws?token=… Telefon a počítač musí být ve stejné síti.</string>
+    <string name="fit_adjusted">Zvuk hovorů byl nastaven automaticky</string>
+    <string name="fit_noted">Zaznamenáno: zvuk hovorů na tomto telefonu má problém</string>
+    <string name="fit_problem">Zvuk hovorů má problém a byla vyzkoušena všechna nastavení. Viz „První použití na novém telefonu“ v příručce.</string>
+    <string name="fit_retest">Jsou připravena další nastavení zvuku hovorů. Zavolejte na tento telefon znovu a vyzkoušejte je.</string>
+    <string name="fit_unsupported">Tento telefon neumí vysílat hlas AI do hovorů</string>
+    <string name="fit_untested">Zvuk hovorů ještě nebyl otestován: zavolejte na tento telefon z jiného telefonu a asi 20 sekund si povídejte s AI. Bageo si zvuk pak nastaví samo.</string>
     <string name="grant_perms">Povolte požadovaná oprávnění a potom znovu klepněte na Spustit službu.</string>
-    <string name="header_compat">Vyzkoušeno na Pixel 7, 7a, 8 a 9. Na jiných telefonech s přístupem root může fungovat; zkoušejte na vlastní riziko.</string>
+    <string name="header_compat">Otestováno na Google Pixel a Redmi K60 Ultra. Podporované jsou i další telefony s rootem, ale svůj vyzkoušejte: zavolejte na něj z jiného telefonu a asi 20 sekund si povídejte s AI.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Verze %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo je %1$s (jiná verze)</string>

@@ -631,11 +631,17 @@ class TelephonyUplinkInjector(
 
     /** A routing callback: the server started a new track for [track]. */
     private fun onServerTrackStart(track: AudioTrack) {
+        // A route change after hang-up is the telephony output going away.
+        if (!callEventsCount()) return
         val now = SystemClock.elapsedRealtime()
         synchronized(meterLock) {
             if (meterTrack === track) meterOfTrack?.noteRestart(now)
         }
     }
+
+    /** Rebuilds, route changes and stuck head reads count only while the call is up. */
+    private fun callEventsCount(): Boolean =
+        uplinkEventCounts(stopped = !running.get(), callConnected = callConnected())
 
     private fun callConnected(): Boolean = try {
         isCallConnected()
@@ -717,10 +723,14 @@ class TelephonyUplinkInjector(
             val readAt = SystemClock.elapsedRealtime()
             val head = readHead(track) ?: continue
             val now = SystemClock.elapsedRealtime()
+            // Read outside the lock: hasAnsweredCall walks the live-call set.
+            val countEvents = callEventsCount()
             synchronized(meterLock) {
                 if (meterTrack !== track) return@synchronized
                 val meter = meterOfTrack ?: return@synchronized
                 val t = tuner ?: return@synchronized
+                // Hang-up: a stuck read, a head jump and a switch must not be scored.
+                if (!countEvents) return@synchronized
                 if (now - readAt >= UplinkHealthMeter.SLOW_READ_MS) {
                     meter.noteRestart(now)
                     if (loggedRestarts < 5 || loggedRestarts % 20 == 0) {
@@ -740,7 +750,7 @@ class TelephonyUplinkInjector(
                 if (!switchRequested && !t.isUnhealthy(t.current) && meter.isUnhealthy(now)) {
                     val from = t.current
                     val storm = meter.isStorm(now)
-                    val next = t.onUnhealthy()
+                    val next = t.onUnhealthy(storm)
                     Log.w(
                         TAG,
                         "uplink health: profile=${from.id} unhealthy storm=$storm restarts=${meter.restarts} " +
@@ -1196,8 +1206,9 @@ class TelephonyUplinkInjector(
             }
             if (wentLive && liveTrack != null) {
                 // A live track that ends while the call goes on, and not for a profile switch,
-                // failed: the audio still in it is lost.
-                val failed = running.get() && !switchRequested
+                // failed: the audio still in it is lost. Hang-up (stop, or the call is
+                // already down) tears the route down; that rebuild is not the track's fault.
+                val failed = callEventsCount() && !switchRequested
                 // Outside meterLock: on a dead track this may run restoreTrack_l.
                 val endHead = if (failed) readHead(liveTrack) else null
                 val endAt = SystemClock.elapsedRealtime()
@@ -1212,7 +1223,7 @@ class TelephonyUplinkInjector(
                             } ?: 0L
                             meter.noteRebuild(endAt, pendingFrames * 1000L / trackRate)
                         }
-                        meter.endTrack()
+                        meter.endTrack(endAt)
                     }
                     meterTrack = null
                     meterOfTrack = null
