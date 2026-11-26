@@ -543,10 +543,114 @@ impl KeyRing {
     }
 }
 
+/// Why Gemini could not be used, told from the text of its error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AiFailKind {
+    /// The limit is reached: quota, rate, or the project's spending cap.
+    Quota,
+    /// The key is not valid, expired or has no permission.
+    Key,
+    /// Anything else (network, timeout, a model that did not answer).
+    Other,
+}
+
+impl AiFailKind {
+    /// The call-record event for it; `Other` has none.
+    pub fn event(self) -> Option<&'static str> {
+        match self {
+            AiFailKind::Quota => Some("ai_fail_quota"),
+            AiFailKind::Key => Some("ai_fail_key"),
+            AiFailKind::Other => None,
+        }
+    }
+
+    /// The kind a call-record event names.
+    pub fn from_event(event: &str) -> Option<AiFailKind> {
+        match event {
+            "ai_fail_quota" => Some(AiFailKind::Quota),
+            "ai_fail_key" => Some(AiFailKind::Key),
+            _ => None,
+        }
+    }
+}
+
+/// `code` as an HTTP status code: a number of its own (not a piece of `4290` or of an
+/// address) that follows a word saying it is a status (`"code":429`, `status 429`,
+/// `HTTP/1.1 403`, `error 429`). A bare `429 ms` or `10.0.0.403` is not one.
+fn has_status_code(text: &str, code: &str) -> bool {
+    let b = text.as_bytes();
+    let word_ends_at = |end: usize, words: &[&str]| {
+        words.iter().any(|w| {
+            end >= w.len()
+                && text.is_char_boundary(end - w.len())
+                && &text[end - w.len()..end] == *w
+                && (end == w.len() || !b[end - w.len() - 1].is_ascii_alphanumeric())
+        })
+    };
+    let skip_back = |mut end: usize, keep: fn(u8) -> bool| {
+        while end > 0 && keep(b[end - 1]) {
+            end -= 1;
+        }
+        end
+    };
+    text.match_indices(code).any(|(i, _)| {
+        let end = i + code.len();
+        if !((i == 0 || !b[i - 1].is_ascii_digit()) && (end >= b.len() || !b[end].is_ascii_digit())) {
+            return false;
+        }
+        // Up to a few separators (`":`, `: `, a space) between the word and the number.
+        let sep = skip_back(i, |c| !c.is_ascii_alphanumeric());
+        if i - sep > 4 {
+            return false;
+        }
+        if word_ends_at(sep, &["code", "status", "http", "https", "error"]) {
+            return true;
+        }
+        // `HTTP/1.1 403`: a protocol version sits between the word and the number.
+        if sep > 0 && b[sep - 1].is_ascii_digit() {
+            let ver = skip_back(sep, |c| c.is_ascii_digit() || c == b'.');
+            let before = skip_back(ver, |c| !c.is_ascii_alphanumeric());
+            return ver - before <= 2 && word_ends_at(before, &["http", "https"]);
+        }
+        false
+    })
+}
+
+/// The kind of failure an error of Gemini's (a close reason, an error body, a
+/// connection error) tells: a reached limit, a key that does not work, or neither.
+pub fn ai_fail_kind(text: &str) -> AiFailKind {
+    let t = text.to_ascii_lowercase();
+    let any = |words: &[&str]| words.iter().any(|w| t.contains(w));
+    if any(&[
+        "spending cap",
+        "quota",
+        "resource_exhausted",
+        "resource exhausted",
+        "rate limit",
+        "too many requests",
+        "billing",
+    ]) || has_status_code(&t, "429")
+    {
+        return AiFailKind::Quota;
+    }
+    if any(&[
+        "api key not valid",
+        "api_key_invalid",
+        "api key expired",
+        "permission_denied",
+        "permission denied",
+        "unauthenticated",
+    ]) || has_status_code(&t, "401")
+        || has_status_code(&t, "403")
+    {
+        return AiFailKind::Key;
+    }
+    AiFailKind::Other
+}
+
 /// An error that says Gemini's limit (rate, quota) is reached.
 fn quota_error(text: &str) -> bool {
-    let t = text.to_ascii_lowercase();
-    ["429", "quota", "resource_exhausted", "resource exhausted", "rate limit", "too many requests"].iter().any(|w| t.contains(w))
+    ai_fail_kind(text) == AiFailKind::Quota
 }
 
 /// The language code Gemini is given when a recording is transcribed: the
@@ -1074,6 +1178,91 @@ mod tests {
         assert!(!quota_error("0: asked for \"Hola, buenas tardes.\", Gemini said \"Hola\""));
         assert!(!quota_error("reject: only 0.3 s for \"您撥的電話目前無法接聽，請稍後再撥，謝謝。\""));
         assert!(!quota_error("connecting to Gemini timed out"));
+    }
+
+    #[test]
+    fn a_failure_of_gemini_is_told_a_limit_from_a_key_from_the_rest() {
+        use AiFailKind::{Key, Other, Quota};
+        let cases: [(&str, AiFailKind); 25] = [
+            (
+                "Your project has exceeded its monthly spending cap. Please go to AI Studio at https://ai.studio/spend to manage your project spend cap.",
+                Quota,
+            ),
+            ("gemini ws closed before setup: Some(CloseFrame { code: Policy, reason: \"Your project has exceeded its monthly spending cap.\" })", Quota),
+            ("gemini setup error: {\"code\":429,\"status\":\"RESOURCE_EXHAUSTED\"}", Quota),
+            ("HTTP error: 429 Too Many Requests", Quota),
+            ("You exceeded your current quota, please check your plan and billing details", Quota),
+            ("Resource exhausted (rate limit)", Quota),
+            ("gemini setup error: {\"message\":\"API key not valid. Please pass a valid API key.\",\"status\":\"INVALID_ARGUMENT\",\"reason\":\"API_KEY_INVALID\"}", Key),
+            ("API key expired. Please renew the API key.", Key),
+            ("gemini server error: {\"code\":403,\"status\":\"PERMISSION_DENIED\"}", Key),
+            ("HTTP error: 401 Unauthorized (UNAUTHENTICATED)", Key),
+            ("Permission denied on resource project", Key),
+            ("cannot reach Gemini: dns error: failed to lookup address information", Other),
+            ("connecting to Gemini timed out", Other),
+            ("Gemini setup timed out", Other),
+            ("gemini ws closed (none) before setup", Other),
+            // A number that only holds a status code's digits is not that code.
+            ("Gemini produced no audio in 14290 ms (frames 24031)", Other),
+            // A bare number is not a status code either.
+            ("Gemini produced no audio in 429 ms (frames 24)", Other),
+            ("gemini setup timed out after 401 ms", Other),
+            ("dial tcp 10.0.0.403:443 refused", Other),
+            // A status code is told by the word before it.
+            ("{\"code\":429}", Quota),
+            ("status: 401", Key),
+            ("HTTP 403 Forbidden", Key),
+            ("HTTP/1.1 403", Key),
+            ("error 429", Quota),
+            ("Status Code: 401", Key),
+        ];
+        for (text, want) in cases {
+            assert_eq!(ai_fail_kind(text), want, "{text}");
+        }
+        assert_eq!(ai_fail_kind(""), Other);
+        assert_eq!((Quota.event(), Key.event(), Other.event()), (Some("ai_fail_quota"), Some("ai_fail_key"), None));
+        assert_eq!(AiFailKind::from_event("ai_fail_key"), Some(Key));
+        assert_eq!(AiFailKind::from_event("persona_ai_fail_hangup"), None);
+    }
+
+    /// The announcement of an AI that cannot answer is the blocked-number one:
+    /// the language's own recording, else the bundled English one, else none.
+    #[test]
+    fn the_unavailable_announcement_is_the_languages_own_or_the_english_one() {
+        let dir = std::env::temp_dir().join(format!("vp-aifail-{}", uuid::Uuid::new_v4()));
+        let bundled = dir.join("bundled");
+        let p = VoicePreviews::new(dir.join("cache"), bundled.clone());
+        let model = "gemini-3.8-live";
+        let langs = [Lang::En, Lang::ZhTw, Lang::ZhCn, Lang::Ja, Lang::Ko, Lang::Es, Lang::Fr, Lang::De, Lang::Pt];
+        // Every language records its own length, so the test can tell whose it was.
+        let put = |lang: Lang, samples: i32| -> usize {
+            let tone: Vec<u8> = (0..samples).flat_map(|i| (((i % 40) - 20) as i16 * 500).to_le_bytes()).collect();
+            let d = bundled.join(lang.code());
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("Kore_reject.wav"), crate::adpcm::encode_wav(&tone, 16_000)).unwrap();
+            tone.len()
+        };
+        let lens: Vec<usize> = langs.iter().enumerate().map(|(i, l)| put(*l, 4_000 + 500 * i as i32)).collect();
+        for (l, want) in langs.iter().zip(&lens) {
+            assert_eq!(p.cached_reject_clip(model, "Kore", *l, 16_000).map(|c| c.len()), Some(*want), "{l:?}");
+        }
+        // Another voice or another rate: nothing recorded.
+        assert!(p.cached_reject_clip(model, "Charon", Lang::Ja, 16_000).is_none());
+        assert!(p.cached_reject_clip(model, "Kore", Lang::Ja, 8_000).is_none());
+        // A language with no recording of its own plays English's, as a blocked number does.
+        for l in &langs[1..] {
+            std::fs::remove_file(bundled.join(l.code()).join("Kore_reject.wav")).unwrap();
+            assert_eq!(p.cached_reject_clip(model, "Kore", *l, 16_000).map(|c| c.len()), Some(lens[0]), "{l:?}");
+        }
+        // A language beyond the nine that has no words here reads English: the bundled English one.
+        let vi = Lang::Ext(crate::locale::Ext::from_code("vi").expect("vi"));
+        assert_eq!(p.cached_reject_clip(model, "Kore", vi, 16_000).map(|c| c.len()), Some(lens[0]));
+        // Nothing recorded at all: nothing to play (and nothing is made: the call path never asks Gemini).
+        std::fs::remove_file(bundled.join("en").join("Kore_reject.wav")).unwrap();
+        for l in langs.into_iter().chain([vi]) {
+            assert!(p.cached_reject_clip(model, "Kore", l, 16_000).is_none(), "{l:?}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

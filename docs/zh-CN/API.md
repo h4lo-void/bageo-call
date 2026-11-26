@@ -155,7 +155,10 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - `whitelist_urgent_transfer`：白名单急事来电转接给你。
 - `ai_callback`：日程预约的 AI 回拨。
 - `ai_errand`：AI 代打。
-- 其他事件：`active`、`persona_ai_fail_hangup`、`ended`。
+- `persona_ai_fail_hangup`：AI 不能用，通话已结束。
+- `ai_fail_announced`：挂断前先播了“无法接听”语音。
+- `ai_fail_quota`／`ai_fail_key`：AI 不能用的原因（Gemini 额度用完或超过花费上限／Gemini 密钥无效）。
+- 其他事件：`active`、`ended`。
 
 `scam` 的字段：
 

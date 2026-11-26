@@ -89,6 +89,14 @@ pub struct Words {
     pub s_call_back_if_known: String,
     /// First line put above a summary when the AI never connected.
     pub s_ai_fail_prefix: String,
+    /// `{}` = a length ([`super::duration`]): the AI never connected and the caller heard
+    /// the not-available message before the system hung up.
+    pub s_ai_fail_matter_played: String,
+    /// Why the AI never connected, and what to do about it, when Gemini said so.
+    pub s_ai_fail_why_quota: String,
+    pub s_ai_fail_why_key: String,
+    pub s_ai_fail_todo_quota: String,
+    pub s_ai_fail_todo_key: String,
     pub s_stall_topic: String,
     pub s_stall_topic_kw: String,
     pub s_stall_reply: String,
@@ -211,6 +219,7 @@ pub struct Words {
     pub h_clip_mark: String,
     // How the call ended, one line for the summary model.
     pub h_ai_fail_hangup: String,
+    pub h_ai_fail_announced: String,
     pub h_ai_fail_voicemail: String,
     pub h_reject_hidden: String,
     pub h_reject_list: String,
@@ -310,19 +319,20 @@ mod tests {
     /// SHA-256 (of the text with LF line ends) and key count of every file.
     /// The first 124 keys were written from the old `Phrases` constants, the
     /// next 22 from the lines of the code that were Chinese and English only,
-    /// `h_urgent_scam_words` came after them, and the eight `n_fit_` texts about a
-    /// phone's call audio after that; change a value on purpose
+    /// `h_urgent_scam_words` came after them, then the six `s_ai_fail_` and
+    /// `h_ai_fail_announced` texts on why the AI could not answer, and the eight
+    /// `n_fit_` texts about a phone's call audio; change a value on purpose
     /// and update the line here in the same commit.
     const GOLDEN: [(&str, &str, usize); 9] = [
-        ("en", "501ae982e3fe7f1827f0b66d61c950fc1dffd3be76120b3b4f224964152db95e", 155),
-        ("zh-TW", "fb950c4ba19e4c1268eebc7f3b21fbd76731908b88c0553a1237d44f8bf38ab8", 155),
-        ("zh-CN", "88623a6a1e801275dbd516e3c850df8b07353d06b29de7c491abfbfb8dec3cfa", 155),
-        ("ja", "cb67f4fbb5cb8104ad9178826d7e05c8652066a3af38a6e6e9ecb7a7670cc9b9", 155),
-        ("ko", "7525db9ab8a2a5fd6132685377e236ff782698b5dd07d9b51a15993af0e4d611", 155),
-        ("es", "661591b1d71d7da869298b0e4ca98d27b2248b7f562239a88feaf344ce5aa919", 155),
-        ("fr", "ed6e8819de72aa5a7f1caea1c218a3bce73909fee5e50c251e43cd794ea9ce52", 155),
-        ("de", "46ca520b6dadb67d5732ef794ca467d02facde0334749c36b601ecac113618d2", 155),
-        ("pt", "34f39b9ff16e1464d767bdbec42bfa1f7e1e45ee85bb6681640cbbeb5cd5dcc8", 155),
+        ("en", "f101f0a1b09f4b9533e17eed29497bf0462630b9fa23cd468d96226ca32f052f", 161),
+        ("zh-TW", "6786d40000d24c7399b7ff7f82c7774b4b245a4acc9829cebf28a119914b4f32", 161),
+        ("zh-CN", "61a22d1f4da87ec06cd492e1d739b9b1de5906c3884ae623040d2e4afabf8fa6", 161),
+        ("ja", "4511055e1e2b1e54be660494161c9180bf280a34dbfd23cc8c06f3531e5d2659", 161),
+        ("ko", "6b7e9676856d0bc541b3d77e07c1bef26b888bf87ccf7cab0bcd2af34b66f0ab", 161),
+        ("es", "033ed303b04415e6bef4161d0ecf48840d8fc22638d2363b238afbbdecfaf125", 161),
+        ("fr", "38f34ee6aef1e46b2b92a37ce36534e3c234cace5f801cb95a6b6e0fa54c6f8e", 161),
+        ("de", "61fdc281953756b4965419557376bcc95387ca31e69454d898e34053f230f7a9", 161),
+        ("pt", "33f46eef4d0d0c96040b06e33e0ffbb549f064f5ff60b3838672b69084ce8108", 161),
     ];
 
     const META: &str = include_str!("../../data/i18n/notify/_meta.json");
