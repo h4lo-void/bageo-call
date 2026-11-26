@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.0.0"><img src="https://img.shields.io/badge/release-v2.0.0-brightgreen.svg" alt="Versión v2.0.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.1.0"><img src="https://img.shields.io/badge/release-v2.1.0-brightgreen.svg" alt="Versión v2.1.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="Licencia: AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/commercial-dual%20license-gold.svg" alt="Licencia comercial disponible"></a>
 </p>
@@ -230,7 +230,7 @@ Todas las funciones en detalle: [Funciones](docs/en/FEATURES.md).
 
 ## Qué necesitas
 
-1. **Un teléfono Android de repuesto** con tu SIM, con root mediante Magisk o KernelSU, Android 10 o superior. Probado: Google Pixel 7, 7a, 8 y 9.
+1. **Un teléfono Android de repuesto** con tu SIM, con root mediante Magisk o KernelSU, Android 10 o superior. Probado: Google Pixel (7, 7a, 8 y 9) y Redmi K60 Ultra. Otros teléfonos con root también son compatibles, pero pruébalo tú (mira más abajo).
 2. **Un ordenador** encendido mientras quieras que se contesten llamadas: Windows 10/11, macOS, Linux o Docker. Con la edición solo para el móvil no necesitas ordenador.
 3. **Un cable USB** (también funciona con Wi-Fi).
 4. **Una clave de API de Gemini** de [Google AI Studio](https://aistudio.google.com/apikey), gratuita. Dentro del cupo gratuito no pagas nada (en nuestras pruebas alcanzó para 10 llamadas o más al día). Google cobra por uso solo si superas el cupo gratuito o pasas a un plan de pago.
@@ -258,7 +258,7 @@ La documentación detallada está, por ahora, solo en inglés.
 | **Ir más a fondo** | [Arquitectura](docs/en/ARCHITECTURE.md) · [API](docs/en/API.md) · [MCP](docs/en/MCP.md) · [Hoja de ruta](docs/en/ROADMAP.md) · [Registro de cambios](CHANGELOG.md) · [`android/`](android/README.md) · [`tools/sms_forward/`](tools/sms_forward/README.md) |
 | **Legal** | [Privacidad, seguridad y ley](docs/en/PRIVACY_AND_LEGAL.md) · [Aviso legal y condiciones para operadores](LEGAL.md) · [Licencia dual y comercial](COMMERCIAL_LICENSE.md) · [Auditoría de seguridad y cumplimiento del proyecto](AUDIT_REPORT.md) |
 
-**Estado de las pruebas:** más de 1.400 pruebas automáticas en CI, 234 llamadas simuladas en 28 idiomas y llamadas reales en Pixel 7, 7a y 9. [Detalles](docs/en/FEATURES.md#test-status). Los informes de otros teléfonos e idiomas son los que más ayudan: [CONTRIBUTING.md](CONTRIBUTING.md).
+**Estado de las pruebas:** más de 1.400 pruebas automáticas en CI, 234 llamadas simuladas en 28 idiomas y llamadas reales en Pixel 7, 7a y 9 y en el Redmi K60 Ultra. [Detalles](docs/en/FEATURES.md#test-status). Los informes de otros teléfonos e idiomas son los que más ayudan: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Preguntas frecuentes
 
@@ -286,11 +286,15 @@ para instalar el módulo de Bageo. iOS no lo permite en absoluto.
 <details>
 <summary><strong>¿Qué teléfonos son compatibles?</strong></summary>
 
-Están probados los Google Pixel 7, 7a, 8 y 9, con Android 10 o superior. Otros
-teléfonos con root solo funcionan si la capa de audio de su hardware permite
-que una app grabe la llamada y reproduzca sonido en ella; si no, la llamada se
-contesta pero una de las partes no oye nada. Consulta
-[Qué teléfonos](docs/en/PHONE.md#which-phones).
+Están probados los Google Pixel (7, 7a, 8 y 9) y el Redmi K60 Ultra, con MediaTek,
+con Android 10 o superior. Otros teléfonos Android con root también son
+compatibles, pero no los hemos probado, así que pruébalo tú: llámalo desde otro
+teléfono y habla con la IA unos 20 segundos. Bageo se ajusta solo y te muestra
+el resultado en la consola y en la app. Los teléfonos Samsung con chip Exynos
+casi siempre no funcionan, porque no tienen una vía del sistema que lleve el
+sonido a la llamada. Consulta
+[Qué teléfonos](docs/en/PHONE.md#which-phones) y
+[Primer uso en un teléfono nuevo](docs/en/PHONE.md#first-use-on-a-new-phone-test-the-call-audio).
 
 </details>
 

@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.0.0"><img src="https://img.shields.io/badge/release-v2.0.0-brightgreen.svg" alt="Versão v2.0.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.1.0"><img src="https://img.shields.io/badge/release-v2.1.0-brightgreen.svg" alt="Versão v2.1.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="Licença: AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/commercial-dual%20license-gold.svg" alt="Licença comercial disponível"></a>
 </p>
@@ -230,7 +230,7 @@ Todos os recursos em detalhes: [Recursos](docs/en/FEATURES.md).
 
 ## O que você precisa
 
-1. **Um celular Android reserva** com o seu SIM, com root pelo Magisk ou KernelSU, Android 10 ou mais novo. Testado: Google Pixel 7, 7a, 8 e 9.
+1. **Um celular Android reserva** com o seu SIM, com root pelo Magisk ou KernelSU, Android 10 ou mais novo. Testado: Google Pixel (7, 7a, 8 e 9) e Redmi K60 Ultra. Outros celulares com root também são compatíveis, mas teste o seu (veja abaixo).
 2. **Um computador** ligado enquanto as ligações devem ser atendidas: Windows 10/11, macOS, Linux ou Docker. Com a edição só para o celular, você não precisa de computador.
 3. **Um cabo USB** (Wi-Fi também funciona).
 4. **Uma chave de API do Gemini** do [Google AI Studio](https://aistudio.google.com/apikey), gratuita. Dentro da cota gratuita você não paga nada (nos nossos testes, deu para 10 ligações ou mais por dia). O Google só cobra por uso se você passar da cota gratuita ou mudar para um plano pago.
@@ -258,7 +258,7 @@ A documentação detalhada ainda está só em inglês.
 | **Ir mais fundo** | [Arquitetura](docs/en/ARCHITECTURE.md) · [API](docs/en/API.md) · [MCP](docs/en/MCP.md) · [Roteiro](docs/en/ROADMAP.md) · [Registro de alterações](CHANGELOG.md) · [`android/`](android/README.md) · [`tools/sms_forward/`](tools/sms_forward/README.md) |
 | **Jurídico** | [Privacidade, segurança e a lei](docs/en/PRIVACY_AND_LEGAL.md) · [Aviso legal e termos para operadores](LEGAL.md) · [Licença dupla e comercial](COMMERCIAL_LICENSE.md) · [Auditoria de segurança e conformidade do projeto](AUDIT_REPORT.md) |
 
-**Estado dos testes:** mais de 1.400 testes automáticos no CI, 234 ligações simuladas em 28 idiomas e ligações reais em Pixel 7, 7a e 9. [Detalhes](docs/en/FEATURES.md#test-status). Relatos de outros celulares e idiomas são os que mais ajudam: [CONTRIBUTING.md](CONTRIBUTING.md).
+**Estado dos testes:** mais de 1.400 testes automáticos no CI, 234 ligações simuladas em 28 idiomas e ligações reais em Pixel 7, 7a e 9 e no Redmi K60 Ultra. [Detalhes](docs/en/FEATURES.md#test-status). Relatos de outros celulares e idiomas são os que mais ajudam: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Perguntas frequentes
 
@@ -286,11 +286,15 @@ instalar o módulo do Bageo. O iOS não permite isso de jeito nenhum.
 <details>
 <summary><strong>Quais celulares são compatíveis?</strong></summary>
 
-Os Google Pixel 7, 7a, 8 e 9 foram testados, com Android 10 ou mais novo. Outros
-celulares com root só funcionam se a camada de áudio do hardware deixar um app
-gravar a ligação e tocar som nela; se não, a ligação é atendida, mas um dos
-lados não ouve nada. Veja
-[Quais celulares](docs/en/PHONE.md#which-phones).
+Foram testados os Google Pixel (7, 7a, 8 e 9) e o Redmi K60 Ultra, com chip
+MediaTek, com Android 10 ou mais novo. Outros celulares Android com root também
+são compatíveis, mas não os testamos, então teste o seu: ligue para ele de outro
+celular e converse com a IA por uns 20 segundos. O Bageo se ajusta sozinho e
+mostra o resultado no console e no app. Celulares Samsung com chip Exynos quase
+sempre não funcionam, porque não têm um caminho do sistema que leve som para a
+ligação. Veja
+[Quais celulares](docs/en/PHONE.md#which-phones) e
+[Primeiro uso em um celular novo](docs/en/PHONE.md#first-use-on-a-new-phone-test-the-call-audio).
 
 </details>
 

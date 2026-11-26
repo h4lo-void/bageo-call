@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.0.0"><img src="https://img.shields.io/badge/release-v2.0.0-brightgreen.svg" alt="Version v2.0.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.1.0"><img src="https://img.shields.io/badge/release-v2.1.0-brightgreen.svg" alt="Version v2.1.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="Lizenz: AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/commercial-dual%20license-gold.svg" alt="Kommerzielle Lizenz erhältlich"></a>
 </p>
@@ -230,7 +230,7 @@ Alle Funktionen im Detail: [Funktionen](docs/en/FEATURES.md).
 
 ## Was du brauchst
 
-1. **Ein übriges Android-Telefon** mit deiner SIM-Karte, gerootet mit Magisk oder KernelSU, Android 10 oder neuer. Getestet: Google Pixel 7, 7a, 8 und 9.
+1. **Ein übriges Android-Telefon** mit deiner SIM-Karte, gerootet mit Magisk oder KernelSU, Android 10 oder neuer. Getestet: Google Pixel (7, 7a, 8 und 9) und Redmi K60 Ultra. Andere gerootete Telefone werden ebenfalls unterstützt, teste deins aber selbst (siehe unten).
 2. **Einen Computer**, der läuft, solange Anrufe angenommen werden sollen: Windows 10/11, macOS, Linux oder Docker. Mit der Nur-Handy-Edition brauchst du keinen Computer.
 3. **Ein USB-Kabel** (WLAN geht auch).
 4. **Einen Gemini-API-Schlüssel** von [Google AI Studio](https://aistudio.google.com/apikey), kostenlos. Innerhalb des kostenlosen Kontingents zahlst du nichts (in unseren Tests reichte es für 10 oder mehr Anrufe pro Tag). Google rechnet nur dann nach Nutzung ab, wenn du das kostenlose Kontingent überschreitest oder einen Bezahlplan nutzt.
@@ -258,7 +258,7 @@ Die ausführlichen Dokumente gibt es derzeit nur auf Englisch.
 | **Mehr erfahren** | [Architektur](docs/en/ARCHITECTURE.md) · [API](docs/en/API.md) · [MCP](docs/en/MCP.md) · [Roadmap](docs/en/ROADMAP.md) · [Änderungsprotokoll](CHANGELOG.md) · [`android/` (Englisch)](android/README.md) · [`tools/sms_forward/` (Englisch)](tools/sms_forward/README.md) |
 | **Rechtliches** | [Datenschutz, Sicherheit und Recht](docs/en/PRIVACY_AND_LEGAL.md) · [Rechtlicher Hinweis und Betreiberbedingungen](LEGAL.md) · [Duale und kommerzielle Lizenz](COMMERCIAL_LICENSE.md) · [Sicherheits- und Compliance-Prüfung des Projekts](AUDIT_REPORT.md) |
 
-**Teststatus:** mehr als 1.400 automatisierte Tests in der CI, 234 simulierte Anrufe in 28 Sprachen und echte Anrufe auf Pixel 7, 7a und 9. [Details](docs/en/FEATURES.md#test-status). Rückmeldungen zu anderen Telefonen und Sprachen helfen am meisten: [CONTRIBUTING.md](CONTRIBUTING.md) (Englisch).
+**Teststatus:** mehr als 1.400 automatisierte Tests in der CI, 234 simulierte Anrufe in 28 Sprachen und echte Anrufe auf Pixel 7, 7a und 9 sowie auf dem Redmi K60 Ultra. [Details](docs/en/FEATURES.md#test-status). Rückmeldungen zu anderen Telefonen und Sprachen helfen am meisten: [CONTRIBUTING.md](CONTRIBUTING.md) (Englisch).
 
 ## FAQ
 
@@ -286,11 +286,16 @@ das Bageo-Modul zu installieren. iOS erlaubt es gar nicht.
 <details>
 <summary><strong>Welche Telefone werden unterstützt?</strong></summary>
 
-Getestet sind Google Pixel 7, 7a, 8 und 9 mit Android 10 oder neuer. Andere
-gerootete Telefone funktionieren nur, wenn ihre Audio-Hardwareschicht einer App
-erlaubt, das Gespräch aufzunehmen und hineinzuspielen; sonst wird der Anruf
-angenommen, aber eine Seite hört nichts. Siehe
-[Welche Telefone](docs/en/PHONE.md#which-phones).
+Getestet sind Google Pixel (7, 7a, 8 und 9) und das Redmi K60 Ultra mit
+MediaTek-Chip, jeweils mit Android 10 oder neuer. Andere gerootete
+Android-Telefone werden ebenfalls unterstützt, wir haben sie aber nicht
+getestet; teste deins selbst: Ruf es von einem anderen Telefon an und sprich
+etwa 20 Sekunden mit der KI. Bageo stellt sich selbst ein und zeigt dir das
+Ergebnis in der Konsole und in der App. Samsung-Telefone mit Exynos-Chip
+funktionieren meist nicht, weil sie keinen Systemweg haben, der Ton in ein
+Gespräch bringt. Siehe
+[Welche Telefone](docs/en/PHONE.md#which-phones) und
+[Erste Nutzung auf einem neuen Telefon](docs/en/PHONE.md#first-use-on-a-new-phone-test-the-call-audio).
 
 </details>
 

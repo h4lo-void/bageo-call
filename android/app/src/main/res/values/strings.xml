@@ -18,7 +18,7 @@
     <string name="header_version">Version %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo is %1$s (version differs)</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
-    <string name="header_compat">Tested on Pixel 7, 7a, 8 and 9. Other rooted phones may work; try at your own risk.</string>
+    <string name="header_compat">Tested on Google Pixel and Redmi K60 Ultra. Other rooted phones are supported too, but test yours: call it from another phone and talk to the AI for about 20 seconds.</string>
 
     <!-- Status card and the switch between AI mode and normal phone -->
     <string name="st_ai_on">The AI is answering your calls</string>

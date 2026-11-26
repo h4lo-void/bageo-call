@@ -18,7 +18,7 @@
     <string name="header_version">バージョン %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo は %1$s（バージョンが異なります）</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
-    <string name="header_compat">Pixel 7、7a、8、9 で動作確認済みです。root 化した他の機種でも動く可能性がありますが、自己責任でお試しください。</string>
+    <string name="header_compat">Google Pixel と Redmi K60 Ultra で動作確認済みです。root 化した他の機種にも対応していますが未確認なので、別の電話からかけて AI と 20 秒ほど話し、ご自身で試してください。</string>
 
     <!-- Status card and the switch between AI mode and normal phone -->
     <string name="st_ai_on">AI が電話に出ています</string>

@@ -16,23 +16,23 @@ This page covers:
 Building the app, its permissions and its protocol are covered in
 [`android/README.md`](../../android/README.md).
 
-This page describes **Bageo 2.0**: the root module `v2.0.0` (versionCode 30) with
-the app `2.0.0` (versionCode 38) inside, installed from
-`bageo-phone-module-2.0.0.zip` (**Bageo Uplink**, for pairing with Bageo on a
+This page describes **Bageo 2.1**: the root module `v2.1.0` (versionCode 31) with
+the app `2.1.0` (versionCode 39) inside, installed from
+`bageo-phone-module-2.1.0.zip` (**Bageo Uplink**, for pairing with Bageo on a
 computer or NAS) or
-`bageo-phone-standalone-2.0.0.zip` (**Bageo AI Call Agent**, the phone-only
+`bageo-phone-standalone-2.1.0.zip` (**Bageo AI Call Agent**, the phone-only
 edition: runs the full Bageo engine and console inside the phone with no computer
 needed). The app shows its version under *Advanced*, and the console under
 *System → Phones*.
 
 | Install file | What it is | Module ID |
 |---|---|---|
-| `bageo-phone-standalone-2.0.0.zip` | **Bageo AI Call Agent**: phone-only, no computer. All of Bageo runs on the phone. | `bageo_ai_call_agent` (shown as **Bageo AI Call Agent**) |
-| `bageo-phone-module-2.0.0.zip` | For Bageo on a computer: use it with the Windows, macOS or Linux installer, or Docker. | `pixelcallai_uplink` (shown as **Bageo Uplink (for Bageo on a computer)**) |
+| `bageo-phone-standalone-2.1.0.zip` | **Bageo AI Call Agent**: phone-only, no computer. All of Bageo runs on the phone. | `bageo_ai_call_agent` (shown as **Bageo AI Call Agent**) |
+| `bageo-phone-module-2.1.0.zip` | For Bageo on a computer: use it with the Windows, macOS or Linux installer, or Docker. | `pixelcallai_uplink` (shown as **Bageo Uplink (for Bageo on a computer)**) |
 
 Install only one of the two. When you install one, the other is removed automatically at the next reboot.
 
-> **Want phone-only with no computer?** Flash `bageo-phone-standalone-2.0.0.zip`
+> **Want phone-only with no computer?** Flash `bageo-phone-standalone-2.1.0.zip`
 > instead. With a free Gemini key from Google AI Studio you pay no API fees; in
 > our own tests the free quota covered 10 or more calls a day (Google sets the
 > free limit, and it can change). The two editions have different module IDs:
@@ -58,14 +58,21 @@ Install only one of the two. When you install one, the other is removed automati
 
 ## Which phones
 
-- **Tested:** Google Pixel 7, 7a, 8 and 9, rooted with Magisk or KernelSU.
+- **Tested:** Google Pixel (7, 7a, 8 and 9) and the MediaTek phone Redmi K60 Ultra, rooted with Magisk or KernelSU.
 - **Android 10 or newer.**
-- **Other phones: at your own risk.** The app needs two things that many
-  phones keep from apps, even privileged ones: recording the other party
-  during a call, and playing sound *into* the call. If either is missing, the
-  call is answered but one side hears nothing. The phones tested so far are
-  listed under [First use on a new phone](#first-use-on-a-new-phone-test-the-call-audio); if you
-  try another one, please report what happened.
+- **Other rooted Android phones are supported too, but we have not tested
+  them, so test yours.** After installing, call the phone from another phone
+  and talk to the AI for about 20 seconds. Bageo adjusts by itself and tells
+  you the result in the console and the app (see
+  [First use on a new phone](#first-use-on-a-new-phone-test-the-call-audio)).
+  The app needs two things that many phones keep from apps, even privileged
+  ones: recording the other party during a call, and playing sound *into* the
+  call. If either is missing, the call is answered but one side hears nothing,
+  and the test call shows it. If you try another model, please report what
+  happened.
+- **Samsung phones with Exynos chips mostly do not work.** They have no system
+  path that carries sound into a call. You can still install one: the first
+  test call shows the result.
 
 Phones also differ in one detail, which Bageo measures by itself at the start
 of every call: whether the phone's call recording picks up the AI's own voice.
@@ -95,7 +102,7 @@ handset. All of this can be switched off from the app or the console (see
 1. **Root** the phone with Magisk or KernelSU (not covered here).
 2. If you ever installed the app as a plain APK, uninstall it. Never have both.
 3. Copy `bageo-phone-module-<version>.zip` to the phone (for this release
-   `bageo-phone-module-2.0.0.zip`). In the Magisk or KernelSU app: *Modules →
+   `bageo-phone-module-2.1.0.zip`). In the Magisk or KernelSU app: *Modules →
    Install from storage* → pick the zip → reboot.
 4. Open **Bageo**. The card at the top says in one sentence what the phone is
    doing right now. Below it, **Setup steps** lists what is still missing,
@@ -232,7 +239,7 @@ You get a notification when a new phone connects untested, one with the result o
 - `prefer_rejected`: the phone has that output but refuses to send the app's sound to it. Check that the module is installed and the phone was restarted afterwards.
 - `track_rejected`: the output is there, but the phone could not open a sound track on it with any of the settings.
 
-**Which phones.** Tested: Google Pixel and the MediaTek phone Redmi K60 Ultra. Samsung phones with Exynos chips are not supported: they mostly have no system path that carries sound into a call. You can still install on one; after a test call Bageo shows the result. Other phones have not been tested, and the first test call tells.
+**Which phones.** Tested: Google Pixel and the MediaTek phone Redmi K60 Ultra. Other rooted Android phones are supported but untested: make the test call and Bageo shows the result. Samsung phones with Exynos chips mostly do not work, because they have no system path that carries sound into a call; you can still install on one, and the test call shows the result.
 
 **Report a phone.** If the console says *has a problem* or *cannot send*, or you keep answering *No*, open an issue with the phone's model and its `uplink health` line (it holds no phone number or call content). See [Reporting a problem](TROUBLESHOOTING.md#reporting-a-problem).
 

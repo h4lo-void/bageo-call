@@ -18,7 +18,7 @@
     <string name="header_version">버전 %1$s(%2$d)</string>
     <string name="header_version_diff">Bageo는 %1$s(버전이 다릅니다)</string>
     <string name="header_device">%1$s · Android %2$s(API %3$d)</string>
-    <string name="header_compat">Pixel 7, 7a, 8, 9에서 테스트했습니다. 루팅된 다른 휴대전화에서도 동작할 수 있지만, 위험은 본인이 부담해야 합니다.</string>
+    <string name="header_compat">Google Pixel과 Redmi K60 Ultra에서 테스트했습니다. root 한 다른 폰도 지원하지만 직접 테스트해 보세요. 다른 전화로 걸어 AI와 20초 정도 이야기하면 됩니다.</string>
 
     <!-- Status card and the switch between AI mode and normal phone -->
     <string name="st_ai_on">AI가 전화를 받고 있습니다</string>

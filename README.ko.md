@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.0.0"><img src="https://img.shields.io/badge/release-v2.0.0-brightgreen.svg" alt="릴리스 v2.0.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.1.0"><img src="https://img.shields.io/badge/release-v2.1.0-brightgreen.svg" alt="릴리스 v2.1.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="라이선스: AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/commercial-dual%20license-gold.svg" alt="상용 라이선스 제공"></a>
 </p>
@@ -230,7 +230,7 @@
 
 ## 필요한 것
 
-1. **여분의 Android 폰**: 내 SIM을 넣고 Magisk나 KernelSU로 root 한 Android 10 이상 기기. 테스트한 기기: Google Pixel 7, 7a, 8, 9.
+1. **여분의 Android 폰**: 내 SIM을 넣고 Magisk나 KernelSU로 root 한 Android 10 이상 기기. 테스트한 기기: Google Pixel(7, 7a, 8, 9)과 Redmi K60 Ultra. root 한 다른 폰도 지원하지만 직접 테스트해 보세요(아래 참고).
 2. **컴퓨터**: 전화를 받아야 하는 동안 켜져 있는 컴퓨터. Windows 10/11, macOS, Linux 또는 Docker. 휴대폰 단독 실행판을 쓰면 컴퓨터는 필요 없습니다.
 3. **USB 케이블** (Wi-Fi로도 됩니다).
 4. **Gemini API 키**: [Google AI Studio](https://aistudio.google.com/apikey)에서 무료로 받습니다. 무료 한도 안에서는 요금이 없고, 직접 써 본 결과 하루 10통 이상은 충분했습니다. 무료 한도를 넘기거나 유료 요금제로 바꾼 경우에만 사용한 만큼 Google이 청구합니다.
@@ -258,7 +258,7 @@
 | **더 깊이** | [아키텍처](docs/en/ARCHITECTURE.md) · [API](docs/en/API.md) · [MCP](docs/en/MCP.md) · [로드맵](docs/en/ROADMAP.md) · [변경 이력](CHANGELOG.md) · [`android/`](android/README.md) · [`tools/sms_forward/`](tools/sms_forward/README.md) |
 | **법률** | [개인정보, 안전, 법률](docs/en/PRIVACY_AND_LEGAL.md) · [법적 고지와 운영자 약관](LEGAL.md) · [이중 라이선스와 상용 라이선스](COMMERCIAL_LICENSE.md) · [프로젝트 보안·규정 준수 감사](AUDIT_REPORT.md) |
 
-**테스트 현황:** CI에서 1,400개가 넘는 자동 테스트, 28개 언어로 234건의 모의 통화, Pixel 7, 7a, 9의 실제 통화. [자세히 보기](docs/en/FEATURES.md#test-status). 다른 폰과 언어에서 보내 주시는 제보가 가장 큰 도움이 됩니다: [CONTRIBUTING.md](CONTRIBUTING.md).
+**테스트 현황:** CI에서 1,400개가 넘는 자동 테스트, 28개 언어로 234건의 모의 통화, Pixel 7, 7a, 9와 Redmi K60 Ultra의 실제 통화. [자세히 보기](docs/en/FEATURES.md#test-status). 다른 폰과 언어에서 보내 주시는 제보가 가장 큰 도움이 됩니다: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## FAQ
 
@@ -286,11 +286,13 @@ SIM을 메인 폰에 그대로 두고 싶다면, 받지 못한 전화를
 <details>
 <summary><strong>어떤 폰을 지원합니까?</strong></summary>
 
-Google Pixel 7, 7a, 8, 9에서 테스트했고, Android 10 이상이 필요합니다.
-다른 root 폰은 오디오 하드웨어 계층이 앱의 통화 녹음과
-통화 속 소리 재생을 허용할 때만 동작합니다.
-그렇지 않으면 전화는 받아도 한쪽에서 아무 소리도 들리지 않습니다.
-[지원 기기](docs/en/PHONE.md#which-phones)를 참고하시기 바랍니다.
+Google Pixel(7, 7a, 8, 9)과 MediaTek 기반의 Redmi K60 Ultra에서 테스트했고, Android 10 이상이 필요합니다.
+root 한 다른 Android 폰도 지원하지만 저희가 테스트하지 않았으니 직접 테스트해 보세요.
+설치한 뒤 다른 전화로 걸어서 AI와 20초 정도 이야기하면, Bageo가 알아서 설정을 맞추고
+결과를 콘솔과 앱에 알려 줍니다.
+삼성 Exynos 칩 폰은 통화에 소리를 보내는 시스템 경로가 없어 대부분 동작하지 않습니다.
+[지원 기기](docs/en/PHONE.md#which-phones)와
+[새 폰에서 처음 할 일](docs/en/PHONE.md#first-use-on-a-new-phone-test-the-call-audio)을 참고하시기 바랍니다.
 
 </details>
 

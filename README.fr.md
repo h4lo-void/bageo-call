@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.0.0"><img src="https://img.shields.io/badge/release-v2.0.0-brightgreen.svg" alt="Version v2.0.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.1.0"><img src="https://img.shields.io/badge/release-v2.1.0-brightgreen.svg" alt="Version v2.1.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="Licence : AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/commercial-dual%20license-gold.svg" alt="Licence commerciale disponible"></a>
 </p>
@@ -230,7 +230,7 @@ Toutes les fonctions en détail : [Fonctionnalités](docs/en/FEATURES.md).
 
 ## Ce qu’il vous faut
 
-1. **Un téléphone Android de rechange** avec votre SIM, rooté avec Magisk ou KernelSU, Android 10 ou plus récent. Testés : Google Pixel 7, 7a, 8 et 9.
+1. **Un téléphone Android de rechange** avec votre SIM, rooté avec Magisk ou KernelSU, Android 10 ou plus récent. Testés : Google Pixel (7, 7a, 8 et 9) et Redmi K60 Ultra. Les autres téléphones rootés sont aussi pris en charge, mais testez le vôtre (voir plus bas).
 2. **Un ordinateur** allumé quand les appels doivent être décrochés : Windows 10/11, macOS, Linux ou Docker. Avec l’édition téléphone seul, vous n’avez pas besoin d’ordinateur.
 3. **Un câble USB** (le Wi-Fi fonctionne aussi).
 4. **Une clé API Gemini** de [Google AI Studio](https://aistudio.google.com/apikey), gratuite. Dans le quota gratuit, vous ne payez rien (lors de nos tests, il a suffi pour 10 appels ou plus par jour). Google ne facture à l’usage que si vous dépassez le quota gratuit ou passez à une offre payante.
@@ -258,7 +258,7 @@ Pour l’instant, les documents détaillés sont en anglais.
 | **Aller plus loin** | [Architecture](docs/en/ARCHITECTURE.md) · [API](docs/en/API.md) · [MCP](docs/en/MCP.md) · [Feuille de route](docs/en/ROADMAP.md) · [Journal des modifications](CHANGELOG.md) · [`android/` (en anglais)](android/README.md) · [`tools/sms_forward/` (en anglais)](tools/sms_forward/README.md) |
 | **Mentions légales** | [Confidentialité, sécurité et droit](docs/en/PRIVACY_AND_LEGAL.md) · [Avertissement juridique et conditions d’exploitation](LEGAL.md) · [Double licence et licence commerciale](COMMERCIAL_LICENSE.md) · [Audit de sécurité et de conformité du projet](AUDIT_REPORT.md) |
 
-**État des tests :** plus de 1 400 tests automatisés en CI, 234 appels simulés en 28 langues, et de vrais appels sur Pixel 7, 7a et 9. [Détails](docs/en/FEATURES.md#test-status). Les retours sur d’autres téléphones et d’autres langues aident le plus : [CONTRIBUTING.md](CONTRIBUTING.md) (en anglais).
+**État des tests :** plus de 1 400 tests automatisés en CI, 234 appels simulés en 28 langues, et de vrais appels sur Pixel 7, 7a et 9 et sur Redmi K60 Ultra. [Détails](docs/en/FEATURES.md#test-status). Les retours sur d’autres téléphones et d’autres langues aident le plus : [CONTRIBUTING.md](CONTRIBUTING.md) (en anglais).
 
 ## FAQ
 
@@ -286,11 +286,15 @@ KernelSU pour installer le module Bageo. iOS ne le permet pas du tout.
 <details>
 <summary><strong>Quels téléphones sont pris en charge ?</strong></summary>
 
-Les Google Pixel 7, 7a, 8 et 9 sont testés, sous Android 10 ou plus récent.
-Les autres téléphones rootés ne fonctionnent que si leur couche audio matérielle
-permet à une application d’enregistrer l’appel et d’y diffuser du son ; sinon
-l’appel est décroché, mais l’un des deux côtés n’entend rien. Voir
-[Quels téléphones](docs/en/PHONE.md#which-phones).
+Les Google Pixel (7, 7a, 8 et 9) et le Redmi K60 Ultra, à puce MediaTek, sont
+testés, sous Android 10 ou plus récent. Les autres téléphones Android rootés
+sont aussi pris en charge, mais nous ne les avons pas testés : testez le vôtre.
+Appelez-le depuis un autre téléphone et parlez à l’IA environ 20 secondes ;
+Bageo s’ajuste tout seul et affiche le résultat dans la console et dans
+l’application. Les téléphones Samsung à puce Exynos ne fonctionnent le plus
+souvent pas, faute de voie système pour envoyer du son dans l’appel. Voir
+[Quels téléphones](docs/en/PHONE.md#which-phones) et
+[Première utilisation sur un nouveau téléphone](docs/en/PHONE.md#first-use-on-a-new-phone-test-the-call-audio).
 
 </details>
 
