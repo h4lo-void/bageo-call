@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Nota sem venjulegan síma?</string>
     <string name="connection_hint_usb">USB (sjálfgefið, mælt með): haltu ws://127.0.0.1:8765. Tölvuforritið áframsendir þetta tengi um USB-snúruna með adb reverse sjálfkrafa.</string>
     <string name="connection_hint_wifi">Wi-Fi: sláðu inn slóðina úr tölvuforritinu, t.d. ws://192.0.2.10:8787/ws?token=… Síminn og tölvan verða að vera á sama neti.</string>
+    <string name="fit_adjusted">Hljóð símtala var stillt sjálfkrafa</string>
+    <string name="fit_noted">Skráð: vandamál er með hljóð símtala í þessum síma</string>
+    <string name="fit_problem">Vandamál er með hljóð símtala og allar stillingar hafa verið reyndar. Sjáðu „Fyrsta notkun í nýjum síma“ í leiðbeiningunum.</string>
+    <string name="fit_retest">Aðrar stillingar fyrir hljóð símtala eru tilbúnar. Hringdu aftur í þennan síma til að prófa þær.</string>
+    <string name="fit_unsupported">Þessi sími getur ekki sent rödd AI inn í símtöl</string>
+    <string name="fit_untested">Hljóð símtala hefur ekki verið prófað: hringdu í þennan síma úr öðrum síma og talaðu við AI í um 20 sekúndur. Þá stillir Bageo það sjálft.</string>
     <string name="grant_perms">Leyfðu umbeðnar heimildir og ýttu svo aftur á Ræsa þjónustu.</string>
-    <string name="header_compat">Prófað á Pixel 7, 7a, 8 og 9. Aðrir símar með root gætu virkað; prófaðu á eigin ábyrgð.</string>
+    <string name="header_compat">Prófað á Google Pixel og Redmi K60 Ultra. Aðrir símar með root eru einnig studdir, en prófaðu þinn: hringdu í hann úr öðrum síma og talaðu við AI í um 20 sekúndur.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Útgáfa %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo er %1$s (önnur útgáfa)</string>

@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Enggo minangka telpon biasa?</string>
     <string name="connection_hint_usb">USB (baku, disaranaké): tetep ws://127.0.0.1:8765. Program komputer nerusaké port iki liwat kabel USB nganggo adb reverse.</string>
     <string name="connection_hint_wifi">Wi-Fi: lebokaké alamat saka komputer, contoné ws://192.0.2.10:8787/ws?token=… Telpon lan komputer kudu ing jaringan sing padha.</string>
+    <string name="fit_adjusted">Swara telpon wis disetel kanthi otomatis</string>
+    <string name="fit_noted">Wis dicathet: swara telpon ing telpon iki ana masalah</string>
+    <string name="fit_problem">Swara telpon ana masalah lan kabeh setelan wis dicoba. Delengen “Panggunaan pisanan ing telpon anyar” ing pandhuan.</string>
+    <string name="fit_retest">Setelan swara telpon liyane wis siap. Telpunen maneh telpon iki kanggo nyoba.</string>
+    <string name="fit_unsupported">Telpon iki ora bisa ngirim swara AI menyang telpon</string>
+    <string name="fit_untested">Swara telpon durung dites: telpuna telpon iki saka telpon liyane lan ngobrola karo AI kira-kira 20 detik. Sawise iku Bageo bakal nyetel dhewe.</string>
     <string name="grant_perms">Wènèhana idin sing dijaluk, banjur tutul Wiwiti layanan manèh.</string>
-    <string name="header_compat">Dijajal ing Pixel 7, 7a, 8, lan 9. Telpon root liyané bisa mlaku; jajal kanthi risiko dhéwé.</string>
+    <string name="header_compat">Wis dites ing Google Pixel lan Redmi K60 Ultra. Telpon liyane sing wis di-root uga didhukung, nanging tesen telpon panjenengan: telpunen saka telpon liyane lan ngobrola karo AI kira-kira 20 detik.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versi %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo yaiku %1$s (versi beda)</string>

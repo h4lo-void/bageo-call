@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">સામાન્ય ફોન તરીકે વાપરવો છે?</string>
     <string name="connection_hint_usb">USB (ડિફોલ્ટ, ભલામણ કરેલ): ws://127.0.0.1:8765 રાખો. કમ્પ્યુટર પ્રોગ્રામ USB કેબલ દ્વારા adb reverse થી આ પોર્ટ આપોઆપ ફોરવર્ડ કરે છે.</string>
     <string name="connection_hint_wifi">Wi-Fi: કમ્પ્યુટર પ્રોગ્રામે બતાવેલ સરનામું નાખો, દા.ત. ws://192.0.2.10:8787/ws?token=… ફોન અને કમ્પ્યુટર એક જ નેટવર્ક પર હોવા જોઈએ.</string>
+    <string name="fit_adjusted">કૉલનો અવાજ આપમેળે ગોઠવાઈ ગયો</string>
+    <string name="fit_noted">નોંધ્યું: આ ફોનના કૉલના અવાજમાં સમસ્યા છે</string>
+    <string name="fit_problem">કૉલના અવાજમાં સમસ્યા છે અને બધી સેટિંગ અજમાવી લેવામાં આવી છે. માર્ગદર્શિકામાં “નવા ફોન પર પહેલી વાર ઉપયોગ” જુઓ.</string>
+    <string name="fit_retest">કૉલના અવાજની બીજી સેટિંગ તૈયાર છે. તેમને ચકાસવા આ ફોન પર ફરી કૉલ કરો.</string>
+    <string name="fit_unsupported">આ ફોન કૉલમાં AI નો અવાજ મોકલી શકતો નથી</string>
+    <string name="fit_untested">કૉલનો અવાજ હજી ચકાસાયો નથી: બીજા ફોનથી આ ફોન પર કૉલ કરો અને લગભગ 20 સેકન્ડ AI સાથે વાત કરો. પછી Bageo જાતે તેને ગોઠવી લેશે.</string>
     <string name="grant_perms">માંગેલી પરવાનગીઓ આપો, પછી ફરી સેવા શરૂ કરો પર ટૅપ કરો.</string>
-    <string name="header_compat">Pixel 7, 7a, 8 અને 9 પર ચકાસેલ. અન્ય રૂટ કરેલા ફોન કામ કરી શકે છે; તમારા જોખમે વાપરો.</string>
+    <string name="header_compat">Google Pixel અને Redmi K60 Ultra પર ચકાસેલ છે. રૂટ કરેલા અન્ય ફોન પણ સપોર્ટેડ છે, પણ તમારો ફોન ચકાસી લો: બીજા ફોનથી તેના પર કૉલ કરો અને લગભગ 20 સેકન્ડ AI સાથે વાત કરો.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">વર્ઝન %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo %1$s છે (સંસ્કરણ અલગ છે)</string>

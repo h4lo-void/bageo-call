@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">ಸಾಮಾನ್ಯ ಫೋನ್ ಆಗಿ ಬಳಸಬೇಕೇ?</string>
     <string name="connection_hint_usb">USB (ಡೀಫಾಲ್ಟ್, ಶಿಫಾರಸು ಮಾಡಲಾಗಿದೆ): ws://127.0.0.1:8765 ಇರಲಿ. ಕಂಪ್ಯೂಟರ್ ಪ್ರೋಗ್ರಾಂ USB ಕೇಬಲ್ ಮೂಲಕ adb reverse ಜೊತೆ ಈ ಪೋರ್ಟ್ ಅನ್ನು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಫಾರ್ವರ್ಡ್ ಮಾಡುತ್ತದೆ.</string>
     <string name="connection_hint_wifi">Wi-Fi: ಕಂಪ್ಯೂಟರ್ ಪ್ರೋಗ್ರಾಂ ತೋರಿಸುವ ವಿಳಾಸ ಹಾಕಿ, ಉದಾ. ws://192.0.2.10:8787/ws?token=… ಫೋನ್ ಮತ್ತು ಕಂಪ್ಯೂಟರ್ ಒಂದೇ ನೆಟ್‌ವರ್ಕ್‌ನಲ್ಲಿರಬೇಕು.</string>
+    <string name="fit_adjusted">ಕರೆ ಧ್ವನಿಯನ್ನು ತಾನಾಗಿಯೇ ಹೊಂದಿಸಲಾಗಿದೆ</string>
+    <string name="fit_noted">ಗಮನಿಸಲಾಗಿದೆ: ಈ ಫೋನ್‌ನ ಕರೆ ಧ್ವನಿಯಲ್ಲಿ ಸಮಸ್ಯೆ ಇದೆ</string>
+    <string name="fit_problem">ಕರೆ ಧ್ವನಿಯಲ್ಲಿ ಸಮಸ್ಯೆ ಇದೆ ಮತ್ತು ಎಲ್ಲಾ ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ಪ್ರಯತ್ನಿಸಲಾಗಿದೆ. ಮಾರ್ಗದರ್ಶಿಯಲ್ಲಿ “ಹೊಸ ಫೋನ್‌ನಲ್ಲಿ ಮೊದಲ ಬಳಕೆ” ನೋಡಿ.</string>
+    <string name="fit_retest">ಕರೆ ಧ್ವನಿಯ ಇತರ ಸೆಟ್ಟಿಂಗ್‌ಗಳು ಸಿದ್ಧವಾಗಿವೆ. ಅವುಗಳನ್ನು ಪರೀಕ್ಷಿಸಲು ಈ ಫೋನ್‌ಗೆ ಮತ್ತೊಮ್ಮೆ ಕರೆ ಮಾಡಿ.</string>
+    <string name="fit_unsupported">ಈ ಫೋನ್ ಕರೆಗಳಿಗೆ AI ಧ್ವನಿಯನ್ನು ಕಳುಹಿಸಲು ಸಾಧ್ಯವಿಲ್ಲ</string>
+    <string name="fit_untested">ಕರೆ ಧ್ವನಿಯನ್ನು ಇನ್ನೂ ಪರೀಕ್ಷಿಸಿಲ್ಲ: ಬೇರೊಂದು ಫೋನ್‌ನಿಂದ ಈ ಫೋನ್‌ಗೆ ಕರೆ ಮಾಡಿ ಸುಮಾರು 20 ಸೆಕೆಂಡ್ AI ಜೊತೆ ಮಾತನಾಡಿ. ನಂತರ Bageo ಅದನ್ನು ತಾನೇ ಹೊಂದಿಸುತ್ತದೆ.</string>
     <string name="grant_perms">ಕೇಳಿದ ಅನುಮತಿಗಳನ್ನು ನೀಡಿ, ನಂತರ ಮತ್ತೆ ಸೇವೆ ಪ್ರಾರಂಭಿಸಿ ಟ್ಯಾಪ್ ಮಾಡಿ.</string>
-    <string name="header_compat">Pixel 7, 7a, 8 ಮತ್ತು 9 ರಲ್ಲಿ ಪರೀಕ್ಷಿಸಲಾಗಿದೆ. ಇತರ ರೂಟ್ ಮಾಡಿದ ಫೋನ್‌ಗಳು ಕೆಲಸ ಮಾಡಬಹುದು; ನಿಮ್ಮ ಸ್ವಂತ ಜವಾಬ್ದಾರಿಯಲ್ಲಿ ಬಳಸಿ.</string>
+    <string name="header_compat">Google Pixel ಮತ್ತು Redmi K60 Ultra ನಲ್ಲಿ ಪರೀಕ್ಷಿಸಲಾಗಿದೆ. root ಮಾಡಿದ ಇತರ ಫೋನ್‌ಗಳಿಗೂ ಬೆಂಬಲವಿದೆ, ಆದರೆ ನಿಮ್ಮ ಫೋನ್ ಪರೀಕ್ಷಿಸಿ: ಬೇರೊಂದು ಫೋನ್‌ನಿಂದ ಅದಕ್ಕೆ ಕರೆ ಮಾಡಿ ಸುಮಾರು 20 ಸೆಕೆಂಡ್ AI ಜೊತೆ ಮಾತನಾಡಿ.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">ಆವೃತ್ತಿ %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo %1$s ಆಗಿದೆ (ಆವೃತ್ತಿ ಭಿನ್ನವಾಗಿದೆ)</string>

@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Usar com a telèfon normal?</string>
     <string name="connection_hint_usb">USB (per defecte, recomanat): deixa ws://127.0.0.1:8765. El programa d\'ordinador redirigeix aquest port per cable USB amb adb reverse.</string>
     <string name="connection_hint_wifi">Wi-Fi: introduïu l\'adreça que mostra l\'ordinador, p. ex. ws://192.0.2.10:8787/ws?token=… El telèfon i l\'ordinador han d\'estar a la mateixa xarxa.</string>
+    <string name="fit_adjusted">L\'àudio de les trucades s\'ha ajustat automàticament</string>
+    <string name="fit_noted">Anotat: l\'àudio de les trucades d\'aquest telèfon té un problema</string>
+    <string name="fit_problem">L\'àudio de les trucades té un problema i s\'han provat tots els ajustos. Consulta «Primer ús en un telèfon nou» a la guia.</string>
+    <string name="fit_retest">Hi ha altres ajustos d\'àudio de trucades preparats. Torna a trucar a aquest telèfon per provar-los.</string>
+    <string name="fit_unsupported">Aquest telèfon no pot enviar la veu de l\'AI a les trucades</string>
+    <string name="fit_untested">Encara no s\'ha provat l\'àudio de les trucades: truca a aquest telèfon des d\'un altre i parla amb l\'AI durant uns 20 segons. Després Bageo l\'ajustarà ell mateix.</string>
     <string name="grant_perms">Concedeix els permisos sol·licitats i torna a tocar Inicia el servei.</string>
-    <string name="header_compat">Provat en Pixel 7, 7a, 8 i 9. Altres telèfons amb root poden funcionar; utilitza-ho sota la teva responsabilitat.</string>
+    <string name="header_compat">Provat amb Google Pixel i Redmi K60 Ultra. Els altres telèfons amb root també són compatibles, però prova el teu: truca\'l des d\'un altre telèfon i parla amb l\'AI durant uns 20 segons.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versió %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo és la %1$s (versió diferent)</string>

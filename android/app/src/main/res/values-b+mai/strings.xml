@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">सामान्य फोन जकाँ उपयोग करी?</string>
     <string name="connection_hint_usb">USB (डिफॉल्ट, अनुशंसित): ws://127.0.0.1:8765 राखू। कंप्यूटर प्रोग्राम USB केबल सँ adb reverse द्वारा ई पोर्ट अपनहि फॉरवर्ड करैत अछि।</string>
     <string name="connection_hint_wifi">Wi-Fi: कंप्यूटर प्रोग्राम मे देखाओल पता डालू, जेना ws://192.0.2.10:8787/ws?token=… फोन आ कंप्यूटर एकहि नेटवर्क पर रहबाक चाही।</string>
+    <string name="fit_adjusted">कॉलक आवाज अपने-आप ठीक कएल गेल</string>
+    <string name="fit_noted">दर्ज कएल गेल: एहि फोनक कॉलक आवाजमे समस्या अछि</string>
+    <string name="fit_problem">कॉलक आवाजमे समस्या अछि आ सभ सेटिंग आजमाओल गेल अछि। गाइडमे “नव फोन पर पहिल बेर प्रयोग” देखू।</string>
+    <string name="fit_retest">कॉलक आवाजक आन सेटिंग तैयार अछि। ओकरा जाँचबाक लेल एहि फोन पर फेर कॉल करू।</string>
+    <string name="fit_unsupported">ई फोन कॉलमे AI केर आवाज नहि पठा सकैत अछि</string>
+    <string name="fit_untested">कॉलक आवाज एखन धरि जाँचल नहि गेल अछि: दोसर फोनसँ एहि फोन पर कॉल करू आ लगभग 20 सेकंड AI सँ गप करू। तकर बाद Bageo एकरा अपने सेट कऽ लेत।</string>
     <string name="grant_perms">माँगल गेल अनुमति दिअ, फेर सेवा शुरू करू पर टैप करू।</string>
-    <string name="header_compat">Pixel 7, 7a, 8 आ 9 पर जाँचल गेल। दोसर रूट कएल फोन काज कऽ सकैत अछि; अपन जिम्मेदारी पर चलाऊ।</string>
+    <string name="header_compat">Google Pixel आ Redmi K60 Ultra पर जाँचल गेल अछि। root कएल आन फोन सेहो समर्थित अछि, मुदा अपन फोन जाँचि लिअ: दोसर फोनसँ ओहि पर कॉल करू आ लगभग 20 सेकंड AI सँ गप करू।</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">संस्करण %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo %1$s अछि (संस्करण अलग अछि)</string>

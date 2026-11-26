@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">ସାଧାରଣ ଫୋନ ଭାବେ ବ୍ୟବହାର କରିବେ କି?</string>
     <string name="connection_hint_usb">USB (ଡିଫଲ୍ଟ, ପରାମର୍ଶିତ): ws://127.0.0.1:8765 ରଖନ୍ତୁ। କମ୍ପ୍ୟୁଟର ପ୍ରୋଗ୍ରାମ୍ USB କେବଲ୍ ଦ୍ୱାରା adb reverse ସହ ଏହି ପୋର୍ଟ ଆପେ ଆପେ ଫରୱାର୍ଡ କରେ।</string>
     <string name="connection_hint_wifi">Wi-Fi: କମ୍ପ୍ୟୁଟର ପ୍ରୋଗ୍ରାମ୍ ଦେଖାଉଥିବା ଠିକଣା ଦିଅନ୍ତୁ, ଯଥା ws://192.0.2.10:8787/ws?token=… ଫୋନ ଓ କମ୍ପ୍ୟୁଟର ଗୋଟିଏ ନେଟୱାର୍କରେ ଥିବା ଦରକାର।</string>
+    <string name="fit_adjusted">କଲ୍ ସ୍ୱର ସ୍ୱୟଂଚାଳିତ ଭାବେ ଠିକ୍ କରାଗଲା</string>
+    <string name="fit_noted">ଲିପିବଦ୍ଧ ହେଲା: ଏହି ଫୋନର କଲ୍ ସ୍ୱରରେ ସମସ୍ୟା ଅଛି</string>
+    <string name="fit_problem">କଲ୍ ସ୍ୱରରେ ସମସ୍ୟା ଅଛି ଏବଂ ସମସ୍ତ ସେଟିଂ ଚେଷ୍ଟା କରାଯାଇଛି। ଗାଇଡ୍‌ରେ “ନୂଆ ଫୋନରେ ପ୍ରଥମ ବ୍ୟବହାର” ଦେଖନ୍ତୁ।</string>
+    <string name="fit_retest">କଲ୍ ସ୍ୱରର ଅନ୍ୟ ସେଟିଂ ପ୍ରସ୍ତୁତ ଅଛି। ସେଗୁଡ଼ିକୁ ପରୀକ୍ଷା କରିବାକୁ ଏହି ଫୋନକୁ ପୁଣି କଲ୍ କରନ୍ତୁ।</string>
+    <string name="fit_unsupported">ଏହି ଫୋନ କଲ୍‌ରେ AI ର ସ୍ୱର ପଠାଇପାରିବ ନାହିଁ</string>
+    <string name="fit_untested">କଲ୍ ସ୍ୱର ଏପର୍ଯ୍ୟନ୍ତ ପରୀକ୍ଷା ହୋଇନି: ଅନ୍ୟ ଫୋନରୁ ଏହି ଫୋନକୁ କଲ୍ କରନ୍ତୁ ଏବଂ ପ୍ରାୟ 20 ସେକେଣ୍ଡ AI ସହ କଥା ହୁଅନ୍ତୁ। ତାପରେ Bageo ନିଜେ ଏହାକୁ ଠିକ୍ କରିଦେବ।</string>
     <string name="grant_perms">ମଗାଯାଇଥିବା ଅନୁମତି ଦିଅନ୍ତୁ, ତାପରେ ପୁଣି ସେବା ଆରମ୍ଭ କରନ୍ତୁ ଟ୍ୟାପ୍ କରନ୍ତୁ।</string>
-    <string name="header_compat">Pixel 7, 7a, 8 ଓ 9 ରେ ପରୀକ୍ଷିତ। ଅନ୍ୟ ରୁଟ୍ ଫୋନ କାମ କରିପାରେ; ନିଜ ଦାୟିତ୍ୱରେ ବ୍ୟବହାର କରନ୍ତୁ।</string>
+    <string name="header_compat">Google Pixel ଏବଂ Redmi K60 Ultra ରେ ପରୀକ୍ଷା କରାଯାଇଛି। root କରାଯାଇଥିବା ଅନ୍ୟ ଫୋନ ମଧ୍ୟ ସମର୍ଥିତ, କିନ୍ତୁ ଆପଣଙ୍କ ଫୋନ ପରୀକ୍ଷା କରନ୍ତୁ: ଅନ୍ୟ ଫୋନରୁ ସେଥିରେ କଲ୍ କରନ୍ତୁ ଏବଂ ପ୍ରାୟ 20 ସେକେଣ୍ଡ AI ସହ କଥା ହୁଅନ୍ତୁ।</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">ସଂସ୍କରଣ %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo %1$s ଅଟେ (ସଂସ୍କରଣ ଭିନ୍ନ)</string>

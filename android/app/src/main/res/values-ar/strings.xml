@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">هل تريد استخدامه كهاتف عادي؟</string>
     <string name="connection_hint_usb">USB (الافتراضي والموصى به): أبق العنوان ws://127.0.0.1:8765. يمرر البرنامج على الكمبيوتر هذا المنفذ عبر كابل USB تلقائيا باستخدام adb reverse.</string>
     <string name="connection_hint_wifi">Wi-Fi: اكتب العنوان الذي يعرضه البرنامج على الكمبيوتر، مثل ws://192.0.2.10:8787/ws?token=… يجب أن يكون الهاتف والكمبيوتر على الشبكة نفسها.</string>
+    <string name="fit_adjusted">تم ضبط صوت المكالمات تلقائيًا</string>
+    <string name="fit_noted">تم التسجيل: هناك مشكلة في صوت المكالمات على هذا الهاتف</string>
+    <string name="fit_problem">هناك مشكلة في صوت المكالمات وقد جُرّبت كل الإعدادات. راجع «الاستخدام الأول على هاتف جديد» في الدليل.</string>
+    <string name="fit_retest">إعدادات أخرى لصوت المكالمات جاهزة. اتصل بهذا الهاتف مرة أخرى لاختبارها.</string>
+    <string name="fit_unsupported">لا يستطيع هذا الهاتف إرسال صوت الذكاء الاصطناعي إلى المكالمات</string>
+    <string name="fit_untested">لم يُختبر صوت المكالمات بعد: اتصل بهذا الهاتف من هاتف آخر وتحدث مع الذكاء الاصطناعي نحو 20 ثانية. بعدها يضبطه Bageo تلقائيًا.</string>
     <string name="grant_perms">اسمح بالصلاحيات المطلوبة، ثم اضغط على «بدء الخدمة» مرة أخرى.</string>
-    <string name="header_compat">تمت التجربة على Pixel 7 و7a و8 و9. وقد يعمل على هواتف أخرى عليها صلاحيات الروت؛ جربه على مسؤوليتك.</string>
+    <string name="header_compat">جُرّب على Google Pixel و Redmi K60 Ultra. الهواتف الأخرى التي لديها صلاحيات root مدعومة أيضًا، لكن اختبر هاتفك: اتصل به من هاتف آخر وتحدث مع الذكاء الاصطناعي نحو 20 ثانية.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">الإصدار %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo بالإصدار %1$s (إصدار مختلف)</string>

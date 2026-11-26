@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Bruge som almindelig telefon?</string>
     <string name="connection_hint_usb">USB (standard, anbefalet): behold ws://127.0.0.1:8765. Computerprogrammet videresender den port over USB-kablet med adb reverse automatisk.</string>
     <string name="connection_hint_wifi">Wi-Fi: skriv adressen, som computerprogrammet viser, for eksempel ws://192.0.2.10:8787/ws?token=… Telefonen og computeren skal være på samme netværk.</string>
+    <string name="fit_adjusted">Opkaldslyden er justeret automatisk</string>
+    <string name="fit_noted">Noteret: opkaldslyden på denne telefon har et problem</string>
+    <string name="fit_problem">Opkaldslyden har et problem, og alle indstillinger er prøvet. Se “Første brug på en ny telefon” i vejledningen.</string>
+    <string name="fit_retest">Andre indstillinger for opkaldslyd er klar. Ring til denne telefon igen for at teste dem.</string>
+    <string name="fit_unsupported">Denne telefon kan ikke sende AI\'ens stemme ind i opkald</string>
+    <string name="fit_untested">Opkaldslyden er endnu ikke testet: ring til denne telefon fra en anden telefon, og tal med AI\'en i omkring 20 sekunder. Så justerer Bageo den selv.</string>
     <string name="grant_perms">Tillad de ønskede tilladelser, og tryk derefter på Start tjenesten igen.</string>
-    <string name="header_compat">Testet på Pixel 7, 7a, 8 og 9. Andre rootede telefoner virker måske; prøv på eget ansvar.</string>
+    <string name="header_compat">Testet på Google Pixel og Redmi K60 Ultra. Andre rootede telefoner understøttes også, men test din egen: ring til den fra en anden telefon, og tal med AI\'en i omkring 20 sekunder.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Version %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo er %1$s (anden version)</string>

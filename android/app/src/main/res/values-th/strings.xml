@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">ใช้เป็นโทรศัพท์ปกติไหม</string>
     <string name="connection_hint_usb">USB (ค่าเริ่มต้น แนะนำ): คง ws://127.0.0.1:8765 ไว้ โปรแกรมบนคอมพิวเตอร์จะส่งต่อพอร์ตนี้ผ่านสาย USB ด้วย adb reverse โดยอัตโนมัติ</string>
     <string name="connection_hint_wifi">Wi-Fi: ใส่ที่อยู่ที่โปรแกรมบนคอมพิวเตอร์แสดง เช่น ws://192.0.2.10:8787/ws?token=… โทรศัพท์กับคอมพิวเตอร์ต้องอยู่เครือข่ายเดียวกัน</string>
+    <string name="fit_adjusted">ปรับเสียงการโทรให้อัตโนมัติแล้ว</string>
+    <string name="fit_noted">บันทึกแล้ว: เสียงการโทรของโทรศัพท์เครื่องนี้มีปัญหา</string>
+    <string name="fit_problem">เสียงการโทรมีปัญหา และลองทุกการตั้งค่าแล้ว ดู “การใช้งานครั้งแรกบนโทรศัพท์เครื่องใหม่” ในคู่มือ</string>
+    <string name="fit_retest">การตั้งค่าเสียงการโทรอื่นพร้อมแล้ว โทรหาโทรศัพท์เครื่องนี้อีกครั้งเพื่อทดสอบ</string>
+    <string name="fit_unsupported">โทรศัพท์เครื่องนี้ส่งเสียงของ เอไอ เข้าไปในสายไม่ได้</string>
+    <string name="fit_untested">ยังไม่ได้ทดสอบเสียงการโทร: โทรหาโทรศัพท์เครื่องนี้จากโทรศัพท์เครื่องอื่นแล้วคุยกับ เอไอ ประมาณ 20 วินาที จากนั้น Bageo จะปรับให้เอง</string>
     <string name="grant_perms">อนุญาตสิทธิ์ที่ขอ แล้วแตะเริ่มบริการอีกครั้ง</string>
-    <string name="header_compat">ทดสอบกับ Pixel 7, 7a, 8 และ 9 โทรศัพท์ที่รูทเครื่องอื่นอาจใช้ได้ ลองเองโดยรับความเสี่ยงเอง</string>
+    <string name="header_compat">ทดสอบแล้วบน Google Pixel และ Redmi K60 Ultra โทรศัพท์เครื่องอื่นที่ root แล้วก็รองรับเช่นกัน แต่ควรทดสอบเครื่องของคุณ: โทรหาเครื่องนั้นจากโทรศัพท์เครื่องอื่นแล้วคุยกับ เอไอ ประมาณ 20 วินาที</string>
     <string name="header_device">%1$s · แอนดรอยด์เวอร์ชัน %2$s (API %3$d)</string>
     <string name="header_version">เวอร์ชัน %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo เป็น %1$s (เวอร์ชันต่างกัน)</string>

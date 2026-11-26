@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Gamitin bilang normal na telepono?</string>
     <string name="connection_hint_usb">USB (default, inirerekomenda): panatilihin ang ws://127.0.0.1:8765. Awtomatikong ipinapasa ng PC program ang port na ito sa USB cable gamit ang adb reverse.</string>
     <string name="connection_hint_wifi">Wi-Fi: ilagay ang address mula sa PC program, hal. ws://192.0.2.10:8787/ws?token=… Dapat nasa iisang network ang telepono at PC.</string>
+    <string name="fit_adjusted">Awtomatikong naayos ang audio ng tawag</string>
+    <string name="fit_noted">Naitala: may problema ang audio ng tawag ng teleponong ito</string>
+    <string name="fit_problem">May problema ang audio ng tawag at nasubukan na ang lahat ng setting. Tingnan ang “Unang paggamit sa bagong telepono” sa gabay.</string>
+    <string name="fit_retest">Handa na ang iba pang setting ng audio ng tawag. Tawagan muli ang teleponong ito para subukan ang mga iyon.</string>
+    <string name="fit_unsupported">Hindi maipapadala ng teleponong ito ang boses ng AI sa mga tawag</string>
+    <string name="fit_untested">Hindi pa nasusubukan ang audio ng tawag: tawagan ang teleponong ito mula sa ibang telepono at makipag-usap sa AI nang mga 20 segundo. Pagkatapos, aayusin ito mismo ng Bageo.</string>
     <string name="grant_perms">Payagan ang mga hinihinging permission, saka i-tap ulit ang Simulan ang serbisyo.</string>
-    <string name="header_compat">Sinubukan sa Pixel 7, 7a, 8 at 9. Maaaring gumana ang ibang rooted na telepono; subukan sa sariling peligro.</string>
+    <string name="header_compat">Nasubukan sa Google Pixel at Redmi K60 Ultra. Sinusuportahan din ang iba pang teleponong naka-root, pero subukan ang sa iyo: tawagan ito mula sa ibang telepono at makipag-usap sa AI nang mga 20 segundo.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Bersyon %1$s (%2$d)</string>
     <string name="header_version_diff">Ang Bageo ay %1$s (magkaiba ang bersyon)</string>

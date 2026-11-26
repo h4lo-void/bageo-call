@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Ta përdorni si telefon normal?</string>
     <string name="connection_hint_usb">USB (parazgjedhur): lini ws://127.0.0.1:8765. Programi në kompjuter e përcjell këtë portë me kabllo USB përmes adb reverse automatikisht.</string>
     <string name="connection_hint_wifi">Wi-Fi: vendosni adresën nga kompjuteri, p.sh. ws://192.0.2.10:8787/ws?token=… Telefoni dhe kompjuteri duhet të jenë në të njëjtin rrjet.</string>
+    <string name="fit_adjusted">Zëri i thirrjeve u rregullua automatikisht</string>
+    <string name="fit_noted">U shënua: zëri i thirrjeve i këtij telefoni ka një problem</string>
+    <string name="fit_problem">Zëri i thirrjeve ka një problem dhe janë provuar të gjitha cilësimet. Shihni «Përdorimi i parë në një telefon të ri» te udhëzuesi.</string>
+    <string name="fit_retest">Cilësime të tjera të zërit të thirrjeve janë gati. Telefononi përsëri këtë telefon për t\'i provuar.</string>
+    <string name="fit_unsupported">Ky telefon nuk mund ta dërgojë zërin e AI në thirrje</string>
+    <string name="fit_untested">Zëri i thirrjeve ende nuk është testuar: telefononi këtë telefon nga një telefon tjetër dhe flisni me AI për rreth 20 sekonda. Pastaj Bageo e rregullon vetë.</string>
     <string name="grant_perms">Lejoni lejet e kërkuara, pastaj prekni përsëri Nis shërbimin.</string>
-    <string name="header_compat">Testuar në Pixel 7, 7a, 8 dhe 9. Telefona të tjerë me root mund të punojnë; provoni me rrezikun tuaj.</string>
+    <string name="header_compat">Testuar në Google Pixel dhe Redmi K60 Ultra. Mbështeten edhe telefona të tjerë me root, por testoni tuajin: telefonojeni nga një telefon tjetër dhe flisni me AI për rreth 20 sekonda.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versioni %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo është %1$s (version i ndryshëm)</string>

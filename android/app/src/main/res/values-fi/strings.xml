@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Käytetäänkö tavallisena puhelimena?</string>
     <string name="connection_hint_usb">USB (oletus, suositeltu): jätä ws://127.0.0.1:8765. Tietokoneen ohjelma välittää tämän portin USB-kaapelin yli adb reverse -komennolla automaattisesti.</string>
     <string name="connection_hint_wifi">Wi-Fi: anna tietokoneen ohjelman näyttämä osoite, esimerkiksi ws://192.0.2.10:8787/ws?token=… Puhelimen ja tietokoneen on oltava samassa verkossa.</string>
+    <string name="fit_adjusted">Puheluääni säädettiin automaattisesti</string>
+    <string name="fit_noted">Merkitty: tämän puhelimen puheluäänessä on ongelma</string>
+    <string name="fit_problem">Puheluäänessä on ongelma, ja kaikki asetukset on kokeiltu. Katso oppaasta kohta ”Ensimmäinen käyttökerta uudessa puhelimessa”.</string>
+    <string name="fit_retest">Muut puheluäänen asetukset ovat valmiina. Soita tähän puhelimeen uudelleen kokeillaksesi niitä.</string>
+    <string name="fit_unsupported">Tämä puhelin ei voi lähettää tekoälyn ääntä puheluihin</string>
+    <string name="fit_untested">Puheluäänen toimivuutta ei ole vielä testattu: soita tähän puhelimeen toisesta puhelimesta ja puhu tekoälyn kanssa noin 20 sekuntia. Sen jälkeen Bageo säätää äänen itse.</string>
     <string name="grant_perms">Salli pyydetyt oikeudet ja napauta sitten Käynnistä palvelu uudelleen.</string>
-    <string name="header_compat">Testattu laitteilla Pixel 7, 7a, 8 ja 9. Muut roottatut puhelimet voivat toimia; kokeile omalla vastuullasi.</string>
+    <string name="header_compat">Testattu Google Pixelillä ja Redmi K60 Ultralla. Myös muita root-oikeuksilla varustettuja puhelimia tuetaan, mutta testaa omasi: soita siihen toisesta puhelimesta ja puhu tekoälyn kanssa noin 20 sekuntia.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versio %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo on %1$s (eri versio)</string>

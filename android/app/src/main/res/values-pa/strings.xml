@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">ਆਮ ਫ਼ੋਨ ਵਜੋਂ ਵਰਤਣਾ ਹੈ?</string>
     <string name="connection_hint_usb">USB (ਡਿਫੌਲਟ, ਸਿਫ਼ਾਰਸ਼ੀ): ws://127.0.0.1:8765 ਰੱਖੋ। ਕੰਪਿਊਟਰ ਪ੍ਰੋਗਰਾਮ USB ਕੇਬਲ ਰਾਹੀਂ adb reverse ਨਾਲ ਇਹ ਪੋਰਟ ਆਪਣੇ-ਆਪ ਫਾਰਵਰਡ ਕਰਦਾ ਹੈ।</string>
     <string name="connection_hint_wifi">Wi-Fi: ਕੰਪਿਊਟਰ ਪ੍ਰੋਗਰਾਮ ਵੱਲੋਂ ਦਿਖਾਇਆ ਪਤਾ ਪਾਓ, ਜਿਵੇਂ ws://192.0.2.10:8787/ws?token=… ਫ਼ੋਨ ਅਤੇ ਕੰਪਿਊਟਰ ਇੱਕੋ ਨੈੱਟਵਰਕ \'ਤੇ ਹੋਣੇ ਚਾਹੀਦੇ ਹਨ।</string>
+    <string name="fit_adjusted">ਕਾਲ ਦੀ ਆਵਾਜ਼ ਆਪਣੇ ਆਪ ਠੀਕ ਕੀਤੀ ਗਈ</string>
+    <string name="fit_noted">ਨੋਟ ਕੀਤਾ ਗਿਆ: ਇਸ ਫ਼ੋਨ ਦੀ ਕਾਲ ਦੀ ਆਵਾਜ਼ ਵਿੱਚ ਸਮੱਸਿਆ ਹੈ</string>
+    <string name="fit_problem">ਕਾਲ ਦੀ ਆਵਾਜ਼ ਵਿੱਚ ਸਮੱਸਿਆ ਹੈ ਅਤੇ ਸਾਰੀਆਂ ਸੈਟਿੰਗਾਂ ਅਜ਼ਮਾਈਆਂ ਜਾ ਚੁੱਕੀਆਂ ਹਨ। ਗਾਈਡ ਵਿੱਚ “ਨਵੇਂ ਫ਼ੋਨ ਉੱਤੇ ਪਹਿਲੀ ਵਰਤੋਂ” ਵੇਖੋ।</string>
+    <string name="fit_retest">ਕਾਲ ਦੀ ਆਵਾਜ਼ ਦੀਆਂ ਹੋਰ ਸੈਟਿੰਗਾਂ ਤਿਆਰ ਹਨ। ਉਹਨਾਂ ਨੂੰ ਅਜ਼ਮਾਉਣ ਲਈ ਇਸ ਫ਼ੋਨ ਨੂੰ ਦੁਬਾਰਾ ਕਾਲ ਕਰੋ।</string>
+    <string name="fit_unsupported">ਇਹ ਫ਼ੋਨ ਕਾਲ ਵਿੱਚ AI ਦੀ ਆਵਾਜ਼ ਨਹੀਂ ਭੇਜ ਸਕਦਾ</string>
+    <string name="fit_untested">ਕਾਲ ਦੀ ਆਵਾਜ਼ ਦੀ ਹਾਲੇ ਜਾਂਚ ਨਹੀਂ ਹੋਈ: ਕਿਸੇ ਹੋਰ ਫ਼ੋਨ ਤੋਂ ਇਸ ਫ਼ੋਨ ਨੂੰ ਕਾਲ ਕਰੋ ਅਤੇ ਲਗਭਗ 20 ਸਕਿੰਟ AI ਨਾਲ ਗੱਲ ਕਰੋ। ਫਿਰ Bageo ਆਪਣੇ ਆਪ ਇਸਨੂੰ ਠੀਕ ਕਰ ਲਵੇਗਾ।</string>
     <string name="grant_perms">ਮੰਗੀਆਂ ਗਈਆਂ ਇਜਾਜ਼ਤਾਂ ਦਿਓ, ਫਿਰ ਦੁਬਾਰਾ ਸੇਵਾ ਸ਼ੁਰੂ ਕਰੋ \'ਤੇ ਟੈਪ ਕਰੋ।</string>
-    <string name="header_compat">Pixel 7, 7a, 8 ਅਤੇ 9 \'ਤੇ ਪਰਖਿਆ ਗਿਆ। ਹੋਰ ਰੂਟ ਕੀਤੇ ਫ਼ੋਨ ਕੰਮ ਕਰ ਸਕਦੇ ਹਨ; ਆਪਣੀ ਜ਼ਿੰਮੇਵਾਰੀ \'ਤੇ ਵਰਤੋ।</string>
+    <string name="header_compat">Google Pixel ਅਤੇ Redmi K60 Ultra ਉੱਤੇ ਜਾਂਚਿਆ ਗਿਆ ਹੈ। root ਕੀਤੇ ਹੋਰ ਫ਼ੋਨ ਵੀ ਸਮਰਥਿਤ ਹਨ, ਪਰ ਆਪਣੇ ਫ਼ੋਨ ਦੀ ਜਾਂਚ ਕਰੋ: ਕਿਸੇ ਹੋਰ ਫ਼ੋਨ ਤੋਂ ਉਸ ਨੂੰ ਕਾਲ ਕਰੋ ਅਤੇ ਲਗਭਗ 20 ਸਕਿੰਟ AI ਨਾਲ ਗੱਲ ਕਰੋ।</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">ਵਰਜਨ %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo %1$s ਹੈ (ਵਰਜਨ ਵੱਖਰਾ ਹੈ)</string>

@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">استفاده به عنوان تلفن عادی؟</string>
     <string name="connection_hint_usb">USB (پیش‌فرض، پیشنهادی): ws://127.0.0.1:8765 بماند. برنامه رایانه این درگاه را با کابل USB و adb reverse خودکار هدایت می‌کند.</string>
     <string name="connection_hint_wifi">Wi-Fi: نشانی برنامه رایانه را وارد کنید، مثلاً ws://192.0.2.10:8787/ws?token=… تلفن و رایانه باید در یک شبکه باشند.</string>
+    <string name="fit_adjusted">صدای تماس به‌صورت خودکار تنظیم شد</string>
+    <string name="fit_noted">ثبت شد: صدای تماس این تلفن مشکل دارد</string>
+    <string name="fit_problem">صدای تماس مشکل دارد و همه‌ی تنظیمات امتحان شده‌اند. بخش «اولین استفاده در تلفن جدید» را در راهنما ببینید.</string>
+    <string name="fit_retest">تنظیمات دیگری برای صدای تماس آماده است. برای آزمایش، دوباره به این تلفن زنگ بزنید.</string>
+    <string name="fit_unsupported">این تلفن نمی‌تواند صدای AI را به تماس‌ها بفرستد</string>
+    <string name="fit_untested">صدای تماس هنوز آزمایش نشده است: از تلفن دیگری به این تلفن زنگ بزنید و حدود 20 ثانیه با AI صحبت کنید. بعد Bageo خودش آن را تنظیم می‌کند.</string>
     <string name="grant_perms">مجوزهای درخواستی را بدهید، سپس دوباره «شروع سرویس» را بزنید.</string>
-    <string name="header_compat">آزمایش‌شده روی Pixel 7، 7a، 8 و 9. سایر تلفن‌های روت‌شده شاید کار کنند؛ با مسئولیت خودتان امتحان کنید.</string>
+    <string name="header_compat">روی Google Pixel و Redmi K60 Ultra آزمایش شده است. سایر تلفن‌های دارای root هم پشتیبانی می‌شوند، اما تلفن خودتان را آزمایش کنید: از تلفن دیگری به آن زنگ بزنید و حدود 20 ثانیه با AI صحبت کنید.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">نسخه %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo نسخه %1$s است (نسخه متفاوت است)</string>

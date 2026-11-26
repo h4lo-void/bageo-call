@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Користуватися як звичайним телефоном?</string>
     <string name="connection_hint_usb">USB (за замовчуванням, рекомендовано): залиште ws://127.0.0.1:8765. Програма на комп\'ютері сама пересилає цей порт USB-кабелем через adb reverse.</string>
     <string name="connection_hint_wifi">Wi-Fi: введіть адресу, яку показує програма на комп\'ютері, наприклад ws://192.0.2.10:8787/ws?token=… Телефон і комп\'ютер мають бути в одній мережі.</string>
+    <string name="fit_adjusted">Звук дзвінків налаштовано автоматично</string>
+    <string name="fit_noted">Записано: у цього телефона проблема зі звуком дзвінків</string>
+    <string name="fit_problem">Зі звуком дзвінків є проблема, усі налаштування вже випробувано. Див. «Перше використання на новому телефоні» в посібнику.</string>
+    <string name="fit_retest">Інші налаштування звуку дзвінків готові. Зателефонуйте на цей телефон ще раз, щоб їх перевірити.</string>
+    <string name="fit_unsupported">Цей телефон не може передавати голос ШІ в дзвінки</string>
+    <string name="fit_untested">Звук дзвінків ще не перевірено: зателефонуйте на цей телефон з іншого телефона й приблизно 20 секунд поговоріть із ШІ. Після цього Bageo сам його налаштує.</string>
     <string name="grant_perms">Надайте потрібні дозволи, потім ще раз торкніться «Запустити службу».</string>
-    <string name="header_compat">Перевірено на Pixel 7, 7a, 8 і 9. На інших телефонах із root може працювати; спробуйте на власний ризик.</string>
+    <string name="header_compat">Перевірено на Google Pixel і Redmi K60 Ultra. Інші телефони з root теж підтримуються, але перевірте свій: зателефонуйте на нього з іншого телефона й приблизно 20 секунд поговоріть із ШІ.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Версія %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo версії %1$s (версія відрізняється)</string>
