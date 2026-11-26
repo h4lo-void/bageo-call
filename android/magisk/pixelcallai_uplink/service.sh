@@ -38,10 +38,16 @@ rm -f /data/adb/pixelcallai/daemon.pid 2>/dev/null || true
 
   # A call served by the audio helper (bin/bageo-audio-helper) ended without its
   # clean-up (the phone restarted mid-call, or the helper was killed): put the mixer
-  # and audio settings it changed back. Nothing else about the helper runs at boot.
+  # and audio settings it changed back. On its own, with a time limit, so the rest of
+  # this (the mode helper above all) never waits for it. Nothing else about the helper
+  # runs at boot.
   if [ -f /data/adb/pixelcallai/audio_session ] && [ -f "$MODDIR/bin/bageo-audio-helper" ]; then
     chmod 0700 "$MODDIR/bin/bageo-audio-helper" 2>/dev/null || true
-    "$MODDIR/bin/bageo-audio-helper" restore </dev/null >/dev/null 2>&1 || true
+    if command -v timeout >/dev/null 2>&1; then
+      timeout 60 "$MODDIR/bin/bageo-audio-helper" restore </dev/null >/dev/null 2>&1 &
+    else
+      "$MODDIR/bin/bageo-audio-helper" restore </dev/null >/dev/null 2>&1 &
+    fi
   fi
 
   # Wait until PackageManager sees our priv-app before touching Dialer.

@@ -20,11 +20,11 @@
 //!
 //! `mixer.set`, `params.set` and `pcm.open` need an open session and accept only what
 //! the helper's built-in list ([`crate::allow`]) names for this phone; that list is empty
-//! for now. `pcm.open` also needs the phone to be in a call, which the helper checks
-//! for itself (a check that cannot tell is a refusal); it checks again before a stream
-//! carries audio, and keeps checking while the session has streams: once two checks in a
-//! row find no call, it closes the connection, which closes the streams and puts the
-//! session back. A control is `numid=<n>`, its name (`<name>@<index>` for a later one
+//! for now. The app's first change in a session, and every `pcm.open`, also need the
+//! phone to be in a call, which the helper checks for itself (a check that cannot tell is
+//! a refusal); it checks again before a stream carries audio, and from the first change
+//! on keeps checking for the rest of the session: once two checks in a row find no call,
+//! it closes the connection, which closes the streams and puts the session back. A control is `numid=<n>`, its name (`<name>@<index>` for a later one
 //! of the same name), or its whole identity
 //! `id:<iface>:<device>:<subdevice>:<index>:<name>` when several controls share a name
 //! and an index (see [`crate::mixer::Selector`]).
@@ -163,7 +163,11 @@ pub trait PcmHost {
     /// Returns once the stream has dropped its queued audio.
     fn flush(&mut self, id: &str) -> Result<(), String>;
     fn close(&mut self, id: &str) -> Result<(), String>;
+    /// Closes the streams and stops watching the call.
     fn close_all(&mut self);
+    /// Starts watching the call for the rest of the session, unless it already does:
+    /// once the call is over, the session's connection is ended (and so put back).
+    fn watch_call(&mut self) -> Result<(), String>;
 }
 
 /// Who may change what: the app only what the built-in list names; root on the
@@ -226,6 +230,8 @@ pub struct Dispatcher<M, P, H, C> {
     /// Held while anything is changed or put back; stopping takes it too.
     life: Arc<Life>,
     pub limits: Limits,
+    /// The session's call was seen and is being watched.
+    call_seen: bool,
 }
 
 fn need(f: &[String], n: usize, cmd: &str) -> Result<(), String> {
@@ -241,7 +247,7 @@ const STOPPING: &str = "the helper is stopping";
 
 impl<M: MixerBackend, P: ParamBackend, H: PcmHost, C: CallState> Dispatcher<M, P, H, C> {
     pub fn new(hw: Hardware<M, P>, pcm: H, calls: C, session: Session, keys: Keys, policy: Policy, life: Arc<Life>) -> Self {
-        Dispatcher { hw, pcm, calls, session, keys, policy, authed: false, life, limits: LIMITS }
+        Dispatcher { hw, pcm, calls, session, keys, policy, authed: false, life, limits: LIMITS, call_seen: false }
     }
 
     /// For the root command line, which needs no key.
@@ -286,11 +292,13 @@ impl<M: MixerBackend, P: ParamBackend, H: PcmHost, C: CallState> Dispatcher<M, P
             "session.begin" => {
                 need(f, 2, cmd)?;
                 self.session.begin(&f[1])?;
+                self.call_seen = false;
                 Ok("ok".into())
             }
             "session.end" => {
                 need(f, 1, cmd)?;
                 self.pcm.close_all();
+                self.call_seen = false;
                 let report = self.session.end(&mut self.hw).ok_or("no session")?;
                 Ok(report.json().render())
             }
@@ -308,11 +316,10 @@ impl<M: MixerBackend, P: ParamBackend, H: PcmHost, C: CallState> Dispatcher<M, P
                 if !self.hw.allow.pcm_ok(&card_id, &req) {
                     return Err(NOT_ALLOWED.into());
                 }
-                match self.calls.status() {
-                    CallStatus::InCall => Ok(self.pcm.open(&req)?.render()),
-                    CallStatus::NotInCall => Err("the phone is not in a call".into()),
-                    CallStatus::Unknown => Err("cannot tell whether the phone is in a call".into()),
-                }
+                // Checked afresh for every stream, not only for the session's first change.
+                self.call_seen = false;
+                self.need_call()?;
+                Ok(self.pcm.open(&req)?.render())
             }
             "pcm.flush" => {
                 need(f, 2, cmd)?;
@@ -326,6 +333,24 @@ impl<M: MixerBackend, P: ParamBackend, H: PcmHost, C: CallState> Dispatcher<M, P
             }
             _ => Err("unknown command".into()),
         }
+    }
+
+    /// The app changes nothing outside a call: before the session's first change the
+    /// helper checks for itself that the phone is in a call (a check that cannot tell is a
+    /// refusal) and from then on watches the call. Root on the command line is not held
+    /// to this.
+    fn need_call(&mut self) -> Result<(), String> {
+        if !matches!(self.policy, Policy::App) || self.call_seen {
+            return Ok(());
+        }
+        match self.calls.status() {
+            CallStatus::InCall => {}
+            CallStatus::NotInCall => return Err("the phone is not in a call".into()),
+            CallStatus::Unknown => return Err("cannot tell whether the phone is in a call".into()),
+        }
+        self.pcm.watch_call()?;
+        self.call_seen = true;
+        Ok(())
     }
 
     fn mixer_set(&mut self, f: &[String]) -> Result<String, String> {
@@ -345,6 +370,7 @@ impl<M: MixerBackend, P: ParamBackend, H: PcmHost, C: CallState> Dispatcher<M, P
                 return Err(NOT_ALLOWED.into());
             }
         }
+        self.need_call()?;
         let old = self.hw.mixer.read(&info)?;
         let mut key = info.key.clone();
         key.card_id = card_id;
@@ -375,6 +401,7 @@ impl<M: MixerBackend, P: ParamBackend, H: PcmHost, C: CallState> Dispatcher<M, P
             }
             Policy::Root => None,
         };
+        self.need_call()?;
         let old = match self.hw.params.get(key)? {
             Some(v) if params::valid_value(&v) => v,
             _ => default.map(str::to_string).ok_or("the phone does not report this value, so it cannot be put back")?,
@@ -390,6 +417,7 @@ impl<M: MixerBackend, P: ParamBackend, H: PcmHost, C: CallState> Dispatcher<M, P
         let life = Arc::clone(&self.life);
         let _held = life.hold();
         self.pcm.close_all();
+        self.call_seen = false;
         self.session.end(&mut self.hw)
     }
 
@@ -569,6 +597,8 @@ mod tests {
         open: Vec<String>,
         closed_all: usize,
         flushed: Vec<String>,
+        watches: usize,
+        watching: bool,
     }
 
     impl PcmHost for FakePcm {
@@ -593,6 +623,14 @@ mod tests {
         fn close_all(&mut self) {
             self.open.clear();
             self.closed_all += 1;
+            self.watching = false;
+        }
+        fn watch_call(&mut self) -> Result<(), String> {
+            if !self.watching {
+                self.watching = true;
+                self.watches += 1;
+            }
+            Ok(())
         }
     }
 
@@ -888,6 +926,29 @@ mod tests {
         d.handle(&req(&["session.end"])).unwrap();
         assert_eq!(d.hw.mixer.value("Speaker Volume"), vec![50]);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_first_change_needs_a_call_and_starts_the_watch() {
+        let (mut d, path) = dispatcher("dispatch-first-change", TEST_RULES, false);
+        d.handle(&auth()).unwrap();
+        d.handle(&req(&["session.begin", "call-1"])).unwrap();
+        let set = req(&["mixer.set", "0", "Incall Mic Mute", "1"]);
+        assert_eq!(d.handle(&set), Err("the phone is not in a call".into()));
+        assert_eq!(d.handle(&req(&["params.set", "incall_music_enabled", "true"])), Err("the phone is not in a call".into()));
+        d.calls.0 = CallStatus::Unknown;
+        assert_eq!(d.handle(&set), Err("cannot tell whether the phone is in a call".into()));
+        assert_eq!(d.hw.mixer.value("Incall Mic Mute"), vec![0], "nothing changed");
+        assert_eq!(d.pcm.watches, 0);
+        d.calls.0 = CallStatus::InCall;
+        d.handle(&set).unwrap();
+        d.handle(&req(&["params.set", "incall_music_enabled", "true"])).unwrap();
+        assert_eq!(d.pcm.watches, 1, "watched from the first change, once");
+        d.handle(&req(&["session.end"])).unwrap();
+        d.calls.0 = CallStatus::NotInCall;
+        d.handle(&req(&["session.begin", "call-2"])).unwrap();
+        assert!(d.handle(&set).is_err(), "a new session checks again");
+        cleanup(&path);
     }
 
     #[test]

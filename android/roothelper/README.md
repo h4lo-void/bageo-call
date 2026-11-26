@@ -10,7 +10,8 @@ and only those that the helper's own built-in list allows for the phone:
 - **pcm**: record from or play to a listed sound device (s16le), only while the phone
   is in a call;
 - **session**: everything changed during a call is put back when the call's session
-  ends.
+  ends. Nothing changes outside a call: the helper checks the call itself before the
+  session's first change and watches it from then on.
 
 The built-in list (`src/allow.rs`) is **empty** in this version, so the app cannot
 change anything yet; phone families are added by later changes. Reading the mixer,
@@ -37,7 +38,8 @@ It quits by itself:
 
 At boot the module runs `bageo-audio-helper restore` once, but only when a call's
 changes were left behind (`/data/adb/pixelcallai/audio_session` exists); it puts them
-back and exits.
+back and exits. It runs on its own with a 60-second limit, so the rest of the boot
+script, the mode switch helper above all, never waits for it.
 
 ## Who it serves
 
@@ -59,10 +61,12 @@ All of these must hold, or it refuses and logs one fixed reason:
 ## Keys
 
 Each start draws two random 256-bit keys and publishes
-`files/mode/audio_helper_key` in the app's device-protected folder: the file is made in
-root's own `/data/adb/pixelcallai`, given to the app (owner, mode 0600, the folder's
-SELinux label), renamed into the app's folder, and checked to be that same file there.
-Without a label it can trust, or if the file is not the one it made, it does not serve.
+`files/mode/audio_helper_key` in the app's device-protected folder, inside that folder
+only (it has an encryption policy of its own; nothing is moved in from root's folders):
+made there new under a name of its own without following a link, written while still
+root's, given to the app (owner, mode 0600, the folder's SELinux label), renamed into
+place, and checked to be that same file. Without a label it can trust, or if the file
+is not the one it made, it does not serve.
 
 ```text
 bageo-audio-helper-keys 1
@@ -70,8 +74,9 @@ app=<64 hex digits>
 helper=<64 hex digits>
 ```
 
-The file is removed when the helper quits (only that file: if the app put another file
-under the name, that one stays). A user-ID check alone would let in any process that
+The file is removed when the helper quits, only that file: whatever is under the name is
+first moved into a folder of root's own inside the app's folder, checked there, and
+removed only if it is the helper's; anything else goes back. A user-ID check alone would let in any process that
 runs as the app's user ID in another SELinux context (`run-as` on a debuggable build, a
 package sharing the ID); such a process cannot read the file.
 
@@ -99,8 +104,10 @@ package sharing the ID); such a process cannot read the file.
    it after you stopped sending the old audio (for example when the other side talks
    over the AI); it answers `ok` once the stream dropped what waited, what the
    connection held at that moment, and what the device held.
-5. When the call ends the helper closes the streams and the control connection, and
-   puts the session back; connect again for the next call.
+5. Make the session's first change, or open the first stream, during the call: the
+   helper refuses both when it finds no call. From then on it watches the call; when it
+   ends, it closes the streams and the control connection and puts the session back;
+   connect again for the next call.
 
 Frames, commands, time limits: see the top of [`src/proto.rs`](src/proto.rs) and
 [`src/control.rs`](src/control.rs).
@@ -113,7 +120,10 @@ when the app ends it, the connection breaks or runs out of time, the call ends, 
 helper stops. Stopping puts back only while nothing else is being changed; if a change
 does not finish within 3 seconds, the saved values stay in the file and a restore that
 waits for the stopped helper to be gone (`restore --wait`, started by the helper) puts
-them back. Failing all of those, the next start or boot puts them back.
+them back; a parameter call still running is ended first, and nothing is put back
+until it has gone. If the stopped helper does not go within 10 seconds,
+`restore --wait` puts nothing back and says so (exit code 1). Failing all of those,
+the next start or boot puts them back.
 
 A value that could not be put back stays in the file and is tried again at the next
 start or boot (a running helper tries again at most every 30 seconds), up to 5 times in

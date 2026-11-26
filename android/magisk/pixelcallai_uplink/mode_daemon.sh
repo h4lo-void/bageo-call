@@ -23,14 +23,17 @@
 # It takes the request (a rename, so the app can still withdraw one nobody took),
 # checks it, runs apply_mode.sh with it and reports to the app in APPDIR/state.
 #
-# A switch request is run only for the app the system lists (packages.list) exactly
-# once, with the user ID that owns its folder and its usual data folder. A debuggable
-# app can be entered with `adb shell run-as` by anyone with adb, who could then write
-# requests as the app; so a debuggable app's request is refused (error=app_refused),
-# with one exception: while the app is the module's own build (no update of it installed
-# under /data/app), so that a module built with a debug build of the app (as before the
-# modules shipped release builds) keeps switching. The module ships a release build, so
-# a debuggable app there can only be an update installed over it, and is refused.
+# Taking a request and writing the state never cross between the app's folder and
+# root's own $DIR: the two have different encryption policies (a rename or link between
+# them fails as if on another file system, and mv would fall back to copying). Both
+# happen in a folder of root's own made inside the app's folder for that one step
+# (see enter_own_dir), and move between it and the app's folder by rename only.
+#
+# A request (switch or audio helper) is run only for the app the system lists
+# (packages.list) exactly once, not debuggable (a debuggable app can be entered with
+# `adb shell run-as` by anyone with adb), with a user ID no other package shares, that
+# owns its folder, and with its usual data folder; anything else is refused
+# (error=app_refused). The module installs a release build of the app.
 #
 # The state:
 #
@@ -45,8 +48,10 @@
 #   error=invalid_request   the last request was malformed and was not run
 #   error=app_refused       the last request did not come from an app it serves
 #                           (see above) and was not run
+#   error=take_failed       a request was there but could not be taken; it was left
+#                           where it is and not run
 #   audio_helper=<id>       the last valid audio_helper request taken
-#   audio_helper_result=started|running|busy|disabled|missing|invalid_request
+#   audio_helper_result=started|running|busy|disabled|missing|invalid_request|app_refused|take_failed
 #                           running: one runs already; busy: one was started less
 #                           than 10 seconds ago; disabled: the owner turned it off;
 #                           missing: this module has no helper for the phone
@@ -72,7 +77,6 @@ PIDFILE=$DIR/daemon.pid
 APPHOME=/data/user_de/0/$PKG
 APPDIR=$APPHOME/files/mode
 PKGLIST=/data/system/packages.list
-APPCODE=/data/app
 TAG=pixelcallai_mode
 # Same rule as service.sh, apply_mode.sh and the app: drop blanks and a UTF-8 BOM.
 STRIP=' \t\r\n\v\f\357\273\277'
@@ -89,8 +93,10 @@ if [ -n "$OLD" ] && [ "$OLD" != "$$" ] && kill -0 "$OLD" 2>/dev/null &&
 fi
 echo $$ > "$PIDFILE"
 trap '[ "$(cat "$PIDFILE" 2>/dev/null)" = "$$" ] && rm -f "$PIDFILE"' EXIT
-trap 'exit 0' INT TERM
-# Requests an earlier run took but never read (it was stopped half way): never run.
+# A stop request ends the loop between steps, so a take or a publish is never cut short.
+STOP=
+trap 'STOP=1' INT TERM
+# Files an earlier version took into root's folder but never read: never run.
 rm -f "$DIR/request.taken" "$DIR/audio_helper.taken" "$DIR"/request.taken.* "$DIR"/audio_helper.taken.* \
   "$DIR/request.stuck" "$DIR/audio_helper.stuck" 2>/dev/null
 
@@ -155,16 +161,16 @@ state_lines() {
   return 0
 }
 
-
 # The app owns files/ and files/mode/ and can rename or replace them at any moment,
 # for example with a link into a root folder, also between a check and the step after
 # it. So nothing here walks that path to act on a file: every step first enters the
 # folder (cd -P), checks that the folder it is now in really is APPDIR and belongs to
 # the app, and then works on names inside it relative to that folder; renames of the
 # path afterwards cannot send it elsewhere. Nothing the app made is ever deleted
-# recursively, copied, or opened unless it is a plain file. Each step runs in a
-# subshell, so this shell stays where it is.
+# recursively, copied, or read unless it is a plain file in a folder only root can
+# change. Each step runs in a subshell, so this shell stays where it is.
 APP_UID=
+ME_UID=$(id -u)
 app_uid() {
   # APPHOME's parent belongs to the system, so the app cannot swap APPHOME itself.
   APP_UID=$(stat -c %u "$APPHOME" 2>/dev/null)
@@ -178,85 +184,89 @@ enter_app_dir() {
   [ "$(stat -c %u . 2>/dev/null)" = "$APP_UID" ] || return 1
 }
 
+# Makes the folder $1 inside the app's folder and enters it: root's own (mkdir never
+# follows a link and fails when the name is taken), mode 700, so the app can neither
+# read nor change anything in it, nor move it elsewhere (that needs write access to
+# the folder itself). Being inside the app's folder it has the app folder's encryption
+# policy, so a rename between the two is a plain rename: never a copy. Run in a
+# subshell; `..` is then the app's folder.
+enter_own_dir() {
+  enter_app_dir || return 1
+  mkdir -m 700 "$1" 2>/dev/null || return 1
+  cd -P "$1" 2>/dev/null || return 1
+  [ "$(pwd -P)" = "$APPDIR/$1" ] || return 1
+  [ "$(stat -c %u . 2>/dev/null)" = "$ME_UID" ] || return 1
+}
+# Removes such a folder (run in the app's folder): only the names this script puts
+# there, then the empty folder; a link or a folder of someone else's is left alone.
+drop_own_dir() {
+  [ -d "$1" ] && [ ! -L "$1" ] || return 0
+  ( cd -P "$1" 2>/dev/null && [ "$(pwd -P)" = "$APPDIR/$1" ] &&
+    [ "$(stat -c %u . 2>/dev/null)" = "$ME_UID" ] && rm -f r s ) 2>/dev/null
+  rmdir "$1" 2>/dev/null
+}
+
 # Takes the app's file $1 and prints the one line it holds. Returns 0 when it was a
 # plain file of the app's holding exactly one line that ends in a newline, at most $2
 # bytes with the newline (the line is printed without it); 2 when something was taken
-# but dropped (a link, a pipe, an empty folder, a file of someone else's, too large, or
-# not one whole line; logged); 1 when nothing was taken: nothing there, the app withdrew
-# it meanwhile, or it cannot be taken (a folder with something in it: left where it is,
-# logged once, and it holds up nothing else).
+# but dropped (a link, a pipe, a folder, a file of someone else's, too large, or not one
+# whole line; a folder is handed back to the app under another name, untouched); 1
+# when nothing was there (or the app withdrew it); 3 when it was there but could not be
+# taken (it is left where it is).
 #
-# The file is taken with a hard link from the app's folder into root's own $DIR, under a
-# name of its own for every take (the caller counts TAKE_N up first, as this runs in a
-# subshell), then its name in the app's folder is removed. A hard link never copies and
-# never moves anything into the app's reach: on another file system, or for a folder, it
-# just fails. Only that link in root's folder is ever read, once, then removed.
+# The name is renamed into a folder of root's own inside the app's folder (see
+# enter_own_dir): from then on the app cannot replace or change what is read, so the
+# file can be checked and read there by name. The caller counts TAKE_N up first, as
+# this runs in a subshell.
 TAKE_N=0
 take_app_file() {
   tname=$1
-  tag=$$.$TAKE_N.$(date +%s)
-  taken=$DIR/$tname.taken.$tag
-  stuck=$DIR/$tname.stuck
-  # One subshell, so every step works in the one folder that was checked.
-  (
+  tdir=.bageo-take.$$.$TAKE_N.$(date +%s)
+  line=$( (
     enter_app_dir || exit 1
     { [ -e "$tname" ] || [ -L "$tname" ]; } || exit 1
-    if [ -L "$tname" ]; then
-      rm -f "$tname"
-      exit 2
-    fi
-    if ! ln "$tname" "$taken"; then
-      if [ -d "$tname" ] && rmdir "$tname"; then exit 2; fi
-      exit 4
-    fi
-    # Taken only while the name still is that file: the app may have withdrawn it (and
-    # written a new one) meanwhile.
-    if [ "$(stat -c %i "$tname")" != "$(stat -c %i "$taken")" ]; then
-      rm -f "$taken"
+    enter_own_dir "$tdir" || exit 3
+    if ! mv -fT "../$tname" r; then
+      if [ -e "../$tname" ] || [ -L "../$tname" ]; then exit 3; fi
       exit 1
     fi
-    rm -f "$tname"
+    if [ -L r ]; then
+      rm -f r
+      exit 2
+    fi
+    if [ -d r ]; then
+      mv -fT r "../$tname.rejected.${tdir#.bageo-take.}"
+      exit 2
+    fi
+    if [ ! -f r ]; then
+      rm -f r
+      exit 2
+    fi
+    size=$(stat -c %s r)
+    case "$size" in (''|*[!0-9]*) exit 2 ;; esac
+    [ "$(stat -c %u r)" = "$APP_UID" ] && [ "$size" -le "$2" ] || exit 2
+    content=$(head -c "$(($2 + 1))" r; echo x)
+    content=${content%x}
+    [ "${#content}" -le "$2" ] || exit 2
+    case "$content" in (*"$NL") ;; (*) exit 2 ;; esac
+    line=${content%"$NL"}
+    case "$line" in (''|*"$NL"*) exit 2 ;; esac
+    printf '%s' "$line"
     exit 0
-  ) 2>/dev/null
-  case $? in
-    0) rm -f "$stuck" ;;
-    1) return 1 ;;
-    4)
-      if [ ! -e "$stuck" ]; then
-        log -t "$TAG" "cannot take $tname; left where it is" 2>/dev/null
-        : > "$stuck"
-      fi
-      return 1
-      ;;
+  ) 2>/dev/null )
+  rc=$?
+  ( enter_app_dir && drop_own_dir "$tdir" ) 2>/dev/null
+  case "$rc" in
+    0) printf '%s' "$line"; return 0 ;;
+    1|3) return "$rc" ;;
     *)
-      log -t "$TAG" "$tname dropped: not a plain file" 2>/dev/null
+      log -t "$TAG" "$tname dropped: not one line in a plain file of the app's" 2>/dev/null
       return 2
       ;;
   esac
-  size=$(stat -c %s "$taken" 2>/dev/null)
-  if [ -L "$taken" ] || [ ! -f "$taken" ] || [ "$(stat -c %u "$taken" 2>/dev/null)" != "$APP_UID" ]; then
-    rm -f "$taken"
-    log -t "$TAG" "$tname dropped: not a plain file of the app's" 2>/dev/null
-    return 2
-  fi
-  case "$size" in ''|*[!0-9]*) size=$(($2 + 1)) ;; esac
-  if [ "$size" -gt "$2" ]; then
-    rm -f "$taken"
-    log -t "$TAG" "$tname dropped: too large" 2>/dev/null
-    return 2
-  fi
-  content=$(head -c "$(($2 + 1))" "$taken" 2>/dev/null; echo x)
-  rm -f "$taken"
-  content=${content%x}
-  [ "${#content}" -le "$2" ] || return 2
-  case "$content" in *"$NL") ;; *) return 2 ;; esac
-  line=${content%"$NL"}
-  case "$line" in ''|*"$NL"*) return 2 ;; esac
-  printf '%s' "$line"
-  return 0
 }
 
-# Whether a switch request may be run (see the top of this file); REFUSED says why not.
+# Whether a request may be run (see the top of this file); REFUSED says why not.
 APP_LIST_MAX=8388608
 app_allowed() {
   REFUSED=
@@ -279,58 +289,52 @@ app_allowed() {
     REFUSED="app user ID differs from its folder's owner"
     return 1
   fi
+  if [ "$3" != 0 ]; then
+    REFUSED="app is debuggable or its entry malformed"
+    return 1
+  fi
   if [ "$4" != "/data/user/0/$PKG" ]; then
     REFUSED="app data folder unexpected"
     return 1
   fi
-  case "$3" in
-    0) return 0 ;;
-    1) ;;
-    *) REFUSED="package list malformed"; return 1 ;;
-  esac
-  # Debuggable: only while it is this module's own build, with no update installed.
-  for d in "$APPCODE/$PKG"-* "$APPCODE"/*/"$PKG"-*; do
-    if [ -e "$d" ] || [ -L "$d" ]; then
-      REFUSED="debuggable app installed as an update"
-      return 1
-    fi
-  done
+  shared=$(grep -c "^[^ ]* $APP_UID " "$PKGLIST" 2>/dev/null)
+  if [ "$shared" != 1 ]; then
+    REFUSED="app shares its user ID"
+    return 1
+  fi
   return 0
 }
 
-# Write the state: a temporary file in $DIR, given to the app (owner, mode 600, the
-# app folder's SELinux label), then renamed over the old one inside the app's folder.
-# Skipped while the folder is missing or not the app's.
+# Write the state: made in a folder of root's own inside the app's folder, given to the
+# app (owner, mode 600, the app folder's SELinux label), then renamed over the old one
+# (mv -T: a name, never a folder to move into; a link there is replaced, not followed;
+# the rename stays inside the app's folder, so it is never a copy). Skipped while the
+# folder is missing or not the app's.
+PUB_N=0
 publish() {
   app_uid || return 1
   quick_sig
   sig=$QSIG
-  own=$(stat -c %u:%g "$APPHOME" 2>/dev/null)
-  case "$own" in ''|:*|*:|*[!0-9:]*) return 1 ;; esac
-  tmp=$DIR/state.tmp
-  if [ -e "$tmp" ] && [ ! -f "$tmp" ] && [ ! -L "$tmp" ]; then
-    return 1
-  fi
-  rm -f "$tmp"
-  state_lines "$1" > "$tmp" 2>/dev/null
-  if [ ! -s "$tmp" ] || ! chown "$own" "$tmp" 2>/dev/null || ! chmod 600 "$tmp" 2>/dev/null; then
-    rm -f "$tmp"
-    return 1
-  fi
+  owner=$(stat -c %u:%g "$APPHOME" 2>/dev/null)
+  case "$owner" in ''|:*|*:|*[!0-9:]*) return 1 ;; esac
   label=$(stat -c %C "$APPHOME" 2>/dev/null)
-  case "$label" in u:object_r:*) chcon "$label" "$tmp" 2>/dev/null ;; esac
-  # mv -T: the target is a name, never a folder to move into (a link there is replaced,
-  # not followed); the toybox of every Android this module supports (10 and later)
-  # has it. Without it nothing is published.
-  if ! ( enter_app_dir && mv -fT "$tmp" state ) 2>/dev/null; then
-    rm -f "$tmp"
-    return 1
-  fi
+  PUB_N=$((PUB_N + 1))
+  pdir=.bageo-state.$$.$PUB_N
+  (
+    enter_own_dir "$pdir" || exit 1
+    state_lines "$1" > s || exit 1
+    [ -s s ] && chown "$owner" s && chmod 600 s || exit 1
+    case "$label" in u:object_r:*) chcon "$label" s ;; esac
+    mv -fT s ../state || exit 1
+  ) 2>/dev/null
+  rc=$?
+  ( enter_app_dir && drop_own_dir "$pdir" ) 2>/dev/null
+  [ "$rc" = 0 ] || return 1
   PUB_SIG=$sig
   return 0
 }
 
-# Take one request, check it and run it. Returns 1 when nothing was taken.
+# Take one request, check it and run it. Returns 1 when nothing was there.
 handle_request() {
   app_uid || return 1
   TAKE_N=$((TAKE_N + 1))
@@ -338,6 +342,17 @@ handle_request() {
   case $? in
     0) ok=1 ;;
     2) ok=0; req= ;;
+    3)
+      # Left where it is; said once, and the audio helper request still goes on.
+      if [ "$LAST_ERR" != take_failed ]; then
+        log -t "$TAG" "cannot take the request; left where it is" 2>/dev/null
+        LAST_REQ=
+        LAST_EXIT=2
+        LAST_ERR=take_failed
+        publish 0
+      fi
+      return 1
+      ;;
     *) return 1 ;;
   esac
 
@@ -401,7 +416,7 @@ helper_running() {
 
 # Take one audio helper request ("start <id>"), check it and start the helper in its
 # own session, unless it is turned off, runs already or was started just now. Returns
-# 1 when nothing was taken.
+# 1 when nothing was there.
 handle_helper() {
   app_uid || return 1
   TAKE_N=$((TAKE_N + 1))
@@ -409,6 +424,14 @@ handle_helper() {
   case $? in
     0) ok=1 ;;
     2) ok=0; req= ;;
+    3)
+      if [ "$LAST_HELPER_RESULT" != take_failed ]; then
+        log -t "$TAG" "cannot take the audio helper request; left where it is" 2>/dev/null
+        LAST_HELPER_RESULT=take_failed
+        publish 0
+      fi
+      return 1
+      ;;
     *) return 1 ;;
   esac
 
@@ -428,6 +451,10 @@ handle_helper() {
   since=$((now - LAST_HELPER_START))
   if [ "$ok" != 1 ]; then
     LAST_HELPER_RESULT=invalid_request
+  elif ! app_allowed; then
+    LAST_HELPER=$hid
+    LAST_HELPER_RESULT=app_refused
+    log -t "$TAG" "audio helper request refused: $REFUSED" 2>/dev/null
   else
     LAST_HELPER=$hid
     if [ -e "$HELPER_OFF" ]; then
@@ -455,8 +482,12 @@ handle_helper() {
 }
 
 log -t "$TAG" "mode helper started (pid $$)" 2>/dev/null
+# Folders of root's own an earlier run left in the app's folder (it was stopped half way).
+if app_uid; then
+  ( enter_app_dir && for d in .bageo-take.* .bageo-state.*; do drop_own_dir "$d"; done ) 2>/dev/null
+fi
 publish 0
-while :; do
+while [ -z "$STOP" ]; do
   # A phone mode switch always goes first; the audio helper waits for the next round.
   # What cannot be taken holds up neither the other request nor the state.
   took=0

@@ -7,13 +7,15 @@
 //! (`O_NOFOLLOW`), each step checked to belong to the app; later renames of the path
 //! cannot move that open folder.
 //!
-//! A file is published in three steps, none of which the app can redirect: it is made
-//! in a folder only root can touch (on the same file system), given to the app (owner,
-//! mode 0600, the app folder's SELinux label), written and flushed; renamed from there
-//! into the app's folder; then the name in the app's folder is checked to be that very
+//! A file is published inside that open folder only, never moved in from elsewhere (the
+//! app's folder has an encryption policy of its own: a rename from root's folders fails as
+//! if from another file system): it is made there new under a name of its own, never
+//! through a link (openat with O_CREAT | O_EXCL | O_NOFOLLOW), written and flushed while
+//! it is still root's, given to the app (owner, mode 0600, the app folder's SELinux label),
+//! renamed into place in the same folder, and the name is then checked to be that very
 //! file (device and inode). Without a label it can trust on the app's folder the helper
-//! publishes nothing. Removing it later removes only that file, not something the app
-//! put under the same name.
+//! publishes nothing. Removing it later removes only that file, never something the app
+//! put under the same name (see [AppDir::remove_published]).
 
 use std::ffi::CString;
 use std::io::{self, Write};
@@ -68,7 +70,7 @@ fn fstat(fd: RawFd) -> io::Result<libc::stat> {
 }
 
 /// The entry `name` in the folder `dir`, without following a link.
-fn lstat_at(dir: RawFd, name: &CString) -> io::Result<libc::stat> {
+fn lstat_at(dir: RawFd, name: &std::ffi::CStr) -> io::Result<libc::stat> {
     // SAFETY: stat is plain data; a NUL-terminated name relative to an open folder.
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
     if unsafe { libc::fstatat(dir, name.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) } != 0 {
@@ -157,81 +159,127 @@ impl AppDir {
         Ok(AppDir { fd, uid, gid: st.st_gid, label })
     }
 
-    /// Publishes `data` as `name` for the app (see the top of this file). `stage`: a
-    /// folder only root can touch, on the same file system as the app's folder.
-    pub fn publish(&self, stage: &Path, name: &str, data: &[u8]) -> io::Result<Published> {
-        self.publish_with(stage, name, data, || {})
+    /// Publishes `data` as `name` for the app (see the top of this file).
+    pub fn publish(&self, name: &str, data: &[u8]) -> io::Result<Published> {
+        self.publish_with(name, data, || {})
+    }
+
+    fn tmp_name(what: &str) -> io::Result<CString> {
+        cstr(&format!(".bageo-{what}.{}.{}", std::process::id(), NEXT_TMP.fetch_add(1, Ordering::Relaxed)))
     }
 
     /// [`AppDir::publish`], with `between` run after the rename and before the check
     /// (where the tests swap the file).
-    fn publish_with(&self, stage: &Path, name: &str, data: &[u8], between: impl FnOnce()) -> io::Result<Published> {
+    fn publish_with(&self, name: &str, data: &[u8], between: impl FnOnce()) -> io::Result<Published> {
         let target = cstr(name)?;
-        let stage = stage.to_str().ok_or_else(|| io::Error::from(io::ErrorKind::InvalidInput))?;
-        let stage_fd = open_dir(None, stage)?;
-        let sst = fstat(stage_fd.as_raw_fd())?;
-        // SAFETY: geteuid has no preconditions.
-        if sst.st_uid != unsafe { libc::geteuid() } || sst.st_mode & 0o077 != 0 {
-            return Err(io::Error::new(io::ErrorKind::PermissionDenied, "the staging folder is not root's alone"));
-        }
-        let tmp = cstr(&format!(".{name}.{}.{}", std::process::id(), NEXT_TMP.fetch_add(1, Ordering::Relaxed)))?;
-        let sdir = stage_fd.as_raw_fd();
-        // SAFETY: plain *at calls on folders we hold open, with NUL-terminated names.
-        unsafe {
-            libc::unlinkat(sdir, tmp.as_ptr(), 0);
-            let fd = libc::openat(
-                sdir,
+        let tmp = Self::tmp_name("new")?;
+        let dir = self.fd.as_raw_fd();
+        // SAFETY: an *at call on the folder we hold open, with a NUL-terminated name.
+        let fd = unsafe {
+            libc::openat(
+                dir,
                 tmp.as_ptr(),
                 libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
                 0o600 as libc::c_uint,
-            );
-            if fd < 0 {
+            )
+        };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: just opened.
+        let mut f = std::fs::File::from(unsafe { OwnedFd::from_raw_fd(fd) });
+        let id = file_id(&fstat(f.as_raw_fd())?);
+        let written = (|| -> io::Result<()> {
+            // Written and flushed while it is still root's (mode 0600), then given to the app.
+            f.write_all(data)?;
+            f.sync_all()?;
+            // SAFETY: plain calls on the descriptor we own.
+            if unsafe { libc::fchown(f.as_raw_fd(), self.uid, self.gid) } != 0
+                || unsafe { libc::fchmod(f.as_raw_fd(), 0o600) } != 0
+            {
                 return Err(io::Error::last_os_error());
             }
-            let mut f = std::fs::File::from(OwnedFd::from_raw_fd(fd));
-            let written = (|| -> io::Result<FileId> {
-                if libc::fchown(f.as_raw_fd(), self.uid, self.gid) != 0 || libc::fchmod(f.as_raw_fd(), 0o600) != 0 {
-                    return Err(io::Error::last_os_error());
-                }
-                if let Some(label) = &self.label {
-                    set_label(f.as_raw_fd(), label)?;
-                }
-                f.write_all(data)?;
-                f.sync_all()?;
-                Ok(file_id(&fstat(f.as_raw_fd())?))
-            })();
-            let id = match written {
-                Ok(id) => id,
-                Err(e) => {
-                    libc::unlinkat(sdir, tmp.as_ptr(), 0);
-                    return Err(e);
-                }
-            };
-            if libc::renameat(sdir, tmp.as_ptr(), self.fd.as_raw_fd(), target.as_ptr()) != 0 {
-                // Another file system (EXDEV) included: nothing is copied.
-                let e = io::Error::last_os_error();
-                libc::unlinkat(sdir, tmp.as_ptr(), 0);
-                return Err(e);
+            if let Some(label) = &self.label {
+                set_label(f.as_raw_fd(), label)?;
             }
-            between();
-            match lstat_at(self.fd.as_raw_fd(), &target) {
-                Ok(st) if is_file(&st) && file_id(&st) == id => Ok(Published { id, _held: f }),
-                _ => Err(io::Error::other("the published file was replaced")),
-            }
+            Ok(())
+        })();
+        if let Err(e) = written {
+            self.remove_if(&tmp, id);
+            return Err(e);
+        }
+        // SAFETY: a rename inside the folder we hold open, NUL-terminated names.
+        if unsafe { libc::renameat(dir, tmp.as_ptr(), dir, target.as_ptr()) } != 0 {
+            let e = io::Error::last_os_error();
+            self.remove_if(&tmp, id);
+            return Err(e);
+        }
+        between();
+        match lstat_at(dir, &target) {
+            Ok(st) if is_file(&st) && file_id(&st) == id => Ok(Published { id, _held: f }),
+            _ => Err(io::Error::other("the published file was replaced")),
         }
     }
 
     /// Removes `name` only if it is still the file that was published.
     pub fn remove_published(&self, name: &str, p: &Published) -> bool {
-        let Ok(c) = cstr(name) else { return false };
-        match lstat_at(self.fd.as_raw_fd(), &c) {
-            Ok(st) if is_file(&st) && file_id(&st) == p.id => {
-                // SAFETY: unlinkat without AT_REMOVEDIR on our open folder.
-                unsafe { libc::unlinkat(self.fd.as_raw_fd(), c.as_ptr(), 0) == 0 }
-            }
-            _ => false,
+        match cstr(name) {
+            Ok(c) => self.remove_if(&c, p.id),
+            Err(_) => false,
         }
     }
+
+    /// Removes the entry `name` only if it is the file `id`, with no moment in which the
+    /// app could put something else under the name and have that removed instead:
+    /// whatever is there is first renamed into a folder of root's own inside the app's
+    /// folder (made for this, mode 0700: the app can no longer touch it there), checked
+    /// there, and removed only if it is that file; anything else goes back under its
+    /// name, or next to it if the app has used the name meanwhile.
+    fn remove_if(&self, name: &CString, id: FileId) -> bool {
+        let dir = self.fd.as_raw_fd();
+        let Ok(sub) = Self::tmp_name("rm") else { return false };
+        // SAFETY: mkdirat on the folder we hold open (it never follows a link and fails
+        // when the name is taken).
+        if unsafe { libc::mkdirat(dir, sub.as_ptr(), 0o700) } != 0 {
+            return false;
+        }
+        let Ok(sub_fd) = open_dir(Some(dir), sub.to_str().unwrap_or("")) else {
+            return false;
+        };
+        let sfd = sub_fd.as_raw_fd();
+        // SAFETY: geteuid has no preconditions.
+        let mine = fstat(sfd).is_ok_and(|st| st.st_uid == unsafe { libc::geteuid() } && st.st_mode & 0o077 == 0);
+        let k = c"k";
+        // SAFETY: a rename between two folders we hold open, NUL-terminated names.
+        let moved = mine && unsafe { libc::renameat(dir, name.as_ptr(), sfd, k.as_ptr()) } == 0;
+        let ours = moved && lstat_at(sfd, k).is_ok_and(|st| is_file(&st) && file_id(&st) == id);
+        let removed = if ours {
+            // SAFETY: unlinkat in our own folder, where the app cannot change anything.
+            (unsafe { libc::unlinkat(sfd, k.as_ptr(), 0) }) == 0
+        } else {
+            if moved && !rename_noreplace(sfd, k, dir, name) {
+                // Not that file, and the app has used the name meanwhile: next to it.
+                // Failing that too it stays in our folder, which is then left.
+                if let Ok(kept) = Self::tmp_name("kept") {
+                    rename_noreplace(sfd, k, dir, &kept);
+                }
+            }
+            false
+        };
+        drop(sub_fd);
+        // SAFETY: removes the (now empty) folder we made; fails harmlessly otherwise.
+        unsafe {
+            libc::unlinkat(dir, sub.as_ptr(), libc::AT_REMOVEDIR);
+        }
+        removed
+    }
+}
+
+/// renameat2 with RENAME_NOREPLACE: never replaces what is at the target.
+fn rename_noreplace(from_dir: RawFd, from: &std::ffi::CStr, to_dir: RawFd, to: &std::ffi::CStr) -> bool {
+    const RENAME_NOREPLACE: libc::c_uint = 1;
+    // SAFETY: a plain system call on folders we hold open with NUL-terminated names.
+    unsafe { libc::syscall(libc::SYS_renameat2, from_dir, from.as_ptr(), to_dir, to.as_ptr(), RENAME_NOREPLACE) == 0 }
 }
 
 const LABEL_ATTR: &std::ffi::CStr = c"security.selinux";
@@ -283,7 +331,7 @@ mod label_tests {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
-    use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
     fn me() -> u32 {
         // SAFETY: no preconditions.
@@ -292,7 +340,6 @@ mod tests {
 
     struct Place {
         base: std::path::PathBuf,
-        stage: std::path::PathBuf,
     }
 
     impl Place {
@@ -301,15 +348,22 @@ mod tests {
             let _ = std::fs::remove_dir_all(&base);
             std::fs::create_dir_all(base.join("app/files/mode")).unwrap();
             std::fs::create_dir_all(base.join("elsewhere")).unwrap();
-            let stage = base.join("root");
-            std::fs::DirBuilder::new().mode(0o700).create(&stage).unwrap();
-            Place { base, stage }
+            Place { base }
         }
         fn app(&self) -> AppDir {
             AppDir::open(&self.base.join("app"), &["files", "mode"], me(), Labels::NotUsed).unwrap()
         }
         fn mode(&self, name: &str) -> std::path::PathBuf {
             self.base.join("app/files/mode").join(name)
+        }
+        /// The names in the app's folder, sorted.
+        fn names(&self, sub: &str) -> Vec<String> {
+            let mut v: Vec<String> = std::fs::read_dir(self.base.join(sub))
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            v.sort();
+            v
         }
     }
 
@@ -326,29 +380,30 @@ mod tests {
         // A link left where the file goes is replaced, and the link's target untouched.
         std::fs::write(p.base.join("elsewhere/target"), b"keep").unwrap();
         std::os::unix::fs::symlink(p.base.join("elsewhere/target"), p.mode("key")).unwrap();
-        let k = d.publish(&p.stage, "key", b"secret").unwrap();
+        let k = d.publish("key", b"secret").unwrap();
         assert_eq!(std::fs::read(p.base.join("elsewhere/target")).unwrap(), b"keep");
         let meta = std::fs::symlink_metadata(p.mode("key")).unwrap();
         assert!(meta.file_type().is_file());
         assert_eq!(meta.permissions().mode() & 0o777, 0o600);
         assert_eq!(meta.uid(), me());
         assert_eq!(std::fs::read(p.mode("key")).unwrap(), b"secret");
-        assert_eq!(std::fs::read_dir(&p.stage).unwrap().count(), 0, "nothing left in the staging folder");
+        assert_eq!(p.names("app/files/mode"), vec!["key"], "nothing else left in the folder");
 
         // The folder swapped for a link after opening: the file still lands in the folder
         // that was opened, not in the link's target.
         std::fs::rename(p.base.join("app/files/mode"), p.base.join("app/files/old")).unwrap();
         std::os::unix::fs::symlink(p.base.join("elsewhere"), p.base.join("app/files/mode")).unwrap();
-        d.publish(&p.stage, "key2", b"x").unwrap();
+        d.publish("key2", b"x").unwrap();
         assert!(!p.base.join("elsewhere/key2").exists());
         assert!(p.base.join("app/files/old/key2").exists());
 
         // Opening through a link is refused; so is a folder of another owner.
         assert!(AppDir::open(&p.base.join("app"), &["files", "mode"], me(), Labels::NotUsed).is_err());
         assert!(AppDir::open(&p.base.join("app"), &["files", "old"], me() + 1, Labels::NotUsed).is_err());
-        assert!(d.publish(&p.stage, "../x", b"x").is_err());
+        assert!(d.publish("../x", b"x").is_err());
         assert!(d.remove_published("key", &k));
         assert!(!p.base.join("app/files/old/key").exists());
+        assert_eq!(p.names("app/files/old"), vec!["key2"], "no folder of root's left behind");
     }
 
     #[test]
@@ -356,7 +411,7 @@ mod tests {
         let p = Place::new("swap");
         let d = p.app();
         let mode = p.mode("");
-        let r = d.publish_with(&p.stage, "key", b"secret", || {
+        let r = d.publish_with("key", b"secret", || {
             std::fs::remove_file(mode.join("key")).unwrap();
             std::fs::write(mode.join("key"), b"the app's own").unwrap();
         });
@@ -368,23 +423,31 @@ mod tests {
     fn removing_leaves_what_the_app_put_there_since() {
         let p = Place::new("remove");
         let d = p.app();
-        let k = d.publish(&p.stage, "key", b"secret").unwrap();
+        let k = d.publish("key", b"secret").unwrap();
         std::fs::remove_file(p.mode("key")).unwrap();
         std::fs::write(p.mode("key"), b"the app's own").unwrap();
         assert!(!d.remove_published("key", &k));
-        assert_eq!(std::fs::read(p.mode("key")).unwrap(), b"the app's own");
+        assert_eq!(std::fs::read(p.mode("key")).unwrap(), b"the app's own", "put back under its name");
         std::fs::remove_file(p.mode("key")).unwrap();
         std::os::unix::fs::symlink("/etc/hostname", p.mode("key")).unwrap();
         assert!(!d.remove_published("key", &k), "a link is not removed either");
+        assert!(std::fs::symlink_metadata(p.mode("key")).unwrap().file_type().is_symlink());
+        assert_eq!(p.names("app/files/mode"), vec!["key"], "no folder of root's left behind");
+        assert!(!d.remove_published("gone", &k), "nothing there: nothing removed");
     }
 
     #[test]
-    fn a_staging_folder_others_can_use_is_refused() {
-        let p = Place::new("stage");
+    fn a_name_the_app_takes_meanwhile_is_not_overwritten() {
+        // What is moved aside and turns out not to be ours goes back next to the name
+        // when the app has put something new under it in the meantime.
+        let p = Place::new("noreplace");
         let d = p.app();
-        std::fs::set_permissions(&p.stage, std::fs::Permissions::from_mode(0o755)).unwrap();
-        assert!(d.publish(&p.stage, "key", b"secret").is_err());
-        assert!(!p.mode("key").exists());
+        let _k = d.publish("key", b"secret").unwrap();
+        std::fs::write(p.mode("other"), b"a").unwrap();
+        let sfd = open_dir(Some(d.fd.as_raw_fd()), ".").unwrap();
+        std::fs::write(p.mode("taken"), b"b").unwrap();
+        assert!(!rename_noreplace(sfd.as_raw_fd(), c"other", d.fd.as_raw_fd(), c"taken"));
+        assert_eq!(std::fs::read(p.mode("taken")).unwrap(), b"b");
     }
 
     #[test]

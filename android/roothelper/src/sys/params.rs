@@ -27,10 +27,9 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::AtomicI32;
 use std::time::Duration;
 
-use super::child;
+use super::child::{self, ChildSlot};
 use crate::control::ParamBackend;
 use crate::params;
 
@@ -39,7 +38,7 @@ const TIMEOUT: Duration = Duration::from_secs(3);
 const MAX_OUTPUT: usize = 64 * 1024;
 
 /// The running `app_process` child, so a stop signal can end it at once.
-pub static CHILD: AtomicI32 = AtomicI32::new(0);
+pub static CHILD: ChildSlot = ChildSlot::new();
 
 /// Fixed runtime paths of Android 10 and later.
 const FIXED_ENV: &[(&str, &str)] = &[

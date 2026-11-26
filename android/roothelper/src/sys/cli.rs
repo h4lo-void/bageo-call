@@ -54,6 +54,9 @@ impl PcmHost for NoPcm {
         Err("no such stream".into())
     }
     fn close_all(&mut self) {}
+    fn watch_call(&mut self) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 struct NoCalls;
@@ -307,7 +310,10 @@ pub fn run(args: Vec<String>) -> i32 {
         &["restore", "--force"] => restore(Leftover::Force),
         &["restore", "--discard"] => discard(),
         // Started by a helper that stopped while a change was still running.
-        &["restore", "--wait"] => report_result("restore after a stop", server::restore_after_exit()),
+        &["restore", "--wait"] => match server::restore_after_exit() {
+            Ok(r) => report_result("restore after a stop", r),
+            Err(e) => fail(e),
+        },
         &["disable"] => disable(),
         &["enable"] => enable(),
         &["probe"] => {

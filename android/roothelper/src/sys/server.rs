@@ -288,19 +288,17 @@ pub fn spawn_signal_thread(set: libc::sigset_t, life: Arc<Life>, exit: Exit, wat
     });
 }
 
-/// The way out (see [`crate::life`]): ends a running parameter call, stops new changes,
-/// then either puts back the saved values while holding the lock and ends the process
-/// still holding it, or, when a change does not finish in time, keeps them for
-/// `restore --wait` and ends the process (which ends that change).
+/// The way out (see [`crate::life`]): stops new changes first, then ends a running
+/// parameter call (through [`CHILD`], which knows the call for sure until it has been
+/// reaped), then either puts back the saved values while holding the lock, once that call
+/// is known to have gone, and ends the process still holding it; or, when a change does
+/// not finish in time, keeps them for `restore --wait` and ends the process (which ends
+/// that change).
 pub fn exit_now(life: &Life, exit: &Exit, code: i32) -> ! {
-    let child = CHILD.load(Ordering::SeqCst);
-    if child > 0 {
-        // SAFETY: kill on the pid of the parameter tool we started.
-        unsafe {
-            libc::kill(child, libc::SIGKILL);
-        }
-    }
-    match life.hold_for_exit(STOP_WAIT) {
+    life.stop();
+    CHILD.kill();
+    let held = life.hold_for_exit(STOP_WAIT).filter(|_| child_gone(Duration::from_secs(1)));
+    match held {
         Some(_held) => {
             if let Some(r) = restore_state_file(Leftover::Normal) {
                 log_report("stopping", &r);
@@ -315,6 +313,19 @@ pub fn exit_now(life: &Life, exit: &Exit, code: i32) -> ! {
             std::process::exit(code)
         }
     }
+}
+
+/// Whether no parameter call runs any more, killing one that still does, within wait.
+fn child_gone(wait: Duration) -> bool {
+    let start = Instant::now();
+    while CHILD.busy() {
+        if start.elapsed() >= wait {
+            return false;
+        }
+        CHILD.kill();
+        thread::sleep(Duration::from_millis(20));
+    }
+    true
 }
 
 /// Starts `restore --wait` on its own, to put back the saved values once this process
@@ -334,14 +345,16 @@ fn spawn_restore_after_exit() {
     }
 }
 
-/// `restore --wait`: waits for the stopped helper to be gone, then puts back.
-pub fn restore_after_exit() -> Option<Report> {
+/// `restore --wait`: waits for the stopped helper to be gone, then puts back. `Err`: it
+/// did not go in time, so nothing was put back.
+pub fn restore_after_exit() -> Result<Option<Report>, &'static str> {
     match wait_for_lock(AFTER_EXIT_WAIT) {
-        Ok(Some(_lock)) => restore_state_file(Leftover::Normal),
-        _ => {
-            log::warn("restore after a stop: the helper did not go; left for the next start or boot");
-            None
+        Ok(Some(_lock)) => Ok(restore_state_file(Leftover::Normal)),
+        Ok(None) => {
+            log::warn("restore after a stop: the helper did not go; nothing put back yet (next start or boot)");
+            Err("the stopped helper did not go in time; nothing was put back yet")
         }
+        Err(_) => Err("cannot take the lock; nothing was put back"),
     }
 }
 
@@ -415,7 +428,7 @@ pub fn serve() -> i32 {
             return 1;
         }
     };
-    let key = match dir.publish(Path::new(DATA_DIR), KEY_FILE, keys.file_text().as_bytes()) {
+    let key = match dir.publish(KEY_FILE, keys.file_text().as_bytes()) {
         Ok(k) => k,
         Err(_) => {
             log::warn("cannot hand the key to the app; not serving");
@@ -602,7 +615,7 @@ impl StreamHost {
     }
 
     /// Starts the session's call watch unless it runs.
-    fn watch_call(&mut self) -> Result<(), String> {
+    fn start_watch(&mut self) -> Result<(), String> {
         if self.watch.as_ref().is_some_and(Watch::is_running) {
             return Ok(());
         }
@@ -632,7 +645,7 @@ impl PcmHost for StreamHost {
         if self.streams.len() + self.stragglers.len() >= MAX_STREAMS {
             return Err("too many streams".into());
         }
-        self.watch_call()?;
+        self.start_watch()?;
         let pcm = Pcm::open(req).map_err(|e| format!("cannot open the PCM device ({})", e.kind()))?;
         let sock = connect_to_app(self.app_uid).ok_or("cannot connect to the app for the stream")?;
         self.next += 1;
@@ -667,6 +680,10 @@ impl PcmHost for StreamHost {
         locked(&self.live).push(Arc::clone(&shared));
         self.streams.push(Stream { id, shared, done: rx, thread: Some(thread) });
         Ok(reply)
+    }
+
+    fn watch_call(&mut self) -> Result<(), String> {
+        self.start_watch()
     }
 
     fn flush(&mut self, id: &str) -> Result<(), String> {
