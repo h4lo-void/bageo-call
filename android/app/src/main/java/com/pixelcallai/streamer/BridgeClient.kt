@@ -74,7 +74,7 @@ class BridgeClient(
                     .put("sim_country", simCountry)
                     .put("play_tts_locally", false)
                     .put("local_menu", BuildConfig.LOCAL_MENU_ENABLED)
-                    .put("model", android.os.Build.MODEL)
+                    .put("model", DeviceName.display)
                     .put("app_version", BuildConfig.VERSION_NAME)
                 if (simSubId != null) hello.put("sim_sub_id", simSubId)
                 send(hello.toString())

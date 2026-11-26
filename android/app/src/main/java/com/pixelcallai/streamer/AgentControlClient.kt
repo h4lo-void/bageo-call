@@ -98,7 +98,7 @@ class AgentControlClient(
                         .put("serial", serial)
                         .put("mode", "CONTROL_IDLE")
                         .put("play_tts_locally", false)
-                        .put("model", android.os.Build.MODEL)
+                        .put("model", DeviceName.display)
                         .put("app_version", BuildConfig.VERSION_NAME)
                         .put("supports_sms", true)
                         .put("supports_reject", true)
