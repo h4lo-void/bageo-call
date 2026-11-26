@@ -378,5 +378,35 @@ wait_state mode=normal; eq "back to normal reported" "$?" 0
 kill "$DPID" 2>/dev/null
 wait "$DPID" 2>/dev/null
 
+# The app asks for the audio helper: the helper starts once per valid request, a bad
+# request starts nothing, and a module without a helper says so.
+setup daemon_audio_helper
+mkdir -p "$ST/app/files/mode" "$ST/bin"
+printf '#!/bin/sh\necho "$*" >> "%s/helper_runs"\n' "$ST" > "$ST/bin/bageo-audio-helper"
+chmod 600 "$ST/bin/bageo-audio-helper"
+sed -e "s#/data/adb/pixelcallai#$ST/data#g" -e "s#^APPHOME=.*#APPHOME=$ST/app#" \
+  -e "s#^PATH=.*#PATH=$TMP/dbin:/usr/bin:/bin:/usr/sbin:/sbin#" -e 's#^  sleep 2$#  sleep 0.2#' \
+  "$MOD/mode_daemon.sh" > "$ST/mode_daemon.sh"
+sh "$ST/mode_daemon.sh" </dev/null >/dev/null 2>&1 &
+DPID=$!
+wait_state daemon=1; eq "daemon up" "$?" 0
+helper_runs() { [ -f "$ST/helper_runs" ] && grep -c . "$ST/helper_runs" || echo 0; }
+printf 'start call-1\n' > "$ST/app/files/mode/audio_helper"
+wait_state audio_helper_result=started; eq "helper started" "$?" 0
+state_has audio_helper=call-1; eq "its request reported" "$?" 0
+n=0; while [ "$(helper_runs)" -lt 1 ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+eq "helper ran once" "$(helper_runs)" 1
+eq "helper asked to serve" "$(cat "$ST/helper_runs" 2>/dev/null)" serve
+eq "request taken" "$([ -e "$ST/app/files/mode/audio_helper" ] && echo left || echo taken)" taken
+printf 'start ../../x\n' > "$ST/app/files/mode/audio_helper"
+wait_state audio_helper_result=invalid_request; eq "bad id refused" "$?" 0
+rm -f "$ST/bin/bageo-audio-helper"
+printf 'start call-2\n' > "$ST/app/files/mode/audio_helper"
+wait_state audio_helper_result=missing; eq "no helper reported" "$?" 0
+state_has audio_helper=call-2; eq "that request reported" "$?" 0
+eq "nothing else ran" "$(helper_runs)" 1
+kill "$DPID" 2>/dev/null
+wait "$DPID" 2>/dev/null
+
 echo "checks passed: $PASS, failed: $FAILS"
 [ "$FAILS" -eq 0 ]

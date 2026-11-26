@@ -43,6 +43,9 @@ phone module together.
   (`.bageo`). Protect the `data/` folder and its backups accordingly.
 - The phone module installs a privileged system app. Install only builds you
   trust.
+- The phone module also carries a root program, `bageo-audio-helper`, for phones
+  whose call audio the app cannot reach by itself. It runs only while the app asks
+  for it (never at boot) and quits a minute after the app stops using it.
 
 ## Built-in protections
 
@@ -74,6 +77,15 @@ phone module together.
   short codes or premium-rate numbers, call each errand once (with Redial until
   answered on, at most 30 times, a minute apart), and hang up before
   the AI speaks when the phone used another SIM than the one asked for.
+- **The phone's root audio helper serves only the Bageo app.** `bageo-audio-helper`
+  connects to a socket the app listens on and checks the listener's Linux user ID
+  (`SO_PEERCRED`) against the app's before it sends or reads anything; anything else
+  is refused. It accepts a fixed list of audio operations (mixer controls, audio HAL
+  parameters, call audio streams) with size-limited, versioned requests, and has no
+  way to run other commands. Before it changes a mixer control or parameter it saves
+  the old value to a root-only file, and puts every saved value back when the call
+  ends, the connection breaks, the helper is stopped, or, after a crash or reboot,
+  the next time it starts or the phone boots. The module adds no SELinux rule for it.
 - **Secrets stay hidden.** The settings API returns keys and notification tokens
   masked. `/health` returns only a short status unless the request carries the
   console password, or, with no password set, comes from this computer itself

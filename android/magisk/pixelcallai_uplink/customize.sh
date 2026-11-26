@@ -50,6 +50,38 @@ fi
 ui_print "- priv-app APK: ${APK_SIZE} bytes"
 ui_print "- rollback: touch \$MODDIR/disable && reboot"
 
+# bageo-audio-helper, the root audio helper for phones whose call audio path the app
+# cannot use by itself: keep only the build for this phone's ABI, in bin/. It runs
+# only when the app asks for it (mode_daemon.sh), never at boot.
+HELPER_SRC="$MODPATH/roothelper"
+if [ -d "$HELPER_SRC" ]; then
+  HELPER_ABI=
+  case "${ARCH:-}" in
+    arm64) HELPER_ABI=arm64-v8a ;;
+    arm) HELPER_ABI=armeabi-v7a ;;
+    '')
+      case "$(getprop ro.product.cpu.abi)" in
+        arm64-v8a) HELPER_ABI=arm64-v8a ;;
+        armeabi-v7a|armeabi) HELPER_ABI=armeabi-v7a ;;
+      esac ;;
+  esac
+  if [ -n "$HELPER_ABI" ] && [ -f "$HELPER_SRC/$HELPER_ABI/bageo-audio-helper" ]; then
+    mkdir -p "$MODPATH/bin"
+    cp -f "$HELPER_SRC/$HELPER_ABI/bageo-audio-helper" "$MODPATH/bin/bageo-audio-helper"
+    chown 0:0 "$MODPATH/bin/bageo-audio-helper"
+    chmod 0700 "$MODPATH/bin/bageo-audio-helper"
+    if [ -f "$HELPER_SRC/bageo-audio-params.jar" ]; then
+      cp -f "$HELPER_SRC/bageo-audio-params.jar" "$MODPATH/bin/bageo-audio-params.jar"
+      chown 0:0 "$MODPATH/bin/bageo-audio-params.jar"
+      chmod 0600 "$MODPATH/bin/bageo-audio-params.jar"
+    fi
+    ui_print "- audio helper: $HELPER_ABI (runs only when the app asks)"
+  else
+    ui_print "- audio helper: none for this phone (${ARCH:-unknown})"
+  fi
+  rm -rf "$HELPER_SRC"
+fi
+
 # pixelcallai_uplink (computer-linked) and bageo_ai_call_agent (phone-only)
 # install the same app. Keep only the module being installed: the other one
 # is removed at the next reboot.

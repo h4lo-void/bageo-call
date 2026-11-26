@@ -328,6 +328,19 @@ To switch without touching the phone's screen, from a computer with `adb`:
   Back to AI mode: write `ai` instead (`echo ai > …`), or remove the file with
   `adb shell "su -c 'rm -f /data/adb/pixelcallai/mode'"`, then reboot.
 
+## The audio helper
+
+Some phones do not let the app put its voice into a call by itself. For those, the
+module carries a small root program, `bageo-audio-helper`, that the app can ask to
+adjust the phone's audio for a call. Phones that do not need it never run it.
+
+- It starts only when the app asks for it, never at boot, and quits by itself a
+  minute after the app stops using it.
+- Every audio setting it changes during a call is put back when the call ends, also
+  when the app or the phone stops unexpectedly (at the latest at the next boot).
+- To check that it is not running: `adb shell su -c 'pidof bageo-audio-helper'`
+  prints nothing.
+
 ## Rollback
 
 To remove Bageo:

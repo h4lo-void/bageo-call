@@ -10,6 +10,12 @@
 #
 #   APPDIR/request   one line: <ai|normal> <id> [0 to 6 volumes]
 #                    id: letters, digits and dashes, at most 64; volume: 1 to 3 digits
+#   APPDIR/audio_helper
+#                    one line: start <id>
+#                    starts bin/bageo-audio-helper, the root audio helper for phones
+#                    whose call audio path the app cannot use by itself. It connects
+#                    to the app's socket, serves it, and quits after a minute without
+#                    the app; only one copy runs. Nothing starts it otherwise.
 #
 # It takes the request (a rename, so the app can still withdraw one nobody took),
 # checks it, runs apply_mode.sh with it and reports to the app in APPDIR/state:
@@ -23,6 +29,9 @@
 #   request=<id>            the last request taken
 #   exit=<code>             apply_mode.sh's exit code, once that run ended
 #   error=invalid_request   the last request was malformed and was not run
+#   audio_helper=<id>       the last audio_helper request taken
+#   audio_helper_result=started|missing|invalid_request
+#                           missing: this module has no helper for the phone
 #   log.<key>=<value>       every line of /data/adb/pixelcallai/last_apply
 #
 # The state is written when this starts, before and after every run, whenever the
@@ -66,6 +75,9 @@ LAST_REQ=
 LAST_EXIT=
 LAST_ERR=
 PUB_SIG=
+HELPER=$MODDIR/bin/bageo-audio-helper
+LAST_HELPER=
+LAST_HELPER_RESULT=
 
 # QSIG: the files the state reports (mode, pending, last_apply) and whether the run
 # lock is held, read with shell builtins only so the 2 second loop stays cheap.
@@ -110,6 +122,8 @@ state_lines() {
   [ -n "$LAST_REQ" ] && echo "request=$LAST_REQ"
   [ -n "$LAST_EXIT" ] && echo "exit=$LAST_EXIT"
   [ -n "$LAST_ERR" ] && echo "error=$LAST_ERR"
+  [ -n "$LAST_HELPER" ] && echo "audio_helper=$LAST_HELPER"
+  [ -n "$LAST_HELPER_RESULT" ] && echo "audio_helper_result=$LAST_HELPER_RESULT"
   [ -f "$DIR/last_apply" ] && sed 's/^/log./' "$DIR/last_apply"
   return 0
 }
@@ -202,9 +216,55 @@ handle_request() {
   return 0
 }
 
+# Take one audio helper request ("start <id>"), check it and start the helper in its
+# own session. The helper keeps a single copy running by itself (a lock file), so a
+# second start while one runs quits at once.
+handle_helper() {
+  taken=$DIR/audio_helper.taken
+  rm -rf "$taken"
+  app_dir_ok || return 0
+  mv -fT "$APPDIR/audio_helper" "$taken" 2>/dev/null || return 0
+  req=
+  [ -f "$taken" ] && [ ! -L "$taken" ] && req=$(head -c 100 "$taken" 2>/dev/null)
+  rm -rf "$taken"
+
+  ok=1
+  case "$req" in *"$NL"*) ok=0 ;; esac
+  [ "${#req}" -le 80 ] || ok=0
+  set -f
+  old_ifs=$IFS
+  IFS=' '
+  set -- $req
+  IFS=$old_ifs
+  set +f
+  [ "$#" -eq 2 ] && [ "$1" = start ] || ok=0
+  hid=$2
+  case "$hid" in ''|*[!A-Za-z0-9-]*) ok=0; hid= ;; esac
+  [ "${#hid}" -le 64 ] || { ok=0; hid=; }
+
+  LAST_HELPER=$hid
+  if [ "$ok" != 1 ]; then
+    LAST_HELPER_RESULT=invalid_request
+  elif [ ! -f "$HELPER" ]; then
+    LAST_HELPER_RESULT=missing
+  else
+    [ -x "$HELPER" ] || chmod 0700 "$HELPER" 2>/dev/null
+    if command -v setsid >/dev/null 2>&1; then
+      setsid "$HELPER" serve </dev/null >/dev/null 2>&1 &
+    else
+      "$HELPER" serve </dev/null >/dev/null 2>&1 &
+    fi
+    LAST_HELPER_RESULT=started
+  fi
+  log -t "$TAG" "audio helper request (id=$hid): $LAST_HELPER_RESULT" 2>/dev/null
+  publish 0
+  return 0
+}
+
 log -t "$TAG" "mode helper started (pid $$)" 2>/dev/null
 publish 0
 while :; do
+  [ -f "$APPDIR/audio_helper" ] && handle_helper
   if [ -f "$APPDIR/request" ]; then
     handle_request
   elif [ -d "$APPDIR" ] && [ ! -f "$APPDIR/state" ]; then

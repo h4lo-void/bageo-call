@@ -199,6 +199,14 @@ USB 還能讓手機一直充電，沒有 Wi-Fi 也能用。一台電腦可以接
 
   切回 AI 模式：改寫成 `ai`（`echo ai > …`），或用 `adb shell "su -c 'rm -f /data/adb/pixelcallai/mode'"` 刪掉這個檔案，再重新開機。
 
+## 音訊小幫手
+
+有些手機不讓 App 自己把聲音送進通話。為了這種手機，模組帶了一支 root 小程式 `bageo-audio-helper`，App 可以請它在通話時調整手機的音訊。用不到它的手機完全不會執行它。
+
+- 只有 App 要用時才啟動，開機不會啟動；App 不用之後一分鐘，它會自己結束。
+- 通話中改過的音訊設定，通話結束時都會改回原樣；App 或手機中途停掉也一樣（最晚下次開機時改回）。
+- 確認它沒在執行：`adb shell su -c 'pidof bageo-audio-helper'` 沒有輸出就是沒在跑。
+
 ## 還原
 
 要移除 Bageo：

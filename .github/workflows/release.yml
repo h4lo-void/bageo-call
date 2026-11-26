@@ -171,6 +171,10 @@ jobs:
           echo "PCA_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
       - name: Build Android arm64 Rust library
         run: bash android/scripts/build-rust-android.sh
+      - name: Build the phone audio helper (arm64-v8a, armeabi-v7a)
+        run: |
+          rustup target add armv7-linux-androideabi
+          bash android/scripts/build-roothelper.sh
       - name: Build and package bridge and standalone modules
         working-directory: android
         env:
@@ -184,6 +188,8 @@ jobs:
             bash scripts/package-uplink-module.sh
             bash scripts/package-uplink-module.sh --standalone --skip-rust-build
           fi
+      - name: Check the audio helper is in the phone modules
+        run: bash android/scripts/check-roothelper-in-module.sh android/magisk/dist/bageo-phone-*.zip
       - name: Verify APK signing
         env:
           PCA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}

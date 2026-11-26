@@ -14,6 +14,10 @@ magisk/dist/
 magisk/pixelcallai_uplink/system/priv-app/com.pixelcallai.streamer/base.apk
 app/src/standalone/jniLibs/
 rust-jni/
+# bageo-audio-helper: its build folder, and the binaries build-roothelper.sh puts
+# into the module tree for packaging
+roothelper/target/
+magisk/pixelcallai_uplink/roothelper/
 
 # IDE
 *.iml

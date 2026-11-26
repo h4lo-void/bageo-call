@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
+# SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
+
+# bageo-audio-helper: the phone module's root audio helper. Its own workspace (the
+# empty table below), so it never slows down or changes the Bageo program's build.
+[workspace]
+
+[package]
+name = "bageo-audio-helper"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+authors = ["h4lo-void"]
+repository = "https://github.com/h4lo-void/bageo-call"
+publish = false
+description = "Root helper of the Bageo phone module: ALSA mixer, audio parameters and call PCM for the app"
+
+[lib]
+name = "bageo_audio_helper"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bageo-audio-helper"
+path = "src/main.rs"
+
+[dependencies]
+# MIT OR Apache-2.0. Kernel structs, syscalls and constants; nothing else.
+libc = "0.2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+# Unwinding stays on: a panic while serving the app is caught and the mixer is
+# put back before the helper quits.
+panic = "unwind"
