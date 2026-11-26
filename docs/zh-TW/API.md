@@ -775,7 +775,7 @@ Content-Type: application/json
 - `mode` 是 `ai`（AI 接聽）或 `normal`（一般手機，見[手機設定](PHONE.md#一般手機模式)）。
 - 比這個功能舊的 App，`supports_mode` 是 false，永遠是 `ai`。
 - `audio_fit`（新版手機 App 才有，舊版沒有這個欄位）表示這支手機把 AI 的聲音播進通話的情況：`untested`（還沒有夠長的通話）、`ok`（Google Pixel 是已知機型，一開始就是 `ok`）、`adjusted`（換過播放設定，已記住新的）、`problem`（還是會掉聲音，或主人說對方聽不到）、`unsupported`（手機沒有通話用的播放裝置，或每組設定都被拒絕）。App 連上時和每通結束時都會送；每通也會在 Bageo 的 log 寫一行 `uplink health …`。
-- `audio_fit_ask` 和 `audio_fit_retest` 只在為 true 時才有。`audio_fit_ask`：一通有 AI 聲音的電話結束時 `audio_fit` 是 `ok` 或 `adjusted`，而主人還沒回答，所以控制台會問「有聽到 AI 的聲音嗎？」。`audio_fit_retest`：主人回答沒有（`audio-problem`），下一通會用別組設定測試；要等有通話用新設定測完才會消失（太短、判斷不了的通話不算）。`audio_fit_noted`：在不能換設定的手機（Google Pixel）上同樣的回答，只會記著，直到系統更新。Bageo 把這兩項和通知狀態存在資料資料夾的 `audio_fit.json`；手機又回到 `untested` 就開始新的一輪。
+- `audio_fit_ask`、`audio_fit_retest` 和 `audio_fit_noted` 只在為 true 時才有。`audio_fit_ask`：一通有 AI 聲音的電話結束時 `audio_fit` 是 `ok` 或 `adjusted`，而主人還沒回答，所以控制台會問「有聽到 AI 的聲音嗎？」。`audio_fit_retest`：主人回答沒有（`audio-problem`），下一通會用別組設定測試；要等有通話用新設定測完才會消失（太短、判斷不了的通話不算）。`audio_fit_noted`：在不能換設定的手機（Google Pixel）上同樣的回答，只會記著，直到系統更新。Bageo 把這三項和通知狀態存在資料資料夾的 `audio_fit.json`；手機又回到 `untested` 就開始新的一輪。
 
 `GET /health` 的內容：
 
