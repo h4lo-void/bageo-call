@@ -193,7 +193,7 @@
     "who_ai": "AI",
     "who_carrier": "電信業者提示音",
     "d_ended": "怎麼結束的",
-    "end_ai_fail": "AI 連不上，系統直接掛斷，對方沒有聽到任何聲音。",
+    "end_ai_fail": "AI 連不上，系統已掛斷這通電話。",
     "end_voicemail": "AI 失敗，改成語音留言。",
     "end_hidden": "未顯示號碼：播放拒接語音後掛斷，AI 沒有接。",
     "end_blocked": "黑名單：播放「無法接通」語音後掛斷，AI 沒有接。",
@@ -243,6 +243,9 @@
     "f_scam_blind_h": "開：沒聽過的新話術也抓得到，會多用一點額度。關：只檢查出現常見推銷、詐騙字眼的電話。",
     "ev_ai_callback": "AI 回電",
     "ev_persona_ai_fail_hangup": "AI 失敗，已掛斷",
+    "ev_ai_fail_announced": "已播放無法接聽語音",
+    "ev_ai_fail_quota": "Gemini 額度用完或超過花費上限",
+    "ev_ai_fail_key": "Gemini 金鑰無效",
     "ev_gemini_zero_audio_reconnect": "AI 重新連線（沒有聲音）",
     "tab_contacts": "聯絡人",
     "ct_search_ph": "搜尋名字、號碼或備註",
@@ -1388,6 +1391,15 @@
     "m_chk_sms_d": "允許後，Bageo 才能用簡訊告訴來電者預約有沒有成功。",
     "er_need_phone": "手機還沒準備好，請稍等幾秒；一直這樣就重新開啟 App。",
     "bk_err_read_failed": "讀不到這個檔案，請重新選一次。",
-    "bk_app_note": "備份存在 Bageo 裡，移除 App 就會一起刪掉。要留一份，請按「下載」存到手機。"
+    "bk_app_note": "備份存在 Bageo 裡，移除 App 就會一起刪掉。要留一份，請按「下載」存到手機。",
+    "ph_fit_untested": "還沒測過通話聲音：請用另一支電話打給這支手機，跟 AI 講 20 秒左右，Bageo 會自動調整。",
+    "ph_fit_adjusted": "已自動調整通話聲音",
+    "ph_fit_problem": "通話聲音有問題，已試過所有設定。請看說明文件的「新手機第一次使用」。",
+    "ph_fit_unsupported": "這支手機不支援把 AI 的聲音送進通話",
+    "ph_fit_ask": "最近一通電話，有聽到 AI 的聲音嗎？",
+    "ph_fit_yes": "有",
+    "ph_fit_no": "沒有",
+    "ph_fit_retest": "已換一組通話聲音設定，請再打一通電話測試。",
+    "ph_fit_noted": "已記下這支手機的通話聲音有問題"
   }
 }

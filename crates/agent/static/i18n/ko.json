@@ -193,7 +193,7 @@
     "who_ai": "AI",
     "who_carrier": "통신사 안내 음성",
     "d_ended": "통화가 끝난 방식",
-    "end_ai_fail": "AI에 연결하지 못해 전화를 끊었습니다. 상대방은 아무 소리도 듣지 못했습니다.",
+    "end_ai_fail": "AI에 연결하지 못해 전화를 끊었습니다.",
     "end_voicemail": "AI가 실패해 음성 메시지로 넘어갔습니다.",
     "end_hidden": "발신번호 표시 제한: 거절 안내를 들려주고 끊었습니다. AI는 받지 않았습니다.",
     "end_blocked": "차단 번호: “연결할 수 없습니다” 안내를 들려주고 끊었습니다. AI는 받지 않았습니다.",
@@ -243,6 +243,9 @@
     "f_scam_blind_h": "켜기: 새로운 수법도 잡아내지만 사용량이 조금 늘어납니다. 끄기: 흔한 영업·사기 단어가 나온 전화만 확인합니다.",
     "ev_ai_callback": "AI 회신 전화",
     "ev_persona_ai_fail_hangup": "AI 실패로 끊음",
+    "ev_ai_fail_announced": "받을 수 없다는 안내 재생",
+    "ev_ai_fail_quota": "Gemini 사용 한도 또는 지출 한도에 도달",
+    "ev_ai_fail_key": "Gemini 키가 유효하지 않음",
     "ev_gemini_zero_audio_reconnect": "AI 다시 연결(소리 없음)",
     "tab_contacts": "연락처",
     "ct_search_ph": "이름, 번호, 메모로 검색",
@@ -1388,6 +1391,15 @@
     "m_chk_sms_d": "허용하면 Bageo가 예약이 됐는지 문자로 상대에게 알려 줄 수 있습니다.",
     "er_need_phone": "휴대폰이 아직 준비되지 않았습니다. 몇 초 기다려도 그대로면 앱을 다시 여세요.",
     "bk_err_read_failed": "이 파일을 읽을 수 없습니다. 다시 선택하세요.",
-    "bk_app_note": "백업은 Bageo 안에 있어서 앱을 지우면 함께 사라집니다. 남겨 두려면 ‘다운로드’를 눌러 휴대폰에 저장하세요."
+    "bk_app_note": "백업은 Bageo 안에 있어서 앱을 지우면 함께 사라집니다. 남겨 두려면 ‘다운로드’를 눌러 휴대폰에 저장하세요.",
+    "ph_fit_untested": "통화 소리를 아직 테스트하지 않았습니다. 다른 전화로 이 휴대전화에 걸어 AI와 20초 정도 이야기하면 Bageo가 자동으로 맞춥니다.",
+    "ph_fit_adjusted": "통화 소리를 자동으로 조정했습니다",
+    "ph_fit_problem": "통화 소리에 문제가 있어 모든 설정을 시도했습니다. 안내서(영어)의 'First use on a new phone' 항목을 확인하세요.",
+    "ph_fit_unsupported": "이 휴대전화는 AI 목소리를 통화에 내보낼 수 없습니다",
+    "ph_fit_ask": "최근 통화에서 AI 목소리가 들렸나요?",
+    "ph_fit_yes": "예",
+    "ph_fit_no": "아니요",
+    "ph_fit_retest": "통화 소리 설정을 바꿨습니다. 다시 전화를 걸어 테스트하세요.",
+    "ph_fit_noted": "이 휴대전화의 통화 소리에 문제가 있다고 기록했습니다"
   }
 }

@@ -1274,6 +1274,15 @@ class SilentInCallService : InCallService() {
             return callInfos[id]
         }
 
+        /**
+         * A call is up with the other side on the line (ACTIVE or on hold), not still
+         * dialing or connecting. False without InCallService.
+         */
+        fun hasAnsweredCall(): Boolean {
+            if (activeService == null) return false
+            return liveCalls.any { it.state == Call.STATE_ACTIVE || it.state == Call.STATE_HOLDING }
+        }
+
         fun currentActiveCallInstanceId(): Long =
             if (activeService == null) NO_CALL_INSTANCE else activeCallInstance.get()
 

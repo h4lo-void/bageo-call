@@ -193,7 +193,7 @@
     "who_ai": "AI",
     "who_carrier": "Carrier announcement",
     "d_ended": "How it ended",
-    "end_ai_fail": "The AI could not connect, so the call was hung up. The caller heard nothing.",
+    "end_ai_fail": "The AI could not connect, so the call was hung up.",
     "end_voicemail": "The AI failed and the call went to voicemail.",
     "end_hidden": "Hidden number: a refusal announcement was played and the call ended. The AI did not answer.",
     "end_blocked": "Blocked number: the “not available” announcement was played and the call ended. The AI did not answer.",
@@ -243,6 +243,9 @@
     "f_scam_blind_h": "On: new tricks are caught too, for a little more usage. Off: only calls with common sales or scam words are checked.",
     "ev_ai_callback": "AI call-back",
     "ev_persona_ai_fail_hangup": "AI failed, hung up",
+    "ev_ai_fail_announced": "Not-available message played",
+    "ev_ai_fail_quota": "Gemini quota used up or spending cap reached",
+    "ev_ai_fail_key": "Gemini key not valid",
     "ev_gemini_zero_audio_reconnect": "AI reconnected (no sound)",
     "tab_contacts": "Contacts",
     "ct_search_ph": "Search name, number or note",
@@ -1388,6 +1391,15 @@
     "m_chk_sms_d": "Lets Bageo text callers whether their booking went through.",
     "er_need_phone": "Your phone isn't ready yet. Wait a few seconds; if this stays, reopen the app.",
     "bk_err_read_failed": "Couldn't read this file. Please pick it again.",
-    "bk_app_note": "Backups are kept inside Bageo and are deleted with the app. To keep one, tap “Download” to save it on your phone."
+    "bk_app_note": "Backups are kept inside Bageo and are deleted with the app. To keep one, tap “Download” to save it on your phone.",
+    "ph_fit_untested": "Call audio not tested yet: call this phone from another phone and talk to the AI for about 20 seconds. Bageo then adjusts it by itself.",
+    "ph_fit_adjusted": "Call audio was adjusted automatically",
+    "ph_fit_problem": "Call audio has a problem and all settings were tried. See “First use on a new phone” in the guide.",
+    "ph_fit_unsupported": "This phone cannot send the AI's voice into calls",
+    "ph_fit_ask": "Did you hear the AI's voice on the last call?",
+    "ph_fit_yes": "Yes",
+    "ph_fit_no": "No",
+    "ph_fit_retest": "Other call audio settings are ready. Call this phone again to test them.",
+    "ph_fit_noted": "Noted: this phone's call audio has a problem"
   }
 }

@@ -1171,7 +1171,7 @@ pub fn note_hello_sims(serial: &str, msg: &Value) {
 
 /// Write `body` next to `path`, then rename it over: a crash leaves the old file
 /// or the new one.
-fn write_atomic(path: &Path, body: &[u8]) -> anyhow::Result<()> {
+pub(crate) fn write_atomic(path: &Path, body: &[u8]) -> anyhow::Result<()> {
     use anyhow::Context as _;
     use std::io::Write as _;
     if let Some(dir) = path.parent() {
@@ -1197,7 +1197,7 @@ fn write_atomic(path: &Path, body: &[u8]) -> anyhow::Result<()> {
 /// `<name>.unreadable-<time>.json` so the next save cannot overwrite it, and
 /// None. The second value is false when it could not be moved either: then
 /// nothing may be written over it.
-fn read_json<T: serde::de::DeserializeOwned>(path: &Path, what: &str) -> (Option<T>, bool) {
+pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path, what: &str) -> (Option<T>, bool) {
     let problem = match std::fs::read(path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (None, true),
         Err(e) => format!("cannot be read ({e})"),
