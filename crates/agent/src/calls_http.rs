@@ -2573,6 +2573,9 @@ pub struct PhoneHello {
     pub model: String,
     pub app_version: String,
     pub in_call: bool,
+    /// How well the phone carries the AI's voice into calls (`audio_fit`, newer apps
+    /// only; updated by each `uplink_health` report).
+    pub audio_fit: Option<crate::uplink_health::AudioFit>,
 }
 
 /// Read the control `hello`. The phone mode is in `phone_mode` (`mode` already says
@@ -2596,6 +2599,7 @@ pub fn parse_phone_hello(hello: &Value) -> PhoneHello {
         model: text("model"),
         app_version: text("app_version"),
         in_call: hello.get("in_call").and_then(Value::as_bool).unwrap_or(false),
+        audio_fit: crate::uplink_health::AudioFit::from_msg(hello),
     }
 }
 
@@ -2710,7 +2714,7 @@ struct PhoneEntry {
 
 fn phone_json(serial: &str, p: &PhoneEntry, agent_call: bool) -> Value {
     let connected = p.sink.is_some();
-    json!({
+    let mut v = json!({
         "serial": serial,
         "connected": connected,
         "mode": p.hello.mode.as_str(),
@@ -2721,7 +2725,12 @@ fn phone_json(serial: &str, p: &PhoneEntry, agent_call: bool) -> Value {
         "last_seen_ms": p.last_seen_ms,
         // How it is connected now: "usb" or "wifi".
         "link": if p.wifi { "wifi" } else { "usb" },
-    })
+    });
+    // "untested" | "ok" | "adjusted" | "problem" | "unsupported"; absent for older apps.
+    if let Some(fit) = p.hello.audio_fit {
+        v["audio_fit"] = json!(fit.as_str());
+    }
+    v
 }
 
 /// Phones on the idle control connection: what they reported, their socket, and
@@ -2827,6 +2836,49 @@ impl PhoneDevices {
             p.hello.in_call = in_call;
         }
         p.last_seen_ms = now_ms();
+    }
+
+    /// `uplink_health` or `uplink_fit_result`: the phone's latest `audio_fit`. A message
+    /// without a known value changes nothing.
+    pub fn on_audio_fit(&self, serial: &str, msg: &Value) {
+        let Some(fit) = crate::uplink_health::AudioFit::from_msg(msg) else {
+            return;
+        };
+        if let Some(p) = self.phones().get_mut(serial) {
+            p.hello.audio_fit = Some(fit);
+        }
+    }
+
+    /// Tell a connected phone the caller did not hear the AI (`uplink_fit`): it stores
+    /// problem and starts its next call with the next settings. Err("offline") when the
+    /// phone has no open control connection, Err("unsupported") for an app that never
+    /// reported `audio_fit` (it would ignore the message).
+    pub async fn mark_audio_problem(&self, serial: &str) -> Result<(), &'static str> {
+        let sink = {
+            let phones = self.phones();
+            let Some(p) = phones.get(serial) else {
+                return Err("offline");
+            };
+            let Some(sink) = p.sink.clone() else {
+                return Err("offline");
+            };
+            if p.hello.audio_fit.is_none() {
+                return Err("unsupported");
+            }
+            sink
+        };
+        let id = uuid::Uuid::new_v4().to_string();
+        if let Err(e) =
+            crate::callback::send_ws_json(&sink, crate::uplink_health::mark_problem_command(&id)).await
+        {
+            tracing::warn!("uplink_fit send failed serial={serial}: {e:#}");
+            return Err("offline");
+        }
+        if let Some(p) = self.phones().get_mut(serial) {
+            p.hello.audio_fit = Some(crate::uplink_health::AudioFit::Problem);
+        }
+        info!(serial, id = id.as_str(), "uplink_fit problem sent");
+        Ok(())
     }
 
     /// `set_mode_result`: hand it to the request waiting for it.
@@ -3041,6 +3093,32 @@ async fn device_mode(
         "phone mode switch"
     );
     Json(mode_reply_json(&reply)).into_response()
+}
+
+/// `POST /api/devices/{serial}/audio-problem`: the owner says the caller did not hear the
+/// AI on this phone. The phone stores `audio_fit` problem and starts its next call with
+/// the next settings. JSON only (any body, e.g. `{}`), for the same cross-site reason as
+/// the mode switch. Answers `{ok, audio_fit}`, or 409 with `code` `offline` (no open
+/// control connection) or `unsupported` (an app that never reported `audio_fit`).
+async fn device_audio_problem(
+    State(state): State<CallsState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+    Path(serial): Path<String>,
+) -> Response {
+    if !token_ok(&state.settings, &headers, &query) {
+        return unauthorized();
+    }
+    if !task_id_safe(&serial) {
+        return api_error(StatusCode::BAD_REQUEST, "invalid_serial", "invalid phone serial");
+    }
+    if !is_json_request(&headers) {
+        return api_error(StatusCode::BAD_REQUEST, "bad_request", "Content-Type must be application/json");
+    }
+    match state.phones.mark_audio_problem(&serial).await {
+        Ok(()) => Json(json!({"ok": true, "audio_fit": "problem"})).into_response(),
+        Err(code) => api_error(StatusCode::CONFLICT, code, "the phone cannot take this now"),
+    }
 }
 
 /// `POST /api/phone-pairing/renew`, "Pair phones again": a new pairing key
@@ -5516,6 +5594,102 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn the_phone_list_has_audio_fit_only_from_newer_apps() {
+        let devices = PhoneDevices::new();
+        let old = parse_phone_hello(&json!({"model": "Old", "phone_mode": "ai"}));
+        let new = parse_phone_hello(&json!({"model": "New", "phone_mode": "ai", "audio_fit": "untested"}));
+        assert_eq!(old.audio_fit, None);
+        assert_eq!(new.audio_fit, Some(crate::uplink_health::AudioFit::Untested));
+        devices.phones().insert("pixel-old".into(), PhoneEntry { sink: None, hello: old, last_seen_ms: 1, wifi: false });
+        devices.phones().insert("pixel-new".into(), PhoneEntry { sink: None, hello: new, last_seen_ms: 1, wifi: false });
+        let fit = |devices: &PhoneDevices, serial: &str| {
+            devices.list_json(&[]).into_iter().find(|p| p["serial"] == serial).map(|p| p.get("audio_fit").cloned())
+        };
+        assert_eq!(fit(&devices, "pixel-old"), Some(None), "older apps get no audio_fit field");
+        assert_eq!(fit(&devices, "pixel-new"), Some(Some(json!("untested"))));
+
+        // Each call's report replaces it; unknown values and unknown phones change nothing.
+        devices.on_audio_fit("pixel-new", &json!({"type": "uplink_health", "audio_fit": "adjusted"}));
+        assert_eq!(fit(&devices, "pixel-new"), Some(Some(json!("adjusted"))));
+        devices.on_audio_fit("pixel-new", &json!({"type": "uplink_health", "audio_fit": "great"}));
+        devices.on_audio_fit("pixel-new", &json!({"type": "uplink_health"}));
+        assert_eq!(fit(&devices, "pixel-new"), Some(Some(json!("adjusted"))));
+        devices.on_audio_fit("pixel-none", &json!({"audio_fit": "ok"}));
+        assert_eq!(fit(&devices, "pixel-none"), None);
+        // A report from an app that had not sent it in its hello adds it.
+        devices.on_audio_fit("pixel-old", &json!({"audio_fit": "problem"}));
+        assert_eq!(fit(&devices, "pixel-old"), Some(Some(json!("problem"))));
+    }
+
+    #[tokio::test]
+    async fn audio_problem_needs_json_and_a_connected_phone() {
+        let root = std::env::temp_dir().join(format!("bageo-afit-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&root).unwrap();
+        let state = quick_state(&root);
+        state.phones.phones().insert(
+            "pixel-away".into(),
+            PhoneEntry {
+                sink: None,
+                hello: parse_phone_hello(&json!({"phone_mode": "ai", "audio_fit": "ok"})),
+                last_seen_ms: 1,
+                wifi: false,
+            },
+        );
+        assert_eq!(state.phones.mark_audio_problem("pixel-away").await, Err("offline"));
+        assert_eq!(state.phones.mark_audio_problem("pixel-unknown").await, Err("offline"));
+        let base = spawn_router(state.clone()).await;
+        let client = reqwest::Client::new();
+        let url = format!("{base}/api/devices/pixel-away/audio-problem");
+        let form = client.post(&url).body("{}").send().await.unwrap();
+        assert_eq!(form.status(), StatusCode::BAD_REQUEST);
+        let away = client.post(&url).header("content-type", "application/json").body("{}").send().await.unwrap();
+        assert_eq!(away.status(), StatusCode::CONFLICT);
+        let body: Value = away.json().await.unwrap();
+        assert_eq!(body["code"], json!("offline"), "{body}");
+        // Nothing changed for a phone that could not be told.
+        let listed = state.phones.list_json(&[]);
+        assert_eq!(listed.iter().find(|p| p["serial"] == "pixel-away").unwrap()["audio_fit"], json!("ok"));
+        // A phone id the console could never have sent.
+        let bad = client
+            .post(format!("{base}/api/devices/pixel.away/audio-problem"))
+            .header("content-type", "application/json")
+            .body("{}")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+        let body: Value = bad.json().await.unwrap();
+        assert_eq!(body["code"], json!("invalid_serial"), "{body}");
+
+        // With a console password: refused without it, checked further with it.
+        let mut locked = state.clone();
+        locked.settings.calls_ui_token = "afit-test-pw".into();
+        let locked_base = spawn_router(locked).await;
+        let locked_url = format!("{locked_base}/api/devices/pixel-away/audio-problem");
+        let anon = client.post(&locked_url).header("content-type", "application/json").body("{}").send().await.unwrap();
+        assert_eq!(anon.status(), StatusCode::UNAUTHORIZED);
+        let wrong = client
+            .post(&locked_url)
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer wrong-pw")
+            .body("{}")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(wrong.status(), StatusCode::UNAUTHORIZED);
+        let authed = client
+            .post(&locked_url)
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer afit-test-pw")
+            .body("{}")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(authed.status(), StatusCode::CONFLICT, "the password lets it through to the phone check");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn console_url_from_public_url() {
         assert_eq!(phone_console_url(""), None);
         assert_eq!(phone_console_url("192.168.1.20:8787"), None);
@@ -6037,6 +6211,7 @@ pub fn router(state: CallsState) -> Router {
         .route("/api/devices", get(devices))
         .route("/api/devices/{serial}", axum::routing::delete(device_delete))
         .route("/api/devices/{serial}/mode", post(device_mode))
+        .route("/api/devices/{serial}/audio-problem", post(device_audio_problem))
         .route("/api/devices/{serial}/sim-number", axum::routing::put(device_sim_number))
         .route("/api/phone-pairing/renew", post(phone_pairing_renew))
         .route("/api/phone-pairing/code", post(phone_pairing_code))

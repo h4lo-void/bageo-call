@@ -48,6 +48,16 @@ Xposed API stubs (`Apache-2.0`). Bageo Status and the start scripts can download
 Android SDK Platform-Tools (`adb`) from Google on request; `adb` is distributed
 under Google's own terms and is not part of this repository.
 
+The way the Android app adapts to each phone's call audio device (chip-family
+settings with a generic fallback, checking what the telephony output lists,
+and a stereo track as a fallback) was informed by **gsm2sip**
+(<https://github.com/pulpoff/gsm2sip>), Copyright (c) 2026 pulpoff, licensed
+under the `MIT` license. No gsm2sip code is included. The playback-position
+checks follow approaches from AOSP `libaudioclient` and AndroidX Media3
+`AudioTrackPositionTracker`, and reading the device's capabilities before
+applying per-chip choices follows Oboe `QuirksManager` (all `Apache-2.0`); no
+code from them is included either.
+
 ## Trademarks & third-party services
 
 The names **Bageo**, **八哥** and **bageo-call**, together with the project's

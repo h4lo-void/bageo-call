@@ -90,6 +90,7 @@ mod trtc_api;
 mod trtc_bridge;
 mod urgent_call;
 mod urgency;
+mod uplink_health;
 mod usb_bridge;
 mod used_links;
 mod vad;
@@ -2884,6 +2885,19 @@ async fn handle_control_idle_ws(
                     "set_mode_result" => {
                         state.phones.on_mode_reply(&serial, &parsed);
                         sync_normal_mode(&state, &serial).await;
+                    }
+                    // After a call: how the track carrying the AI's voice behaved.
+                    "uplink_health" => {
+                        info!("{}", uplink_health::log_line(&serial, &parsed));
+                        state.phones.on_audio_fit(&serial, &parsed);
+                    }
+                    // Answer to `uplink_fit` (the owner said the caller heard nothing).
+                    "uplink_fit_result" => {
+                        info!(
+                            "uplink fit serial={serial} fit={}",
+                            uplink_health::AudioFit::from_msg(&parsed).map_or("?", uplink_health::AudioFit::as_str)
+                        );
+                        state.phones.on_audio_fit(&serial, &parsed);
                     }
                     // Phone rings (not answered yet): how long to ring, and the AI gets
                     // ready meanwhile (ring once before answering).

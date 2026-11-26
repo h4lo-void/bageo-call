@@ -29,7 +29,8 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * Handles agent → phone commands such as `{"type":"place_call",...}` and the
  * `answer_plan` reply to a ringing call's `incoming`, `set_mode` (AI phone / normal
- * phone), `agent_info` (the web console's address) and `send_sms` (the hello says
+ * phone), `agent_info` (the web console's address), `uplink_fit` (the owner says the
+ * caller did not hear the AI; the hello carries `audio_fit`) and `send_sms` (the hello says
  * `supports_sms`). The hello's `supports_reject` tells the agent that this app declines a
  * ringing call when `answer_plan` says `reject` (older apps would answer it).
  * Sends a periodic `ping` so the idle registration stays alive; reconnects quickly on drop.
@@ -133,7 +134,7 @@ class AgentControlClient(
                             "hello_ack", "hello_ok", "ack", "pong" -> {
                                 Log.i(TAG, "control TEXT ${obj.optString("type")}")
                             }
-                            "place_call", "blocklist_sync", "answer_plan", "set_mode", "agent_info", "send_sms", "local_notice" -> onCommand(obj)
+                            "place_call", "blocklist_sync", "answer_plan", "set_mode", "agent_info", "send_sms", "local_notice", "uplink_fit" -> onCommand(obj)
                             else -> Log.i(TAG, "control TEXT type=${obj.optString("type")} len=${message.length}")
                         }
                     } catch (e: Exception) {
