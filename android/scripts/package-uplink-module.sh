@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
 # SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
 
-# Build the debug APK and package the Magisk / KernelSU module zip (macOS / Linux).
+# Build the release APK and package the Magisk / KernelSU module zip (macOS / Linux).
 #
 #   ./scripts/package-uplink-module.sh                  # bridge (PC-connected) module
 #   ./scripts/package-uplink-module.sh --standalone     # standalone phone-only module
@@ -52,12 +52,12 @@ if [ "$STANDALONE" -eq 1 ]; then
     if [ "$SKIP_RUST_BUILD" -ne 1 ]; then
         bash "$SCRIPT_DIR/build-rust-android.sh"
     fi
-    GRADLE_TASK=":app:assembleStandaloneDebug"
-    APK="$ANDROID_DIR/app/build/outputs/apk/standalone/debug/app-standalone-debug.apk"
+    GRADLE_TASK=":app:assembleStandaloneRelease"
+    APK="$ANDROID_DIR/app/build/outputs/apk/standalone/release/app-standalone-release.apk"
     ZIP_OUT="$OUT_DIR/bageo-phone-standalone-$VERSION.zip"
 else
-    GRADLE_TASK=":app:assembleBridgeDebug"
-    APK="$ANDROID_DIR/app/build/outputs/apk/bridge/debug/app-bridge-debug.apk"
+    GRADLE_TASK=":app:assembleBridgeRelease"
+    APK="$ANDROID_DIR/app/build/outputs/apk/bridge/release/app-bridge-release.apk"
     ZIP_OUT="$OUT_DIR/bageo-phone-module-$VERSION.zip"
 fi
 
