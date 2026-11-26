@@ -1158,7 +1158,7 @@ class MainActivity : Activity() {
 
     private fun deviceName(): String {
         val manufacturer = Build.MANUFACTURER.orEmpty().trim()
-        val model = Build.MODEL.orEmpty().trim()
+        val model = DeviceName.display
         return if (manufacturer.isEmpty() || model.startsWith(manufacturer, ignoreCase = true)) {
             model
         } else {

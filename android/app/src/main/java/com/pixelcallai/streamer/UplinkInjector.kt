@@ -9,6 +9,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import java.io.File
@@ -485,13 +486,31 @@ class TelephonyUplinkInjector(
     private fun runOneTrack(telephony: AudioDeviceInfo, attempt: Int): Boolean {
         val channelMask = AudioFormat.CHANNEL_OUT_MONO
         val encoding = AudioFormat.ENCODING_PCM_16BIT
-        val minBuf = AudioTrack.getMinBufferSize(sampleRate, channelMask, encoding)
+        // MediaTek (MT6985) lists only 44100/48000 for TELEPHONY and resets its HiFi output
+        // path for every other track rate, which killed the track every ~270 ms. Only
+        // MediaTek chips may change the rate; every other phone (Pixel included) keeps
+        // [sampleRate] with no resampling.
+        val deviceRates = try {
+            telephony.sampleRates
+        } catch (_: Exception) {
+            IntArray(0)
+        }
+        val mediatek = isMediaTekChip(Build.VERSION.SDK_INT, Build.SOC_MANUFACTURER, Build.HARDWARE)
+        val trackRate = pickTelephonyTrackRate(deviceRates, sampleRate, mediatek)
+        Log.i(
+            TAG,
+            "track rate=$trackRate input=$sampleRate deviceRates=" +
+                deviceRates.joinToString(",", "[", "]") + " mediatek=$mediatek",
+        )
+        // Fresh state for every new track (also after a rebuild).
+        val resampler = if (trackRate == sampleRate) null else PcmResampler(sampleRate, trackRate)
+        val minBuf = AudioTrack.getMinBufferSize(trackRate, channelMask, encoding)
         if (minBuf <= 0) {
             Log.e(TAG, "getMinBufferSize failed: $minBuf")
             return false
         }
         val format = AudioFormat.Builder()
-            .setSampleRate(sampleRate)
+            .setSampleRate(trackRate)
             .setChannelMask(channelMask)
             .setEncoding(encoding)
             .build()
@@ -505,7 +524,7 @@ class TelephonyUplinkInjector(
                 .setAudioAttributes(attrs)
                 .setAudioFormat(format)
                 // Larger stream buffer (~200 ms) reduces underrun clicks on hold music.
-                .setBufferSizeInBytes((minBuf * 6).coerceAtLeast(sampleRate / 5 * 2))
+                .setBufferSizeInBytes((minBuf * 6).coerceAtLeast(trackRate / 5 * 2))
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
             val liveTrack = track ?: return false
@@ -544,7 +563,7 @@ class TelephonyUplinkInjector(
                 return false
             }
             // Probe write: confirm track accepts data without DEAD_OBJECT.
-            val probe = ShortArray(160) // 10ms @ 16k
+            val probe = ShortArray(trackRate / 100) // 10 ms (160 samples at 16 kHz)
             val probeN = synchronized(writeBarrierLock) {
                 if (!running.get()) null else liveTrack.write(
                     probe,
@@ -556,7 +575,7 @@ class TelephonyUplinkInjector(
             val routed = track.routedDevice
             Log.i(
                 TAG,
-                "AudioTrack playState=PLAYING minBuf=$minBuf rate=$sampleRate " +
+                "AudioTrack playState=PLAYING minBuf=$minBuf rate=$trackRate " +
                     "probeWrite=$probeN prefType=${track.preferredDevice?.type} " +
                     "routedType=${routed?.type} routedName=${routed?.productName}",
             )
@@ -590,7 +609,7 @@ class TelephonyUplinkInjector(
                 "routeReady — draining queue frames=${queue.size} bytesWritten=$bytesWritten",
             )
             var consecutiveErrors = 0
-            val silence = ByteArray(pcmBytesForMs(KEEPALIVE_CHUNK_MS))
+            val silence = ByteArray(pcmBytesForMs(KEEPALIVE_CHUNK_MS, trackRate))
             var keepaliveLogged = false
             // When the last call audio was written, and when the audio handed to the
             // track (call audio or keepalive zeros) is estimated to run out.
@@ -641,7 +660,7 @@ class TelephonyUplinkInjector(
                     )
                     return false
                 }
-                val toWrite = synchronized(joinLock) {
+                val joined = synchronized(joinLock) {
                     blendJoinInPlace(chunk, lastSample).also { blended ->
                         if (blended.size >= 2) {
                             val o = blended.size - 2
@@ -652,6 +671,8 @@ class TelephonyUplinkInjector(
                         }
                     }
                 }
+                // The queue and the join blend work at [sampleRate]; only the track rate differs.
+                val toWrite = resampler?.process(joined) ?: joined
                 val writeStartedAt = SystemClock.elapsedRealtime()
                 var offset = 0
                 while (offset < toWrite.size && running.get()) {
@@ -680,8 +701,16 @@ class TelephonyUplinkInjector(
                         Log.e(TAG, "AudioTrack.write error: $n consecutive=$consecutiveErrors")
                         if (n == AudioTrack.ERROR_DEAD_OBJECT || consecutiveErrors >= 3) {
                             routeReady.set(false)
+                            // Requeue what is left at the input rate (the track is rebuilt with a
+                            // fresh resampler).
+                            val rest = if (resampler == null) {
+                                toWrite.copyOfRange(offset, toWrite.size)
+                            } else {
+                                val inOffset = ((offset / 2).toLong() * sampleRate / trackRate).toInt() * 2
+                                joined.copyOfRange(inOffset.coerceAtMost(joined.size), joined.size)
+                            }
                             requeueFront(
-                                QueuedPcm(toWrite.copyOfRange(offset, toWrite.size), queued.clearEpoch),
+                                QueuedPcm(rest, queued.clearEpoch),
                                 "AudioTrack write failed",
                             )
                             return false
@@ -694,13 +723,13 @@ class TelephonyUplinkInjector(
                         continue
                     }
                     consecutiveErrors = 0
-                    if (bytesWritten == 0L || bytesWritten % 32000L < n) {
+                    if (bytesWritten == 0L || bytesWritten % (trackRate * 2L) < n) {
                         Log.i(TAG, "DEBUG-3c97db injector write bytes=$n total=$bytesWritten state=${track.state} playState=${track.playState} queue=${queue.size}")
                     }
                     offset += n
                     bytesWritten += n.toLong()
                 }
-                playoutUntil = maxOf(writeStartedAt, playoutUntil) + pcmMsForBytes(offset)
+                playoutUntil = maxOf(writeStartedAt, playoutUntil) + pcmMsForBytes(offset, trackRate)
                 lastAudioAt = SystemClock.elapsedRealtime()
             }
             return true
@@ -759,9 +788,9 @@ class TelephonyUplinkInjector(
             }
         }
 
-    private fun pcmBytesForMs(ms: Long): Int = (sampleRate.toLong() * ms / 1000L).toInt() * 2
+    private fun pcmBytesForMs(ms: Long, rate: Int): Int = (rate.toLong() * ms / 1000L).toInt() * 2
 
-    private fun pcmMsForBytes(bytes: Int): Long = bytes.toLong() * 1000L / (sampleRate.toLong() * 2L)
+    private fun pcmMsForBytes(bytes: Int, rate: Int): Long = bytes.toLong() * 1000L / (rate.toLong() * 2L)
 
     companion object {
         private const val TAG = "TelephonyUplink"
