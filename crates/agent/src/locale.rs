@@ -2353,7 +2353,7 @@ mod tests {
         for l in ALL {
             let p = words(l);
             for t in [
-                &p.u_sec, &p.u_min, &p.s_no_transcript, &p.s_ai_fail_matter, &p.s_stall_topic_kw,
+                &p.u_sec, &p.u_min, &p.s_no_transcript, &p.s_ai_fail_matter, &p.s_ai_fail_matter_played, &p.s_stall_topic_kw,
                 &p.s_stall_reply, &p.vm_call_back_to, &p.vm_email_to, &p.vm_length, &p.vm_no_transcript,
                 &p.f_bad_time, &p.f_openclaw_failed, &p.e_appointment,
             ] {
@@ -2361,6 +2361,7 @@ mod tests {
             }
             for t in [
                 &p.s_no_service, &p.s_see_transcript, &p.s_listen_recording, &p.s_ai_fail_prefix,
+                &p.s_ai_fail_why_quota, &p.s_ai_fail_why_key, &p.s_ai_fail_todo_quota, &p.s_ai_fail_todo_key,
                 &p.s_stall_topic, &p.vm_call_back_unknown, &p.tc_confirm, &p.tc_ignore, &p.tc_confirm_ack,
                 &p.f_callback_waiting, &p.f_gmail_missing, &p.g_short_password,
                 &p.e_subject, &p.e_empty,

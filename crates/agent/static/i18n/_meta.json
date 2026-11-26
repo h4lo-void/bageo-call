@@ -1948,7 +1948,7 @@
     "placeholders": []
   },
   "end_ai_fail": {
-    "where": "a label or sentence in the console. English: The AI could not connect, so the call was hung up. The caller heard nothing.",
+    "where": "a label or sentence in the console. English: The AI could not connect, so the call was hung up.",
     "who": "the owner",
     "placeholders": []
   },
@@ -2987,6 +2987,21 @@
   },
   "ev_persona_ai_fail_hangup": {
     "where": "a call-event name in the record. English: AI failed, hung up",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ev_ai_fail_announced": {
+    "where": "a call-event name in the record. English: Not-available message played",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ev_ai_fail_quota": {
+    "where": "a call-event name in the record. English: Gemini quota used up or spending cap reached",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ev_ai_fail_key": {
+    "where": "a call-event name in the record. English: Gemini key not valid",
     "who": "the owner",
     "placeholders": []
   },
