@@ -39,7 +39,7 @@
     <string name="fit_adjusted">A hívások hangját automatikusan beállítottuk</string>
     <string name="fit_noted">Feljegyezve: ennek a telefonnak a hívásainál hangprobléma van</string>
     <string name="fit_problem">A hívások hangjával gond van, és minden beállítást kipróbáltunk. Lásd az útmutatóban az „Első használat új telefonon” részt.</string>
-    <string name="fit_retest">További hívásbeállítások állnak készen. Hívja fel újra ezt a telefont a kipróbálásukhoz.</string>
+    <string name="fit_retest">További híváshang-beállítások állnak készen. Hívja fel újra ezt a telefont a kipróbálásukhoz.</string>
     <string name="fit_unsupported">Ez a telefon nem tudja az AI hangját a hívásokba küldeni</string>
     <string name="fit_untested">A hívások hangját még nem tesztelték: hívja fel ezt a telefont egy másikról, és beszéljen az AI-jal körülbelül 20 másodpercig. Ezután a Bageo magától beállítja.</string>
     <string name="grant_perms">Engedélyezze a kért engedélyeket, majd koppintson újra a Szolgáltatás indítása gombra.</string>

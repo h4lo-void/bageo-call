@@ -41,7 +41,7 @@
     <string name="fit_problem">Gen yon pwoblèm ak son apèl la e yo te eseye tout paramèt yo. Gade “Premye itilizasyon sou yon nouvo telefòn” nan gid la.</string>
     <string name="fit_retest">Lòt paramèt pou son apèl la pare. Rele telefòn sa a ankò pou teste yo.</string>
     <string name="fit_unsupported">Telefòn sa a pa ka voye vwa AI a nan apèl yo</string>
-    <string name="fit_untested">Pa teste son apèl la ankò: rele telefòn sa a depi yon lòt telefòn epi pale ak AI a pandan apeprè 20 segonn. Apre sa, Bageo menm ap ajiste l.</string>
+    <string name="fit_untested">Son apèl la poko teste: rele telefòn sa a depi yon lòt telefòn epi pale ak AI a pandan apeprè 20 segonn. Apre sa, Bageo menm ap ajiste l.</string>
     <string name="grant_perms">Pèmèt pèmisyon yo mande yo, epi peze Demare sèvis la ankò.</string>
     <string name="header_compat">Teste sou Google Pixel ak Redmi K60 Ultra. Lòt telefòn ki gen root yo sipòte tou, men teste pa w la: rele l depi yon lòt telefòn epi pale ak AI a pandan apeprè 20 segonn.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>

@@ -41,7 +41,7 @@
     <string name="fit_problem">Kõnehelil on probleem ja kõiki seadeid on proovitud. Vaata juhendist jaotist „Esmakordne kasutus uues telefonis“.</string>
     <string name="fit_retest">Teised kõneheli seaded on valmis. Helista sellele telefonile uuesti, et neid proovida.</string>
     <string name="fit_unsupported">See telefon ei saa AI häält kõnedesse saata</string>
-    <string name="fit_untested">Kõnehelit pole veel testitud: helista sellele telefonile teisest telefonist ja räägi umbes 20 sekundit AI-ga. Seejärel häälestab Bageo selle ise.</string>
+    <string name="fit_untested">Kõneheli pole veel testitud: helista sellele telefonile teisest telefonist ja räägi umbes 20 sekundit AI-ga. Seejärel häälestab Bageo selle ise.</string>
     <string name="grant_perms">Luba küsitud õigused ja puuduta uuesti Käivita teenus.</string>
     <string name="header_compat">Testitud Google Pixelil ja Redmi K60 Ultral. Toetatud on ka teised rootitud telefonid, aga testi enda oma: helista sellele teisest telefonist ja räägi umbes 20 sekundit AI-ga.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>

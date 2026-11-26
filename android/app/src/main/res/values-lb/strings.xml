@@ -40,10 +40,10 @@
     <string name="fit_noted">Notéiert: den Uruff-Toun vun dësem Telefon huet e Problem</string>
     <string name="fit_problem">Den Uruff-Toun huet e Problem an all Astellunge goufe probéiert. Kuckt «Éischt Notzung op engem neien Telefon» am Guide.</string>
     <string name="fit_retest">Aner Astellunge fir den Uruff-Toun sinn prett. Rufft dësen Telefon nach eng Kéier un, fir se ze testen.</string>
-    <string name="fit_unsupported">Dëse Telefon kann d\'Stëmm vun der AI net an Uriff schécken</string>
-    <string name="fit_untested">Den Uruff-Toun ass nach net getest: Rufft dësen Telefon vun engem anere Telefon un a schwätzt ongeféier 20 Sekonne mat der AI. Duerno stellt Bageo en selwer an.</string>
+    <string name="fit_unsupported">Dësen Telefon kann d\'Stëmm vun der AI net an Uriff schécken</string>
+    <string name="fit_untested">Den Uruff-Toun ass nach net getest: Rufft dësen Telefon vun engem aneren Telefon un a schwätzt ongeféier 20 Sekonne mat der AI. Duerno stellt Bageo en selwer an.</string>
     <string name="grant_perms">Gitt déi gefrote Rechter an tippt dann nach eng Kéier op Service starten.</string>
-    <string name="header_compat">Getest op Google Pixel a Redmi K60 Ultra. Aner Telefonen mat Root ginn och ennerstëtzt, awer test deen Dengen: Ruff en vun engem anere Telefon un a schwätz ongeféier 20 Sekonne mat der AI.</string>
+    <string name="header_compat">Getest op Google Pixel a Redmi K60 Ultra. Aner Telefone mat Root ginn och ënnerstëtzt, awer test Ären: Rufft en vun engem aneren Telefon un a schwätzt ongeféier 20 Sekonne mat der AI.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versioun %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo ass %1$s (aner Versioun)</string>

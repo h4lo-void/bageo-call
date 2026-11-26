@@ -43,7 +43,7 @@
     <string name="fit_unsupported">हो फोन कॉलांत AI चो आवाज धाडूंक शकना</string>
     <string name="fit_untested">कॉलाचो आवाज अजून तपासूंक ना: हो फोन दुसऱ्या फोनान कॉल करात आनी सुमार 20 सेकंद AI कडेन उलयात. मागीर Bageo तो स्वता सुदारतलो.</string>
     <string name="grant_perms">मागिल्ल्यो परवानग्यो दियात, मागीर परतून सेवा सुरू करात चेर टॅप करात.</string>
-    <string name="header_compat">Google Pixel आनी Redmi K60 Ultra वयल्यान तपासलां. root केल्ले दुसरे फोनय चलतात, पूण तुमचो फोन तपासात: दुसऱ्या फोनान ताका कॉल करात आनी सुमार 20 सेकंद AI कडेन उलयात.</string>
+    <string name="header_compat">Google Pixel आनी Redmi K60 Ultra चेर तपासलां. root केल्ले दुसरे फोनय चलतात, पूण तुमचो फोन तपासात: दुसऱ्या फोनान ताका कॉल करात आनी सुमार 20 सेकंद AI कडेन उलयात.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">आवृत्ती %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo %1$s आसा (आवृत्ती वेगळी आसा)</string>

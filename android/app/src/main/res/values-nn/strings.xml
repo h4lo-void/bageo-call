@@ -43,7 +43,7 @@
     <string name="fit_unsupported">Denne telefonen kan ikkje sende stemma til AI-en inn i samtalar</string>
     <string name="fit_untested">Samtaleljoden er ikkje testa enno: ring til denne telefonen frå ein annan telefon og snakk med AI-en i om lag 20 sekund. Deretter justerer Bageo han sjølv.</string>
     <string name="grant_perms">Gi dei etterspurde løyva, og trykk så på Start teneste igjen.</string>
-    <string name="header_compat">Testa på Google Pixel og Redmi K60 Ultra. Andre rootede telefonar blir òg støtta, men test din eigen: ring til han frå ein annan telefon og snakk med AI-en i om lag 20 sekund.</string>
+    <string name="header_compat">Testa på Google Pixel og Redmi K60 Ultra. Andre roota telefonar blir òg støtta, men test din eigen: ring til han frå ein annan telefon og snakk med AI-en i om lag 20 sekund.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versjon %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo er %1$s (annan versjon)</string>
