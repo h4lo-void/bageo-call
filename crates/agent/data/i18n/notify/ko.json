@@ -148,7 +148,7 @@
     "n_fit_failed_title": "통화 소리에 문제가 있습니다",
     "n_fit_ok": "통화 소리가 정상입니다.",
     "n_fit_adjusted": "통화 소리를 자동으로 조정했습니다. 지금은 정상입니다.",
-    "n_fit_problem": "통화 소리에 문제가 있어 모든 설정을 시도했습니다. 안내서(영어)의 「First use on a new phone」 항목을 확인하세요.",
+    "n_fit_problem": "통화 소리에 문제가 있어 모든 설정을 시도했습니다. 안내서(영어)의 'First use on a new phone' 항목을 확인하세요.",
     "n_fit_unsupported": "이 휴대전화는 AI 목소리를 통화에 내보낼 수 없습니다."
   },
   "lists": {

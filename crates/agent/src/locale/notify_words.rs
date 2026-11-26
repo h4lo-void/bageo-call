@@ -316,9 +316,9 @@ mod tests {
     const GOLDEN: [(&str, &str, usize); 9] = [
         ("en", "501ae982e3fe7f1827f0b66d61c950fc1dffd3be76120b3b4f224964152db95e", 155),
         ("zh-TW", "fb950c4ba19e4c1268eebc7f3b21fbd76731908b88c0553a1237d44f8bf38ab8", 155),
-        ("zh-CN", "441e6d831b4f9750ff66b4caaed614496f53da87a1ec3f1d48247e018ed118d4", 155),
-        ("ja", "340218bf9566d97ccda6529ed8b8aa4732663f7b48cffb74fc4efb6b2c69f430", 155),
-        ("ko", "124d8b1c069940dc522bab361c96f4ef49de4ff6c217a6aabe3f8c94df29a40c", 155),
+        ("zh-CN", "88623a6a1e801275dbd516e3c850df8b07353d06b29de7c491abfbfb8dec3cfa", 155),
+        ("ja", "cb67f4fbb5cb8104ad9178826d7e05c8652066a3af38a6e6e9ecb7a7670cc9b9", 155),
+        ("ko", "7525db9ab8a2a5fd6132685377e236ff782698b5dd07d9b51a15993af0e4d611", 155),
         ("es", "661591b1d71d7da869298b0e4ca98d27b2248b7f562239a88feaf344ce5aa919", 155),
         ("fr", "ed6e8819de72aa5a7f1caea1c218a3bce73909fee5e50c251e43cd794ea9ce52", 155),
         ("de", "46ca520b6dadb67d5732ef794ca467d02facde0334749c36b601ecac113618d2", 155),

@@ -173,4 +173,6 @@
     <string name="fit_adjusted">Call audio was adjusted automatically</string>
     <string name="fit_problem">Call audio has a problem and all settings were tried. See “First use on a new phone” in the guide.</string>
     <string name="fit_unsupported">This phone cannot send the AI\'s voice into calls</string>
+    <string name="fit_retest">Other call audio settings are ready. Call this phone again to test them.</string>
+    <string name="fit_noted">Noted: this phone\'s call audio has a problem</string>
 </resources>

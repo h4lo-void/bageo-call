@@ -1956,6 +1956,7 @@ let native = {
   switching: false,
   mode_error: "",
   audio_fit: "",
+  audio_fit_note: "",
   live_ai_call: false,
   owner_in_call: false,
   call_busy: false,
@@ -2709,9 +2710,14 @@ function renderHero() {
 
   // How well the phone carries the AI's voice into calls: a line only when the owner
   // needs to know or act (nothing when it works).
+  // The owner's report ("the caller heard nothing") comes first: other settings wait for a
+  // test (retest), or the phone cannot switch and only keeps it (noted).
   const fit = String(native.audio_fit || "");
-  const showFit = ai && !native.switching && ["untested", "adjusted", "problem", "unsupported"].includes(fit);
-  $("heroFit").textContent = showFit ? t("ph_fit_" + fit) : "";
+  const note = String(native.audio_fit_note || "");
+  const fitKey = ["retest", "noted"].includes(note) ? "ph_fit_" + note
+    : ["untested", "adjusted", "problem", "unsupported"].includes(fit) ? "ph_fit_" + fit : "";
+  const showFit = ai && !native.switching && !!fitKey;
+  $("heroFit").textContent = showFit ? t(fitKey) : "";
   $("heroFit").hidden = !showFit;
 
   const noteOn = !!(S && S.owner_status_enabled);

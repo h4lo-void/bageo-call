@@ -173,4 +173,6 @@
     <string name="fit_adjusted">通話の音声を自動で調整しました</string>
     <string name="fit_problem">通話の音声に問題があり、すべての設定を試しました。ガイド（英語）の「First use on a new phone」をご覧ください。</string>
     <string name="fit_unsupported">このスマホは AI の声を通話に流せません</string>
+    <string name="fit_retest">通話の音声設定を切り替えました。もう一度電話をかけてテストしてください。</string>
+    <string name="fit_noted">このスマホの通話の音声に問題があることを記録しました</string>
 </resources>

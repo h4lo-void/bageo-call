@@ -889,13 +889,19 @@ class MainActivity : Activity() {
         bindAudioFit(ai && !switching)
     }
 
-    private fun audioFitText(fit: AudioFit): Int? = when (fit) {
-        AudioFit.OK -> null
-        AudioFit.UNTESTED -> R.string.fit_untested
-        AudioFit.ADJUSTED -> R.string.fit_adjusted
-        AudioFit.PROBLEM -> R.string.fit_problem
-        AudioFit.UNSUPPORTED -> R.string.fit_unsupported
-    }
+    /** The owner's report comes first: other settings are waiting for a test, or it is only noted. */
+    private fun audioFitText(fit: AudioFit): Int? =
+        when (ownerReportNote(fit, UplinkTuneStore.reason(this), UplinkTuneStore.measureOnly)) {
+            OwnerNote.RETEST -> R.string.fit_retest
+            OwnerNote.NOTED -> R.string.fit_noted
+            null -> when (fit) {
+                AudioFit.OK -> null
+                AudioFit.UNTESTED -> R.string.fit_untested
+                AudioFit.ADJUSTED -> R.string.fit_adjusted
+                AudioFit.PROBLEM -> R.string.fit_problem
+                AudioFit.UNSUPPORTED -> R.string.fit_unsupported
+            }
+        }
 
     /** Under the status: how well this phone carries the AI's voice into calls; nothing when it works. */
     private fun bindAudioFit(show: Boolean) {

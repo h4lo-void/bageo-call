@@ -2509,6 +2509,13 @@ pub fn notify_configured(settings: &Settings) -> bool {
     settings.call_notify && !destinations(settings).is_empty()
 }
 
+/// False only when call notifications are on but no channel is set to take them: a message
+/// sent now would go nowhere. With notifications switched off the owner has decided, so
+/// that counts as handled.
+pub fn can_reach_owner(settings: &Settings) -> bool {
+    !settings.call_notify || !destinations(settings).is_empty()
+}
+
 /// Kind of the first destination (logs / health only; never secrets).
 pub fn notify_primary_backend(settings: &Settings) -> Option<&'static str> {
     if !settings.call_notify {
@@ -2523,6 +2530,24 @@ pub fn notify_primary_backend(settings: &Settings) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_owner_is_reachable_unless_notifications_are_on_with_no_channel() {
+        let mut s = Settings::from_env();
+        s.notify_channels.clear();
+        s.notify_gateway_url.clear();
+        s.notify_webhook_url.clear();
+        s.telegram_bot_token.clear();
+        s.telegram_chat_id.clear();
+        s.call_notify = true;
+        assert!(!can_reach_owner(&s), "on, but nowhere to send");
+        s.call_notify = false;
+        assert!(can_reach_owner(&s), "switched off by the owner: handled");
+        s.call_notify = true;
+        s.telegram_bot_token = "123:token".into();
+        s.telegram_chat_id = "42".into();
+        assert!(can_reach_owner(&s));
+    }
 
     #[test]
     fn call_audio_messages_name_the_phone_and_say_one_thing_in_every_core_language() {

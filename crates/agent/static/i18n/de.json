@@ -1396,6 +1396,7 @@
     "ph_fit_ask": "Hast du die Stimme der KI im letzten Anruf gehört?",
     "ph_fit_yes": "Ja",
     "ph_fit_no": "Nein",
-    "ph_fit_retest": "Eine andere Toneinstellung ist bereit. Ruf dieses Telefon noch einmal an, um sie zu testen."
+    "ph_fit_retest": "Eine andere Toneinstellung ist bereit. Ruf dieses Telefon noch einmal an, um sie zu testen.",
+    "ph_fit_noted": "Notiert: Der Anrufton dieses Telefons hat ein Problem"
   }
 }

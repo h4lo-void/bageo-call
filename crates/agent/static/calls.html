@@ -7446,13 +7446,15 @@ function phoneItem(s, call, ph) {
 }
 // What the owner needs to know or do about a phone's call audio. Nothing when it works
 // (ok) or when the phone app is too old to report it; nothing either in normal phone
-// mode, where the AI does not answer. After a "No" the next call is the test.
+// mode, where the AI does not answer. After a "No" the next call is the test (retest), or,
+// on a phone that cannot switch settings, the report is only noted.
 const fitBusy = {};
 function phoneFitLines(s, ph, normal) {
   const fit = ph && ph.audio_fit;
   if (!fit || normal) return [];
   const out = [];
   if (ph.audio_fit_retest) out.push(t("ph_fit_retest"));
+  else if (ph.audio_fit_noted) out.push(t("ph_fit_noted"));
   else if (["untested", "adjusted", "problem", "unsupported"].includes(fit)) out.push(t("ph_fit_" + fit));
   if (ph.audio_fit_ask && (fit === "ok" || fit === "adjusted")) {
     out.push(h("div", { class: "d" },

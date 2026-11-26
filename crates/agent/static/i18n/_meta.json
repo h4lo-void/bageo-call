@@ -7243,5 +7243,10 @@
     "where": "line on a phone's card after the owner said they heard no AI voice: Bageo switched the phone to other call audio settings and the next call is the test. English: Other call audio settings are ready. Call this phone again to test them.",
     "who": "the owner",
     "placeholders": []
+  },
+  "ph_fit_noted": {
+    "where": "line on a phone's card and on the phone app's main screen after the owner said they heard no AI voice on a phone that cannot switch call audio settings (Google Pixel): the report is only kept, no other settings are tried, so it must not say settings were changed. English: Noted: this phone's call audio has a problem",
+    "who": "the owner",
+    "placeholders": []
   }
 }

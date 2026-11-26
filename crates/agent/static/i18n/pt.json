@@ -1396,6 +1396,7 @@
     "ph_fit_ask": "Você ouviu a voz da IA na última chamada?",
     "ph_fit_yes": "Sim",
     "ph_fit_no": "Não",
-    "ph_fit_retest": "Outra configuração de áudio está pronta. Ligue de novo para este telefone para testar."
+    "ph_fit_retest": "Outra configuração de áudio está pronta. Ligue de novo para este telefone para testar.",
+    "ph_fit_noted": "Anotado: o áudio das chamadas deste telefone tem um problema"
   }
 }

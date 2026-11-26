@@ -173,4 +173,6 @@
     <string name="fit_adjusted">Der Anrufton wurde automatisch angepasst</string>
     <string name="fit_problem">Beim Anrufton gibt es ein Problem, und alle Einstellungen wurden probiert. Siehe „First use on a new phone“ in der Anleitung (auf Englisch).</string>
     <string name="fit_unsupported">Dieses Telefon kann die Stimme der KI nicht in Anrufe einspeisen</string>
+    <string name="fit_retest">Eine andere Toneinstellung ist bereit. Ruf dieses Telefon noch einmal an, um sie zu testen.</string>
+    <string name="fit_noted">Notiert: Der Anrufton dieses Telefons hat ein Problem</string>
 </resources>

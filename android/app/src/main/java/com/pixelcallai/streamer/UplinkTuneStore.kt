@@ -24,7 +24,11 @@ object UplinkTuneStore {
      */
     const val AUTO_TUNE_ON_GOOGLE = false
 
-    /** `adb shell setprop debug.bageo.uplink_profile <id>` picks the first profile (testing). */
+    /**
+     * `adb shell setprop debug.bageo.uplink_profile <id>` picks the first profile (testing).
+     * Google phones ignore it ([measureOnly]). A forced call stores nothing unless the forced
+     * profile lost audio and another one took over ([decideTune]).
+     */
     const val FORCE_PROPERTY = "debug.bageo.uplink_profile"
 
     private fun sp(ctx: Context): SharedPreferences =
@@ -59,6 +63,16 @@ object UplinkTuneStore {
 
     fun reason(ctx: Context): String? = read(ctx, "reason")?.takeIf { it.isNotBlank() }
 
+    /**
+     * A measure-only phone whose owner said the caller heard nothing keeps that problem
+     * until a system update (new fingerprint) or until Google phones may switch settings:
+     * it has nothing else to try, so a later healthy measurement must not erase the report.
+     */
+    fun keepOwnerProblem(ctx: Context): Boolean =
+        measureOnly && fit(ctx) == AudioFit.PROBLEM && reason(ctx) == OWNER_REPORT
+
+    private const val OWNER_REPORT = "owner_report"
+
     /** Store a call's outcome. [last] is the profile the call ended on. */
     fun apply(ctx: Context, d: TuneDecision, last: UplinkProfile, live: Boolean) {
         try {
@@ -75,11 +89,9 @@ object UplinkTuneStore {
                     e.remove(key("reason", fingerprint))
                 }
             }
-            if (live) {
-                e.putString(key("last", fingerprint), last.id)
-                // The owner's report applies to the next call that played, then it is used up.
-                e.remove(key("avoid", fingerprint))
-            }
+            if (live) e.putString(key("last", fingerprint), last.id)
+            // The owner's report applies until a call settles on settings, then it is used up.
+            if (d.remember != null || d.fit != null) e.remove(key("avoid", fingerprint))
             e.apply()
         } catch (ex: Exception) {
             Log.w(TAG, "store failed: ${ex.message}")
@@ -96,7 +108,7 @@ object UplinkTuneStore {
             val e = prefs.edit()
             staleKeys(prefs.all.keys, fingerprint).forEach { e.remove(it) }
             e.putString(key("fit", fingerprint), AudioFit.PROBLEM.id)
-            e.putString(key("reason", fingerprint), "owner_report")
+            e.putString(key("reason", fingerprint), OWNER_REPORT)
             if (!measureOnly) {
                 val last = UplinkProfile.parse(prefs.getString(key("last", fingerprint), null))
                     ?: UplinkProfile.parse(prefs.getString(key("profile", fingerprint), null))

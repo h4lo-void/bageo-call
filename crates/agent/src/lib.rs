@@ -5221,6 +5221,15 @@ fn tell_owner_about_call_audio(state: &AppState, serial: &str, notice: Option<au
     let serial = serial.to_string();
     tokio::spawn(async move {
         let settings = state.settings_store.snapshot().effective(&state.settings);
+        // No channel to take "please test": not done, due again when the phone next reports
+        // untested. The other messages are not repeated.
+        if !notify::can_reach_owner(&settings) {
+            if notice == audio_fit::Notice::AskTest {
+                state.phones.fit_test_unsent(&serial);
+            }
+            info!("call audio notify serial={serial} notice={notice:?} no channel");
+            return;
+        }
         let ok = notify::notify_audio_fit(&state.http, &settings, &serial, notice).await;
         info!("call audio notify serial={serial} notice={notice:?} ok={ok}");
     });

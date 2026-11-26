@@ -173,4 +173,6 @@
     <string name="fit_adjusted">통화 소리를 자동으로 조정했습니다</string>
     <string name="fit_problem">통화 소리에 문제가 있어 모든 설정을 시도했습니다. 안내서(영어)의 \'First use on a new phone\' 항목을 확인하세요.</string>
     <string name="fit_unsupported">이 휴대전화는 AI 목소리를 통화에 내보낼 수 없습니다</string>
+    <string name="fit_retest">통화 소리 설정을 바꿨습니다. 다시 전화를 걸어 테스트하세요.</string>
+    <string name="fit_noted">이 휴대전화의 통화 소리에 문제가 있다고 기록했습니다</string>
 </resources>

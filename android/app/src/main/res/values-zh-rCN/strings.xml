@@ -171,6 +171,8 @@
     <!-- Call audio: how well this phone carries the AI's voice into calls -->
     <string name="fit_untested">还没测过通话声音：请用另一部电话打给这部手机，跟 AI 讲 20 秒左右，Bageo 会自动调整。</string>
     <string name="fit_adjusted">已自动调整通话声音</string>
-    <string name="fit_problem">通话声音有问题，已试过所有设置。请看说明文档里的「新手机第一次使用」。</string>
+    <string name="fit_problem">通话声音有问题，已试过所有设置。请看说明文档里的“新手机第一次使用”。</string>
     <string name="fit_unsupported">这部手机不支持把 AI 的声音送进通话</string>
+    <string name="fit_retest">已换一组通话声音设置，请再打一通电话测试。</string>
+    <string name="fit_noted">已记下这部手机的通话声音有问题</string>
 </resources>

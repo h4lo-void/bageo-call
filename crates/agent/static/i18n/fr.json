@@ -1389,13 +1389,14 @@
     "er_need_phone": "Le téléphone n’est pas encore prêt. Attendez quelques secondes ; si cela dure, rouvrez l’app.",
     "bk_err_read_failed": "Impossible de lire ce fichier. Choisissez-le à nouveau.",
     "bk_app_note": "Les sauvegardes restent dans Bageo et sont supprimées avec l’app. Pour en garder une, touchez « Télécharger » pour l’enregistrer sur le téléphone.",
-    "ph_fit_untested": "Son des appels non testé : appelez ce téléphone depuis un autre et parlez à l'IA environ 20 secondes. Bageo le règle ensuite tout seul.",
+    "ph_fit_untested": "Son des appels non testé : appelez ce téléphone depuis un autre et parlez à l’IA environ 20 secondes. Bageo le règle ensuite tout seul.",
     "ph_fit_adjusted": "Le son des appels a été réglé automatiquement",
     "ph_fit_problem": "Le son des appels pose problème et tous les réglages ont été essayés. Voir « First use on a new phone » dans le guide (en anglais).",
-    "ph_fit_unsupported": "Ce téléphone ne peut pas envoyer la voix de l'IA dans les appels",
-    "ph_fit_ask": "Avez-vous entendu la voix de l'IA lors du dernier appel ?",
+    "ph_fit_unsupported": "Ce téléphone ne peut pas envoyer la voix de l’IA dans les appels",
+    "ph_fit_ask": "Avez-vous entendu la voix de l’IA lors du dernier appel ?",
     "ph_fit_yes": "Oui",
     "ph_fit_no": "Non",
-    "ph_fit_retest": "Un autre réglage du son est prêt. Appelez de nouveau ce téléphone pour le tester."
+    "ph_fit_retest": "Un autre réglage du son est prêt. Appelez de nouveau ce téléphone pour le tester.",
+    "ph_fit_noted": "Noté : le son des appels de ce téléphone pose problème"
   }
 }

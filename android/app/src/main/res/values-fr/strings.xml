@@ -173,4 +173,6 @@
     <string name="fit_adjusted">Le son des appels a été réglé automatiquement</string>
     <string name="fit_problem">Le son des appels pose problème et tous les réglages ont été essayés. Voir « First use on a new phone » dans le guide (en anglais).</string>
     <string name="fit_unsupported">Ce téléphone ne peut pas envoyer la voix de l\'IA dans les appels</string>
+    <string name="fit_retest">Un autre réglage du son est prêt. Appelez de nouveau ce téléphone pour le tester.</string>
+    <string name="fit_noted">Noté : le son des appels de ce téléphone pose problème</string>
 </resources>

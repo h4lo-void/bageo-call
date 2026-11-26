@@ -1396,6 +1396,7 @@
     "ph_fit_ask": "¿Oíste la voz de la IA en la última llamada?",
     "ph_fit_yes": "Sí",
     "ph_fit_no": "No",
-    "ph_fit_retest": "Hay otro ajuste de audio listo. Vuelve a llamar a este teléfono para probarlo."
+    "ph_fit_retest": "Hay otro ajuste de audio listo. Vuelve a llamar a este teléfono para probarlo.",
+    "ph_fit_noted": "Anotado: el audio de las llamadas de este teléfono tiene un problema"
   }
 }

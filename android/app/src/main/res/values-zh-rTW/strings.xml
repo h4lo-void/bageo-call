@@ -173,4 +173,6 @@
     <string name="fit_adjusted">已自動調整通話聲音</string>
     <string name="fit_problem">通話聲音有問題，已試過所有設定。請看說明文件的「新手機第一次使用」。</string>
     <string name="fit_unsupported">這支手機不支援把 AI 的聲音送進通話</string>
+    <string name="fit_retest">已換一組通話聲音設定，請再打一通電話測試。</string>
+    <string name="fit_noted">已記下這支手機的通話聲音有問題</string>
 </resources>
