@@ -16,9 +16,8 @@ The built-in list (`src/allow.rs`) is **empty** in this version, so the app cann
 change anything yet; phone families are added by later changes. Reading the mixer,
 parameters or the phone's audio facts is only possible from the root command line.
 
-The module ships a debug build of the app today. The helper refuses a debuggable app
-(see "Who it serves"), so **with the current module the helper refuses to serve**; it
-can only be used once the module ships a release build of the app.
+It serves only a release (not debuggable) build of the app, which is what the module
+ships (see "Who it serves"); a module with a debug build of the app gets no service.
 
 ## When it runs
 

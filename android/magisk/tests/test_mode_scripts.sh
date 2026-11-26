@@ -375,8 +375,8 @@ pkg_list() {
 }
 # The daemon for a case: its folders in the case folder (by their real path, as on a
 # phone), the 2 s loop shortened, apply_mode.sh replaced by a stub that logs its run.
-# Unless the case set one up, the app is a debuggable build of the module's own (as on
-# today's phones).
+# Unless the case set one up, the app is a debuggable build of the module's own (as in a
+# module built with a debug build).
 start_daemon() {
   mkdir -p "$ST/app/files/mode" "$ST/dataapp"
   [ -f "$ST/packages.list" ] || pkg_list 1

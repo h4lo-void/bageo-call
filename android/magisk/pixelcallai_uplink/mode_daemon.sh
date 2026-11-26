@@ -27,10 +27,10 @@
 # once, with the user ID that owns its folder and its usual data folder. A debuggable
 # app can be entered with `adb shell run-as` by anyone with adb, who could then write
 # requests as the app; so a debuggable app's request is refused (error=app_refused),
-# with one exception for now: while the app is this module's own build (no update of it
-# installed under /data/app), because this module still ships a debuggable build and
-# the phones that use it must keep switching. Once the module ships a release build,
-# a debuggable app can only be an update installed over it, and is refused.
+# with one exception: while the app is the module's own build (no update of it installed
+# under /data/app), so that a module built with a debug build of the app (as before the
+# modules shipped release builds) keeps switching. The module ships a release build, so
+# a debuggable app there can only be an update installed over it, and is refused.
 #
 # The state:
 #

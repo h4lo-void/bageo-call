@@ -362,8 +362,8 @@ To switch without touching the phone's screen, from a computer with `adb`:
 Some phones do not let the app put its voice into a call by itself. For those, the
 module carries a small root program, `bageo-audio-helper`, that the app can ask to
 adjust the phone's audio during a call. Phones that do not need it never run it.
-This version does not change anything yet: no phone has been added to its list, and
-it only serves a release build of the app (the module currently ships a debug build).
+This version does not change anything yet: no phone has been added to its list. It
+only serves the release build of the app that the module installs.
 
 - It does not run in the background. It starts only when the app asks for it, and
   quits by itself about a minute after the app stops using it.

@@ -13,8 +13,7 @@
 //! ```
 //!
 //! A debuggable app can be entered with `adb shell run-as`, which then runs as the app's
-//! user ID; so a debuggable Bageo is refused. (The module currently ships a debug build
-//! of the app, so the helper refuses until the module ships a release build.) The owner
+//! user ID; so a debuggable Bageo is refused (the module ships a release build). The owner
 //! of the app's device-protected folder must match the list.
 
 /// The app's package.
