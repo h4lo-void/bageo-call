@@ -98,6 +98,12 @@ jobs:
           bash scripts/package-uplink-module.sh --standalone --skip-rust-build
       - name: Check the audio helper is in the phone modules
         run: bash android/scripts/check-roothelper-in-module.sh android/magisk/dist/bageo-phone-*.zip
+      # The helper alone (both ABIs and the parameter jar), for trying it on a phone
+      # without flashing a module.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bageo-audio-helper
+          path: android/magisk/pixelcallai_uplink/roothelper/
       - name: Test the phone module's mode scripts
         run: sh android/magisk/tests/test_mode_scripts.sh
 
