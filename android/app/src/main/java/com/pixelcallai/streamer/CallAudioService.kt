@@ -1583,6 +1583,7 @@ class CallAudioService : Service() {
                 },
                 requireInCallMode = !smoke,
                 onHealthReport = { report -> sendUplinkHealth(report) },
+                isCallConnected = { SilentInCallService.hasAnsweredCall() },
             )
             if (!mutateCurrentSession(generation, callInstanceId) { injector = inj }) {
                 inj.stop()

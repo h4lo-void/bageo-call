@@ -758,7 +758,7 @@ Content-Type: application/json
 |---|---|
 | `GET /calls/api/devices` | 手机列表和连接状态。响应格式见下方。 |
 | `POST /calls/api/devices/{serial}/mode` | 请求体 `{"mode": "ai" \| "normal"}`。让手机切换，最多等 15 秒等它回复。返回 `{ok, mode, error_code}`（400 时另附说明 `error`）。 |
-| `POST /calls/api/devices/{serial}/audio-problem` | 请求体 `{}`（JSON）。对方在这部手机上听不到 AI：手机 App 记下 `audio_fit` 为 `problem`，下一通改用另一组播放设置。返回 `{ok, audio_fit}`；手机未连接返回 HTTP 409 `offline`，不回报 `audio_fit` 的旧版 App 返回 HTTP 409 `unsupported`。 |
+| `POST /calls/api/devices/{serial}/audio-problem` | 请求体 `{}`（JSON）。对方在这部手机上听不到 AI：手机 App 记下 `audio_fit` 为 `problem`，下一通改用另一组播放设置（Google Pixel 只记下、不换）。返回 `{ok, audio_fit}`；手机未连接返回 HTTP 409 `offline`，不回报 `audio_fit` 的旧版 App 返回 HTTP 409 `unsupported`。 |
 | `DELETE /calls/api/devices/{serial}` | 移除一台未连接的旧手机（同时清除手机列表、已存名称与 SIM 记录，保留过往通话记录）：`{ok, serial}`。手机仍在线或通话中返回 HTTP 409 `device_online`／`device_in_call`。 |
 | `PUT /calls/api/devices/{serial}/sim-number` | 请求体 `{"sub_id": <整数>, "number": "..."}`。设置（留空表示清除）这部手机某张 SIM 的号码，让来电与 AI 代打直接显示并按号码挑选：`{ok, serial, sims}`。 |
 | `POST /calls/api/phone-pairing/renew` | 更换 Wi-Fi 配对密钥（`phone-pairing.key`）并断开通过 Wi-Fi 连接的手机，每部手机重新插上 USB 一次即可获取新密钥：`{ok: true}`（失败返回 HTTP 500 `save_failed`）。密钥本身不会返回。 |
@@ -773,7 +773,7 @@ Content-Type: application/json
 - 最外层的 `phones` 是 Bageo 启动后在 control 连接上见过的每部手机：`{serial, connected, mode, supports_mode, model, app_version, in_call, last_seen_ms}`。
 - `mode` 是 `ai`（AI 接听）或 `normal`（一般手机，见[手机设置](PHONE.md#普通手机模式)）。
 - 比这个功能旧的 App，`supports_mode` 是 false，永远是 `ai`。
-- `audio_fit`（新版手机 App 才有，旧版没有这个字段）表示这部手机把 AI 的声音播进通话的情况：`untested`（还没有够长的通话）、`ok`、`adjusted`（换过播放设置，已记住新的）、`problem`（仍会掉声音，或主人说对方听不到）、`unsupported`（手机没有通话用的播放设备，或每组设置都被拒绝）。App 连接时和每通结束时都会发送；每通也会在 Bageo 的日志写一行 `uplink health …`。
+- `audio_fit`（新版手机 App 才有，旧版没有这个字段）表示这部手机把 AI 的声音播进通话的情况：`untested`（还没有够长的通话）、`ok`（Google Pixel 是已知机型，一开始就是 `ok`）、`adjusted`（换过播放设置，已记住新的）、`problem`（仍会掉声音，或主人说对方听不到）、`unsupported`（手机没有通话用的播放设备，或每组设置都被拒绝）。App 连接时和每通结束时都会发送；每通也会在 Bageo 的日志写一行 `uplink health …`。
 
 `GET /health` 的内容：
 

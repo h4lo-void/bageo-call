@@ -5649,6 +5649,43 @@ pub(crate) mod tests {
         // Nothing changed for a phone that could not be told.
         let listed = state.phones.list_json(&[]);
         assert_eq!(listed.iter().find(|p| p["serial"] == "pixel-away").unwrap()["audio_fit"], json!("ok"));
+        // A phone id the console could never have sent.
+        let bad = client
+            .post(format!("{base}/api/devices/pixel.away/audio-problem"))
+            .header("content-type", "application/json")
+            .body("{}")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+        let body: Value = bad.json().await.unwrap();
+        assert_eq!(body["code"], json!("invalid_serial"), "{body}");
+
+        // With a console password: refused without it, checked further with it.
+        let mut locked = state.clone();
+        locked.settings.calls_ui_token = "afit-test-pw".into();
+        let locked_base = spawn_router(locked).await;
+        let locked_url = format!("{locked_base}/api/devices/pixel-away/audio-problem");
+        let anon = client.post(&locked_url).header("content-type", "application/json").body("{}").send().await.unwrap();
+        assert_eq!(anon.status(), StatusCode::UNAUTHORIZED);
+        let wrong = client
+            .post(&locked_url)
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer wrong-pw")
+            .body("{}")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(wrong.status(), StatusCode::UNAUTHORIZED);
+        let authed = client
+            .post(&locked_url)
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer afit-test-pw")
+            .body("{}")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(authed.status(), StatusCode::CONFLICT, "the password lets it through to the phone check");
         let _ = std::fs::remove_dir_all(&root);
     }
 

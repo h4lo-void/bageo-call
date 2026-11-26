@@ -84,9 +84,6 @@ data class TelephonyCaps(
     val channelMasks: List<Int> = emptyList(),
     val encodings: List<Int> = emptyList(),
 ) {
-    /** Mono may be used: nothing listed, or 1 is listed. */
-    val monoAllowed: Boolean get() = channelCounts.isEmpty() || channelCounts.contains(1)
-
     fun describe(): String =
         "rates=${sampleRates.joinToString(",", "[", "]")} " +
             "channels=${channelCounts.joinToString(",", "[", "]")} " +
@@ -112,17 +109,15 @@ fun pickProfileTrackRate(profile: UplinkProfile, deviceRates: IntArray, inputRat
 }
 
 /**
- * Channels for [profile]: 2 for the stereo profile, and 2 on a phone of [ChipKind.OTHER]
- * whose telephony output lists channel counts without mono. Google and MediaTek phones
- * keep mono as before.
+ * Channels for [profile]: only the last step of the ladder is stereo, so every other
+ * profile (standard included) stays mono exactly as before, whatever the device lists.
  */
-fun pickProfileChannels(profile: UplinkProfile, caps: TelephonyCaps, chip: ChipKind): Int =
-    if (profile.stereo || (chip == ChipKind.OTHER && !caps.monoAllowed)) 2 else 1
+fun pickProfileChannels(profile: UplinkProfile): Int = if (profile.stereo) 2 else 1
 
-fun planTrack(profile: UplinkProfile, caps: TelephonyCaps, chip: ChipKind, inputRate: Int): UplinkTrackPlan =
+fun planTrack(profile: UplinkProfile, caps: TelephonyCaps, inputRate: Int): UplinkTrackPlan =
     UplinkTrackPlan(
         trackRate = pickProfileTrackRate(profile, caps.sampleRates.toIntArray(), inputRate),
-        channels = pickProfileChannels(profile, caps, chip),
+        channels = pickProfileChannels(profile),
         primed = profile.primed,
     )
 
@@ -146,32 +141,47 @@ fun profileBufferBytes(plan: UplinkTrackPlan, minBuf: Int): Int =
         (minBuf * 6).coerceAtLeast(plan.trackRate / 5 * 2 * plan.channels)
     }
 
-/** Copies each s16le mono sample to both channels of an interleaved stereo buffer. */
-fun monoToStereo(pcm: ByteArray): ByteArray {
-    val n = pcm.size / 2
-    val out = ByteArray(n * 4)
-    for (i in 0 until n) {
-        val lo = pcm[2 * i]
-        val hi = pcm[2 * i + 1]
-        out[4 * i] = lo
-        out[4 * i + 1] = hi
-        out[4 * i + 2] = lo
-        out[4 * i + 3] = hi
+/** Writes each s16le sample of [mono] twice (left, right) for a two-channel track. */
+fun duplicateToTwoChannels(mono: ByteArray): ByteArray {
+    val frames = mono.size / 2
+    val twoChannel = ByteArray(frames * 4)
+    for (f in 0 until frames) {
+        val low = mono[2 * f]
+        val high = mono[2 * f + 1]
+        twoChannel[4 * f] = low
+        twoChannel[4 * f + 1] = high
+        twoChannel[4 * f + 2] = low
+        twoChannel[4 * f + 3] = high
     }
-    return out
+    return twoChannel
 }
+
+/**
+ * This phone's first profile when nothing is stored: MediaTek primed (b825ea2), Google
+ * standard, other chips standard unless the telephony output lists rates without
+ * [inputRate] (then primed, which converts the rate).
+ *
+ * Capabilities first, then per-chip choices: approach informed by Oboe QuirksManager
+ * (Apache-2.0), https://github.com/google/oboe.
+ */
+fun defaultStartProfile(chip: ChipKind, caps: TelephonyCaps, inputRate: Int): Pair<UplinkProfile, StartSource> =
+    when {
+        chip == ChipKind.MEDIATEK -> UplinkProfile.PRIMED to StartSource.CHIP
+        chip == ChipKind.GOOGLE -> UplinkProfile.STANDARD to StartSource.DEFAULT
+        caps.sampleRates.isNotEmpty() && !caps.sampleRates.contains(inputRate) ->
+            UplinkProfile.PRIMED to StartSource.CAPS
+        else -> UplinkProfile.STANDARD to StartSource.DEFAULT
+    }
 
 /**
  * First profile of a call.
  *
- * [forced] (testing) wins. With [measureOnly] the phone keeps what b825ea2 did (MediaTek:
- * primed, otherwise standard). Then the profile after [avoid] (the owner said the caller
- * heard nothing with it), then the [remembered] one, then the chip and the listed
- * capabilities. [samePlan] tells two profiles apart on this phone, so a profile that
- * would build the same track as [avoid] is skipped.
- *
- * Capabilities first, then per-chip choices: approach informed by Oboe QuirksManager
- * (Apache-2.0), https://github.com/google/oboe.
+ * With [measureOnly] (Google phones) the phone keeps what b825ea2 did and ignores
+ * everything else, [forced] included: those phones must sound exactly as before. Then
+ * [forced] (testing), then the profile after [avoid] (the owner said the caller heard
+ * nothing with it), then the [remembered] one, then [defaultStartProfile]. [samePlan]
+ * tells two profiles apart on this phone, so a profile that would build the same track
+ * as [avoid] is skipped.
  */
 fun pickStartProfile(
     forced: UplinkProfile?,
@@ -183,23 +193,17 @@ fun pickStartProfile(
     measureOnly: Boolean,
     samePlan: (UplinkProfile, UplinkProfile) -> Boolean = { a, b -> a == b },
 ): Pair<UplinkProfile, StartSource> {
-    if (forced != null) return forced to StartSource.FORCED
-    val legacy = if (chip == ChipKind.MEDIATEK) {
-        UplinkProfile.PRIMED to StartSource.CHIP
-    } else {
-        UplinkProfile.STANDARD to StartSource.DEFAULT
+    val fallback = defaultStartProfile(chip, caps, inputRate)
+    if (measureOnly) {
+        return if (chip == ChipKind.MEDIATEK) fallback else UplinkProfile.STANDARD to StartSource.DEFAULT
     }
-    if (measureOnly) return legacy
+    if (forced != null) return forced to StartSource.FORCED
     if (avoid != null) {
         val next = ladderAfter(avoid).firstOrNull { !samePlan(it, avoid) }
         if (next != null) return next to StartSource.OWNER_REPORT
     }
     if (remembered != null) return remembered to StartSource.REMEMBERED
-    if (chip == ChipKind.MEDIATEK || chip == ChipKind.GOOGLE) return legacy
-    if (caps.sampleRates.isNotEmpty() && !caps.sampleRates.contains(inputRate)) {
-        return UplinkProfile.PRIMED to StartSource.CAPS
-    }
-    return UplinkProfile.STANDARD to StartSource.DEFAULT
+    return fallback
 }
 
 /** The other profiles, in ladder order starting after [p] and wrapping around. */
@@ -374,31 +378,57 @@ const val MIN_MEASURED_AUDIO_MS = 10_000L
 /**
  * The outcome of a call whose track went live.
  *
- * Measure-only phones never store a profile: unhealthy → problem, a long healthy call → ok.
+ * Measure-only phones never store a profile: unhealthy → problem, a long healthy call → ok,
+ * except that a problem the owner reported stays ([keepOwnerProblem]): such a phone has no
+ * other settings to try, so overwriting it would just drop the report.
+ *
+ * With [StartSource.FORCED] (adb testing) only the path under test is stored: the forced
+ * profile lost audio, another one took over and stayed healthy through a long call.
+ * Anything else leaves the stored state alone.
+ *
  * Otherwise an unhealthy final profile (every profile tried) → problem and the memory is
- * dropped; a final profile that stayed healthy through [MIN_MEASURED_AUDIO_MS] of voice is
- * remembered (ok when it was the first one, adjusted after a switch). A short call changes
+ * dropped. A profile reached only because others could not open a track
+ * ([reachedByOpenFailure] while the start never lost audio) is not stored. A final
+ * profile that stayed healthy through [MIN_MEASURED_AUDIO_MS] of voice is remembered:
+ * adjusted when this call switched away from a profile that lost audio, when it is not
+ * this phone's default first profile ([finalIsDefault]), or after an owner report; ok
+ * otherwise. A short call changes
  * nothing, except that a remembered profile which turned unhealthy is forgotten.
  */
 fun decideTune(
     autoSwitch: Boolean,
     source: StartSource,
     finalProfile: UplinkProfile,
-    switched: Boolean,
+    switchedForLoss: Boolean,
     startUnhealthy: Boolean,
     finalUnhealthy: Boolean,
     finalAudioMs: Long,
+    finalIsDefault: Boolean,
+    reachedByOpenFailure: Boolean = false,
+    keepOwnerProblem: Boolean = false,
 ): TuneDecision {
+    val long = finalAudioMs >= MIN_MEASURED_AUDIO_MS
     if (!autoSwitch) {
         return when {
+            keepOwnerProblem -> TuneDecision()
             finalUnhealthy || startUnhealthy -> TuneDecision(fit = AudioFit.PROBLEM, reason = "audio_lost")
-            finalAudioMs >= MIN_MEASURED_AUDIO_MS -> TuneDecision(fit = AudioFit.OK)
+            long -> TuneDecision(fit = AudioFit.OK)
             else -> TuneDecision()
         }
     }
+    if (source == StartSource.FORCED) {
+        return if (startUnhealthy && switchedForLoss && !finalUnhealthy && long) {
+            TuneDecision(remember = finalProfile, fit = AudioFit.ADJUSTED)
+        } else {
+            TuneDecision()
+        }
+    }
     if (finalUnhealthy) return TuneDecision(forget = true, fit = AudioFit.PROBLEM, reason = "audio_lost")
-    if (finalAudioMs >= MIN_MEASURED_AUDIO_MS) {
-        return TuneDecision(remember = finalProfile, fit = if (switched) AudioFit.ADJUSTED else AudioFit.OK)
+    if (long) {
+        // Got here only because other profiles would not open: keep what is stored.
+        if (reachedByOpenFailure && !startUnhealthy) return TuneDecision()
+        val adjusted = switchedForLoss || !finalIsDefault || source == StartSource.OWNER_REPORT
+        return TuneDecision(remember = finalProfile, fit = if (adjusted) AudioFit.ADJUSTED else AudioFit.OK)
     }
     if (startUnhealthy && source == StartSource.REMEMBERED) {
         return TuneDecision(forget = true, fit = AudioFit.UNTESTED)
@@ -409,18 +439,25 @@ fun decideTune(
 /**
  * One call's walk up the profile ladder. Not thread-safe: the injector guards it.
  *
- * [autoSwitch] false = measure only. [samePlan] says when two profiles would build the
- * same track on this phone; those are tried once.
+ * [autoSwitch] false = measure only. [defaultStart] is this phone's first profile when
+ * nothing is stored ([defaultStartProfile]). [keepOwnerProblem]: see [decideTune].
+ * [samePlan] says when two profiles would build the same track on this phone; those are
+ * tried once.
  */
 class UplinkTuner(
     val start: UplinkProfile,
     val source: StartSource,
     val autoSwitch: Boolean,
+    private val defaultStart: UplinkProfile = start,
+    private val keepOwnerProblem: Boolean = false,
     private val samePlan: (UplinkProfile, UplinkProfile) -> Boolean = { a, b -> a == b },
 ) {
     var current: UplinkProfile = start
         private set
     var switches = 0
+        private set
+    /** Switches made because the profile in use lost audio (not because it would not open). */
+    var lossSwitches = 0
         private set
     /** A track of this call reached the telephony route. */
     var everLive = false
@@ -431,6 +468,8 @@ class UplinkTuner(
     private val unhealthy = HashSet<UplinkProfile>()
     private val openFailed = LinkedHashMap<UplinkProfile, String>()
     private var settled = false
+    /** Every profile failed to open once; the tuner went back to [start] and stays there. */
+    private var openExhausted = false
     private var noDevice = false
 
     fun meter(): UplinkHealthMeter = meters.getOrPut(current) { UplinkHealthMeter() }
@@ -455,36 +494,38 @@ class UplinkTuner(
     fun onUnhealthy(): UplinkProfile? {
         if (!unhealthy.add(current)) return null
         if (!autoSwitch || settled) return null
-        nextUntried()?.let { return switchTo(it) }
+        nextUntried()?.let { return switchTo(it, forLoss = true) }
         settled = true
         val best = meters.entries
             .filter { it.key !in openFailed && it.value.activeMs > 0 }
             .minByOrNull { it.value.lossRate() }
             ?.key
-        return if (best != null && best != current) switchTo(best) else null
+        return if (best != null && best != current) switchTo(best, forLoss = true) else null
     }
 
     /**
      * The current profile could not open a track on the telephony route for long enough
-     * ([reason]: prefer_rejected or track_rejected). @return the next profile, or null.
+     * ([reason]: prefer_rejected or track_rejected). @return the next profile; once every
+     * profile failed, [start] again (the caller keeps retrying it); null to stay.
      */
     fun onOpenFailed(reason: String): UplinkProfile? {
         if (current in openFailed) return null
         openFailed[current] = reason
-        if (!autoSwitch || settled) return null
-        nextUntried()?.let { return switchTo(it) }
-        settled = true
-        return null
+        if (!autoSwitch) return null
+        if (!openExhausted) nextUntried()?.let { return switchTo(it, forLoss = false) }
+        openExhausted = true
+        return if (current != start) switchTo(start, forLoss = false) else null
     }
 
     private fun nextUntried(): UplinkProfile? = ladderAfter(current).firstOrNull { p ->
         p !in tried && tried.none { samePlan(it, p) }
     }
 
-    private fun switchTo(p: UplinkProfile): UplinkProfile {
+    private fun switchTo(p: UplinkProfile, forLoss: Boolean): UplinkProfile {
         current = p
         tried.add(p)
         switches++
+        if (forLoss) lossSwitches++
         return p
     }
 
@@ -501,29 +542,36 @@ class UplinkTuner(
         return Triple(lost, events, rebuilds)
     }
 
-    /** What to store once the call is over. */
+    /**
+     * What to store once the call is over. A call whose track never went live is
+     * unsupported only with a cause (no telephony output, or every profile refused);
+     * that keeps a remembered profile, since it may still be right once the route opens.
+     */
     fun decision(): TuneDecision {
         if (!everLive) {
             val reason = when {
                 noDevice -> "no_telephony_device"
-                openFailed.isNotEmpty() && (settled || !autoSwitch) ->
+                openFailed.isNotEmpty() && (openExhausted || !autoSwitch) ->
                     if (openFailed.values.any { it == "prefer_rejected" }) "prefer_rejected" else "track_rejected"
                 else -> null
             }
-            return if (reason != null) {
-                TuneDecision(forget = autoSwitch, fit = AudioFit.UNSUPPORTED, reason = reason)
-            } else {
+            return if (reason == null || source == StartSource.FORCED || (!autoSwitch && keepOwnerProblem)) {
                 TuneDecision()
+            } else {
+                TuneDecision(fit = AudioFit.UNSUPPORTED, reason = reason)
             }
         }
         return decideTune(
             autoSwitch = autoSwitch,
             source = source,
             finalProfile = current,
-            switched = switches > 0,
+            switchedForLoss = lossSwitches > 0,
             startUnhealthy = start in unhealthy,
             finalUnhealthy = current in unhealthy,
             finalAudioMs = meters[current]?.audioMs ?: 0L,
+            finalIsDefault = samePlan(current, defaultStart),
+            reachedByOpenFailure = current != start,
+            keepOwnerProblem = keepOwnerProblem,
         )
     }
 }

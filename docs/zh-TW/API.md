@@ -758,7 +758,7 @@ Content-Type: application/json
 |---|---|
 | `GET /calls/api/devices` | 手機清單和連線狀態。回應格式見下方。 |
 | `POST /calls/api/devices/{serial}/mode` | Body `{"mode": "ai" \| "normal"}`。叫手機切換，最多等 15 秒等它回覆。回 `{ok, mode, error_code}`（400 時另附說明 `error`）。 |
-| `POST /calls/api/devices/{serial}/audio-problem` | Body `{}`（JSON）。對方在這支手機上聽不到 AI：手機 App 記下 `audio_fit` 為 `problem`，下一通改用別組播放設定。回 `{ok, audio_fit}`；手機沒連線回 HTTP 409 `offline`，App 不回報 `audio_fit` 的舊版回 HTTP 409 `unsupported`。 |
+| `POST /calls/api/devices/{serial}/audio-problem` | Body `{}`（JSON）。對方在這支手機上聽不到 AI：手機 App 記下 `audio_fit` 為 `problem`，下一通改用別組播放設定（Google Pixel 只記下、不換）。回 `{ok, audio_fit}`；手機沒連線回 HTTP 409 `offline`，App 不回報 `audio_fit` 的舊版回 HTTP 409 `unsupported`。 |
 | `DELETE /calls/api/devices/{serial}` | 移除一支沒連線的舊手機（同時清除手機清單、已存名稱與 SIM 紀錄，保留過往通話紀錄）：`{ok, serial}`。手機還在線或通話中回 HTTP 409 `device_online`／`device_in_call`。 |
 | `PUT /calls/api/devices/{serial}/sim-number` | Body `{"sub_id": <整數>, "number": "..."}`。設定（空白代表清除）這支手機某張 SIM 的門號，讓來電與 AI 代打直接顯示並依門號挑選：`{ok, serial, sims}`。 |
 | `POST /calls/api/phone-pairing/renew` | 更換 Wi-Fi 配對金鑰（`phone-pairing.key`）並中斷透過 Wi-Fi 連線的手機，每支手機重新插上 USB 一次即可取得新金鑰：`{ok: true}`（失敗回傳 HTTP 500 `save_failed`）。金鑰本身不會回傳。 |
@@ -773,7 +773,7 @@ Content-Type: application/json
 - 最外層的 `phones` 是 Bageo 啟動後在 control 連線上見過的每支手機：`{serial, connected, mode, supports_mode, model, app_version, in_call, last_seen_ms}`。
 - `mode` 是 `ai`（AI 接聽）或 `normal`（一般手機，見[手機設定](PHONE.md#一般手機模式)）。
 - 比這個功能舊的 App，`supports_mode` 是 false，永遠是 `ai`。
-- `audio_fit`（新版手機 App 才有，舊版沒有這個欄位）表示這支手機把 AI 的聲音播進通話的情況：`untested`（還沒有夠長的通話）、`ok`、`adjusted`（換過播放設定，已記住新的）、`problem`（還是會掉聲音，或主人說對方聽不到）、`unsupported`（手機沒有通話用的播放裝置，或每組設定都被拒絕）。App 連上時和每通結束時都會送；每通也會在 Bageo 的 log 寫一行 `uplink health …`。
+- `audio_fit`（新版手機 App 才有，舊版沒有這個欄位）表示這支手機把 AI 的聲音播進通話的情況：`untested`（還沒有夠長的通話）、`ok`（Google Pixel 是已知機型，一開始就是 `ok`）、`adjusted`（換過播放設定，已記住新的）、`problem`（還是會掉聲音，或主人說對方聽不到）、`unsupported`（手機沒有通話用的播放裝置，或每組設定都被拒絕）。App 連上時和每通結束時都會送；每通也會在 Bageo 的 log 寫一行 `uplink health …`。
 
 `GET /health` 的內容：
 
