@@ -363,10 +363,21 @@ mod tests {
         let f = fs::OpenOptions::new().read(true).write(true).open(&lock_path).unwrap();
         let locked_early = unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) == 0 };
         assert!(!locked_early, "exclusive lock must block while the spawned child is still alive");
+        drop(f);
 
         let _ = child.wait();
-        let locked_after = unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) == 0 };
-        assert!(locked_after, "exclusive lock must succeed once the child has exited");
+        let quiet = crate::sys::server::wait_for_flock_file(&lock_path, Duration::from_millis(50)).unwrap().is_some();
+        assert!(quiet, "exclusive wait must succeed once the old child has exited");
+
+        // Immediately after `wait_for_flock_file(..).is_some()` drops its temporary EX lock,
+        // the same process can spawn a restore parameter command holding LOCK_SH without self-deadlock.
+        let mut restore_cmd = Command::new("/bin/sh");
+        restore_cmd.arg("-c").arg("echo restored");
+        let restore_guard = attach_child_shared_lock(&mut restore_cmd, &lock_path).unwrap();
+        let out = child::run(&mut restore_cmd, Duration::from_secs(2), 1024, None).unwrap();
+        drop(restore_guard);
+        assert!(out.ok());
+        assert_eq!(out.stdout, b"restored\n");
         let _ = fs::remove_file(&lock_path);
     }
 }

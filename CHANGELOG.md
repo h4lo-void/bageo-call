@@ -15,9 +15,12 @@
 - **International calls: the AI greets first.** On a Taiwan or Korea SIM, the carrier plays a warning tone on calls from abroad (Taiwan also on hidden numbers). Once it ends, the AI opens the call itself instead of waiting for the caller to speak, and it never takes the tone for the caller, also when the caller's first word is a short hello. Hong Kong's warning is recognized but not waited for. The console shows each phone by its name.
 - **國際電話：AI 先打招呼。** 台灣和韓國的 SIM 接到國外來電時，電信會先播一段提示音（台灣的隱藏號碼也會）。播完後 AI 會自己開口，不再等對方先說話；提示音不會被當成對方說的話，對方第一句只說「你好」也聽得到。香港的提示音認得出來，但不會等它。控制台也用手機名稱顯示手機。
 - **国际电话：AI 先打招呼。** 台湾和韩国的 SIM 接到境外来电时，运营商会先播一段提示音（台湾的隐藏号码也会）。播完后 AI 会自己开口，不再等对方先说话；提示音不会被当成对方说的话，对方第一句只说“你好”也听得到。香港的提示音能识别，但不会等它。控制台也用手机名称显示手机。
-- **The phone app can no longer be opened up over USB debugging.** The phone modules now carry the release build of the app instead of the debug build, so someone with your phone and a USB cable cannot use adb to read the app's data or switch its mode. Nothing else changes; settings are kept.
-- **手機上的 App 不能再透過 USB 偵錯打開。** 手機模組改帶正式版 App，不再是偵錯版：拿到你的手機、接上 USB 的人，不能再用 adb 讀 App 的資料或切換模式。其他行為不變，設定都保留。
-- **手机上的应用不能再通过 USB 调试打开。** 手机模块改带正式版应用，不再是调试版：拿到你的手机、接上 USB 的人，不能再用 adb 读取应用的数据或切换模式。其他行为不变，设置都保留。
+- **The phone app can no longer be opened up over USB debugging.** The phone modules now carry the release build of the app instead of the debug build, so someone with your phone and a USB cable cannot use adb to read the app's data or switch its mode. The modules also include `bageo-audio-helper`, a root helper for phones whose call audio the app cannot reach on its own (its built-in phone list is empty in 2.1.0, and `bageo-audio-helper disable` turns it off), and phone mode switching now exchanges files strictly inside the app's own folder. Nothing else changes; settings are kept.
+- **手機上的 App 不能再透過 USB 偵錯打開。** 手機模組改帶正式版 App，不再是偵錯版：拿到你的手機、接上 USB 的人，不能再用 adb 讀 App 的資料或切換模式。模組也內建 `bageo-audio-helper` 供單靠 App 碰不到通話音訊的手機備援（2.1.0 內建機型清單為空，可用 `bageo-audio-helper disable` 停用），且手機模式切換改為全程在 App 自己的資料夾內安全交接。其他行為不變，設定都保留。
+- **手机上的应用不能再通过 USB 调试打开。** 手机模块改带正式版应用，不再是调试版：拿到你的手机、接上 USB 的人，不能再用 adb 读取应用的数据或切换模式。模块也内置 `bageo-audio-helper` 供单靠应用碰不到通话音频的手机备援（2.1.0 内置机型清单为空，可用 `bageo-audio-helper disable` 停用），且手机模式切换改为全程在应用自己的文件夹内安全交接。其他行为不变，设置都保留。
+- **Saved keys stay bound to their address.** Changing a notification or summary server address while leaving the key field blank no longer reuses the old key at the new address.
+- **已存的金鑰只用在原本的位址。** 更改通知或摘要服務的位址時，若金鑰欄留白，不會再把舊金鑰送到新位址。
+- **已存的密钥只用于原本的地址。** 更改通知或摘要服务的地址时，若密钥栏留空，不会再把旧密钥发往新地址。
 - **The phone app in 79 languages.** The new call audio lines and the updated supported-phones line in the phone app are translated into all 79 languages (they were English outside the nine main ones).
 - **手機 App 的 79 種語言都補齊。** 通話聲音的新提示和更新過的支援機型說明，在手機 App 裡 79 種語言都有翻譯（之前九種主要語言以外會顯示英文）。
 - **手机应用的 79 种语言都补齐。** 通话声音的新提示和更新过的支持机型说明，在手机应用里 79 种语言都有翻译（之前九种主要语言以外会显示英文）。

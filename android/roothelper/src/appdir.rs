@@ -229,9 +229,47 @@ fn next_tmp_name(prefix: &str) -> io::Result<CString> {
     cstr(&format!("{prefix}.{}.{}", std::process::id(), NEXT_TMP.fetch_add(1, Ordering::Relaxed)))
 }
 
+const ROOT_IPC_DIR: &str = "/data/adb/pixelcallai";
+const ROOT_APPDIR_LOCK: &str = "/data/adb/pixelcallai/appdir.lock";
+
+/// Serializes root's `AppDir` operations (`serve` and `mode_daemon` `ipc-*`) through a
+/// root-only lock file under `/data/adb/pixelcallai` whenever that directory exists (so
+/// the app cannot block it, and two root processes never race `sweep` against `mkdirat`).
+fn acquire_root_ipc_lock() -> Option<OwnedFd> {
+    let dir_c = CString::new(ROOT_IPC_DIR).ok()?;
+    let st = lstat_path(Path::new(ROOT_IPC_DIR)).ok()?;
+    if !is_dir(&st) || st.st_uid != 0 {
+        return None;
+    }
+    let _ = dir_c;
+    let lock_c = CString::new(ROOT_APPDIR_LOCK).ok()?;
+    // SAFETY: open in root-only directory without following symlinks.
+    let fd = unsafe {
+        libc::open(
+            lock_c.as_ptr(),
+            libc::O_RDWR | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            0o600 as libc::c_uint,
+        )
+    };
+    if fd < 0 {
+        return None;
+    }
+    // SAFETY: just opened.
+    let owned = unsafe { OwnedFd::from_raw_fd(fd) };
+    for _ in 0..250 {
+        if unsafe { libc::flock(owned.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return Some(owned);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    None
+}
+
 struct WorkDir<'a> {
     app: &'a AppDir,
+    _ipc_lock: Option<OwnedFd>,
     fd: OwnedFd,
+    _pin_lock: OwnedFd,
     id: FileId,
     name: CString,
     handed_to_app: bool,
@@ -239,6 +277,7 @@ struct WorkDir<'a> {
 
 impl<'a> WorkDir<'a> {
     fn open(app: &'a AppDir) -> io::Result<WorkDir<'a>> {
+        let ipc_lock = acquire_root_ipc_lock();
         let dir = app.fd.as_raw_fd();
         let mut last_err = io::Error::other("cannot create working folder");
         for _ in 0..8 {
@@ -246,14 +285,14 @@ impl<'a> WorkDir<'a> {
             // SAFETY: mkdirat on open folder; never follows a link.
             if unsafe { libc::mkdirat(dir, name.as_ptr(), 0o700 as libc::mode_t) } != 0 {
                 last_err = io::Error::last_os_error();
-                app.sweep();
+                app.sweep_unlocked();
                 continue;
             }
             let wfd = match open_dir_c(Some(dir), &name) {
                 Ok(fd) => fd,
                 Err(e) => {
                     last_err = e;
-                    app.sweep();
+                    app.sweep_unlocked();
                     continue;
                 }
             };
@@ -262,31 +301,46 @@ impl<'a> WorkDir<'a> {
                 _ => {
                     last_err = io::Error::from(io::ErrorKind::PermissionDenied);
                     drop(wfd);
-                    app.sweep();
+                    app.sweep_unlocked();
                     continue;
                 }
             };
-            // Sentinel `.pin` keeps the folder non-empty while open so the app cannot rmdir it.
+            // Sentinel `.pin` keeps the folder non-empty while open (so the app cannot
+            // rmdir it) AND holds an exclusive kernel flock so another root process's
+            // `sweep()` knows this working folder is actively in use and leaves it alone.
             // SAFETY: openat inside our verified 0700 folder.
             let pfd = unsafe {
                 libc::openat(
                     wfd.as_raw_fd(),
                     c".pin".as_ptr(),
-                    libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                    libc::O_RDWR | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
                     0o600 as libc::c_uint,
                 )
             };
             if pfd < 0 {
                 last_err = io::Error::last_os_error();
                 drop(wfd);
-                app.sweep();
+                app.sweep_unlocked();
                 continue;
             }
             // SAFETY: just opened.
-            unsafe {
-                libc::close(pfd);
+            let pin_lock = unsafe { OwnedFd::from_raw_fd(pfd) };
+            if unsafe { libc::flock(pin_lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+                last_err = io::Error::last_os_error();
+                drop(pin_lock);
+                drop(wfd);
+                app.sweep_unlocked();
+                continue;
             }
-            return Ok(WorkDir { app, fd: wfd, id: file_id(&st), name, handed_to_app: false });
+            return Ok(WorkDir {
+                app,
+                _ipc_lock: ipc_lock,
+                fd: wfd,
+                _pin_lock: pin_lock,
+                id: file_id(&st),
+                name,
+                handed_to_app: false,
+            });
         }
         Err(last_err)
     }
@@ -390,9 +444,14 @@ impl AppDir {
         Ok(app)
     }
 
-    /// Cleans any leftover root-owned `0700` working directories in `files/mode` from an
+    /// Cleans any leftover root-owned working directories in `files/mode` from an
     /// earlier interrupted process, evacuating any non-root items back to the app first.
     pub fn sweep(&self) {
+        let _ipc_lock = acquire_root_ipc_lock();
+        self.sweep_unlocked();
+    }
+
+    fn sweep_unlocked(&self) {
         let dir = self.fd.as_raw_fd();
         for entry in list_dir_names(dir) {
             let Ok(st) = lstat_at(dir, &entry) else { continue };
@@ -412,6 +471,20 @@ impl AppDir {
                 continue;
             }
             let raw_d = dfd.as_raw_fd();
+            // Skip any working folder whose `.pin` holds a live exclusive flock from
+            // another root process (`serve` vs `mode_daemon` running concurrently).
+            let pin_fd = unsafe {
+                libc::openat(raw_d, c".pin".as_ptr(), libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+            };
+            let _pin_guard = if pin_fd >= 0 {
+                let g = unsafe { OwnedFd::from_raw_fd(pin_fd) };
+                if unsafe { libc::flock(g.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+                    continue;
+                }
+                Some(g)
+            } else {
+                None
+            };
             let mut stuck_app_item = false;
             for item in list_dir_names(raw_d) {
                 let Ok(ist) = lstat_at(raw_d, &item) else { continue };
@@ -1019,6 +1092,31 @@ mod tests {
         let rej: Vec<String> = p.names("app/files/mode").into_iter().filter(|n| n.starts_with("request.rejected.")).collect();
         assert_eq!(rej.len(), 1);
         assert_eq!(std::fs::read(p.mode(&format!("{}/sub/data", rej[0]))).unwrap(), b"keep");
+    }
+
+    #[test]
+    fn concurrent_sweep_leaves_an_active_working_folder_alone() {
+        let p = Place::new("concurrent");
+        let d1 = p.app();
+        let base = p.base.clone();
+        // While `d1` holds an open `WorkDir` mid-publish, another caller opening `AppDir`
+        // and running `sweep()` + `publish_once("state", ...)` must not disturb `d1`'s
+        // working folder or staged key file.
+        let k = d1
+            .publish_hooks(
+                "audio_helper_key",
+                b"key-bytes",
+                || {
+                    let d2 = AppDir::open(&base.join("app"), &["files", "mode"], me(), Labels::NotUsed).unwrap();
+                    d2.publish_once("state", b"daemon=1\n").unwrap();
+                },
+                || {},
+            )
+            .unwrap();
+        assert_eq!(std::fs::read(p.mode("audio_helper_key")).unwrap(), b"key-bytes");
+        assert_eq!(std::fs::read(p.mode("state")).unwrap(), b"daemon=1\n");
+        assert_eq!(p.names("app/files/mode"), vec!["audio_helper_key", "state"]);
+        assert!(d1.remove_published("audio_helper_key", &k));
     }
 
     #[test]

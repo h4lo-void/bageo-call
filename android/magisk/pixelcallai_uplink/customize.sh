@@ -50,11 +50,9 @@ fi
 ui_print "- priv-app APK: ${APK_SIZE} bytes"
 ui_print "- rollback: touch \$MODDIR/disable && reboot"
 
-# bageo-audio-helper, the root audio helper for phones whose call audio path the app
-# cannot use by itself: keep only the build for this phone's ABI, in bin/. It runs
-# only when the app asks for it (mode_daemon.sh), never at boot. When it cannot be
-# installed with root-only permissions it is left out (bin/ removed) and the module
-# installs without it: the app works as on a phone that needs no helper.
+# bageo-audio-helper: handles FD-pinned mode-switch file exchange in the app's folder
+# for mode_daemon.sh and provides the root call-audio fallback when the app asks for it.
+# Supported architectures: arm64-v8a and armeabi-v7a.
 HELPER_SRC="$MODPATH/roothelper"
 if [ -d "$HELPER_SRC" ]; then
   HELPER_ABI=
@@ -90,7 +88,7 @@ if [ -d "$HELPER_SRC" ]; then
     fi
     ui_print "- audio helper: $HELPER_ABI (runs only when the app asks)"
   else
-    ui_print "- audio helper: none for this phone (${ARCH:-unknown})"
+    abort "! FATAL: unsupported CPU architecture (${ARCH:-unknown}); arm64-v8a or armeabi-v7a required"
   fi
   rm -rf "$HELPER_SRC"
 fi

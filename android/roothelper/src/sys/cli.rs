@@ -162,9 +162,9 @@ fn restore(how: Leftover) -> i32 {
         }
     }
     match server::take_lock() {
-        Ok(Some(_lock)) => match server::wait_for_child_lock(Duration::from_secs(3)) {
-            Ok(Some(_child_lock)) => report_result("restore", server::restore_state_file(how)),
-            Ok(None) => fail("an earlier parameter child is still exiting; try again shortly"),
+        Ok(Some(_lock)) => match server::wait_for_children_gone(Duration::from_secs(3)) {
+            Ok(true) => report_result("restore", server::restore_state_file(how)),
+            Ok(false) => fail("an earlier parameter child is still exiting; try again shortly"),
             Err(e) => fail(e.kind()),
         },
         Ok(None) => {
@@ -261,6 +261,9 @@ fn mixer_try(card: &str, control: &str, seconds: &str, values: &[&str]) -> i32 {
         Err(e) => return fail(e.kind()),
     };
     server::spawn_signal_thread(set, Arc::clone(&life), server::Exit::default(), false);
+    if !server::wait_for_children_gone(Duration::from_secs(2)).unwrap_or(false) {
+        return fail("an earlier parameter child is still exiting; try again shortly");
+    }
     if let Some(r) = server::restore_state_file(Leftover::Normal) {
         server::log_report("left over from the last run", &r);
         if !r.clean() {

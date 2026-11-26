@@ -163,31 +163,35 @@ pub fn take_lock() -> io::Result<Option<fs::File>> {
 
 /// [`take_lock`], waiting up to `wait` for another holder to let go.
 pub fn wait_for_lock(wait: Duration) -> io::Result<Option<fs::File>> {
+    data_dir()?;
     wait_for_flock_file(Path::new(LOCK_FILE), wait)
 }
 
-/// Takes an exclusive `flock` on `CHILD_LOCK_FILE`, succeeding only once every
-/// `app_process` child started by an earlier helper has exited in the kernel.
-pub fn wait_for_child_lock(wait: Duration) -> io::Result<Option<fs::File>> {
-    wait_for_flock_file(Path::new(CHILD_LOCK_FILE), wait)
+/// Waits up to `wait` until every `app_process` child started by an earlier helper has
+/// exited in the kernel (`LOCK_EX` on `CHILD_LOCK_FILE` succeeds), then immediately
+/// drops that lock so this process's own restore parameter calls can acquire `LOCK_SH`
+/// without blocking against itself. Callers must hold `LOCK_FILE` (`take_lock` or
+/// `wait_for_lock`) so no other helper can start new children meanwhile.
+pub fn wait_for_children_gone(wait: Duration) -> io::Result<bool> {
+    data_dir()?;
+    Ok(wait_for_flock_file(Path::new(CHILD_LOCK_FILE), wait)?.is_some())
 }
 
 /// Waits up to `wait` in total for both the helper process lock and any lingering
-/// parameter child process lock to be free, returning both locks held exclusively.
-pub fn wait_for_quiet(wait: Duration) -> io::Result<Option<(fs::File, fs::File)>> {
+/// parameter child process to finish, returning the helper process lock held exclusively.
+pub fn wait_for_quiet(wait: Duration) -> io::Result<Option<fs::File>> {
     let start = Instant::now();
     let Some(main_lock) = wait_for_lock(wait)? else {
         return Ok(None);
     };
     let left = wait.saturating_sub(start.elapsed());
-    let Some(child_lock) = wait_for_child_lock(left)? else {
+    if !wait_for_children_gone(left)? {
         return Ok(None);
-    };
-    Ok(Some((main_lock, child_lock)))
+    }
+    Ok(Some(main_lock))
 }
 
 pub fn wait_for_flock_file(path: &Path, wait: Duration) -> io::Result<Option<fs::File>> {
-    data_dir()?;
     let f = fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -342,12 +346,11 @@ pub fn spawn_signal_thread(set: libc::sigset_t, life: Arc<Life>, exit: Exit, wat
 pub fn exit_now(life: &Life, exit: &Exit, code: i32) -> ! {
     life.stop();
     CHILD.close_and_kill();
-    let held = life.hold_for_exit(STOP_WAIT).filter(|_| child_gone(Duration::from_secs(1))).and_then(|g| {
-        let cl = wait_for_child_lock(Duration::from_millis(200)).ok()??;
-        Some((g, cl))
-    });
+    let held = life
+        .hold_for_exit(STOP_WAIT)
+        .filter(|_| child_gone(Duration::from_secs(1)) && wait_for_children_gone(Duration::from_millis(200)).unwrap_or(false));
     match held {
-        Some((_held, _child_lock)) => {
+        Some(_held) => {
             if let Some(r) = restore_state_file(Leftover::Normal) {
                 log_report("stopping", &r);
             }
@@ -450,7 +453,7 @@ pub fn serve() -> i32 {
             return 1;
         }
     };
-    if let Ok(Some(_child_lock)) = wait_for_child_lock(Duration::from_secs(2)) {
+    if wait_for_children_gone(Duration::from_secs(2)).unwrap_or(false) {
         if let Some(r) = restore_state_file(Leftover::Normal) {
             log_report("left over from the last run", &r);
         }
@@ -525,8 +528,10 @@ pub fn serve() -> i32 {
         };
         if fs::symlink_metadata(STATE_FILE).is_ok() && leftover_tried.elapsed() >= LEFTOVER_GAP {
             let _held = life.hold();
-            if let Some(r) = restore_state_file(Leftover::Normal) {
-                log_report("left over", &r);
+            if wait_for_children_gone(Duration::from_millis(200)).unwrap_or(false) {
+                if let Some(r) = restore_state_file(Leftover::Normal) {
+                    log_report("left over", &r);
+                }
             }
             leftover_tried = Instant::now();
         }
