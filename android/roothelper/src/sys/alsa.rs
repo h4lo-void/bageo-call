@@ -15,8 +15,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::abi::{self, zeroed, CardInfo, ElemId, ElemInfo, NativeElemList, NativeElemValue, Pod, WORD};
 use crate::control::{Direction, MixerBackend, PcmRequest};
-use crate::mixer::{CtlInfo, CtlKey, CtlType, Selector, MAX_CARD};
+use crate::mixer::{CtlId, CtlInfo, CtlKey, CtlType, Selector, MAX_CARD};
 use crate::session::Failure;
+use crate::stream::Device;
 
 /// Most controls listed per card, and most enumerated items read per control.
 const MAX_CONTROLS: u32 = 16_384;
@@ -241,12 +242,22 @@ impl MixerBackend for AlsaMixer {
                 id.numid = *n;
                 id
             }
-            Selector::Name { .. } => {
+            Selector::Name { .. } | Selector::Full { .. } => {
                 let ids = c.ids().map_err(err)?;
-                let mut hits = ids.iter().filter(|id| sel.matches(id.numid, &abi::cstr(&id.name), id.index));
+                let mut hits = ids.iter().filter(|id| {
+                    let name = abi::cstr(&id.name);
+                    sel.matches(&CtlId {
+                        numid: id.numid,
+                        iface: id.iface,
+                        device: id.device,
+                        subdevice: id.subdevice,
+                        index: id.index,
+                        name: &name,
+                    })
+                });
                 let first = *hits.next().ok_or("no such control")?;
                 if hits.next().is_some() {
-                    return Err("several controls have this name; give it as numid=<n>".into());
+                    return Err("several controls have this name; give it as id:<iface>:<device>:<subdevice>:<index>:<name>".into());
                 }
                 first
             }
@@ -502,6 +513,27 @@ impl Pcm {
     pub fn write_frames(&self, buf: &[u8], stop: &AtomicBool) -> io::Result<()> {
         // The kernel only reads from the buffer for a playback stream.
         self.transfer(buf.as_ptr() as *mut u8, buf.len(), stop)
+    }
+}
+
+impl Device for Pcm {
+    fn direction(&self) -> Direction {
+        self.dir
+    }
+    fn period_bytes(&self) -> usize {
+        Pcm::period_bytes(self)
+    }
+    fn read_frames(&self, buf: &mut [u8], stop: &AtomicBool) -> io::Result<()> {
+        Pcm::read_frames(self, buf, stop)
+    }
+    fn write_frames(&self, buf: &[u8], stop: &AtomicBool) -> io::Result<()> {
+        Pcm::write_frames(self, buf, stop)
+    }
+    fn reset(&self) -> io::Result<()> {
+        Pcm::reset(self)
+    }
+    fn drop_now(&self) {
+        Pcm::drop_now(self)
     }
 }
 

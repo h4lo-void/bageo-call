@@ -52,7 +52,9 @@ ui_print "- rollback: touch \$MODDIR/disable && reboot"
 
 # bageo-audio-helper, the root audio helper for phones whose call audio path the app
 # cannot use by itself: keep only the build for this phone's ABI, in bin/. It runs
-# only when the app asks for it (mode_daemon.sh), never at boot.
+# only when the app asks for it (mode_daemon.sh), never at boot. When it cannot be
+# installed with root-only permissions it is left out (bin/ removed) and the module
+# installs without it: the app works as on a phone that needs no helper.
 HELPER_SRC="$MODPATH/roothelper"
 if [ -d "$HELPER_SRC" ]; then
   HELPER_ABI=
@@ -67,17 +69,23 @@ if [ -d "$HELPER_SRC" ]; then
   esac
   if [ -n "$HELPER_ABI" ] && [ -f "$HELPER_SRC/$HELPER_ABI/bageo-audio-helper" ]; then
     # Root's alone: the helper refuses a parameter tool others could write.
+    HELPER_OK=1
     mkdir -p "$MODPATH/bin" &&
       chown 0:0 "$MODPATH/bin" && chmod 0755 "$MODPATH/bin" &&
       cp -f "$HELPER_SRC/$HELPER_ABI/bageo-audio-helper" "$MODPATH/bin/bageo-audio-helper" &&
       chown 0:0 "$MODPATH/bin/bageo-audio-helper" && chmod 0700 "$MODPATH/bin/bageo-audio-helper" ||
-      abort "! cannot install the audio helper with root-only permissions"
-    if [ -f "$HELPER_SRC/bageo-audio-params.jar" ]; then
+      HELPER_OK=0
+    if [ "$HELPER_OK" = 1 ] && [ -f "$HELPER_SRC/bageo-audio-params.jar" ]; then
       cp -f "$HELPER_SRC/bageo-audio-params.jar" "$MODPATH/bin/bageo-audio-params.jar" &&
         chown 0:0 "$MODPATH/bin/bageo-audio-params.jar" && chmod 0600 "$MODPATH/bin/bageo-audio-params.jar" ||
-        abort "! cannot install the audio parameter tool with root-only permissions"
+        HELPER_OK=0
     fi
-    ui_print "- audio helper: $HELPER_ABI (runs only when the app asks)"
+    if [ "$HELPER_OK" = 1 ]; then
+      ui_print "- audio helper: $HELPER_ABI (runs only when the app asks)"
+    else
+      rm -rf "$MODPATH/bin"
+      ui_print "! audio helper left out: it cannot be installed with root-only permissions"
+    fi
   else
     ui_print "- audio helper: none for this phone (${ARCH:-unknown})"
   fi

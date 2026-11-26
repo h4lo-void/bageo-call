@@ -6,24 +6,30 @@
 
 use std::fs;
 use std::os::unix::fs::OpenOptionsExt;
-use std::sync::{Arc, Mutex};
+use std::path::Path;
+use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use super::alsa::AlsaMixer;
 use super::params::AppProcessParams;
 use super::{server, DISABLE_FILE, STATE_FILE};
 use crate::auth::Keys;
+use crate::calls::CallStatus;
 use crate::control::{CallState, Dispatcher, MixerBackend, ParamBackend, PcmHost, PcmRequest, Policy};
 use crate::json::Json;
+use crate::life::Life;
 use crate::mixer;
-use crate::session::{Origin, Session};
+use crate::session::{self, Leftover, Origin, Session};
 
 const USAGE: &str = "usage: bageo-audio-helper <command>
   status                     is it running, turned off, or holding settings to put back
-  restore [--force]          put back the audio settings of a call nobody ended
-                             (--force: also values that failed too often)
-  disable                    turn it off: stop it, put everything back, never start
+  restore [--force|--discard] put back the audio settings of a call nobody ended
+                             --force: also values that failed too often, and drop
+                             (and log) values that can never be put back and lines
+                             that cannot be read
+                             --discard: give up all of them, put back nothing (logged)
+  disable                    turn it off: stop it, put back what it can, never start
   enable                     allow it to start again (when the app asks)
   probe                      print this phone's audio facts as JSON (read-only)
   mixer list <card>          print every control of a sound card with its value (read-only)
@@ -33,7 +39,7 @@ const USAGE: &str = "usage: bageo-audio-helper <command>
   params get <key>           print an audio parameter (read-only)
   serve                      serve the Bageo app (started by the module)
   version                    print the helper and protocol version
-A control is its name, <name>@<index>, or numid=<n>.";
+A control is its name, <name>@<index>, numid=<n>, or id:<iface>:<device>:<subdevice>:<index>:<name>.";
 
 /// The command line opens no streams.
 struct NoPcm;
@@ -52,8 +58,8 @@ impl PcmHost for NoPcm {
 
 struct NoCalls;
 impl CallState for NoCalls {
-    fn in_call(&mut self) -> bool {
-        false
+    fn status(&mut self) -> CallStatus {
+        CallStatus::NotInCall
     }
 }
 
@@ -127,25 +133,51 @@ fn status() -> i32 {
     0
 }
 
-fn restore(force: bool) -> i32 {
-    match server::take_lock() {
-        Ok(Some(_lock)) => {
-            match server::restore_state_file(force) {
-                Some(r) => {
-                    server::log_report("restore", &r);
-                    println!("{}", r.json().render());
-                    if r.clean() {
-                        0
-                    } else {
-                        1
-                    }
-                }
-                None => {
-                    println!("nothing to put back");
-                    0
-                }
+fn report_result(when: &str, r: Option<session::Report>) -> i32 {
+    match r {
+        Some(r) => {
+            server::log_report(when, &r);
+            println!("{}", r.json().render());
+            if r.clean() {
+                0
+            } else {
+                1
             }
         }
+        None => {
+            println!("nothing to put back");
+            0
+        }
+    }
+}
+
+fn restore(how: Leftover) -> i32 {
+    match server::take_lock() {
+        Ok(Some(_lock)) => report_result("restore", server::restore_state_file(how)),
+        Ok(None) => {
+            println!("the helper is running; stop it first (bageo-audio-helper disable)");
+            1
+        }
+        Err(e) => fail(e.kind()),
+    }
+}
+
+/// `restore --discard`: the owner gives up what an earlier call left; nothing is put back.
+fn discard() -> i32 {
+    match server::take_lock() {
+        Ok(Some(_lock)) => match session::discard_leftover(Path::new(STATE_FILE)) {
+            Ok(None) => {
+                println!("nothing to give up");
+                0
+            }
+            Ok(Some(n)) => {
+                let what = n.map_or("an unreadable state file".to_string(), |n| format!("{n} saved value(s)"));
+                super::log::warn(&format!("restore --discard: gave up {what}; nothing was put back"));
+                println!("gave up {what}; nothing was put back");
+                0
+            }
+            Err(e) => fail(e),
+        },
         Ok(None) => {
             println!("the helper is running; stop it first (bageo-audio-helper disable)");
             1
@@ -160,30 +192,30 @@ fn disable() -> i32 {
     {
         return fail(e.kind());
     }
-    if let Some(pid) = server::running_pid() {
-        // SAFETY: kill on the pid the helper wrote, checked to be the helper.
-        unsafe {
-            libc::kill(pid, libc::SIGTERM);
-        }
-    }
-    let start = Instant::now();
-    loop {
-        match server::take_lock() {
-            Ok(Some(_lock)) => {
-                let r = server::restore_state_file(true);
-                match &r {
-                    Some(r) => println!("turned off; {}", r.json().render()),
-                    None => println!("turned off; nothing to put back"),
+    // A stop signal when the helper can be pinned down; otherwise it sees the disable
+    // file itself within a second.
+    server::stop_running();
+    match server::wait_for_lock(Duration::from_secs(8)) {
+        Ok(Some(_lock)) => {
+            let r = server::restore_state_file(Leftover::RetryAll);
+            match &r {
+                Some(r) => {
+                    server::log_report("disable", r);
+                    println!("turned off; {}", r.json().render());
                 }
-                return if r.is_none_or(|r| r.clean()) { 0 } else { 1 };
+                None => println!("turned off; nothing to put back"),
             }
-            Ok(None) if start.elapsed() < Duration::from_secs(8) => thread::sleep(Duration::from_millis(100)),
-            Ok(None) => {
-                println!("turned off, but the running helper did not stop; restart the phone");
-                return 1;
+            if r.is_none_or(|r| r.clean()) {
+                0
+            } else {
+                1
             }
-            Err(e) => return fail(e.kind()),
         }
+        Ok(None) => {
+            println!("turned off, but the running helper did not stop; restart the phone");
+            1
+        }
+        Err(e) => fail(e.kind()),
     }
 }
 
@@ -209,14 +241,14 @@ fn mixer_try(card: &str, control: &str, seconds: &str, values: &[&str]) -> i32 {
         _ => return fail("seconds must be 0 to 600"),
     };
     let set = server::block_stop_signals();
-    let guard = Arc::new(Mutex::new(()));
+    let life = Arc::new(Life::new());
     let _lock = match server::take_lock() {
         Ok(Some(l)) => l,
         Ok(None) => return fail("the helper is running; try again when it has quit"),
         Err(e) => return fail(e.kind()),
     };
-    server::spawn_signal_thread(set, Arc::clone(&guard), None);
-    if let Some(r) = server::restore_state_file(false) {
+    server::spawn_signal_thread(set, Arc::clone(&life), server::Exit::default(), false);
+    if let Some(r) = server::restore_state_file(Leftover::Normal) {
         server::log_report("left over from the last run", &r);
         if !r.clean() {
             return fail("earlier settings are not put back yet; run restore");
@@ -230,7 +262,7 @@ fn mixer_try(card: &str, control: &str, seconds: &str, values: &[&str]) -> i32 {
         Session::new(STATE_FILE, Origin::Root),
         unused_keys,
         Policy::Root,
-        guard,
+        Arc::clone(&life),
     )
     .authenticated();
     if mixer_get(card, control) != 0 {
@@ -271,8 +303,11 @@ pub fn run(args: Vec<String>) -> i32 {
     match a.as_slice() {
         &["serve"] => server::serve(),
         &["status"] => status(),
-        &["restore"] => restore(false),
-        &["restore", "--force"] => restore(true),
+        &["restore"] => restore(Leftover::Normal),
+        &["restore", "--force"] => restore(Leftover::Force),
+        &["restore", "--discard"] => discard(),
+        // Started by a helper that stopped while a change was still running.
+        &["restore", "--wait"] => report_result("restore after a stop", server::restore_after_exit()),
         &["disable"] => disable(),
         &["enable"] => enable(),
         &["probe"] => {

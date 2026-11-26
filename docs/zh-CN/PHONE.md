@@ -233,14 +233,15 @@ USB 还能让手机一直充电，没有 Wi-Fi 也能用。一台电脑可以插
 
 - 它不会在后台常驻。只在应用要用时才启动，应用不用之后约一分钟自己退出。
 - 开机时，只有上一通电话留下改过的音频设置时，才会短暂运行一次，把设置改回来。
-- 通话中改过的设置，通话结束时改回原样；改不回来的会保留，下次启动或开机时再试。
+- 通话中改过的设置，通话结束时改回原样；改不回来的会保留，下次启动或开机时再试，最多 5 次。
 
 觉得不对劲时，用 root 运行（`adb shell su -c '…'`），小程序在 `/data/adb/modules/pixelcallai_uplink/bin/bageo-audio-helper`（手机独立版是 `bageo_ai_call_agent`）：
 
-1. 确认它有没有在运行：`pidof bageo-audio-helper` 没有输出就是没在运行。
-2. 把设置改回来：`bageo-audio-helper restore`。
-3. 停用它：`bageo-audio-helper disable`（`enable` 重新启用）。
-4. 还是不行就重启手机。
+1. 确认它有没有在运行：`bageo-audio-helper status`。
+2. 把设置改回来：`bageo-audio-helper restore`。试满 5 次还改不回来，用 `restore --force`。
+3. 永远改不回来的（例如那个设置已经不存在），放弃它们：`bageo-audio-helper restore --discard`。不会改回任何设置，小助手可以再用。
+4. 停用它：`bageo-audio-helper disable`（`enable` 重新启用），约一秒内停下。
+5. 还是不行就重启手机。大部分音频设置重启后会恢复，但不是每台手机都会。
 
 ## 还原
 

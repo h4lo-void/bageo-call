@@ -10,10 +10,17 @@
 //! helper starts or the phone boots.
 //!
 //! A value that could not be put back stays in the file and is tried again at the next
-//! start or boot, up to [`MAX_ATTEMPTS`] times; after that the file stays and nothing
-//! retries it until `restore --force`. While the file exists no new session starts.
+//! start or boot (a running helper tries again at most every 30 seconds), up to
+//! [`MAX_ATTEMPTS`] times; after that the file stays and nothing retries it until
+//! `restore --force`. While the file exists no new session starts. The ways out, run
+//! by root: `restore --force` also tries values that ran out of tries, and drops (and
+//! logs) values that can never be put back (the control is gone, or no longer on the
+//! list) and lines it cannot read; `restore --discard` drops the whole file, whatever it
+//! holds, and logs how many values it gave up.
+//!
 //! The file is only read when it is a plain file owned by this user (root), not
-//! readable or writable by anyone else, and not larger than [`MAX_STATE_BYTES`].
+//! readable or writable by anyone else, and not larger than [`MAX_STATE_BYTES`]; it is
+//! checked and read through one descriptor opened without following a link.
 //!
 //! State file (`/data/adb/pixelcallai/audio_session`):
 //!
@@ -111,6 +118,8 @@ pub struct Report {
     pub not_allowed: usize,
     /// Out of tries; kept, not written.
     pub given_up: usize,
+    /// Dropped on purpose (`restore --force` or `--discard`): never put back.
+    pub discarded: usize,
     /// The state file could not be trusted or read; kept as it is.
     pub unreadable: bool,
     /// The kinds of failure seen (fixed names).
@@ -126,6 +135,7 @@ impl Report {
             .with("failed", Json::Num(self.failed as i64))
             .with("not_allowed", Json::Num(self.not_allowed as i64))
             .with("given_up", Json::Num(self.given_up as i64))
+            .with("discarded", Json::Num(self.discarded as i64))
             .with("unreadable", Json::Bool(self.unreadable))
             .with("left", Json::Num(self.left as i64))
             .with("kinds", Json::Arr(self.kinds.iter().map(|k| Json::str(*k)).collect()))
@@ -229,7 +239,7 @@ impl Session {
             return None;
         }
         let entries = std::mem::take(&mut self.entries);
-        let (mut report, kept) = restore_entries(entries, self.origin, r, false);
+        let (mut report, kept) = restore_entries(entries, self.origin, r, Leftover::Normal);
         finish(&self.path, self.origin, &kept, &mut report);
         self.open = false;
         self.started = None;
@@ -237,11 +247,23 @@ impl Session {
     }
 }
 
-fn restore_entries<R: Restorer>(entries: Vec<Entry>, origin: Origin, r: &mut R, force: bool) -> (Report, Vec<Entry>) {
+/// How hard to try with what an earlier session left.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Leftover {
+    /// Values that ran out of tries are kept as they are.
+    Normal,
+    /// Values that ran out of tries are tried too (`disable`).
+    RetryAll,
+    /// Like `RetryAll`, and values that can never be put back (gone, not on the list)
+    /// and lines that cannot be read are dropped and counted (`restore --force`).
+    Force,
+}
+
+fn restore_entries<R: Restorer>(entries: Vec<Entry>, origin: Origin, r: &mut R, how: Leftover) -> (Report, Vec<Entry>) {
     let mut report = Report::default();
     let mut kept = Vec::new();
     for mut e in entries.into_iter().rev() {
-        if e.attempts >= MAX_ATTEMPTS && !force {
+        if e.attempts >= MAX_ATTEMPTS && how == Leftover::Normal {
             report.given_up += 1;
             kept.push(e);
             continue;
@@ -252,6 +274,10 @@ fn restore_entries<R: Restorer>(entries: Vec<Entry>, origin: Origin, r: &mut R, 
         };
         match result {
             Ok(()) => report.restored += 1,
+            Err(f @ (Failure::NotAllowed | Failure::Gone)) if how == Leftover::Force => {
+                report.discarded += 1;
+                report.kind(f);
+            }
             Err(Failure::NotAllowed) => {
                 report.not_allowed += 1;
                 report.kind(Failure::NotAllowed);
@@ -280,19 +306,28 @@ fn finish(path: &Path, origin: Origin, kept: &[Entry], report: &mut Report) {
     }
 }
 
-/// Reads the state file if it can be trusted.
+/// Reads the state file if it can be trusted: opened without following a link and
+/// without waiting (a pipe in its place cannot hold the helper up), then checked and
+/// read, at most [`MAX_STATE_BYTES`], through that one descriptor.
 fn read_state(path: &Path) -> Result<Option<String>, ()> {
-    use std::os::unix::fs::MetadataExt;
-    let meta = match fs::symlink_metadata(path) {
-        Ok(m) => m,
+    use std::io::Read;
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    let f = match fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(path)
+    {
+        Ok(f) => f,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(_) => return Err(()),
     };
+    let meta = f.metadata().map_err(|_| ())?;
     if !meta.file_type().is_file() || meta.uid() != me() || meta.mode() & 0o077 != 0 || meta.len() > MAX_STATE_BYTES as u64
     {
         return Err(());
     }
-    let bytes = fs::read(path).map_err(|_| ())?;
+    let mut bytes = Vec::new();
+    f.take(MAX_STATE_BYTES as u64 + 1).read_to_end(&mut bytes).map_err(|_| ())?;
     if bytes.len() > MAX_STATE_BYTES {
         return Err(());
     }
@@ -300,8 +335,8 @@ fn read_state(path: &Path) -> Result<Option<String>, ()> {
 }
 
 /// Puts back a session nobody ended (a state file still on disk). `None`: no state
-/// file. `force`: also try values that ran out of tries.
-pub fn restore_leftover<R: Restorer>(path: &Path, r: &mut R, force: bool) -> Option<Report> {
+/// file.
+pub fn restore_leftover<R: Restorer>(path: &Path, r: &mut R, how: Leftover) -> Option<Report> {
     let text = match read_state(path) {
         Ok(None) => return None,
         Ok(Some(t)) => t,
@@ -310,15 +345,36 @@ pub fn restore_leftover<R: Restorer>(path: &Path, r: &mut R, force: bool) -> Opt
     let Some((origin, entries, bad)) = decode_state(&text) else {
         return Some(Report { unreadable: true, left: 1, ..Report::default() });
     };
-    let (mut report, kept) = restore_entries(entries, origin, r, force);
-    if bad > 0 {
+    let (mut report, kept) = restore_entries(entries, origin, r, how);
+    if bad > 0 && how != Leftover::Force {
         // Lines it cannot read cannot be put back or dropped: the file stays as it is.
         report.unreadable = true;
         report.left = kept.len() + bad;
     } else {
+        report.discarded += bad;
         finish(path, origin, &kept, &mut report);
     }
     Some(report)
+}
+
+/// Gives up what an earlier session left, whatever the state file holds: the file is
+/// removed and nothing is put back. `Ok(None)`: there was none; `Ok(Some(n))`: the
+/// values given up (`None` inside: the file could not be read to count them).
+pub fn discard_leftover(path: &Path) -> io::Result<Option<Option<usize>>> {
+    let meta = match fs::symlink_metadata(path) {
+        Ok(m) => m,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    if meta.file_type().is_dir() {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "the state file is a folder; remove it by hand"));
+    }
+    let count = match read_state(path) {
+        Ok(Some(text)) => decode_state(&text).map(|(_, entries, bad)| entries.len() + bad),
+        _ => None,
+    };
+    fs::remove_file(path)?;
+    Ok(Some(count))
 }
 
 fn hex(s: &str) -> String {
@@ -565,14 +621,14 @@ pub(crate) mod tests {
 
         // Every later start tries again, up to MAX_ATTEMPTS times; then it gives up but keeps the file.
         for _ in 1..MAX_ATTEMPTS {
-            let r = restore_leftover(&path, &mut phone, false).unwrap();
+            let r = restore_leftover(&path, &mut phone, Leftover::Normal).unwrap();
             assert_eq!((r.failed, r.left), (1, 1));
         }
-        let r = restore_leftover(&path, &mut phone, false).unwrap();
+        let r = restore_leftover(&path, &mut phone, Leftover::Normal).unwrap();
         assert_eq!((r.given_up, r.failed, r.left), (1, 0, 1));
         assert!(path.exists());
         phone.fail_ctl = None;
-        let r = restore_leftover(&path, &mut phone, true).unwrap();
+        let r = restore_leftover(&path, &mut phone, Leftover::RetryAll).unwrap();
         assert_eq!((r.restored, r.left), (1, 0), "forced");
         assert!(!path.exists());
         s.begin("call-3").unwrap();
@@ -590,11 +646,11 @@ pub(crate) mod tests {
             s.remember(Saved::Mixer { key: key("Incall Sink Mute"), values: vec![0] }).unwrap();
         }
         let mut phone = FakePhone::default();
-        let report = restore_leftover(&path, &mut phone, false).unwrap();
+        let report = restore_leftover(&path, &mut phone, Leftover::Normal).unwrap();
         assert!(report.clean());
         assert_eq!(phone.ctls.get("Incall Sink Mute"), Some(&vec![0]));
         assert!(!path.exists());
-        assert!(restore_leftover(&path, &mut phone, false).is_none());
+        assert!(restore_leftover(&path, &mut phone, Leftover::Normal).is_none());
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -607,7 +663,7 @@ pub(crate) mod tests {
         s.remember(Saved::Mixer { key: key("Speaker Volume"), values: vec![80] }).unwrap();
         drop(s);
         let mut phone = FakePhone { not_allowed: Some("Speaker Volume".into()), ..Default::default() };
-        let r = restore_leftover(&path, &mut phone, false).unwrap();
+        let r = restore_leftover(&path, &mut phone, Leftover::Normal).unwrap();
         assert_eq!((r.not_allowed, r.left, r.restored), (1, 1, 0));
         assert!(phone.writes.is_empty());
         assert!(path.exists());
@@ -621,23 +677,105 @@ pub(crate) mod tests {
         fs::write(&path, encode_state(Origin::App, &[e(Saved::Mixer { key: key("A"), values: vec![1] })])).unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
         let mut phone = FakePhone::default();
-        let r = restore_leftover(&path, &mut phone, false).unwrap();
+        let r = restore_leftover(&path, &mut phone, Leftover::Normal).unwrap();
         assert!(r.unreadable && phone.writes.is_empty() && path.exists(), "readable by others: not trusted");
 
         fs::write(&path, b"\xff\xfe garbage").unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
-        let r = restore_leftover(&path, &mut phone, false).unwrap();
+        let r = restore_leftover(&path, &mut phone, Leftover::Normal).unwrap();
         assert!(r.unreadable && path.exists());
 
         let text = format!("{}mixer 0 99 61 2 0 0 0 41 1\n", encode_state(Origin::App, &[e(Saved::Mixer { key: key("A"), values: vec![1] })]));
         fs::write(&path, text).unwrap();
-        let r = restore_leftover(&path, &mut phone, false).unwrap();
+        let r = restore_leftover(&path, &mut phone, Leftover::Normal).unwrap();
         assert_eq!(r.restored, 1, "the readable line is put back");
         assert!(r.unreadable && path.exists(), "the unreadable line keeps the file");
 
         fs::write(&path, "x".repeat(MAX_STATE_BYTES + 1)).unwrap();
-        let r = restore_leftover(&path, &mut phone, false).unwrap();
+        let r = restore_leftover(&path, &mut phone, Leftover::Normal).unwrap();
         assert!(r.unreadable);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn force_drops_what_can_never_be_put_back_and_says_so() {
+        let dir = temp_dir("force");
+        let path = dir.join("audio_session");
+        let mut s = Session::new(&path, Origin::App);
+        s.begin("call-1").unwrap();
+        s.remember(Saved::Mixer { key: key("Gone Control"), values: vec![0] }).unwrap();
+        s.remember(Saved::Mixer { key: key("Off The List"), values: vec![1] }).unwrap();
+        s.remember(Saved::Mixer { key: key("Fine"), values: vec![2] }).unwrap();
+        drop(s);
+        let mut phone = FakePhone {
+            fail_ctl: Some("Gone Control".into()),
+            not_allowed: Some("Off The List".into()),
+            ..Default::default()
+        };
+        let r = restore_leftover(&path, &mut phone, Leftover::Normal).unwrap();
+        assert_eq!((r.restored, r.failed, r.not_allowed, r.left), (1, 1, 1, 2));
+        let r = restore_leftover(&path, &mut phone, Leftover::RetryAll).unwrap();
+        assert_eq!((r.discarded, r.left), (0, 2), "a plain retry keeps them");
+        assert!(Session::new(&path, Origin::App).begin("call-2").is_err());
+        let r = restore_leftover(&path, &mut phone, Leftover::Force).unwrap();
+        assert_eq!((r.discarded, r.left), (2, 0));
+        assert!(r.kinds.contains(&"control gone") && r.kinds.contains(&"not on the list"), "{:?}", r.kinds);
+        assert!(!path.exists(), "nothing left: a new session may start");
+        Session::new(&path, Origin::App).begin("call-3").unwrap();
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn force_drops_unreadable_lines_and_discard_drops_anything() {
+        let dir = temp_dir("discard");
+        let path = dir.join("audio_session");
+        let good = encode_state(Origin::App, &[e(Saved::Mixer { key: key("A"), values: vec![1] })]);
+        let write = |text: &str, mode: u32| {
+            let _ = fs::remove_file(&path);
+            fs::write(&path, text).unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap();
+        };
+        write(&format!("{good}garbage line\n"), 0o600);
+        let mut phone = FakePhone::default();
+        let r = restore_leftover(&path, &mut phone, Leftover::Normal).unwrap();
+        assert!(r.unreadable && path.exists(), "kept as it is");
+        let r = restore_leftover(&path, &mut phone, Leftover::Force).unwrap();
+        assert_eq!((r.restored, r.discarded, r.left, r.unreadable), (1, 1, 0, false));
+        assert!(!path.exists());
+
+        assert_eq!(discard_leftover(&path).unwrap(), None, "nothing to give up");
+        write(&format!("{good}garbage line\n"), 0o600);
+        assert_eq!(discard_leftover(&path).unwrap(), Some(Some(2)));
+        assert!(!path.exists());
+        // Readable by others: never used, but it can be given up.
+        write(&good, 0o644);
+        assert!(restore_leftover(&path, &mut phone, Leftover::Force).unwrap().unreadable);
+        assert!(path.exists());
+        assert_eq!(discard_leftover(&path).unwrap(), Some(None));
+        assert!(!path.exists());
+        fs::create_dir(&path).unwrap();
+        assert!(discard_leftover(&path).is_err(), "a folder is not removed");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_link_or_a_pipe_in_place_of_the_state_file_is_not_read() {
+        let dir = temp_dir("special");
+        let path = dir.join("audio_session");
+        let real = dir.join("real");
+        fs::write(&real, encode_state(Origin::App, &[e(Saved::Mixer { key: key("A"), values: vec![1] })])).unwrap();
+        fs::set_permissions(&real, fs::Permissions::from_mode(0o600)).unwrap();
+        std::os::unix::fs::symlink(&real, &path).unwrap();
+        let mut phone = FakePhone::default();
+        let r = restore_leftover(&path, &mut phone, Leftover::Normal).unwrap();
+        assert!(r.unreadable && phone.writes.is_empty(), "a link is not followed");
+        fs::remove_file(&path).unwrap();
+        let c = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
+        // SAFETY: a NUL-terminated path.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        let start = Instant::now();
+        let r = restore_leftover(&path, &mut phone, Leftover::Normal).unwrap();
+        assert!(r.unreadable && start.elapsed() < Duration::from_secs(2), "a pipe neither blocks nor counts");
         let _ = fs::remove_dir_all(dir);
     }
 

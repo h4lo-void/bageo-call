@@ -23,7 +23,7 @@
 //! On a PCM connection the hello frame is followed by raw s16le PCM, interleaved.
 
 use std::io::{self, Read, Write};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub const MAGIC: [u8; 2] = *b"BA";
 pub const VERSION: u8 = 1;
@@ -143,29 +143,75 @@ pub fn read_frame<R: Read>(r: &mut R, max: usize) -> Result<Option<(Kind, Vec<u8
     Ok(Some((kind, payload)))
 }
 
-/// Once a frame has begun, the rest of it must arrive within this.
+/// Once a frame has begun, the whole of it must have arrived within this.
 pub const FRAME_TIME: Duration = Duration::from_secs(5);
+/// Once a reply has begun, the whole of it must have been sent within this.
+pub const WRITE_TIME: Duration = Duration::from_secs(5);
 
-/// A connection whose reads can be given a time limit.
+/// A connection whose reads and writes can be given a time limit.
 pub trait Conn: Read + Write {
     /// Limits how long each following read may wait; `None`: no limit.
     fn set_read_limit(&mut self, limit: Option<Duration>) -> io::Result<()>;
+    /// Limits how long each following write may wait; `None`: no limit.
+    fn set_write_limit(&mut self, limit: Option<Duration>) -> io::Result<()>;
 }
 
 fn timed_out(k: io::ErrorKind) -> bool {
     matches!(k, io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut)
 }
 
-/// Reads one frame from a connection: waits at most `idle` for it to begin (`None`:
-/// as long as it takes) and [`FRAME_TIME`] for the rest of it.
-pub fn read_frame_timed<C: Conn>(
+fn left(by: Instant) -> Option<Duration> {
+    Some(by.saturating_duration_since(Instant::now())).filter(|d| !d.is_zero())
+}
+
+fn earliest(a: Instant, b: Option<Instant>) -> Instant {
+    b.map_or(a, |b| a.min(b))
+}
+
+/// Fills `buf` by `by`, a point on the monotonic clock: however the bytes trickle in,
+/// no later.
+fn read_exact_by<C: Conn>(c: &mut C, buf: &mut [u8], by: Instant) -> Result<(), ProtoError> {
+    let mut got = 0;
+    while got < buf.len() {
+        let limit = left(by).ok_or(ProtoError::Io(io::ErrorKind::TimedOut))?;
+        c.set_read_limit(Some(limit)).map_err(|e| ProtoError::Io(e.kind()))?;
+        match c.read(&mut buf[got..]) {
+            Ok(0) => return Err(ProtoError::Io(io::ErrorKind::UnexpectedEof)),
+            Ok(n) => got += n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) if timed_out(e.kind()) => return Err(ProtoError::Io(io::ErrorKind::TimedOut)),
+            Err(e) => return Err(ProtoError::Io(e.kind())),
+        }
+    }
+    Ok(())
+}
+
+/// Reads one frame from a connection. It must begin by `begin_by` (`None`: no limit),
+/// and the whole of it must have arrived [`FRAME_TIME`] after its first byte, and by
+/// `finish_by` when that is earlier.
+pub fn read_frame_by<C: Conn>(
     c: &mut C,
     max: usize,
-    idle: Option<Duration>,
+    begin_by: Option<Instant>,
+    finish_by: Option<Instant>,
 ) -> Result<Option<(Kind, Vec<u8>)>, ProtoError> {
-    c.set_read_limit(idle).map_err(|e| ProtoError::Io(e.kind()))?;
+    read_frame_within(c, max, begin_by, finish_by, FRAME_TIME)
+}
+
+fn read_frame_within<C: Conn>(
+    c: &mut C,
+    max: usize,
+    begin_by: Option<Instant>,
+    finish_by: Option<Instant>,
+    frame_time: Duration,
+) -> Result<Option<(Kind, Vec<u8>)>, ProtoError> {
     let mut h = [0u8; HEADER_LEN];
     loop {
+        let limit = match begin_by {
+            Some(by) => Some(left(by).ok_or(ProtoError::Idle)?),
+            None => None,
+        };
+        c.set_read_limit(limit).map_err(|e| ProtoError::Io(e.kind()))?;
         match c.read(&mut h[..1]) {
             Ok(0) => return Ok(None),
             Ok(_) => break,
@@ -174,12 +220,35 @@ pub fn read_frame_timed<C: Conn>(
             Err(e) => return Err(ProtoError::Io(e.kind())),
         }
     }
-    c.set_read_limit(Some(FRAME_TIME)).map_err(|e| ProtoError::Io(e.kind()))?;
-    c.read_exact(&mut h[1..]).map_err(|e| ProtoError::Io(e.kind()))?;
+    let by = earliest(Instant::now() + frame_time, finish_by);
+    read_exact_by(c, &mut h[1..], by)?;
     let (kind, len) = parse_header(&h, max)?;
     let mut payload = vec![0u8; len];
-    c.read_exact(&mut payload).map_err(|e| ProtoError::Io(e.kind()))?;
+    read_exact_by(c, &mut payload, by)?;
     Ok(Some((kind, payload)))
+}
+
+/// Writes one frame; the whole of it must have gone out by `by`.
+pub fn write_frame_by<C: Conn>(c: &mut C, kind: Kind, payload: &[u8], by: Instant) -> io::Result<()> {
+    let max = if kind == Kind::Request { MAX_REQUEST } else { MAX_REPLY };
+    if payload.len() > max {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "frame too long"));
+    }
+    let mut buf = Vec::with_capacity(HEADER_LEN + payload.len());
+    buf.extend_from_slice(&header(kind, payload.len()));
+    buf.extend_from_slice(payload);
+    let mut sent = 0;
+    while sent < buf.len() {
+        let limit = left(by).ok_or_else(|| io::Error::from(io::ErrorKind::TimedOut))?;
+        c.set_write_limit(Some(limit))?;
+        match c.write(&buf[sent..]) {
+            Ok(0) => return Err(io::Error::from(io::ErrorKind::WriteZero)),
+            Ok(n) => sent += n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
+    c.flush()
 }
 
 /// Writes one frame. Replies longer than [`MAX_REPLY`] are refused.
@@ -310,18 +379,26 @@ mod tests {
         assert!(out.is_empty());
     }
 
-    /// A connection that has nothing to read, or a frame cut off after `cut` bytes.
+    /// A connection that has nothing more to read once `data` is used up (a read then
+    /// times out), and that waits `drip` before every read and gives `step` bytes.
     struct Slow {
         data: Vec<u8>,
         pos: usize,
+        drip: Duration,
+        step: usize,
         limits: Vec<Option<Duration>>,
+        out: Vec<u8>,
+    }
+    fn slow(data: Vec<u8>, drip: Duration, step: usize) -> Slow {
+        Slow { data, pos: 0, drip, step, limits: Vec::new(), out: Vec::new() }
     }
     impl Read for Slow {
         fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            std::thread::sleep(self.drip);
             if self.pos >= self.data.len() {
                 return Err(io::Error::from(io::ErrorKind::WouldBlock));
             }
-            let n = buf.len().min(self.data.len() - self.pos);
+            let n = buf.len().min(self.data.len() - self.pos).min(self.step);
             buf[..n].copy_from_slice(&self.data[self.pos..self.pos + n]);
             self.pos += n;
             Ok(n)
@@ -329,7 +406,10 @@ mod tests {
     }
     impl Write for Slow {
         fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            Ok(buf.len())
+            std::thread::sleep(self.drip);
+            let n = buf.len().min(self.step);
+            self.out.extend_from_slice(&buf[..n]);
+            Ok(n)
         }
         fn flush(&mut self) -> io::Result<()> {
             Ok(())
@@ -340,24 +420,70 @@ mod tests {
             self.limits.push(limit);
             Ok(())
         }
+        fn set_write_limit(&mut self, _limit: Option<Duration>) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn in_(d: Duration) -> Option<Instant> {
+        Some(Instant::now() + d)
     }
 
     #[test]
     fn timed_reads_end_quiet_or_stalled_connections() {
-        let idle = Some(Duration::from_secs(5));
-        let mut quiet = Slow { data: Vec::new(), pos: 0, limits: Vec::new() };
-        assert_eq!(read_frame_timed(&mut quiet, MAX_REQUEST, idle), Err(ProtoError::Idle));
-        assert_eq!(quiet.limits, vec![idle]);
-        let mut stalled = Slow { data: frame(1, b"ping")[..5].to_vec(), pos: 0, limits: Vec::new() };
+        let five = Duration::from_secs(5);
+        let mut quiet = slow(Vec::new(), Duration::ZERO, usize::MAX);
+        assert_eq!(read_frame_by(&mut quiet, MAX_REQUEST, in_(five), None), Err(ProtoError::Idle));
+        assert!(quiet.limits[0].is_some_and(|l| l <= five && l > Duration::from_secs(4)));
+        let mut stalled = slow(frame(1, b"ping")[..5].to_vec(), Duration::ZERO, usize::MAX);
         assert_eq!(
-            read_frame_timed(&mut stalled, MAX_REQUEST, idle),
-            Err(ProtoError::Io(io::ErrorKind::WouldBlock))
+            read_frame_by(&mut stalled, MAX_REQUEST, in_(five), None),
+            Err(ProtoError::Io(io::ErrorKind::TimedOut))
         );
-        assert_eq!(stalled.limits, vec![idle, Some(FRAME_TIME)]);
-        let mut good = Slow { data: frame(1, b"ping"), pos: 0, limits: Vec::new() };
-        let (k, p) = read_frame_timed(&mut good, MAX_REQUEST, None).unwrap().unwrap();
+        assert!(stalled.limits.iter().all(|l| l.is_some_and(|l| l <= FRAME_TIME)));
+        let mut good = slow(frame(1, b"ping"), Duration::ZERO, usize::MAX);
+        let (k, p) = read_frame_by(&mut good, MAX_REQUEST, None, None).unwrap().unwrap();
         assert_eq!((k, p.as_slice()), (Kind::Request, &b"ping"[..]));
+        assert_eq!(good.limits[0], None, "no limit to begin");
         assert!(ProtoError::Idle.is_fatal());
+        let mut late = slow(frame(1, b"ping"), Duration::ZERO, usize::MAX);
+        let past = Instant::now();
+        std::thread::sleep(Duration::from_millis(2));
+        assert_eq!(read_frame_by(&mut late, MAX_REQUEST, Some(past), None), Err(ProtoError::Idle));
+    }
+
+    #[test]
+    fn a_frame_sent_a_byte_at_a_time_cannot_take_longer_than_its_time() {
+        // Every byte comes in well within any single read's limit, but the whole frame
+        // would take 20 ms x 12 bytes: it is cut off when its time is up.
+        let mut drip = slow(frame(1, b"ping"), Duration::from_millis(20), 1);
+        let start = Instant::now();
+        let r = read_frame_within(&mut drip, MAX_REQUEST, None, None, Duration::from_millis(100));
+        assert_eq!(r, Err(ProtoError::Io(io::ErrorKind::TimedOut)));
+        let took = start.elapsed();
+        assert!(took >= Duration::from_millis(100) && took < Duration::from_millis(400), "{took:?}");
+        // The connection's own deadline cuts it off sooner.
+        let mut drip = slow(frame(1, b"ping"), Duration::from_millis(20), 1);
+        let start = Instant::now();
+        let r = read_frame_by(&mut drip, MAX_REQUEST, None, in_(Duration::from_millis(60)));
+        assert_eq!(r, Err(ProtoError::Io(io::ErrorKind::TimedOut)));
+        assert!(start.elapsed() < Duration::from_millis(300));
+        // Fast enough: read whole.
+        let mut ok = slow(frame(1, b"ping"), Duration::from_millis(1), 1);
+        assert!(read_frame_within(&mut ok, MAX_REQUEST, None, None, Duration::from_secs(2)).unwrap().is_some());
+    }
+
+    #[test]
+    fn a_reply_must_go_out_whole_in_time() {
+        let mut c = slow(Vec::new(), Duration::ZERO, 3);
+        write_frame_by(&mut c, Kind::Ok, b"pong", Instant::now() + Duration::from_secs(1)).unwrap();
+        assert_eq!(c.out, frame(2, b"pong"));
+        let mut stuck = slow(Vec::new(), Duration::from_millis(20), 1);
+        let start = Instant::now();
+        let e = write_frame_by(&mut stuck, Kind::Ok, &[b'x'; 64], Instant::now() + Duration::from_millis(80)).unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::TimedOut);
+        assert!(start.elapsed() < Duration::from_millis(400));
+        assert!(stuck.out.len() < 64 + HEADER_LEN);
     }
 
     #[test]

@@ -12,24 +12,31 @@
 //! The child gets an empty environment plus fixed paths and the boot class path, which
 //! is taken only from a zygote process that is verified to be root, to run
 //! `/system/bin/app_process64` or `app_process32`, and to be in the `zygote` SELinux
-//! domain. The jar must be a root-owned file nobody else can write, in a root-owned
-//! folder nobody else can write. A call that takes longer than 3 seconds is killed.
+//! domain. Everything about that process is read through one open `/proc/<pid>` folder,
+//! so it is all about the same process even if the pid is reused meanwhile. Every entry
+//! of the class paths taken from it must be a root-owned file nobody else can write
+//! under the system's own folders (`/system`, `/system_ext`, `/product`, `/vendor`,
+//! `/apex`). The jar must be a root-owned file nobody else can write, in a root-owned
+//! folder nobody else can write. A call that takes longer than 3 seconds is killed; its
+//! output is read while it runs.
 
+use std::ffi::{CStr, CString};
 use std::fs;
-use std::io::Read;
+use std::io::{self, Read};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicI32, Ordering};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::process::Command;
+use std::sync::atomic::AtomicI32;
+use std::time::Duration;
 
+use super::child;
 use crate::control::ParamBackend;
 use crate::params;
 
 const CLASS: &str = "com.pixelcallai.roothelper.AudioParams";
 const TIMEOUT: Duration = Duration::from_secs(3);
-const MAX_OUTPUT: u64 = 64 * 1024;
+const MAX_OUTPUT: usize = 64 * 1024;
 
 /// The running `app_process` child, so a stop signal can end it at once.
 pub static CHILD: AtomicI32 = AtomicI32::new(0);
@@ -67,27 +74,102 @@ pub fn is_zygote(status: &str, exe: &str, context: &str) -> bool {
         && context.trim_end_matches(['\0', '\n']) == "u:r:zygote:s0"
 }
 
+/// The folders a class path entry may lie under: the system's own, read-only images.
+const SYSTEM_DIRS: &[&str] = &["/system/", "/system_ext/", "/product/", "/vendor/", "/apex/"];
+
+/// Whether a class path entry's place is acceptable (the file itself is checked
+/// separately): under a system folder, every step a plain name.
+pub fn system_path(p: &str) -> bool {
+    SYSTEM_DIRS.iter().any(|d| p.starts_with(d))
+        && p[1..].split('/').all(|step| !step.is_empty() && step != "." && step != "..")
+}
+
+/// Whether every entry of a class path is a root-owned file nobody else can write,
+/// under a system folder.
+fn class_path_files_ok(v: &str) -> bool {
+    v.split(':').all(|p| {
+        system_path(p) && fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_file() && root_only(&m))
+    })
+}
+
+/// A process's `/proc/<pid>` folder, held open: whatever is read through it belongs to
+/// that one process (once it has gone, reads fail instead of reaching another one that
+/// got the same pid).
+struct ProcDir(OwnedFd);
+
+impl ProcDir {
+    fn open(pid: &str) -> io::Result<ProcDir> {
+        let path = CString::new(format!("/proc/{pid}")).map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
+        // SAFETY: a NUL-terminated path; the descriptor is owned right after.
+        let fd = unsafe { libc::open(path.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC) };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: just opened.
+        Ok(ProcDir(unsafe { OwnedFd::from_raw_fd(fd) }))
+    }
+
+    /// At most `max` bytes of the file `name` inside the folder.
+    fn read(&self, name: &CStr, max: usize) -> io::Result<Vec<u8>> {
+        // SAFETY: a NUL-terminated name relative to our open folder.
+        let fd = unsafe { libc::openat(self.0.as_raw_fd(), name.as_ptr(), libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW) };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: just opened.
+        let f = fs::File::from(unsafe { OwnedFd::from_raw_fd(fd) });
+        let mut buf = Vec::new();
+        f.take(max as u64 + 1).read_to_end(&mut buf)?;
+        if buf.len() > max {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        }
+        Ok(buf)
+    }
+
+    fn link(&self, name: &CStr) -> io::Result<String> {
+        let mut buf = [0u8; 512];
+        // SAFETY: the buffer has the length given.
+        let n = unsafe { libc::readlinkat(self.0.as_raw_fd(), name.as_ptr(), buf.as_mut_ptr().cast(), buf.len()) };
+        if n < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let n = n as usize;
+        if n >= buf.len() {
+            return Err(io::Error::from(io::ErrorKind::InvalidData));
+        }
+        String::from_utf8(buf[..n].to_vec()).map_err(|_| io::Error::from(io::ErrorKind::InvalidData))
+    }
+}
+
+const MAX_PROC_FILE: usize = 256 * 1024;
+
 fn zygote_env() -> Result<Vec<(String, String)>, String> {
     let dir = fs::read_dir("/proc").map_err(|_| "cannot list processes")?;
     for entry in dir.flatten() {
         let name = entry.file_name();
         let Some(pid) = name.to_str().filter(|s| s.bytes().all(|b| b.is_ascii_digit())) else { continue };
-        let Ok(cmdline) = fs::read(format!("/proc/{pid}/cmdline")) else { continue };
+        let Ok(proc_dir) = ProcDir::open(pid) else { continue };
+        let Ok(cmdline) = proc_dir.read(c"cmdline", 4096) else { continue };
         let argv0 = cmdline.split(|&b| b == 0).next().unwrap_or(&[]);
         if argv0 != b"zygote64" && argv0 != b"zygote" {
             continue;
         }
-        let status = fs::read_to_string(format!("/proc/{pid}/status")).unwrap_or_default();
-        let exe = fs::read_link(format!("/proc/{pid}/exe")).ok().and_then(|p| p.to_str().map(str::to_string));
-        let ctx = fs::read_to_string(format!("/proc/{pid}/attr/current")).unwrap_or_default();
-        if !is_zygote(&status, exe.as_deref().unwrap_or(""), &ctx) {
+        let text = |name: &CStr| proc_dir.read(name, MAX_PROC_FILE).ok().and_then(|b| String::from_utf8(b).ok());
+        let status = text(c"status").unwrap_or_default();
+        let exe = proc_dir.link(c"exe").unwrap_or_default();
+        let ctx = text(c"attr/current").unwrap_or_default();
+        if !is_zygote(&status, &exe, &ctx) {
             continue;
         }
-        let environ = fs::read(format!("/proc/{pid}/environ")).map_err(|_| "cannot read zygote")?;
+        let environ = proc_dir.read(c"environ", MAX_PROC_FILE).map_err(|_| "cannot read zygote")?;
+        // Still the same process: its status reads again through the same folder.
+        if text(c"status").is_none_or(|s| !is_zygote(&s, &exe, &ctx)) {
+            continue;
+        }
         let found: Vec<(String, String)> = environ
             .split(|&b| b == 0)
             .filter_map(|kv| std::str::from_utf8(kv).ok()?.split_once('='))
-            .filter(|(k, v)| ZYGOTE_ENV.contains(k) && trusted_class_path(v))
+            .filter(|(k, v)| ZYGOTE_ENV.contains(k) && trusted_class_path(v) && class_path_files_ok(v))
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
         if found.iter().any(|(k, _)| k == "BOOTCLASSPATH") {
@@ -128,39 +210,15 @@ impl AppProcessParams {
         for (k, v) in zygote_env()? {
             cmd.env(k, v);
         }
-        cmd.env("CLASSPATH", jar)
-            .arg("/system/bin")
-            .arg(CLASS)
-            .args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null());
-        let mut child = cmd.spawn().map_err(|_| "cannot start app_process".to_string())?;
-        CHILD.store(child.id() as i32, Ordering::SeqCst);
-        let start = Instant::now();
-        let status = loop {
-            match child.try_wait() {
-                Ok(Some(s)) => break Ok(s),
-                Ok(None) if start.elapsed() < TIMEOUT => thread::sleep(Duration::from_millis(20)),
-                Ok(None) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    break Err("the audio parameter tool did not answer".to_string());
-                }
-                Err(_) => break Err("the audio parameter tool failed".to_string()),
-            }
-        };
-        CHILD.store(0, Ordering::SeqCst);
-        let status = status?;
-        let mut out = String::new();
-        if let Some(stdout) = child.stdout.take() {
-            let _ = stdout.take(MAX_OUTPUT).read_to_string(&mut out);
+        cmd.env("CLASSPATH", jar).arg("/system/bin").arg(CLASS).args(args);
+        let out = child::run(&mut cmd, TIMEOUT, MAX_OUTPUT, Some(&CHILD)).map_err(|_| "cannot start app_process".to_string())?;
+        if out.status.is_none() {
+            return Err("the audio parameter tool did not answer".into());
         }
-        if status.success() {
-            Ok(out)
-        } else {
-            Err("the audio parameter tool failed".into())
+        if !out.ok() {
+            return Err("the audio parameter tool failed".into());
         }
+        String::from_utf8(out.stdout).map_err(|_| "the audio parameter tool failed".into())
     }
 }
 
@@ -205,6 +263,30 @@ mod tests {
         assert!(!trusted_class_path("/system/../data/x.jar"));
         assert!(!trusted_class_path("/system/framework/x.jar;rm"));
         assert!(!trusted_class_path("/data/local/tmp/$x.jar"));
+    }
+
+    #[test]
+    fn class_path_entries_only_from_system_folders() {
+        assert!(system_path("/apex/com.android.art/javalib/core-oj.jar"));
+        assert!(system_path("/system/framework/framework.jar"));
+        assert!(system_path("/system_ext/framework/x.jar"));
+        for bad in [
+            "/data/local/tmp/x.jar",
+            "/data/adb/modules/x/system/framework/x.jar",
+            "/system/framework/../../data/x.jar",
+            "/system//x.jar",
+            "/system/./x.jar",
+            "/systemx/x.jar",
+            "/system/",
+            "relative/system/x.jar",
+        ] {
+            assert!(!system_path(bad), "{bad}");
+        }
+        // A file that is not root's (as in a test run) is refused too.
+        let mine = std::env::temp_dir().join(format!("bageo-cp-{}.jar", std::process::id()));
+        std::fs::write(&mine, b"x").unwrap();
+        assert!(!class_path_files_ok(mine.to_str().unwrap()));
+        let _ = std::fs::remove_file(mine);
     }
 
     #[test]

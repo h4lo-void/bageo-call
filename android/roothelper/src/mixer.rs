@@ -101,21 +101,59 @@ impl CtlInfo {
     }
 }
 
-/// How a request names a control: `numid=<n>`, or its name with an optional
-/// `@<index>` for the second, third ... control of the same name.
+/// How a request names a control:
+///
+/// - `numid=<n>`;
+/// - its name, with an optional `@<index>` for the second, third ... control of the same
+///   name (refused when several controls still match);
+/// - its whole identity, `id:<iface>:<device>:<subdevice>:<index>:<name>` (the
+///   interface as a number or as `card`, `mixer`, `pcm` ...), for controls that share a
+///   name and an index but not a device.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Selector {
     Numid(u32),
     Name { name: String, index: u32 },
+    Full { iface: i32, device: u32, subdevice: u32, index: u32, name: String },
+}
+
+/// What the kernel calls one control, for matching it against a [`Selector`].
+pub struct CtlId<'a> {
+    pub numid: u32,
+    pub iface: i32,
+    pub device: u32,
+    pub subdevice: u32,
+    pub index: u32,
+    pub name: &'a str,
 }
 
 impl Selector {
-    pub fn matches(&self, numid: u32, name: &str, index: u32) -> bool {
+    pub fn matches(&self, id: &CtlId) -> bool {
         match self {
-            Selector::Numid(n) => *n == numid,
-            Selector::Name { name: want, index: want_index } => want == name && *want_index == index,
+            Selector::Numid(n) => *n == id.numid,
+            Selector::Name { name, index } => name == id.name && *index == id.index,
+            Selector::Full { iface, device, subdevice, index, name } => {
+                *iface == id.iface
+                    && *device == id.device
+                    && *subdevice == id.subdevice
+                    && *index == id.index
+                    && name == id.name
+            }
         }
     }
+}
+
+fn small_num(s: &str) -> Option<u32> {
+    if s.is_empty() || s.len() > 9 || !s.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    s.parse().ok()
+}
+
+fn parse_iface(s: &str) -> Option<i32> {
+    if let Some(n) = small_num(s) {
+        return i32::try_from(n).ok().filter(|&n| n <= 6);
+    }
+    (0..=6).find(|&i| iface_name(i) == s)
 }
 
 pub fn parse_selector(s: &str) -> Result<Selector, String> {
@@ -124,6 +162,19 @@ pub fn parse_selector(s: &str) -> Result<Selector, String> {
             Ok(v) if v > 0 && !n.starts_with('+') => Ok(Selector::Numid(v)),
             _ => Err(format!("bad control number: {s}")),
         };
+    }
+    if let Some(rest) = s.strip_prefix("id:") {
+        let bad = || format!("bad control identity: {s}");
+        let mut f = rest.splitn(5, ':');
+        let iface = f.next().and_then(parse_iface).ok_or_else(bad)?;
+        let device = f.next().and_then(small_num).ok_or_else(bad)?;
+        let subdevice = f.next().and_then(small_num).ok_or_else(bad)?;
+        let index = f.next().and_then(small_num).ok_or_else(bad)?;
+        let name = f.next().ok_or_else(bad)?;
+        if name.is_empty() || name.len() >= abi::CTL_NAME_LEN {
+            return Err(bad());
+        }
+        return Ok(Selector::Full { iface, device, subdevice, index, name: name.to_string() });
     }
     let (name, index) = match s.rsplit_once('@') {
         Some((n, i)) if !i.is_empty() && i.len() <= 5 && i.bytes().all(|b| b.is_ascii_digit()) => {
@@ -310,8 +361,28 @@ mod tests {
         assert!(parse_selector("").is_err());
         assert!(parse_selector("@1").is_err());
         assert!(parse_selector(&"n".repeat(44)).is_err());
-        assert!(Selector::Numid(5).matches(5, "x", 3));
-        assert!(!Selector::Name { name: "x".into(), index: 1 }.matches(5, "x", 0));
+        let id = |numid, device, index, name| CtlId { numid, iface: 2, device, subdevice: 0, index, name };
+        assert!(Selector::Numid(5).matches(&id(5, 0, 3, "x")));
+        assert!(!Selector::Name { name: "x".into(), index: 1 }.matches(&id(5, 0, 0, "x")));
+    }
+
+    #[test]
+    fn whole_identities_tell_apart_controls_that_share_a_name() {
+        let full = parse_selector("id:mixer:3:0:1:Voice Rx: Gain").unwrap();
+        assert_eq!(
+            full,
+            Selector::Full { iface: 2, device: 3, subdevice: 0, index: 1, name: "Voice Rx: Gain".into() }
+        );
+        assert_eq!(parse_selector("id:2:3:0:1:Voice Rx: Gain"), Ok(full.clone()));
+        let on = |device, subdevice| CtlId { numid: 9, iface: 2, device, subdevice, index: 1, name: "Voice Rx: Gain" };
+        assert!(full.matches(&on(3, 0)));
+        assert!(!full.matches(&on(4, 0)), "another device");
+        assert!(!full.matches(&on(3, 1)), "another subdevice");
+        let by_name = parse_selector("Voice Rx: Gain@1").unwrap();
+        assert!(by_name.matches(&on(3, 0)) && by_name.matches(&on(4, 0)), "a name alone matches both");
+        for bad in ["id:", "id:mixer:3:0:1:", "id:7:0:0:0:x", "id:mixr:0:0:0:x", "id:2:-1:0:0:x", "id:2:0:0:x", "id:2:0:0:0"] {
+            assert!(parse_selector(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

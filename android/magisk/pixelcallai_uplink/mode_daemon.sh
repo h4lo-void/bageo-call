@@ -8,18 +8,31 @@
 # so service.sh starts this helper once per boot, in its own session. Every 2
 # seconds it looks for a request from the app in the app's device-protected folder:
 #
-#   APPDIR/request   one line: <ai|normal> <id> [0 to 6 volumes]
+#   APPDIR/request   one line ending in a newline, nothing else, at most 128 bytes:
+#                    <ai|normal> <id> [0 to 6 volumes], single spaces
 #                    id: letters, digits and dashes, at most 64; volume: 1 to 3 digits
 #   APPDIR/audio_helper
-#                    one line: start <id>
+#                    one line ending in a newline, at most 80 bytes: start <id>
 #                    starts bin/bageo-audio-helper, the root audio helper for phones
 #                    whose call audio path the app cannot use by itself. Only when no
-#                    switch request waits, at most once every 10 seconds, not while
-#                    one runs, and not while /data/adb/pixelcallai/audio_helper.disabled
-#                    exists. Nothing starts it otherwise.
+#                    switch request was taken in the same round, at most once every 10
+#                    seconds, not while one runs, and not while
+#                    /data/adb/pixelcallai/audio_helper.disabled exists. Nothing starts
+#                    it otherwise.
 #
 # It takes the request (a rename, so the app can still withdraw one nobody took),
-# checks it, runs apply_mode.sh with it and reports to the app in APPDIR/state:
+# checks it, runs apply_mode.sh with it and reports to the app in APPDIR/state.
+#
+# A switch request is run only for the app the system lists (packages.list) exactly
+# once, with the user ID that owns its folder and its usual data folder. A debuggable
+# app can be entered with `adb shell run-as` by anyone with adb, who could then write
+# requests as the app; so a debuggable app's request is refused (error=app_refused),
+# with one exception for now: while the app is this module's own build (no update of it
+# installed under /data/app), because this module still ships a debuggable build and
+# the phones that use it must keep switching. Once the module ships a release build,
+# a debuggable app can only be an update installed over it, and is refused.
+#
+# The state:
 #
 #   daemon=1
 #   mode=ai|normal          /data/adb/pixelcallai/mode (no file = ai)
@@ -30,6 +43,8 @@
 #   request=<id>            the last request taken
 #   exit=<code>             apply_mode.sh's exit code, once that run ended
 #   error=invalid_request   the last request was malformed and was not run
+#   error=app_refused       the last request did not come from an app it serves
+#                           (see above) and was not run
 #   audio_helper=<id>       the last valid audio_helper request taken
 #   audio_helper_result=started|running|busy|disabled|missing|invalid_request
 #                           running: one runs already; busy: one was started less
@@ -56,6 +71,8 @@ DIR=/data/adb/pixelcallai
 PIDFILE=$DIR/daemon.pid
 APPHOME=/data/user_de/0/$PKG
 APPDIR=$APPHOME/files/mode
+PKGLIST=/data/system/packages.list
+APPCODE=/data/app
 TAG=pixelcallai_mode
 # Same rule as service.sh, apply_mode.sh and the app: drop blanks and a UTF-8 BOM.
 STRIP=' \t\r\n\v\f\357\273\277'
@@ -73,6 +90,9 @@ fi
 echo $$ > "$PIDFILE"
 trap '[ "$(cat "$PIDFILE" 2>/dev/null)" = "$$" ] && rm -f "$PIDFILE"' EXIT
 trap 'exit 0' INT TERM
+# Requests an earlier run took but never read (it was stopped half way): never run.
+rm -f "$DIR/request.taken" "$DIR/audio_helper.taken" "$DIR"/request.taken.* "$DIR"/audio_helper.taken.* \
+  "$DIR/request.stuck" "$DIR/audio_helper.stuck" 2>/dev/null
 
 LAST_REQ=
 LAST_EXIT=
@@ -135,14 +155,15 @@ state_lines() {
   return 0
 }
 
+
 # The app owns files/ and files/mode/ and can rename or replace them at any moment,
 # for example with a link into a root folder, also between a check and the step after
 # it. So nothing here walks that path to act on a file: every step first enters the
 # folder (cd -P), checks that the folder it is now in really is APPDIR and belongs to
 # the app, and then works on names inside it relative to that folder; renames of the
-# path afterwards cannot send it elsewhere. Files go between that folder and root's own
-# $DIR by rename only (a rename never follows a link), and nothing the app made is ever
-# deleted recursively. Each step runs in a subshell, so this shell stays where it is.
+# path afterwards cannot send it elsewhere. Nothing the app made is ever deleted
+# recursively, copied, or opened unless it is a plain file. Each step runs in a
+# subshell, so this shell stays where it is.
 APP_UID=
 app_uid() {
   # APPHOME's parent belongs to the system, so the app cannot swap APPHOME itself.
@@ -157,33 +178,123 @@ enter_app_dir() {
   [ "$(stat -c %u . 2>/dev/null)" = "$APP_UID" ] || return 1
 }
 
-# Takes the app's file $1 into $DIR and prints at most $2 bytes of it, when it is a
-# plain file of the app's. Anything else is never opened: a link is dropped (only the
-# link itself), a folder or pipe is handed back to the app under another name.
-# Returns 1 when nothing was read.
+# Takes the app's file $1 and prints the one line it holds. Returns 0 when it was a
+# plain file of the app's holding exactly one line that ends in a newline, at most $2
+# bytes with the newline (the line is printed without it); 2 when something was taken
+# but dropped (a link, a pipe, an empty folder, a file of someone else's, too large, or
+# not one whole line; logged); 1 when nothing was taken: nothing there, the app withdrew
+# it meanwhile, or it cannot be taken (a folder with something in it: left where it is,
+# logged once, and it holds up nothing else).
+#
+# The file is taken with a hard link from the app's folder into root's own $DIR, under a
+# name of its own for every take (the caller counts TAKE_N up first, as this runs in a
+# subshell), then its name in the app's folder is removed. A hard link never copies and
+# never moves anything into the app's reach: on another file system, or for a folder, it
+# just fails. Only that link in root's folder is ever read, once, then removed.
+TAKE_N=0
 take_app_file() {
   tname=$1
-  taken=$DIR/$tname.taken
-  if [ -L "$taken" ] || [ -f "$taken" ]; then
+  tag=$$.$TAKE_N.$(date +%s)
+  taken=$DIR/$tname.taken.$tag
+  stuck=$DIR/$tname.stuck
+  # One subshell, so every step works in the one folder that was checked.
+  (
+    enter_app_dir || exit 1
+    { [ -e "$tname" ] || [ -L "$tname" ]; } || exit 1
+    if [ -L "$tname" ]; then
+      rm -f "$tname"
+      exit 2
+    fi
+    if ! ln "$tname" "$taken"; then
+      if [ -d "$tname" ] && rmdir "$tname"; then exit 2; fi
+      exit 4
+    fi
+    # Taken only while the name still is that file: the app may have withdrawn it (and
+    # written a new one) meanwhile.
+    if [ "$(stat -c %i "$tname")" != "$(stat -c %i "$taken")" ]; then
+      rm -f "$taken"
+      exit 1
+    fi
+    rm -f "$tname"
+    exit 0
+  ) 2>/dev/null
+  case $? in
+    0) rm -f "$stuck" ;;
+    1) return 1 ;;
+    4)
+      if [ ! -e "$stuck" ]; then
+        log -t "$TAG" "cannot take $tname; left where it is" 2>/dev/null
+        : > "$stuck"
+      fi
+      return 1
+      ;;
+    *)
+      log -t "$TAG" "$tname dropped: not a plain file" 2>/dev/null
+      return 2
+      ;;
+  esac
+  size=$(stat -c %s "$taken" 2>/dev/null)
+  if [ -L "$taken" ] || [ ! -f "$taken" ] || [ "$(stat -c %u "$taken" 2>/dev/null)" != "$APP_UID" ]; then
     rm -f "$taken"
-  elif [ -e "$taken" ]; then
-    return 1
+    log -t "$TAG" "$tname dropped: not a plain file of the app's" 2>/dev/null
+    return 2
   fi
-  ( enter_app_dir && { [ -e "$tname" ] || [ -L "$tname" ]; } && mv -fT "$tname" "$taken" ) 2>/dev/null || return 1
-  if [ -L "$taken" ]; then
+  case "$size" in ''|*[!0-9]*) size=$(($2 + 1)) ;; esac
+  if [ "$size" -gt "$2" ]; then
     rm -f "$taken"
-    return 1
+    log -t "$TAG" "$tname dropped: too large" 2>/dev/null
+    return 2
   fi
-  if [ ! -f "$taken" ]; then
-    ( enter_app_dir && mv -fT "$taken" "$tname.rejected.$$.$(date +%s)" ) 2>/dev/null
-    return 1
-  fi
-  if [ "$(stat -c %u "$taken" 2>/dev/null)" != "$APP_UID" ]; then
-    rm -f "$taken"
-    return 1
-  fi
-  head -c "$2" "$taken" 2>/dev/null
+  content=$(head -c "$(($2 + 1))" "$taken" 2>/dev/null; echo x)
   rm -f "$taken"
+  content=${content%x}
+  [ "${#content}" -le "$2" ] || return 2
+  case "$content" in *"$NL") ;; *) return 2 ;; esac
+  line=${content%"$NL"}
+  case "$line" in ''|*"$NL"*) return 2 ;; esac
+  printf '%s' "$line"
+  return 0
+}
+
+# Whether a switch request may be run (see the top of this file); REFUSED says why not.
+APP_LIST_MAX=8388608
+app_allowed() {
+  REFUSED=
+  if [ -L "$PKGLIST" ] || [ ! -f "$PKGLIST" ]; then
+    REFUSED="package list unreadable"
+    return 1
+  fi
+  size=$(stat -c %s "$PKGLIST" 2>/dev/null)
+  case "$size" in ''|*[!0-9]*) REFUSED="package list unreadable"; return 1 ;; esac
+  if [ "$size" -gt "$APP_LIST_MAX" ]; then
+    REFUSED="package list too large"
+    return 1
+  fi
+  lines=$(grep '^com\.pixelcallai\.streamer ' "$PKGLIST" 2>/dev/null)
+  case "$lines" in ''|*"$NL"*) REFUSED="app not listed exactly once"; return 1 ;; esac
+  set -f
+  set -- $lines
+  set +f
+  if [ "$2" != "$APP_UID" ]; then
+    REFUSED="app user ID differs from its folder's owner"
+    return 1
+  fi
+  if [ "$4" != "/data/user/0/$PKG" ]; then
+    REFUSED="app data folder unexpected"
+    return 1
+  fi
+  case "$3" in
+    0) return 0 ;;
+    1) ;;
+    *) REFUSED="package list malformed"; return 1 ;;
+  esac
+  # Debuggable: only while it is this module's own build, with no update installed.
+  for d in "$APPCODE/$PKG"-* "$APPCODE"/*/"$PKG"-*; do
+    if [ -e "$d" ] || [ -L "$d" ]; then
+      REFUSED="debuggable app installed as an update"
+      return 1
+    fi
+  done
   return 0
 }
 
@@ -208,6 +319,9 @@ publish() {
   fi
   label=$(stat -c %C "$APPHOME" 2>/dev/null)
   case "$label" in u:object_r:*) chcon "$label" "$tmp" 2>/dev/null ;; esac
+  # mv -T: the target is a name, never a folder to move into (a link there is replaced,
+  # not followed); the toybox of every Android this module supports (10 and later)
+  # has it. Without it nothing is published.
   if ! ( enter_app_dir && mv -fT "$tmp" state ) 2>/dev/null; then
     rm -f "$tmp"
     return 1
@@ -216,15 +330,17 @@ publish() {
   return 0
 }
 
-# Take one request, check it and run it.
+# Take one request, check it and run it. Returns 1 when nothing was taken.
 handle_request() {
-  # A rename: the app deletes a request nobody took in time, and that one must not run.
-  app_uid || return 0
-  req=$(take_app_file request 200) || return 0
+  app_uid || return 1
+  TAKE_N=$((TAKE_N + 1))
+  req=$(take_app_file request 129)
+  case $? in
+    0) ok=1 ;;
+    2) ok=0; req= ;;
+    *) return 1 ;;
+  esac
 
-  ok=1
-  case "$req" in *"$NL"*) ok=0 ;; esac
-  [ "${#req}" -le 128 ] || ok=0
   set -f
   old_ifs=$IFS
   IFS=' '
@@ -239,11 +355,15 @@ handle_request() {
   if [ "$#" -lt 2 ] || [ "$#" -gt 8 ]; then
     ok=0
   else
+    canon="$1 $2"
     shift 2
     for v in "$@"; do
       case "$v" in ''|*[!0-9]*) ok=0 ;; esac
       [ "${#v}" -le 3 ] || ok=0
+      canon="$canon $v"
     done
+    # Single spaces, nothing before or after: the request exactly as the app writes it.
+    [ "$canon" = "$req" ] || ok=0
   fi
 
   LAST_REQ=$id
@@ -251,6 +371,13 @@ handle_request() {
     LAST_EXIT=2
     LAST_ERR=invalid_request
     log -t "$TAG" "invalid request ignored" 2>/dev/null
+    publish 0
+    return 0
+  fi
+  if ! app_allowed; then
+    LAST_EXIT=2
+    LAST_ERR=app_refused
+    log -t "$TAG" "request refused: $REFUSED" 2>/dev/null
     publish 0
     return 0
   fi
@@ -273,14 +400,18 @@ helper_running() {
 }
 
 # Take one audio helper request ("start <id>"), check it and start the helper in its
-# own session, unless it is turned off, runs already or was started just now.
+# own session, unless it is turned off, runs already or was started just now. Returns
+# 1 when nothing was taken.
 handle_helper() {
-  app_uid || return 0
-  req=$(take_app_file audio_helper 100) || return 0
+  app_uid || return 1
+  TAKE_N=$((TAKE_N + 1))
+  req=$(take_app_file audio_helper 81)
+  case $? in
+    0) ok=1 ;;
+    2) ok=0; req= ;;
+    *) return 1 ;;
+  esac
 
-  ok=1
-  case "$req" in *"$NL"*) ok=0 ;; esac
-  [ "${#req}" -le 80 ] || ok=0
   set -f
   old_ifs=$IFS
   IFS=' '
@@ -291,6 +422,7 @@ handle_helper() {
   hid=$2
   case "$hid" in ''|*[!A-Za-z0-9-]*) ok=0 ;; esac
   [ "${#hid}" -le 64 ] || ok=0
+  [ "start $hid" = "$req" ] || ok=0
 
   now=$(date +%s)
   since=$((now - LAST_HELPER_START))
@@ -326,15 +458,21 @@ log -t "$TAG" "mode helper started (pid $$)" 2>/dev/null
 publish 0
 while :; do
   # A phone mode switch always goes first; the audio helper waits for the next round.
+  # What cannot be taken holds up neither the other request nor the state.
+  took=0
   if [ -e "$APPDIR/request" ] || [ -L "$APPDIR/request" ]; then
-    handle_request
-  elif [ -e "$APPDIR/audio_helper" ] || [ -L "$APPDIR/audio_helper" ]; then
-    handle_helper
-  elif [ -d "$APPDIR" ] && [ ! -f "$APPDIR/state" ]; then
-    publish 0
-  else
-    quick_sig
-    [ "$QSIG" != "$PUB_SIG" ] && publish 0
+    handle_request && took=1
+  fi
+  if [ "$took" = 0 ] && { [ -e "$APPDIR/audio_helper" ] || [ -L "$APPDIR/audio_helper" ]; }; then
+    handle_helper && took=1
+  fi
+  if [ "$took" = 0 ]; then
+    if [ -d "$APPDIR" ] && [ ! -f "$APPDIR/state" ]; then
+      publish 0
+    else
+      quick_sig
+      [ "$QSIG" != "$PUB_SIG" ] && publish 0
+    fi
   fi
   sleep 2
 done

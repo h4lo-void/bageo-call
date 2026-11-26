@@ -8,7 +8,9 @@
 //! the listener's user ID (`SO_PEERCRED`) and SELinux context (`SO_PEERSEC`).
 //!
 //! The connect does not wait: a listener whose queue is full (or that never accepts)
-//! is treated as not there. Reads and writes on the connection have time limits.
+//! is treated as not there. Reads and writes on the connection have time limits, set
+//! before each read or write from a deadline on the monotonic clock (see
+//! [`crate::proto::read_frame_by`]).
 
 use std::io;
 use std::mem::{offset_of, size_of};
@@ -129,6 +131,9 @@ impl io::Write for AppConn {
 impl Conn for AppConn {
     fn set_read_limit(&mut self, limit: Option<Duration>) -> io::Result<()> {
         self.0.set_read_timeout(limit.map(|d| d.max(Duration::from_millis(1))))
+    }
+    fn set_write_limit(&mut self, limit: Option<Duration>) -> io::Result<()> {
+        self.0.set_write_timeout(limit.map(|d| d.max(Duration::from_millis(1))))
     }
 }
 

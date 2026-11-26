@@ -7,6 +7,7 @@
 pub mod alsa;
 pub mod appdir;
 pub mod calls;
+pub mod child;
 pub mod cli;
 pub mod log;
 pub mod net;

@@ -7,8 +7,8 @@
 //! and stream call PCM from and to a sound device. Every change is undone when the
 //! call's session ends, however it ends. See `README.md` next to `Cargo.toml`.
 //!
-//! The modules up to `probe` are plain logic and are tested on any computer; `sys` is
-//! the part that touches the phone.
+//! Every module but `sys` is plain logic and is tested on any computer; `sys` is the part
+//! that touches the phone (its own tests run on Linux).
 
 pub mod abi;
 pub mod allow;
@@ -17,12 +17,14 @@ pub mod calls;
 pub mod control;
 pub mod feeder;
 pub mod json;
+pub mod life;
 pub mod mixer;
 pub mod params;
 pub mod peer;
 pub mod probe;
 pub mod proto;
 pub mod session;
+pub mod stream;
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub mod sys;

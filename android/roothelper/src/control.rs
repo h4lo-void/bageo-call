@@ -15,25 +15,36 @@
 //! | `mixer.set` | card, control, value ... | JSON control after the change |
 //! | `params.set` | key, value | `ok` |
 //! | `pcm.open` | capture or playback, card, device, rate, channels, period frames, periods | JSON stream |
-//! | `pcm.flush` | stream id | `ok`: queued audio dropped, stream started again |
+//! | `pcm.flush` | stream id | `ok` once the stream dropped its queued audio (also what its connection held) and restarted the device |
 //! | `pcm.close` | stream id | `ok` |
 //!
 //! `mixer.set`, `params.set` and `pcm.open` need an open session and accept only what
 //! the helper's built-in list ([`crate::allow`]) names for this phone; that list is empty
 //! for now. `pcm.open` also needs the phone to be in a call, which the helper checks
-//! for itself. A control is `numid=<n>` or its name (`<name>@<index>` for a later one
-//! of the same name; a name several controls share must be given as `numid=`).
+//! for itself (a check that cannot tell is a refusal); it checks again before a stream
+//! carries audio, and keeps checking while the session has streams: once two checks in a
+//! row find no call, it closes the connection, which closes the streams and puts the
+//! session back. A control is `numid=<n>`, its name (`<name>@<index>` for a later one
+//! of the same name), or its whole identity
+//! `id:<iface>:<device>:<subdevice>:<index>:<name>` when several controls share a name
+//! and an index (see [`crate::mixer::Selector`]).
 //!
-//! Time limits: a connection must authenticate within 5 seconds; without a session it
-//! may stay quiet 5 minutes; a session lasts at most 4 hours; every frame, once begun,
-//! must arrive whole within 5 seconds. Then the connection ends and is cleaned up.
+//! Time limits, all counted on the monotonic clock from a fixed start, so a peer that
+//! sends slowly cannot push them back: a connection must have authenticated 5 seconds
+//! after it began; a connection without a session ends 5 minutes after it authenticated
+//! or after its last session ended, whatever it sends; a session lasts at most 4 hours;
+//! every frame must have arrived whole 5 seconds after its first byte, and every reply
+//! must have gone out whole within 5 seconds. Then the connection ends and is cleaned
+//! up. While the helper is stopping, nothing new may be changed.
 
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use crate::allow::Allowlist;
 use crate::auth::Keys;
+use crate::calls::CallStatus;
 use crate::json::Json;
+use crate::life::Life;
 use crate::mixer::{self, CtlInfo, CtlKey, CtlType, Selector};
 use crate::params;
 use crate::proto::{self, Conn, Kind, ProtoError};
@@ -42,6 +53,16 @@ use crate::session::{Failure, Origin, Report, Restorer, Saved, Session};
 pub const AUTH_TIME: Duration = Duration::from_secs(5);
 pub const QUIET_TIME: Duration = Duration::from_secs(5 * 60);
 pub const SESSION_TIME: Duration = Duration::from_secs(4 * 60 * 60);
+
+/// The time limits of a connection (see the top of this file).
+#[derive(Clone, Copy, Debug)]
+pub struct Limits {
+    pub auth: Duration,
+    pub quiet: Duration,
+    pub session: Duration,
+}
+
+pub const LIMITS: Limits = Limits { auth: AUTH_TIME, quiet: QUIET_TIME, session: SESSION_TIME };
 
 pub trait MixerBackend {
     fn find(&mut self, card: u32, sel: &Selector) -> Result<CtlInfo, String>;
@@ -60,7 +81,7 @@ pub trait ParamBackend {
 
 /// Whether the phone is in a call (the helper's own check).
 pub trait CallState {
-    fn in_call(&mut self) -> bool;
+    fn status(&mut self) -> CallStatus;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -139,6 +160,7 @@ pub fn parse_pcm(f: &[String]) -> Result<PcmRequest, String> {
 /// Opens and closes PCM streams; each stream's data goes over its own connection.
 pub trait PcmHost {
     fn open(&mut self, req: &PcmRequest) -> Result<Json, String>;
+    /// Returns once the stream has dropped its queued audio.
     fn flush(&mut self, id: &str) -> Result<(), String>;
     fn close(&mut self, id: &str) -> Result<(), String>;
     fn close_all(&mut self);
@@ -201,8 +223,9 @@ pub struct Dispatcher<M, P, H, C> {
     keys: Keys,
     policy: Policy,
     authed: bool,
-    /// Held while anything is changed or put back; the signal handler takes it too.
-    guard: Arc<Mutex<()>>,
+    /// Held while anything is changed or put back; stopping takes it too.
+    life: Arc<Life>,
+    pub limits: Limits,
 }
 
 fn need(f: &[String], n: usize, cmd: &str) -> Result<(), String> {
@@ -214,18 +237,11 @@ fn need(f: &[String], n: usize, cmd: &str) -> Result<(), String> {
 }
 
 const NOT_ALLOWED: &str = "not allowed on this phone";
+const STOPPING: &str = "the helper is stopping";
 
 impl<M: MixerBackend, P: ParamBackend, H: PcmHost, C: CallState> Dispatcher<M, P, H, C> {
-    pub fn new(
-        hw: Hardware<M, P>,
-        pcm: H,
-        calls: C,
-        session: Session,
-        keys: Keys,
-        policy: Policy,
-        guard: Arc<Mutex<()>>,
-    ) -> Self {
-        Dispatcher { hw, pcm, calls, session, keys, policy, authed: false, guard }
+    pub fn new(hw: Hardware<M, P>, pcm: H, calls: C, session: Session, keys: Keys, policy: Policy, life: Arc<Life>) -> Self {
+        Dispatcher { hw, pcm, calls, session, keys, policy, authed: false, life, limits: LIMITS }
     }
 
     /// For the root command line, which needs no key.
@@ -245,8 +261,8 @@ impl<M: MixerBackend, P: ParamBackend, H: PcmHost, C: CallState> Dispatcher<M, P
 
     /// Runs one request (its fields); `Ok`: the reply, `Err`: the error text.
     pub fn handle(&mut self, f: &[String]) -> Result<String, String> {
-        let guard = Arc::clone(&self.guard);
-        let _held = guard.lock().unwrap_or_else(|e| e.into_inner());
+        let life = Arc::clone(&self.life);
+        let _held = life.hold();
         let cmd = f.first().map(String::as_str).unwrap_or("");
         if !self.authed {
             if cmd == "auth" && f.len() == 2 && self.keys.app_key_ok(&f[1]) {
@@ -254,6 +270,9 @@ impl<M: MixerBackend, P: ParamBackend, H: PcmHost, C: CallState> Dispatcher<M, P
                 return Ok("ok".into());
             }
             return Err("not authenticated".into());
+        }
+        if life.stopping() && matches!(cmd, "session.begin" | "mixer.set" | "params.set" | "pcm.open") {
+            return Err(STOPPING.into());
         }
         match cmd {
             "ping" => {
@@ -289,10 +308,11 @@ impl<M: MixerBackend, P: ParamBackend, H: PcmHost, C: CallState> Dispatcher<M, P
                 if !self.hw.allow.pcm_ok(&card_id, &req) {
                     return Err(NOT_ALLOWED.into());
                 }
-                if !self.calls.in_call() {
-                    return Err("the phone is not in a call".into());
+                match self.calls.status() {
+                    CallStatus::InCall => Ok(self.pcm.open(&req)?.render()),
+                    CallStatus::NotInCall => Err("the phone is not in a call".into()),
+                    CallStatus::Unknown => Err("cannot tell whether the phone is in a call".into()),
                 }
-                Ok(self.pcm.open(&req)?.render())
             }
             "pcm.flush" => {
                 need(f, 2, cmd)?;
@@ -364,60 +384,89 @@ impl<M: MixerBackend, P: ParamBackend, H: PcmHost, C: CallState> Dispatcher<M, P
         Ok("ok".into())
     }
 
-    /// The connection is gone: streams closed, the session put back.
+    /// The connection is gone: streams closed, the session put back. Takes the lock
+    /// itself; the caller must not hold it.
     pub fn on_disconnect(&mut self) -> Option<Report> {
-        let guard = Arc::clone(&self.guard);
-        let _held = guard.lock().unwrap_or_else(|e| e.into_inner());
+        let life = Arc::clone(&self.life);
+        let _held = life.hold();
         self.pcm.close_all();
         self.session.end(&mut self.hw)
     }
 
-    /// How long the next request may take to begin; `None`: the session is out of time.
-    fn wait_limit(&self) -> Option<Duration> {
-        if !self.authed {
-            return Some(AUTH_TIME);
-        }
-        match self.session.age() {
-            Some(age) => SESSION_TIME.checked_sub(age).filter(|d| !d.is_zero()),
-            None => Some(QUIET_TIME),
-        }
+    /// The helper is quitting: nothing new may be changed, then the streams are closed
+    /// and the session put back, under the lock (which it takes itself and lets go).
+    pub fn shut_down(&mut self) -> Option<Report> {
+        self.life.stop();
+        self.on_disconnect()
+    }
+
+    /// When the next request must have begun, and arrived whole, at the latest
+    /// (`None`: the connection is out of time). `start`: when the connection began;
+    /// `quiet_since`: when it last had no session (authenticated, or its session ended).
+    fn deadline(&self, start: Instant, quiet_since: Instant) -> Option<Instant> {
+        let by = if !self.authed {
+            start + self.limits.auth
+        } else {
+            match self.session.age() {
+                Some(age) => Instant::now() + self.limits.session.checked_sub(age)?,
+                None => quiet_since + self.limits.quiet,
+            }
+        };
+        (by > Instant::now()).then_some(by)
     }
 
     /// Serves one connection until the app closes it, it runs out of time, it fails to
     /// authenticate, or it sends something that breaks the framing; then closes the
     /// streams and puts the session back.
     pub fn serve<S: Conn>(&mut self, conn: &mut S) -> Option<Report> {
-        while let Some(limit) = self.wait_limit() {
-            match proto::read_frame_timed(conn, proto::MAX_REQUEST, Some(limit)) {
+        let start = Instant::now();
+        let mut quiet_since = start;
+        let mut had_session = self.session.is_open();
+        while let Some(by) = self.deadline(start, quiet_since) {
+            // Before authenticating the whole frame must be in by the deadline; after, a
+            // request must begin by it and has the frame time to arrive whole.
+            let finish_by = (!self.authed).then_some(by);
+            let was_authed = self.authed;
+            match proto::read_frame_by(conn, proto::MAX_REQUEST, Some(by), finish_by) {
                 Ok(None) => break,
                 Ok(Some((Kind::Request, payload))) => {
                     let reply = match proto::parse_request(&payload) {
                         Ok(fields) => self.handle(&fields),
                         Err(e) => Err(e.message()),
                     };
+                    let write_by = Instant::now() + proto::WRITE_TIME;
                     let sent = match reply {
                         Ok(text) if text.len() <= proto::MAX_REPLY => {
-                            proto::write_frame(conn, Kind::Ok, text.as_bytes())
+                            proto::write_frame_by(conn, Kind::Ok, text.as_bytes(), write_by)
                         }
-                        Ok(_) => proto::write_frame(conn, Kind::Error, b"reply too long"),
-                        Err(e) => proto::write_frame(conn, Kind::Error, e.as_bytes()),
+                        Ok(_) => proto::write_frame_by(conn, Kind::Error, b"reply too long", write_by),
+                        Err(e) => proto::write_frame_by(conn, Kind::Error, e.as_bytes(), write_by),
                     };
                     if sent.is_err() || !self.authed {
                         break;
                     }
                 }
                 Ok(Some(_)) => {
-                    if proto::write_frame(conn, Kind::Error, b"only requests are accepted").is_err() || !self.authed {
+                    let write_by = Instant::now() + proto::WRITE_TIME;
+                    if proto::write_frame_by(conn, Kind::Error, b"only requests are accepted", write_by).is_err()
+                        || !self.authed
+                    {
                         break;
                     }
                 }
                 Err(e) => {
                     if !matches!(e, ProtoError::Io(_)) {
-                        let _ = proto::write_frame(conn, Kind::Error, e.message().as_bytes());
+                        let write_by = Instant::now() + proto::WRITE_TIME;
+                        let _ = proto::write_frame_by(conn, Kind::Error, e.message().as_bytes(), write_by);
                     }
                     break;
                 }
             }
+            let has_session = self.session.is_open();
+            if (!was_authed && self.authed) || (had_session && !has_session) {
+                quiet_since = Instant::now();
+            }
+            had_session = has_session;
         }
         self.on_disconnect()
     }
@@ -429,7 +478,7 @@ mod tests {
     use crate::allow::tests::TEST_RULES;
     use crate::allow::RULES;
     use crate::auth::{hex, test_keys};
-    use crate::mixer::test_ctl;
+    use crate::mixer::{test_ctl, CtlId};
     use crate::session::tests::temp_dir;
     use std::collections::HashMap;
     use std::io::{self, Cursor, Read, Write};
@@ -468,7 +517,16 @@ mod tests {
         fn find(&mut self, _card: u32, sel: &Selector) -> Result<CtlInfo, String> {
             self.ctls
                 .iter()
-                .find(|c| sel.matches(c.numid, &c.key.name, c.key.index))
+                .find(|c| {
+                    sel.matches(&CtlId {
+                        numid: c.numid,
+                        iface: c.key.iface,
+                        device: c.key.device,
+                        subdevice: c.key.subdevice,
+                        index: c.key.index,
+                        name: &c.key.name,
+                    })
+                })
                 .cloned()
                 .ok_or_else(|| "no such control".into())
         }
@@ -538,9 +596,9 @@ mod tests {
         }
     }
 
-    struct Calls(bool);
+    struct Calls(CallStatus);
     impl CallState for Calls {
-        fn in_call(&mut self) -> bool {
+        fn status(&mut self) -> CallStatus {
             self.0
         }
     }
@@ -548,6 +606,7 @@ mod tests {
     type D = Dispatcher<FakeMixer, FakeParams, FakePcm, Calls>;
 
     fn dispatcher(tag: &str, rules: &'static [crate::allow::PhoneRules], in_call: bool) -> (D, std::path::PathBuf) {
+        let call = if in_call { CallStatus::InCall } else { CallStatus::NotInCall };
         let dir = temp_dir(tag);
         let path = dir.join("audio_session");
         let mut params = FakeParams::default();
@@ -559,11 +618,11 @@ mod tests {
                 allow: Allowlist::for_phone(rules, "testplatform", "x"),
             },
             FakePcm::default(),
-            Calls(in_call),
+            Calls(call),
             Session::new(&path, Origin::App),
             test_keys(),
             Policy::App,
-            Arc::new(Mutex::new(())),
+            Arc::new(Life::new()),
         );
         (d, path)
     }
@@ -596,6 +655,9 @@ mod tests {
     }
     impl Conn for Duplex {
         fn set_read_limit(&mut self, _limit: Option<Duration>) -> io::Result<()> {
+            Ok(())
+        }
+        fn set_write_limit(&mut self, _limit: Option<Duration>) -> io::Result<()> {
             Ok(())
         }
     }
@@ -705,7 +767,9 @@ mod tests {
         assert!(d.handle(&open).unwrap_err().contains("session"));
         d.handle(&req(&["session.begin", "call-1"])).unwrap();
         assert_eq!(d.handle(&open), Err("the phone is not in a call".into()));
-        d.calls.0 = true;
+        d.calls.0 = CallStatus::Unknown;
+        assert_eq!(d.handle(&open), Err("cannot tell whether the phone is in a call".into()));
+        d.calls.0 = CallStatus::InCall;
         assert!(d.handle(&open).is_ok());
         assert_eq!(d.handle(&req(&["pcm.flush", "s1"])), Ok("ok".into()));
         assert_eq!(d.pcm.flushed, vec!["s1"]);
@@ -811,11 +875,11 @@ mod tests {
         let mut d = Dispatcher::new(
             Hardware { mixer: FakeMixer::phone(), params: FakeParams::default(), allow: Allowlist::default() },
             FakePcm::default(),
-            Calls(true),
+            Calls(CallStatus::InCall),
             Session::new(&path, Origin::Root),
             test_keys(),
             Policy::Root,
-            Arc::new(Mutex::new(())),
+            Arc::new(Life::new()),
         )
         .authenticated();
         d.handle(&req(&["session.begin", "cli-1"])).unwrap();
@@ -824,6 +888,134 @@ mod tests {
         d.handle(&req(&["session.end"])).unwrap();
         assert_eq!(d.hw.mixer.value("Speaker Volume"), vec![50]);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn while_stopping_nothing_new_changes_but_everything_is_put_back() {
+        let (mut d, path) = dispatcher("dispatch-stopping", TEST_RULES, true);
+        d.handle(&auth()).unwrap();
+        d.handle(&req(&["session.begin", "call-1"])).unwrap();
+        d.handle(&req(&["mixer.set", "0", "Incall Mic Mute", "1"])).unwrap();
+        d.life.stop();
+        assert_eq!(d.handle(&req(&["mixer.set", "0", "numid=2", "DL"])), Err(STOPPING.into()));
+        assert_eq!(d.handle(&req(&["params.set", "incall_music_enabled", "true"])), Err(STOPPING.into()));
+        assert_eq!(d.handle(&req(&["pcm.open", "capture", "0", "20", "48000", "1", "960", "4"])), Err(STOPPING.into()));
+        assert_eq!(d.hw.mixer.value("Incall Capture Stream0"), vec![0]);
+        assert_eq!(d.handle(&req(&["ping"])), Ok("pong".into()));
+        let r = d.shut_down().unwrap();
+        assert_eq!((r.restored, r.left), (1, 0));
+        assert_eq!(d.hw.mixer.value("Incall Mic Mute"), vec![0]);
+        assert!(d.handle(&req(&["session.begin", "call-2"])).is_err());
+        cleanup(&path);
+    }
+
+    #[test]
+    fn shutting_down_does_not_wait_for_itself() {
+        let (mut d, path) = dispatcher("dispatch-shutdown", TEST_RULES, true);
+        d.handle(&auth()).unwrap();
+        d.handle(&req(&["session.begin", "call-1"])).unwrap();
+        d.handle(&req(&["mixer.set", "0", "Incall Mic Mute", "1"])).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let t = std::thread::spawn(move || {
+            // The way out of the helper's loop: shut down, then take the lock to exit.
+            let r = d.shut_down();
+            let free = d.life.hold_for_exit(Duration::from_millis(100)).is_some();
+            tx.send((r.map(|r| r.restored), free, d.hw.mixer.value("Incall Mic Mute"))).unwrap();
+        });
+        let got = rx.recv_timeout(Duration::from_secs(5)).expect("the exit did not lock itself out");
+        assert_eq!(got, (Some(1), true, vec![0]));
+        t.join().unwrap();
+        cleanup(&path);
+    }
+
+    /// A connection that waits `delay` before every read and gives at most `step` bytes
+    /// of `data`; after that it sends pings forever (`then_ping`) or nothing.
+    struct Drip {
+        data: Vec<u8>,
+        pos: usize,
+        delay: Duration,
+        step: usize,
+        then_ping: bool,
+        out: Vec<u8>,
+    }
+    impl Read for Drip {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            std::thread::sleep(self.delay);
+            if self.pos >= self.data.len() {
+                if !self.then_ping {
+                    return Err(io::Error::from(io::ErrorKind::WouldBlock));
+                }
+                self.data.extend(frames(&[&["ping"]]));
+            }
+            let n = buf.len().min(self.step).min(self.data.len() - self.pos);
+            buf[..n].copy_from_slice(&self.data[self.pos..self.pos + n]);
+            self.pos += n;
+            Ok(n)
+        }
+    }
+    impl Write for Drip {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.out.write(buf)
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    impl Conn for Drip {
+        fn set_read_limit(&mut self, _limit: Option<Duration>) -> io::Result<()> {
+            Ok(())
+        }
+        fn set_write_limit(&mut self, _limit: Option<Duration>) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn drip(data: Vec<u8>, delay_ms: u64, step: usize, then_ping: bool) -> Drip {
+        Drip { data, pos: 0, delay: Duration::from_millis(delay_ms), step, then_ping, out: Vec::new() }
+    }
+
+    #[test]
+    fn pings_do_not_keep_a_connection_without_a_session_open() {
+        let (mut d, path) = dispatcher("dispatch-quiet", TEST_RULES, true);
+        d.limits.quiet = Duration::from_millis(150);
+        let key = hex(&test_keys().app);
+        let mut conn = drip(frames(&[&["auth", &key]]), 5, usize::MAX, true);
+        let start = std::time::Instant::now();
+        d.serve(&mut conn);
+        let took = start.elapsed();
+        assert!(took >= Duration::from_millis(150) && took < Duration::from_secs(2), "{took:?}");
+        let pongs = replies(&conn.out).iter().filter(|(_, p)| p == "pong").count();
+        assert!(pongs >= 3, "it did answer the pings ({pongs})");
+        cleanup(&path);
+    }
+
+    #[test]
+    fn a_session_ends_on_time_and_is_put_back() {
+        let (mut d, path) = dispatcher("dispatch-session-time", TEST_RULES, true);
+        d.limits.session = Duration::from_millis(150);
+        let key = hex(&test_keys().app);
+        let data = frames(&[&["auth", &key], &["session.begin", "call-1"], &["mixer.set", "0", "Incall Mic Mute", "1"]]);
+        let mut conn = drip(data, 5, usize::MAX, true);
+        let start = std::time::Instant::now();
+        let r = d.serve(&mut conn).expect("the session was put back");
+        assert!(start.elapsed() < Duration::from_secs(2));
+        assert_eq!(r.restored, 1);
+        assert_eq!(d.hw.mixer.value("Incall Mic Mute"), vec![0]);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn the_key_must_be_in_whole_on_time_however_slowly_it_comes() {
+        let (mut d, path) = dispatcher("dispatch-auth-time", TEST_RULES, true);
+        d.limits.auth = Duration::from_millis(100);
+        let key = hex(&test_keys().app);
+        // 77 bytes at 20 ms each: far past the limit, though no single read is slow.
+        let mut conn = drip(frames(&[&["auth", &key]]), 20, 1, false);
+        let start = std::time::Instant::now();
+        d.serve(&mut conn);
+        assert!(start.elapsed() < Duration::from_millis(600));
+        assert!(!d.is_authed());
+        cleanup(&path);
     }
 
     #[test]

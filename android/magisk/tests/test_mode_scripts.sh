@@ -328,21 +328,25 @@ eq "exit to normal" "$RC" 0; is_normal_phone; eq "DND off as a normal phone" "$(
 # apply_mode.sh run by hand (not through the helper): the helper reports the new mode,
 # its log and pending within a few seconds, so the app does not keep an old mode and let
 # calls ring unseen. The helper runs for real (2 s loop shortened), with toybox's stat -c
-# and mv -T stood in for, and the app's folder in the case folder.
+# and mv -T stood in for, and the app's folder, the package list and /data/app in the
+# case folder.
 mkdir "$TMP/dbin"
-printf '#!/bin/sh\nexit 0\n' > "$TMP/dbin/log"
+printf '#!/bin/sh\necho "$*" >> "${DAEMON_LOG:-/dev/null}"\nexit 0\n' > "$TMP/dbin/log"
 printf '#!/bin/sh\nexit 0\n' > "$TMP/dbin/chcon"
 cat > "$TMP/dbin/stat" <<'FAKE'
 #!/bin/sh
-# toybox stat -c with %u, %g, %u:%g and %s, read from ls; anything else is unknown.
+# toybox stat -c with %u, %g, %u:%g, %s and %i, read from ls; anything else is unknown.
 [ "$1" = -c ] || exit 1
 [ -e "$3" ] || [ -L "$3" ] || exit 1
-set -- "$2" $(ls -lnd "$3")
+f=$2
+inode=$(ls -id "$3" | awk '{print $1}')
+set -- "$f" $(ls -lnd "$3")
 case "$1" in
   %u) echo "$4" ;;
   %g) echo "$5" ;;
   %u:%g) echo "$4:$5" ;;
   %s) echo "$6" ;;
+  %i) echo "$inode" ;;
   *) exit 1 ;;
 esac
 FAKE
@@ -353,6 +357,7 @@ if [ "$1" = -fT ]; then shift; exec /bin/mv -f "$@"; fi
 exec /bin/mv "$@"
 FAKE
 chmod +x "$TMP/dbin/stat" "$TMP/dbin/mv" "$TMP/dbin/log" "$TMP/dbin/chcon"
+ME=$(id -u)
 state_has() { grep -qx "$1" "$ST/app/files/mode/state" 2>/dev/null; }
 wait_state() {
   n=0
@@ -363,17 +368,26 @@ wait_state() {
   done
   return 1
 }
+# The package list: the app once, as $1 (debuggable 1 or not 0), owned by this user.
+pkg_list() {
+  echo "com.android.shell 2000 0 /data/user/0/com.android.shell platform:privapp none" > "$ST/packages.list"
+  echo "$PKG $ME $1 /data/user/0/$PKG default:privapp:targetSdkVersion=34 3003 0 27 1 @system" >> "$ST/packages.list"
+}
 # The daemon for a case: its folders in the case folder (by their real path, as on a
 # phone), the 2 s loop shortened, apply_mode.sh replaced by a stub that logs its run.
+# Unless the case set one up, the app is a debuggable build of the module's own (as on
+# today's phones).
 start_daemon() {
-  mkdir -p "$ST/app/files/mode"
+  mkdir -p "$ST/app/files/mode" "$ST/dataapp"
+  [ -f "$ST/packages.list" ] || pkg_list 1
   real=$(cd "$ST" && pwd -P)
   printf '#!/bin/sh\necho "apply $*" >> "%s/order"\n' "$ST" > "$ST/apply_mode.sh"
   sed -e "s#/data/adb/pixelcallai#$ST/data#g" -e "s#^APPHOME=.*#APPHOME=$real/app#" \
+    -e "s#^PKGLIST=.*#PKGLIST=$ST/packages.list#" -e "s#^APPCODE=.*#APPCODE=$ST/dataapp#" \
     -e "s#^PATH=.*#PATH=$TMP/dbin:/usr/bin:/bin:/usr/sbin:/sbin#" -e 's#^  sleep 2$#  sleep 0.2#' \
     -e 's#/system/bin/sh "$MODDIR/apply_mode.sh"#sh "$MODDIR/apply_mode.sh"#' \
     "$MOD/mode_daemon.sh" > "$ST/mode_daemon.sh"
-  sh "$ST/mode_daemon.sh" </dev/null >/dev/null 2>&1 &
+  DAEMON_LOG=$ST/daemon.log sh "$ST/mode_daemon.sh" </dev/null >/dev/null 2>&1 &
   DPID=$!
 }
 stop_daemon() {
@@ -381,6 +395,13 @@ stop_daemon() {
   wait "$DPID" 2>/dev/null
 }
 order_count() { c=$(grep -c "^$1" "$ST/order" 2>/dev/null); echo "${c:-0}"; }
+taken_left() { ls "$ST/data" | grep -c taken; }
+# Waits until $1 is gone from the app's folder (taken), at most 5 s.
+wait_gone() {
+  n=0
+  while [ -e "$ST/app/files/mode/$1" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+  [ ! -e "$ST/app/files/mode/$1" ]
+}
 
 setup daemon_follows_hand_run
 echo normal > "$ST/data/mode"
@@ -424,7 +445,10 @@ rm -f "$ST/data/audio_helper.disabled" "$ST/bin/bageo-audio-helper"
 printf 'start call-4\n' > "$ST/app/files/mode/audio_helper"
 wait_state audio_helper_result=missing; eq "no helper reported" "$?" 0
 state_has audio_helper=call-4; eq "that request reported" "$?" 0
+printf 'start call-5' > "$ST/app/files/mode/audio_helper"
+wait_state audio_helper_result=invalid_request; eq "no newline at the end: refused" "$?" 0
 eq "nothing else ran" "$(order_count helper)" 1
+eq "nothing left in root's folder" "$(taken_left)" 0
 stop_daemon
 
 # A phone mode switch goes before the audio helper when both wait.
@@ -441,8 +465,95 @@ n=0; while [ "$(order_count helper)" -lt 1 ] && [ "$n" -lt 50 ]; do sleep 0.1; n
 eq "switch ran first" "$(head -n 1 "$ST/order" 2>/dev/null)" "apply ai sw-1"
 stop_daemon
 
+# Only a request exactly as the app writes it is run: one line, a newline at the end,
+# single spaces, not too long.
+setup daemon_request_whole
+start_daemon
+wait_state daemon=1; eq "daemon up" "$?" 0
+for bad in 'ai x1' 'ai  x2\n' ' ai x3\n' 'ai x4 \n' 'ai x5\nnormal x6\n' 'ai x7\n\n'; do
+  printf "$bad" > "$ST/app/files/mode/request"
+  wait_gone request; eq "malformed request taken: $bad" "$?" 0
+  wait_state error=invalid_request; eq "malformed request refused: $bad" "$?" 0
+done
+long=$(printf 'normal %s' "$(printf 'x%.0s' $(seq 1 140))")
+printf '%s\n' "$long" > "$ST/app/files/mode/request"
+wait_gone request; eq "a request too large is taken" "$?" 0
+wait_state error=invalid_request; eq "and refused" "$?" 0
+eq "none of them ran" "$(order_count apply)" 0
+printf 'ai ok-1 4 3\n' > "$ST/app/files/mode/request"
+n=0; while [ "$(order_count apply)" -lt 1 ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+eq "a whole request runs" "$(cat "$ST/order" 2>/dev/null)" "apply ai ok-1 4 3"
+eq "nothing left in root's folder" "$(taken_left)" 0
+stop_daemon
+
+# What cannot be read as a request holds up nothing: a pipe is dropped unread, a folder
+# with something in it is left where it is (logged once) while the audio helper request
+# and the state go on, and a link is removed without reading what it points to.
+setup daemon_nothing_blocks
+mkdir -p "$ST/bin"
+printf '#!/bin/sh\necho "helper $*" >> "%s/order"\n' "$ST" > "$ST/bin/bageo-audio-helper"
+chmod 700 "$ST/bin/bageo-audio-helper"
+start_daemon
+wait_state daemon=1; eq "daemon up" "$?" 0
+mkfifo "$ST/app/files/mode/request"
+wait_gone request; eq "a pipe is taken away" "$?" 0
+wait_state error=invalid_request; eq "and refused" "$?" 0
+mkdir -p "$ST/app/files/mode/request"
+: > "$ST/app/files/mode/request/keep"
+printf 'start call-9\n' > "$ST/app/files/mode/audio_helper"
+wait_state audio_helper_result=started; eq "the helper request goes on past the folder" "$?" 0
+echo ai > "$ST/data/mode"
+wait_state mode=ai; eq "the state goes on past the folder" "$?" 0
+eq "the folder is left whole" "$(ls "$ST/app/files/mode/request" 2>/dev/null)" keep
+eq "logged once" "$(grep -c 'cannot take request' "$ST/daemon.log" 2>/dev/null)" 1
+rm -rf "$ST/app/files/mode/request"
+mkdir -p "$ST/secret"
+printf 'normal evil-1\n' > "$ST/secret/req"
+ln -s "$ST/secret/req" "$ST/app/files/mode/request"
+wait_gone request; eq "a link is taken away" "$?" 0
+eq "what it points to is left" "$(cat "$ST/secret/req")" "normal evil-1"
+eq "nothing ran from it" "$(order_count apply)" 0
+eq "nothing left in root's folder" "$(taken_left)" 0
+stop_daemon
+
+# Which app's requests run: a release build always; a debuggable build only while it is
+# the module's own (no update installed under /data/app); never an app the package list
+# does not show plainly as the app that owns the folder.
+setup daemon_which_app
+pkg_list 0
+start_daemon
+wait_state daemon=1; eq "daemon up" "$?" 0
+printf 'ai rel-1\n' > "$ST/app/files/mode/request"
+n=0; while [ "$(order_count apply)" -lt 1 ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+eq "a release build switches" "$(order_count apply)" 1
+pkg_list 1
+printf 'ai dbg-1\n' > "$ST/app/files/mode/request"
+n=0; while [ "$(order_count apply)" -lt 2 ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+eq "the module's own debuggable build switches" "$(order_count apply)" 2
+mkdir -p "$ST/dataapp/~~a1b2==/$PKG-c3d4=="
+printf 'ai dbg-2\n' > "$ST/app/files/mode/request"
+wait_state error=app_refused; eq "a debuggable update is refused" "$?" 0
+state_has request=dbg-2; eq "that request reported" "$?" 0
+rm -rf "$ST/dataapp/~~a1b2=="
+pkg_list 0
+echo "$PKG $ME 0 /data/user/0/$PKG x" >> "$ST/packages.list"
+printf 'ai two-1\n' > "$ST/app/files/mode/request"
+wait_state request=two-1; eq "listed twice: taken" "$?" 0
+state_has error=app_refused; eq "listed twice: refused" "$?" 0
+sed "s#^$PKG $ME #$PKG $((ME + 1)) #" "$ST/packages.list" | head -n 2 > "$ST/packages.list.new"
+mv "$ST/packages.list.new" "$ST/packages.list"
+printf 'ai uid-1\n' > "$ST/app/files/mode/request"
+wait_state request=uid-1; eq "another user ID: taken" "$?" 0
+state_has error=app_refused; eq "another user ID: refused" "$?" 0
+rm -f "$ST/packages.list"
+printf 'ai none-1\n' > "$ST/app/files/mode/request"
+wait_state request=none-1; eq "no package list: taken" "$?" 0
+state_has error=app_refused; eq "no package list: refused" "$?" 0
+eq "none of those ran" "$(order_count apply)" 2
+stop_daemon
+
 # The app swaps its folder for a link to a folder that is not its own: nothing there is
-# taken, run, deleted or written. A folder sent as a request is handed back whole.
+# taken, run, deleted or written.
 setup daemon_swapped_folder
 start_daemon
 wait_state daemon=1; eq "daemon up" "$?" 0
@@ -456,13 +567,7 @@ eq "other folder's request left alone" "$(cat "$ST/secret/request" 2>/dev/null)"
 eq "other folder's helper request left alone" "$(cat "$ST/secret/audio_helper" 2>/dev/null)" "start evil-2"
 eq "no state written there" "$([ -e "$ST/secret/state" ] && echo written || echo none)" none
 eq "nothing ran" "$(order_count apply)" 0
-rm -f "$ST/app/files/mode"
-mkdir -p "$ST/app/files/mode/request"
-: > "$ST/app/files/mode/request/keep"
-sleep 1
-eq "folder handed back whole" "$(ls "$ST"/app/files/mode/request.rejected.*/keep 2>/dev/null | wc -l | tr -d ' ')" 1
-eq "nothing ran from it" "$(order_count apply)" 0
-eq "nothing left in root's folder" "$(ls "$ST/data" | grep -c taken)" 0
+eq "nothing left in root's folder" "$(taken_left)" 0
 stop_daemon
 
 echo "checks passed: $PASS, failed: $FAILS"
