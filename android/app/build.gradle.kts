@@ -14,8 +14,8 @@ android {
         applicationId = "com.pixelcallai.streamer"
         minSdk = 29
         targetSdk = 35
-        versionCode = 38
-        versionName = "2.0.0"
+        versionCode = 39
+        versionName = "2.1.0"
         multiDexEnabled = true
         // Default agent URL: localhost, mapped to the PC with `adb reverse tcp:8765 tcp:8787`.
         // Users can override it in the app (Prefs.agentUrl) for Wi-Fi/LAN mode.

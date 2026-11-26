@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml"><img src="https://github.com/h4lo-void/bageo-call/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.0.0"><img src="https://img.shields.io/badge/release-v2.0.0-brightgreen.svg" alt="Release v2.0.0"></a>
+  <a href="https://github.com/h4lo-void/bageo-call/releases/tag/v2.1.0"><img src="https://img.shields.io/badge/release-v2.1.0-brightgreen.svg" alt="Release v2.1.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg" alt="License: AGPL-3.0-only"></a>
   <a href="COMMERCIAL_LICENSE.md"><img src="https://img.shields.io/badge/commercial-dual%20license-gold.svg" alt="Commercial License Available"></a>
 </p>
@@ -230,7 +230,7 @@ Every feature in detail: [Features](docs/en/FEATURES.md).
 
 ## What you need
 
-1. **A spare Android phone** with your SIM, rooted with Magisk or KernelSU, Android 10 or newer. Tested: Google Pixel 7, 7a, 8 and 9.
+1. **A spare Android phone** with your SIM, rooted with Magisk or KernelSU, Android 10 or newer. Tested: Google Pixel (7, 7a, 8 and 9) and Redmi K60 Ultra. Other rooted phones are supported too, but test yours (see below).
 2. **A computer** that is on while calls should be answered: Windows 10/11, macOS, Linux or Docker. With the phone-only edition you don't need a computer.
 3. **A USB cable** (Wi-Fi works too).
 4. **A Gemini API key** from [Google AI Studio](https://aistudio.google.com/apikey), free to get. Within the free quota you pay nothing (in our own tests it covered 10 or more calls a day). Google bills per use only if you go over the free quota or switch to a paid plan.
@@ -256,7 +256,7 @@ Stuck? Every step in detail: [Getting started](docs/en/GETTING_STARTED.md) · [P
 | **Go deeper** | [Architecture](docs/en/ARCHITECTURE.md) · [API](docs/en/API.md) · [MCP](docs/en/MCP.md) · [Roadmap](docs/en/ROADMAP.md) · [Changelog](CHANGELOG.md) · [`android/`](android/README.md) · [`tools/sms_forward/`](tools/sms_forward/README.md) |
 | **Legal** | [Privacy, safety and the law](docs/en/PRIVACY_AND_LEGAL.md) · [Legal disclaimer & operator terms](LEGAL.md) · [Dual & commercial licensing](COMMERCIAL_LICENSE.md) · [Project security & compliance audit](AUDIT_REPORT.md) |
 
-**Test status:** more than 1,400 automated tests in CI, 234 simulated calls in 28 languages, and real calls on Pixel 7, 7a and 9. [Details](docs/en/FEATURES.md#test-status). Reports from other phones and languages help the most: [CONTRIBUTING.md](CONTRIBUTING.md).
+**Test status:** more than 1,400 automated tests in CI, 234 simulated calls in 28 languages, and real calls on Pixel 7, 7a and 9 and on the Redmi K60 Ultra. [Details](docs/en/FEATURES.md#test-status). Reports from other phones and languages help the most: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## FAQ
 
@@ -283,10 +283,14 @@ not allow it at all.
 <details>
 <summary><strong>Which phones are supported?</strong></summary>
 
-Google Pixel 7, 7a, 8 and 9 are tested, on Android 10 or newer. Other rooted
-phones work only if their audio hardware layer lets an app record the call and
-play into it; otherwise the call is answered but one side hears nothing. See
-[Which phones](docs/en/PHONE.md#which-phones).
+Tested: Google Pixel (7, 7a, 8 and 9) and the MediaTek phone Redmi K60 Ultra,
+on Android 10 or newer. Other rooted Android phones are supported too, but we
+have not tested them, so test yours: call it from another phone and talk to the
+AI for about 20 seconds, and Bageo adjusts by itself and shows the result in the
+console and the app. Samsung phones with Exynos chips mostly do not work,
+because they have no system path that carries sound into a call. See
+[Which phones](docs/en/PHONE.md#which-phones) and
+[First use on a new phone](docs/en/PHONE.md#first-use-on-a-new-phone-test-the-call-audio).
 
 </details>
 

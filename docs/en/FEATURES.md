@@ -323,7 +323,7 @@ More, including the techniques that make the biggest difference:
 |---|---|
 | **Automated** | More than 1,400 unit and integration tests run in CI on every change. |
 | **Simulated calls** | 234 calls against Bageo itself, with Gemini playing callers in 28 languages, plus 15 AI errand scenarios. All pass. |
-| **Real phones** | Pixel 7, 7a and 9: answering, interruptions, background sound, sales and scam stalling, blocked numbers, appointment texts, AI call-backs, normal phone mode (including Android 15+), SIM change reporting and urgent 3-way call merge. |
+| **Real phones** | Pixel 7, 7a and 9: answering, interruptions, background sound, sales and scam stalling, blocked numbers, appointment texts, AI call-backs, normal phone mode (including Android 15+), SIM change reporting and urgent 3-way call merge. The MediaTek Redmi K60 Ultra: answering and the call audio check. |
 | **Needs real-world reports** | AI errands dialing out, the call-back's ringback filter on a real ringback, notification channels other than Telegram on live accounts, other languages, the *AI assistant* style, Docker, USB on macOS and Linux. |
 
 Reports from other phones and languages help the most: see

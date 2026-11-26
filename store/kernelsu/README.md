@@ -10,7 +10,7 @@
 
 Bageo lets an AI answer the calls to your own phone number. It runs entirely on a rooted Android phone, so you do not need a computer, and the AI can run on a free Gemini key.
 
-> Tested on a Google Pixel 9 (Android 16) with KernelSU. If you have a spare phone, try it there first.
+> Tested on Google Pixel phones (for example a Pixel 9 on Android 16 with KernelSU) and on the MediaTek Redmi K60 Ultra. Other rooted Android phones are supported too, but we have not tested them, so test yours: call it from another phone and talk to the AI for about 20 seconds, and Bageo adjusts by itself and shows the result in the app. Samsung phones with Exynos chips mostly do not work. If you have a spare phone, try it there first.
 
 ## What it does
 
@@ -95,7 +95,7 @@ License: AGPL-3.0-only. A commercial license is available.
 
 Bageo 让 AI 替你接打到你自己号码的电话。它完全在一台已 root 的 Android 手机上运行，不用电脑，AI 用免费的 Gemini 密钥就能跑。
 
-> 已在 Google Pixel 9（Android 16）+ KernelSU 上实测。有备用手机的话，建议先装在备用手机上试用。
+> 已在 Google Pixel 手机（例如 Android 16 的 Pixel 9 + KernelSU）和联发科的 Redmi K60 Ultra 上实测。其他已 root 的 Android 手机也支持，但我们没测过，请自己测：用另一部电话打给它，跟 AI 讲 20 秒左右，Bageo 会自动调整并在应用里显示结果。三星 Exynos 芯片的手机多半不支持。有备用手机的话，建议先装在备用手机上试用。
 
 ## 功能
 

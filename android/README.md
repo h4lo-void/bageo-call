@@ -2,7 +2,7 @@
 
 This folder holds the phone side of Bageo, which lets an AI voice (Gemini Live)
 answer calls to your own phone number. It builds an Android app and a Magisk /
-KernelSU module. Together they turn a spare rooted phone, such as a Pixel, into an
+KernelSU module. Together they turn a spare rooted phone, such as a Google Pixel, into an
 audio bridge: the app answers calls on your SIM, streams the caller's voice to the
 Bageo agent on your computer and plays the AI's reply back into the call.
 
@@ -15,11 +15,11 @@ The phone does no AI work itself. The package name and module id keep the projec
 earlier working name, so phones already running the computer edition of the module
 update in place. The phone-only edition has its own module id (see below).
 
-**Version 2.0.0:** app `versionName` `2.0.0`, `versionCode` 38; module `version`
-`v2.0.0`, `versionCode` 30 (`module.prop`); release files
-`bageo-phone-module-2.0.0.zip` (**Bageo Uplink**, the bridge edition paired with a
+**Version 2.1.0:** app `versionName` `2.1.0`, `versionCode` 39; module `version`
+`v2.1.0`, `versionCode` 31 (`module.prop`); release files
+`bageo-phone-module-2.1.0.zip` (**Bageo Uplink**, the bridge edition paired with a
 computer, module id `pixelcallai_uplink`) and
-`bageo-phone-standalone-2.0.0.zip` (**Bageo AI Call Agent**, the all-in-one
+`bageo-phone-standalone-2.1.0.zip` (**Bageo AI Call Agent**, the all-in-one
 phone-only edition running Bageo directly inside the Android app via
 `libbageo_agent.so`, bundled `bageo_assets`, and an embedded `WebView` console;
 module id `bageo_ai_call_agent`). A SIM is always picked by its subscription id
@@ -55,13 +55,18 @@ computer and no API fees with a free Gemini key from Google AI Studio.
 | Root | An unlocked bootloader and Magisk or KernelSU. |
 | SIM | One that can receive calls. |
 | Android | 10 or newer (`minSdk 29`). |
-| Phone | **Tested: Pixel 7, 7a, 8 and 9.** Comments in the source refer to Android 16 on those phones. Other phones are untested. |
+| Phone | **Tested: Google Pixel (7, 7a, 8 and 9) and the MediaTek Redmi K60 Ultra.** Comments in the source refer to Android 16 on the Pixels. Other rooted Android phones are supported but untested: test yours (see below). |
 | Computer | Running the Bageo agent, connected by USB (recommended) or on the same network. |
 
 On other phones, success depends on the device's telephony audio HAL. It must let a
 privileged app record the call (`VOICE_DOWNLINK` / `VOICE_CALL` audio source) and
 play into the call through an output device of type `TYPE_TELEPHONY`. A phone that
-lacks either will not work. Try at your own risk.
+lacks either will not work, which is why Samsung phones with Exynos chips mostly do
+not. To test a new phone, install the module, call the phone from another phone and
+talk to the AI for about 20 seconds: the app measures how the AI's voice plays into
+the call, switches to other playback settings when the audio drops (Google Pixel
+phones are only measured), and shows the result (see
+[First use on a new phone](../docs/en/PHONE.md#first-use-on-a-new-phone-test-the-call-audio)).
 
 ## Build
 

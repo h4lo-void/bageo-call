@@ -5,7 +5,7 @@ phone into a two-way audio stream for the agent, and why it has to run as a
 privileged system app. Build, install, permissions and the full message list
 are in [README.md](README.md); the agent side is in
 [docs/en/ARCHITECTURE.md](../docs/en/ARCHITECTURE.md). This page describes app
-`2.0.0` (versionCode 38) in module `v2.0.0` (versionCode 30). The computer edition's module id is
+`2.1.0` (versionCode 39) in module `v2.1.0` (versionCode 31). The computer edition's module id is
 `pixelcallai_uplink` (Bageo Uplink); the phone-only edition's is
 `bageo_ai_call_agent` (Bageo AI Call Agent).
 

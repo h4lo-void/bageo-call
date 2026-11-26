@@ -1,25 +1,25 @@
-# Bageo v2.0.0
+# Bageo v2.1.0
 
-**Bageo on your phone alone, no computer, no API fees.** Bageo AI Call Agent runs entirely on a rooted phone. With a free Google AI Studio Gemini key there are no API fees; in our tests the free limit covered 10 or more calls a day (Google sets the free limit, and it may change).
+**Not only Pixel: other rooted Android phones are supported too.** Tested: Google Pixel and the MediaTek Redmi K60 Ultra. On any other rooted phone, call it from another phone after installing and talk to the AI for about 20 seconds: Bageo adjusts by itself and shows the result in the console and the app. Samsung phones with Exynos chips mostly do not work.
 
-- **Install on a rooted phone.** Flash `bageo-phone-standalone-2.0.0.zip` in KernelSU or Magisk and reboot. Do not unpack it or install `base.apk` as a regular app.
-- **Which file to download.** `bageo-phone-standalone-2.0.0.zip` is Bageo AI Call Agent, the phone-only edition: all of Bageo runs on the phone, no computer needed. `bageo-phone-module-2.0.0.zip` is for Bageo on a computer: use it with the Windows, macOS or Linux installer, or with Docker. Install only one of the two; installing one removes the other at the next reboot.
-- **Tested on a Google Pixel 9 (Android 16) with KernelSU.**
-- **New module ID: `bageo_ai_call_agent`.** If the computer-linked module (`pixelcallai_uplink`) is already installed, the other one is removed at the next reboot, and the same the other way round. The app and its settings stay.
-- **One switch back to a normal phone.** Turn off *AI answering* and the system Phone app, ringers and Do Not Disturb come back.
-- **Also in 2.0.0:** calls follow the caller's language, scam stalling repeats itself less, and phone pairing and saved keys are better protected. The computer, NAS and Docker editions are updated to 2.0.0 too.
+- **Which file to download.** `bageo-phone-standalone-2.1.0.zip` is Bageo AI Call Agent, the phone-only edition: all of Bageo runs on the phone, no computer needed. `bageo-phone-module-2.1.0.zip` is for Bageo on a computer: use it with the Windows, macOS or Linux installer, or with Docker. Install only one of the two; installing one removes the other at the next reboot. Flash the zip in KernelSU or Magisk and reboot; do not unpack it or install `base.apk` as a regular app.
+- **Phones adjust themselves.** If the AI's voice drops in a call, the phone switches to other settings and remembers them. A new phone asks for one test call, and the console then asks whether you heard the AI.
+- **Steadier on MediaTek phones.** The AI's voice no longer breaks up on the Redmi K60 Ultra.
+- **If the AI cannot answer,** the caller hears a "please call again later" message and you get the reason, for example a used-up Gemini quota.
+- **International calls:** the AI greets first once the carrier's warning tone ends, and the console shows phones by name.
+- **Texts you have read stay read,** also in another browser or the phone app.
 
 ## 繁體中文
 
-**只靠手機就能用 Bageo，不用電腦，沒有 API 費用。** Bageo AI Call Agent 整個跑在已 root 的手機上。用 Google AI Studio 的免費 Gemini 金鑰就沒有 API 費用；我們實測免費額度每天 10 通以上夠用（免費額度由 Google 決定，可能會變）。
+**不只 Pixel：其他已 root 的 Android 手機也支援。** 實測過 Google Pixel 和聯發科的 Redmi K60 Ultra。其他已 root 的手機裝好後，用另一支電話打給它，跟 AI 講 20 秒左右：Bageo 會自動調整，並在控制台和 App 告訴你結果。三星 Exynos 晶片的手機多半不支援。
 
-- **裝在已 root 的手機上。** 在 KernelSU 或 Magisk 刷入 `bageo-phone-standalone-2.0.0.zip` 後重開機。不要解壓縮，也不要把 `base.apk` 當一般 App 安裝。
-- **要下載哪個檔。** `bageo-phone-standalone-2.0.0.zip` 是手機獨立版 Bageo AI Call Agent：整個 Bageo 都在手機上，不用電腦。`bageo-phone-module-2.0.0.zip` 是配電腦用的：搭配 Windows、macOS、Linux 安裝檔或 Docker 使用。兩個只能裝一個，裝其中一個會在下次重開機時移除另一個。
-- **已在 Google Pixel 9（Android 16）加 KernelSU 上實測。**
-- **新的模組 ID：`bageo_ai_call_agent`。** 手機上已有電腦連動版模組（`pixelcallai_uplink`）時，另一版會在下次重開機移除，反過來裝也一樣。App 和設定都會保留。
-- **一個開關換回一般手機。** 關掉「AI 接聽」，系統電話 App、響鈴和勿擾就會恢復。
-- **2.0.0 還有：** 電話跟著來電的人用的語言走、詐騙陪聊更少重複、手機配對和存好的金鑰保護更完整。電腦、NAS、Docker 版也一併更新到 2.0.0。
+- **要下載哪個檔。** `bageo-phone-standalone-2.1.0.zip` 是手機獨立版 Bageo AI Call Agent：整個 Bageo 都在手機上，不用電腦。`bageo-phone-module-2.1.0.zip` 是配電腦用的：搭配 Windows、macOS、Linux 安裝檔或 Docker 使用。兩個只能裝一個，裝其中一個會在下次重開機時移除另一個。在 KernelSU 或 Magisk 刷入 zip 後重開機，不要解壓縮，也不要把 `base.apk` 當一般 App 安裝。
+- **手機會自己調整。** 通話中 AI 的聲音掉了，手機會換一組設定並記住。新手機要先打一通測試電話，之後控制台會問你有沒有聽到 AI。
+- **聯發科手機更穩。** Redmi K60 Ultra 上 AI 的聲音不再斷斷續續。
+- **AI 接不了時，** 來電的人會聽到「請稍後再撥」的語音，你也會收到原因，例如 Gemini 額度用完。
+- **國際電話：** 電信提示音播完後 AI 會先打招呼，控制台也用手機名稱顯示手機。
+- **看過的簡訊維持已讀，** 換瀏覽器或用手機 App 看也一樣。
 
-Full notes / 完整說明：[CHANGELOG.md](https://github.com/h4lo-void/bageo-call/blob/v2.0.0/CHANGELOG.md)
+Full notes / 完整說明：[CHANGELOG.md](https://github.com/h4lo-void/bageo-call/blob/v2.1.0/CHANGELOG.md)
 
 <!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
