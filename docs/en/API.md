@@ -180,7 +180,9 @@ Each call record (`call`, and every entry of `calls`) carries, among others:
 - `whitelist_urgent_transfer`: an urgent call from the Whitelist transferred to you
 - `ai_callback`: the AI calling back about an appointment
 - `ai_errand`: an AI errand
-- `persona_ai_fail_hangup`
+- `persona_ai_fail_hangup`: the AI could not be used, so the call was ended
+- `ai_fail_announced`: the "not available" message was played before hanging up
+- `ai_fail_quota` / `ai_fail_key`: why the AI could not be used (Gemini quota or spending cap reached / Gemini key not valid)
 - `ended`
 
 `scam` values:
