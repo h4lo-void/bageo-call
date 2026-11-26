@@ -4341,6 +4341,26 @@ fn kick_after_carrier_prompt(
     }
 }
 
+/// After the carrier's international-call prompt, the model sometimes answers the
+/// warning itself with a wordless turn (`"..."`, silent audio) right after the gate
+/// opens. That turn has audio bytes so the first-audio watchdog is satisfied, yet the
+/// caller heard no greeting. When a turn ends with no words spoken (`turn_out_text`
+/// has no letters or digits) and the AI has still not spoken a word in the call,
+/// ask for the opening once.
+fn silence_turn_after_carrier_prompt(
+    had_carrier_prompt: bool,
+    ai_said_words: bool,
+    turn_out_text: &str,
+    silence_rekicked: bool,
+    line_talking: bool,
+) -> bool {
+    had_carrier_prompt
+        && !ai_said_words
+        && !turn_out_text.chars().any(char::is_alphanumeric)
+        && !silence_rekicked
+        && !line_talking
+}
+
 /// Characters of a short reply in Chinese (「嗯嗯」「好」「對啊」「好的」).
 const ACK_CHARS: &str = "嗯喔哦噢好對对的欸啊阿呃恩唔啦呀耶囉";
 /// Short replies as words of their own ("okay", "mm", 「はい」, "vâng").
@@ -6078,6 +6098,11 @@ pub async fn run_session(
     // The prompt ended while the turn kept off the line was still open: the
     // opening is asked for when that turn ends, if nothing was heard by then.
     let mut intl_kick_owed = false;
+    // Whether any non-dropped model turn has spoken actual words (letters/digits),
+    // and whether we already re-kicked once after a wordless ("...") turn that
+    // answered the carrier's international-call prompt after the gate opened.
+    let mut ai_said_words = false;
+    let mut carrier_silence_rekicked = false;
     // Where the words of the model's current turn start in the transcript (its
     // first output transcription), and when its last turn ended: a turn that
     // ends without any audio played was never heard and leaves the transcript.
@@ -8872,10 +8897,11 @@ pub async fn run_session(
                                     tool_answer_at.map(|t| t.elapsed()),
                                     audio_chunks_out > tool_answer_chunks,
                                 );
+                                let turn_tx_mark = if turn_complete { ai_turn_tx_mark.take() } else { None };
                                 if turn_complete {
                                     // Its words, with no audio played and none held to play
                                     // later (a held or dropped turn is handled on its own).
-                                    if let Some(mark) = ai_turn_tx_mark.take() {
+                                    if let Some(mark) = turn_tx_mark {
                                         if !turn_had_audio && !tool_quiet && prebuf.is_empty() {
                                             let dropped = transcript_out
                                                 .as_ref()
@@ -8983,6 +9009,43 @@ pub async fn run_session(
                                     model_turn_pending = false;
                                     // Heard (or no drop at all): nothing is owed any more.
                                     repeat_guard.turn_complete();
+                                    if turn_out_text.chars().any(char::is_alphanumeric) {
+                                        ai_said_words = true;
+                                        intl_kick_owed = false;
+                                    } else if silence_turn_after_carrier_prompt(
+                                        carrier_prompt_until.is_some(),
+                                        ai_said_words,
+                                        &turn_out_text,
+                                        carrier_silence_rekicked,
+                                        activity_open,
+                                    ) {
+                                        if let Some(mark) = turn_tx_mark {
+                                            if let Some(b) = transcript_out.as_ref() {
+                                                if let Ok(mut g) = b.lock() {
+                                                    let _ = drop_ai_lines_after(&mut g, mark);
+                                                }
+                                            }
+                                        }
+                                        let silent_stt = std::mem::take(&mut turn_out_text);
+                                        out_tx_window.clear();
+                                        carrier_silence_rekicked = true;
+                                        first_delivery_kick_retried = true;
+                                        intl_kick_owed = false;
+                                        match send_text_before_deadline(
+                                            &mut sink,
+                                            greets_kick_text.clone(),
+                                            tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
+                                            "gemini carrier-prompt silence turn greets kick send",
+                                        )
+                                        .await
+                                        {
+                                            Ok(()) => info!(
+                                                "Gemini Live intl caller serial={serial} — wordless turn after the carrier prompt ({:?}): greets kick sent",
+                                                Said(&silent_stt)
+                                            ),
+                                            Err(e) => warn!("Gemini Live carrier-prompt silence turn greets kick failed serial={serial}: {e:#}"),
+                                        }
+                                    }
                                     if let Some(c0) = post_rotate_chunks {
                                         match post_rotate_turn(
                                             audio_chunks_out > c0,
@@ -10951,6 +11014,17 @@ mod tests {
         assert_eq!(kick_after_carrier_prompt(false, true, 0, true, false, false, true), PromptKick::Skip);
         // Neither the prompt's end nor an owed kick: an ordinary turn end asks nothing.
         assert_eq!(kick_after_carrier_prompt(false, false, 0, true, false, false, false), PromptKick::Skip);
+        // Wordless turn ("...") answering the carrier prompt right after the gate opened:
+        assert!(silence_turn_after_carrier_prompt(true, false, "...", false, false));
+        assert!(silence_turn_after_carrier_prompt(true, false, "⋯⋯", false, false));
+        assert!(silence_turn_after_carrier_prompt(true, false, "", false, false));
+        // Real words spoken, no carrier prompt, already rekicked, or caller talking: skip.
+        assert!(!silence_turn_after_carrier_prompt(true, false, "喂？", false, false));
+        assert!(!silence_turn_after_carrier_prompt(true, false, "Hello?", false, false));
+        assert!(!silence_turn_after_carrier_prompt(true, true, "...", false, false));
+        assert!(!silence_turn_after_carrier_prompt(false, false, "...", false, false));
+        assert!(!silence_turn_after_carrier_prompt(true, false, "...", true, false));
+        assert!(!silence_turn_after_carrier_prompt(true, false, "...", false, true));
     }
 
     #[test]
