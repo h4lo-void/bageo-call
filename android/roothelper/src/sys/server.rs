@@ -240,7 +240,7 @@ fn app_dir(uid: u32) -> io::Result<AppDir> {
 #[derive(Clone, Default)]
 pub struct Exit {
     dir: Option<Arc<AppDir>>,
-    key: Option<Published>,
+    key: Option<Arc<Published>>,
 }
 
 fn clean_up(exit: &Exit) {
@@ -422,7 +422,7 @@ pub fn serve() -> i32 {
             return 1;
         }
     };
-    let exit = Exit { dir: Some(dir), key: Some(key) };
+    let exit = Exit { dir: Some(dir), key: Some(Arc::new(key)) };
     write_pid();
     spawn_signal_thread(set, Arc::clone(&life), exit.clone(), true);
     log::info("started; waiting for the app");

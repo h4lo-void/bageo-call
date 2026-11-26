@@ -37,9 +37,16 @@ pub enum Labels {
     NotUsed,
 }
 
-/// Which file was published: compared before the file is removed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Which file was published: compared before the file is removed. The file is kept
+/// open, so its inode cannot be freed and its number given to a file the app makes
+/// under the same name later.
 pub struct Published {
+    id: FileId,
+    _held: std::fs::File,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct FileId {
     dev: u64,
     ino: u64,
 }
@@ -77,8 +84,8 @@ fn is_file(st: &libc::stat) -> bool {
 }
 
 #[allow(clippy::unnecessary_cast)]
-fn file_id(st: &libc::stat) -> Published {
-    Published { dev: st.st_dev as u64, ino: st.st_ino as u64 }
+fn file_id(st: &libc::stat) -> FileId {
+    FileId { dev: st.st_dev as u64, ino: st.st_ino as u64 }
 }
 
 const DIR_FLAGS: libc::c_int = libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
@@ -182,7 +189,7 @@ impl AppDir {
                 return Err(io::Error::last_os_error());
             }
             let mut f = std::fs::File::from(OwnedFd::from_raw_fd(fd));
-            let written = (|| -> io::Result<Published> {
+            let written = (|| -> io::Result<FileId> {
                 if libc::fchown(f.as_raw_fd(), self.uid, self.gid) != 0 || libc::fchmod(f.as_raw_fd(), 0o600) != 0 {
                     return Err(io::Error::last_os_error());
                 }
@@ -193,8 +200,8 @@ impl AppDir {
                 f.sync_all()?;
                 Ok(file_id(&fstat(f.as_raw_fd())?))
             })();
-            let published = match written {
-                Ok(p) => p,
+            let id = match written {
+                Ok(id) => id,
                 Err(e) => {
                     libc::unlinkat(sdir, tmp.as_ptr(), 0);
                     return Err(e);
@@ -208,7 +215,7 @@ impl AppDir {
             }
             between();
             match lstat_at(self.fd.as_raw_fd(), &target) {
-                Ok(st) if is_file(&st) && file_id(&st) == published => Ok(published),
+                Ok(st) if is_file(&st) && file_id(&st) == id => Ok(Published { id, _held: f }),
                 _ => Err(io::Error::other("the published file was replaced")),
             }
         }
@@ -218,7 +225,7 @@ impl AppDir {
     pub fn remove_published(&self, name: &str, p: &Published) -> bool {
         let Ok(c) = cstr(name) else { return false };
         match lstat_at(self.fd.as_raw_fd(), &c) {
-            Ok(st) if is_file(&st) && file_id(&st) == *p => {
+            Ok(st) if is_file(&st) && file_id(&st) == p.id => {
                 // SAFETY: unlinkat without AT_REMOVEDIR on our open folder.
                 unsafe { libc::unlinkat(self.fd.as_raw_fd(), c.as_ptr(), 0) == 0 }
             }
