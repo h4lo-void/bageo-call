@@ -520,13 +520,23 @@ class TelephonyUplinkInjector(
             .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
             .build()
+        // MediaTek's 48 kHz minBuf is ~128 ms (12,300 bytes); minBuf * 6 is 769 ms, which
+        // AudioFlinger's FS_FILLING startup check cannot fill before its ~550 ms BUFFER TIMEOUT
+        // removes the track and triggers stopOutput() -> setOutputDevices(force=1) -> an endless
+        // restoreTrack_l loop every ~240 ms. Keep MediaTek around 160 ms; Pixel stays untouched.
+        val bufBytes = if (mediatek) {
+            minBuf.coerceAtLeast(pcmBytesForMs(MTK_BUFFER_MS, trackRate))
+        } else {
+            (minBuf * 6).coerceAtLeast(trackRate / 5 * 2)
+        }
+        val bufDurationMs = pcmMsForBytes(bufBytes, trackRate).coerceAtLeast(KEEPALIVE_CHUNK_MS)
         var track: AudioTrack? = null
         try {
             track = AudioTrack.Builder()
                 .setAudioAttributes(attrs)
                 .setAudioFormat(format)
                 // Larger stream buffer (~200 ms) reduces underrun clicks on hold music.
-                .setBufferSizeInBytes((minBuf * 6).coerceAtLeast(trackRate / 5 * 2))
+                .setBufferSizeInBytes(bufBytes)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
             val liveTrack = track ?: return false
@@ -555,6 +565,15 @@ class TelephonyUplinkInjector(
             } catch (e: Exception) {
                 Log.w(TAG, "setVolume(1) failed: ${e.message}")
             }
+            if (mediatek && Build.VERSION.SDK_INT >= 31) {
+                try {
+                    liveTrack.setStartThresholdInFrames(
+                        (trackRate / 25).coerceIn(1, liveTrack.bufferSizeInFrames),
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "setStartThresholdInFrames failed: ${e.message}")
+                }
+            }
             track.play()
             synchronized(trackLock) {
                 if (!running.get()) return true
@@ -565,7 +584,9 @@ class TelephonyUplinkInjector(
                 return false
             }
             // Probe write: confirm track accepts data without DEAD_OBJECT.
-            val probe = ShortArray(trackRate / 100) // 10 ms (160 samples at 16 kHz)
+            // On MediaTek, prime the full buffer with silence at once so AudioFlinger leaves
+            // FS_FILLING on the first mixer cycle instead of timing out after ~550 ms.
+            val probe = ShortArray(if (mediatek) bufBytes / 2 else trackRate / 100)
             val probeN = synchronized(writeBarrierLock) {
                 if (!running.get()) null else liveTrack.write(
                     probe,
@@ -613,12 +634,21 @@ class TelephonyUplinkInjector(
             var consecutiveErrors = 0
             val silence = ByteArray(pcmBytesForMs(KEEPALIVE_CHUNK_MS, trackRate))
             var keepaliveLogged = false
+            var seenClearEpoch = clearEpoch.get()
             // When the last call audio was written, and when the audio handed to the
             // track (call audio or keepalive zeros) is estimated to run out.
             var lastAudioAt = SystemClock.elapsedRealtime()
-            var playoutUntil = lastAudioAt
+            var playoutUntil = if (mediatek) {
+                lastAudioAt + pcmMsForBytes(probeN * 2, trackRate)
+            } else {
+                lastAudioAt
+            }
             while (running.get()) {
-                val keepaliveAt = maxOf(lastAudioAt + KEEPALIVE_IDLE_MS, playoutUntil - KEEPALIVE_LEAD_MS)
+                val keepaliveAt = if (mediatek) {
+                    playoutUntil - MTK_KEEPALIVE_LEAD_MS
+                } else {
+                    maxOf(lastAudioAt + KEEPALIVE_IDLE_MS, playoutUntil - KEEPALIVE_LEAD_MS)
+                }
                 val waitMs = (keepaliveAt - SystemClock.elapsedRealtime()).coerceIn(1L, KEEPALIVE_IDLE_MS)
                 val queued = queue.poll(waitMs, TimeUnit.MILLISECONDS)
                 if (queued == null) {
@@ -639,14 +669,23 @@ class TelephonyUplinkInjector(
                         keepaliveBytes += n.toLong()
                         // The track's last sample is now 0; the next audio blends from there.
                         synchronized(joinLock) { lastSample = 0 }
+                        resampler?.reset()
                     }
-                    playoutUntil = maxOf(SystemClock.elapsedRealtime(), playoutUntil) + KEEPALIVE_CHUNK_MS
+                    val now = SystemClock.elapsedRealtime()
+                    playoutUntil = maxOf(now, playoutUntil) + KEEPALIVE_CHUNK_MS
+                    if (mediatek) {
+                        playoutUntil = playoutUntil.coerceAtMost(now + bufDurationMs)
+                    }
                     continue
                 }
                 if (queued.pcm.isEmpty()) continue
                 if (queued.clearEpoch != clearEpoch.get()) {
                     Log.i(TAG, "discard cleared PCM before write epoch=${queued.clearEpoch}")
                     continue
+                }
+                if (queued.clearEpoch != seenClearEpoch) {
+                    seenClearEpoch = queued.clearEpoch
+                    resampler?.reset()
                 }
                 val chunk = queued.pcm
                 // Require preferred=TYPE_TELEPHONY for every write (no earpiece leak).
@@ -731,8 +770,12 @@ class TelephonyUplinkInjector(
                     offset += n
                     bytesWritten += n.toLong()
                 }
+                val writeEndedAt = SystemClock.elapsedRealtime()
                 playoutUntil = maxOf(writeStartedAt, playoutUntil) + pcmMsForBytes(offset, trackRate)
-                lastAudioAt = SystemClock.elapsedRealtime()
+                if (mediatek) {
+                    playoutUntil = playoutUntil.coerceAtMost(writeEndedAt + bufDurationMs)
+                }
+                lastAudioAt = writeEndedAt
             }
             return true
         } catch (e: Exception) {
@@ -807,6 +850,9 @@ class TelephonyUplinkInjector(
         private const val KEEPALIVE_CHUNK_MS = 40L
         /** Write the next chunk when about this much audio is left in the track. */
         private const val KEEPALIVE_LEAD_MS = 20L
+        /** MediaTek track buffer (~160 ms) and keepalive lead (~80 ms) prevent FS_FILLING BUFFER TIMEOUT. */
+        private const val MTK_BUFFER_MS = 160L
+        private const val MTK_KEEPALIVE_LEAD_MS = 80L
 
         internal fun retryDelayMs(attempt: Int): Long =
             (attempt.coerceAtLeast(1) * 100L).coerceAtMost(500L)

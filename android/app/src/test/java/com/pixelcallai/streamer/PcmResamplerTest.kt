@@ -124,4 +124,13 @@ class PcmResamplerTest {
         assertEquals(bytes.size * 3, whole.size)
         assertArrayEquals(whole, joined)
     }
+
+    @Test
+    fun reset_drops_the_previous_sample_after_silence_or_clear() {
+        val r = PcmResampler(16000, 48000)
+        r.processSamples(shortArrayOf(12000, 12000))
+        r.reset()
+        val after = r.processSamples(shortArrayOf(300, 300))
+        assertArrayEquals(shortArrayOf(300, 300, 300, 300, 300, 300), after)
+    }
 }

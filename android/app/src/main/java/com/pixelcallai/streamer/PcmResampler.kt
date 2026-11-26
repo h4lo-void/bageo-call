@@ -58,6 +58,13 @@ class PcmResampler(private val inRate: Int, private val outRate: Int) {
     /** Low byte of a sample whose high byte has not arrived yet. */
     private var carryByte = -1
 
+    /** Drop the carried sample after silence or a cleared queue so the next word starts from 0. */
+    fun reset() {
+        started = false
+        last = 0
+        carryByte = -1
+    }
+
     fun process(pcm: ByteArray): ByteArray {
         if (pcm.isEmpty()) return pcm
         var bytes = pcm
