@@ -242,6 +242,13 @@ fun headAdvanceFrames(prev: Int, cur: Int): Long {
  * stalled head cannot bank time. Head movement beyond that is lost audio. Underruns, long
  * silence and cleared queues only slow the head down and never count. Gaps over
  * [MAX_SAMPLE_GAP_MS] (the sampler did not run) are skipped.
+ *
+ * That only sees a rebuild that throws away more than the allowance. When the server
+ * rebuilds the track every ~250 ms while the app writes in real time (a MediaTek storm),
+ * the head jumps to "everything written" at about real-time pace and looks like playback.
+ * So the meter also counts server restarts directly ([noteRestart]: each start of a new
+ * server track, from the track's routing callback, or a head read that blocked in
+ * restoreTrack_l); [STORM_RESTARTS] of them within [STORM_WINDOW_MS] is a storm.
  */
 class UplinkHealthMeter {
     private var rate = 0
@@ -252,6 +259,10 @@ class UplinkHealthMeter {
     private var audioFrames = 0L
     /** Loss events inside the judging window: time, lost ms, 1 when it was an app rebuild. */
     private val recent = ArrayDeque<LongArray>()
+    /** Server restarts inside [STORM_WINDOW_MS]. */
+    private val restartTimes = ArrayDeque<Long>()
+    private var lastRestartAt = Long.MIN_VALUE / 2
+    private var trackBeganAt = 0L
 
     var lostMs = 0L
         private set
@@ -259,10 +270,17 @@ class UplinkHealthMeter {
         private set
     var rebuilds = 0
         private set
+    /** Server restarts over every track of this profile (merged as in [noteRestart]). */
+    var restarts = 0
+        private set
     var activeMs = 0L
         private set
-
-    val trackRate: Int get() = rate
+    /**
+     * Restarts, loss events and app rebuilds on the latest track more than [SETTLE_MS] after
+     * it began: anything here means that track was still not right late in the call.
+     */
+    var lateEvents = 0
+        private set
 
     /** Call audio (not keepalive zeros) written while this profile was in use. */
     val audioMs: Long get() = if (rate > 0) audioFrames * 1000L / rate else 0L
@@ -271,9 +289,44 @@ class UplinkHealthMeter {
         this.rate = rate
         lastHead = head
         lastAt = nowMs
+        trackBeganAt = nowMs
+        lateEvents = 0
         // Right after start some outputs pull a few periods at once.
         creditFrames = framesFor(CREDIT_CAP_MS)
         tracking = true
+    }
+
+    /**
+     * The profile is used again after a cool-down: earlier storms and losses must not
+     * judge the fresh track at once.
+     */
+    fun freshStart() {
+        recent.clear()
+        restartTimes.clear()
+    }
+
+    /**
+     * The server started a new track for this one (first start, or a restoreTrack_l).
+     * Reports within [RESTART_MERGE_MS] are one restart (the routing callback and a blocked
+     * head read can both see the same one).
+     */
+    fun noteRestart(nowMs: Long) {
+        if (!tracking || nowMs - lastRestartAt < RESTART_MERGE_MS) return
+        lastRestartAt = nowMs
+        restarts++
+        restartTimes.addLast(nowMs)
+        while (restartTimes.isNotEmpty() && nowMs - restartTimes.first() > STORM_WINDOW_MS) restartTimes.removeFirst()
+        noteLate(nowMs)
+    }
+
+    /** [STORM_RESTARTS] server restarts within [STORM_WINDOW_MS]. */
+    fun isStorm(nowMs: Long): Boolean {
+        while (restartTimes.isNotEmpty() && nowMs - restartTimes.first() > STORM_WINDOW_MS) restartTimes.removeFirst()
+        return restartTimes.size >= STORM_RESTARTS
+    }
+
+    private fun noteLate(nowMs: Long) {
+        if (nowMs - trackBeganAt >= SETTLE_MS) lateEvents++
     }
 
     fun endTrack() {
@@ -310,6 +363,7 @@ class UplinkHealthMeter {
         if (ms >= MIN_EVENT_MS) {
             lossEvents++
             record(nowMs, ms, 0L)
+            noteLate(nowMs)
         }
         return ms
     }
@@ -321,6 +375,7 @@ class UplinkHealthMeter {
         lostMs += ms
         lossEvents++
         record(nowMs, ms, 1L)
+        noteLate(nowMs)
     }
 
     private fun record(nowMs: Long, ms: Long, rebuild: Long) {
@@ -333,11 +388,13 @@ class UplinkHealthMeter {
     }
 
     /**
-     * Unhealthy: inside the last [WINDOW_MS], at least [MIN_EVENTS] loss events that
-     * together lost at least [MIN_WINDOW_LOST_MS], or [MIN_REBUILDS] app rebuilds. One
-     * route change at call start (one event) never qualifies.
+     * Unhealthy: a restart storm ([isStorm]); or inside the last [WINDOW_MS], at least
+     * [MIN_EVENTS] loss events that together lost at least [MIN_WINDOW_LOST_MS], or
+     * [MIN_REBUILDS] app rebuilds. The restart at call start (first start plus the one
+     * route change setPreferredDevice causes) never qualifies.
      */
     fun isUnhealthy(nowMs: Long): Boolean {
+        if (isStorm(nowMs)) return true
         prune(nowMs)
         var lost = 0L
         var rebuildCount = 0
@@ -348,8 +405,12 @@ class UplinkHealthMeter {
         return (recent.size >= MIN_EVENTS && lost >= MIN_WINDOW_LOST_MS) || rebuildCount >= MIN_REBUILDS
     }
 
-    /** Share of the time in use that was lost (for picking the least bad profile). */
-    fun lossRate(): Double = if (activeMs > 0) lostMs.toDouble() / activeMs else Double.MAX_VALUE
+    /**
+     * How bad this profile was, per ms in use, for picking the least bad one: lost audio
+     * plus [RESTART_COST_MS] per server restart.
+     */
+    fun lossRate(): Double =
+        if (activeMs > 0) (lostMs + restarts * RESTART_COST_MS).toDouble() / activeMs else Double.MAX_VALUE
 
     private fun framesFor(ms: Long): Long = rate.toLong() * ms / 1000L
 
@@ -361,6 +422,16 @@ class UplinkHealthMeter {
         const val MIN_EVENTS = 3
         const val MIN_WINDOW_LOST_MS = 300L
         const val MIN_REBUILDS = 3
+        /** One restart reported twice (callback and blocked read) is one. */
+        const val RESTART_MERGE_MS = 120L
+        /** A storm: this many server restarts within [STORM_WINDOW_MS] (a storm is ~4 per second). */
+        const val STORM_RESTARTS = 5
+        const val STORM_WINDOW_MS = 2_000L
+        /** After this long a track should be settled; later trouble counts in [lateEvents]. */
+        const val SETTLE_MS = 2_000L
+        const val RESTART_COST_MS = 100L
+        /** A head read this slow ran restoreTrack_l (a normal read takes microseconds). */
+        const val SLOW_READ_MS = 40L
     }
 }
 
@@ -389,7 +460,8 @@ const val MIN_MEASURED_AUDIO_MS = 10_000L
  * Otherwise an unhealthy final profile (every profile tried) → problem and the memory is
  * dropped. A profile reached only because others could not open a track
  * ([reachedByOpenFailure] while the start never lost audio) is not stored. A final
- * profile that stayed healthy through [MIN_MEASURED_AUDIO_MS] of voice is remembered:
+ * profile that stayed healthy through [MIN_MEASURED_AUDIO_MS] of voice, with no restart or
+ * loss on its last track after it settled ([finalClean]), is remembered:
  * adjusted when this call switched away from a profile that lost audio, when it is not
  * this phone's default first profile ([finalIsDefault]), or after an owner report; ok
  * otherwise. A short call changes
@@ -406,8 +478,10 @@ fun decideTune(
     finalIsDefault: Boolean,
     reachedByOpenFailure: Boolean = false,
     keepOwnerProblem: Boolean = false,
+    finalClean: Boolean = true,
 ): TuneDecision {
-    val long = finalAudioMs >= MIN_MEASURED_AUDIO_MS
+    // Healthy enough to store: long, and the final track had no trouble late in the call.
+    val long = finalAudioMs >= MIN_MEASURED_AUDIO_MS && finalClean
     if (!autoSwitch) {
         return when {
             keepOwnerProblem -> TuneDecision()
@@ -471,6 +545,11 @@ class UplinkTuner(
     /** Every profile failed to open once; the tuner went back to [start] and stays there. */
     private var openExhausted = false
     private var noDevice = false
+    /** Profiles that already got their one same-settings retry after a cool-down. */
+    private val retried = HashSet<UplinkProfile>()
+    /** Cool-down rebuilds so far (same settings or a switch). */
+    var cooldowns = 0
+        private set
 
     fun meter(): UplinkHealthMeter = meters.getOrPut(current) { UplinkHealthMeter() }
 
@@ -492,8 +571,19 @@ class UplinkTuner(
      * (measure only, or every profile was tried and this one lost the least).
      */
     fun onUnhealthy(): UplinkProfile? {
-        if (!unhealthy.add(current)) return null
-        if (!autoSwitch || settled) return null
+        if (current in unhealthy) return null
+        if (!autoSwitch) {
+            unhealthy.add(current)
+            return null
+        }
+        // A storm can keep itself going (each dead track's stopOutput kills the next one),
+        // so the same settings get one fresh try after a cool-down before the ladder moves.
+        if (!settled && retried.add(current)) {
+            meters[current]?.freshStart()
+            return current
+        }
+        unhealthy.add(current)
+        if (settled) return null
         nextUntried()?.let { return switchTo(it, forLoss = true) }
         settled = true
         val best = meters.entries
@@ -501,6 +591,17 @@ class UplinkTuner(
             .minByOrNull { it.value.lossRate() }
             ?.key
         return if (best != null && best != current) switchTo(best, forLoss = true) else null
+    }
+
+    /**
+     * How long to keep every track closed before the rebuild [onUnhealthy] asked for, so
+     * the route settles first: [FIRST_COOLDOWN_MS], doubling each time, at most
+     * [MAX_COOLDOWN_MS].
+     */
+    fun nextCooldownMs(): Long {
+        val ms = (FIRST_COOLDOWN_MS shl cooldowns.coerceAtMost(8)).coerceAtMost(MAX_COOLDOWN_MS)
+        cooldowns++
+        return ms
     }
 
     /**
@@ -526,6 +627,7 @@ class UplinkTuner(
         tried.add(p)
         switches++
         if (forLoss) lossSwitches++
+        meters[p]?.freshStart()
         return p
     }
 
@@ -541,6 +643,12 @@ class UplinkTuner(
         }
         return Triple(lost, events, rebuilds)
     }
+
+    /** Server restarts seen over every profile of the call. */
+    fun serverRestarts(): Int = meters.values.sumOf { it.restarts }
+
+    /** The current profile's last track had no restart or loss after it settled. */
+    fun finalClean(): Boolean = (meters[current]?.lateEvents ?: 0) == 0
 
     /**
      * What to store once the call is over. A call whose track never went live is
@@ -572,7 +680,13 @@ class UplinkTuner(
             finalIsDefault = samePlan(current, defaultStart),
             reachedByOpenFailure = current != start,
             keepOwnerProblem = keepOwnerProblem,
+            finalClean = finalClean(),
         )
+    }
+
+    companion object {
+        const val FIRST_COOLDOWN_MS = 800L
+        const val MAX_COOLDOWN_MS = 3_200L
     }
 }
 
@@ -596,4 +710,10 @@ data class UplinkHealthReport(
     val fit: AudioFit,
     val reason: String?,
     val caps: TelephonyCaps,
+    /** Server-side track restarts seen (restoreTrack_l). */
+    val restarts: Int = 0,
+    /** Rebuilds held back by a cool-down. */
+    val cooldowns: Int = 0,
+    /** The final profile's last track had no trouble after it settled. */
+    val finalClean: Boolean = true,
 )

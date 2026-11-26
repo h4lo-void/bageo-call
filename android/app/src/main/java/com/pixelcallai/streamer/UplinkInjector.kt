@@ -8,8 +8,11 @@ import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
+import android.media.AudioRouting
 import android.media.AudioTrack
 import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
 import android.os.SystemClock
 import android.util.Log
 import java.io.File
@@ -203,6 +206,9 @@ class TelephonyUplinkInjector(
     /** Set by the sampler: the worker rebuilds the track with [UplinkTuner.current]. */
     @Volatile private var switchRequested = false
     private var sampler: Thread? = null
+    /** Delivers each track's routing callbacks (one per server track start). */
+    private var routingThread: HandlerThread? = null
+    @Volatile private var routingHandler: Handler? = null
     // Worker-thread only.
     private var caps = TelephonyCaps()
     private var writeErrors = 0
@@ -267,6 +273,10 @@ class TelephonyUplinkInjector(
             meterOfTrack = null
         }
         switchRequested = false
+        routingThread = HandlerThread("telephony-uplink-routing").also {
+            it.start()
+            routingHandler = Handler(it.looper)
+        }
         worker = Thread({
             runTrackLoop(tel)
         }, "telephony-uplink").also {
@@ -387,6 +397,9 @@ class TelephonyUplinkInjector(
 
         sampler?.interrupt()
         sampler = null
+        routingHandler = null
+        routingThread?.quitSafely()
+        routingThread = null
         val currentWorker = worker
         currentWorker?.interrupt()
         synchronized(writeBarrierLock) {
@@ -539,8 +552,13 @@ class TelephonyUplinkInjector(
             if (switchRequested) {
                 switchRequested = false
                 openFailSince = 0L
-                val profile = synchronized(meterLock) { t.current }
-                Log.w(TAG, "uplink tune: rebuilding the track with profile=${profile.id}")
+                // The old track is fully released (runOneTrack's finally). Keep every track
+                // closed for a while so the route settles: on MediaTek each dead track's
+                // stopOutput forces setOutputDevices and kills the next one, so rebuilding
+                // at once keeps the storm going. Queued audio waits meanwhile.
+                val (profile, coolMs) = synchronized(meterLock) { t.current to t.nextCooldownMs() }
+                Log.w(TAG, "uplink tune: cool-down ${coolMs}ms, then rebuilding the track with profile=${profile.id}")
+                if (!sleepWhileRunning(coolMs)) break
                 continue
             }
             if (wentLive) {
@@ -584,6 +602,9 @@ class TelephonyUplinkInjector(
         val switches: Int,
         val autoSwitch: Boolean,
         val live: Boolean,
+        val restarts: Int,
+        val cooldowns: Int,
+        val finalClean: Boolean,
     )
 
     /** Playback head of [track]; null when the track was released meanwhile. */
@@ -591,6 +612,29 @@ class TelephonyUplinkInjector(
         track.playbackHeadPosition
     } catch (_: Exception) {
         null
+    }
+
+    /** Sleeps [ms] in short steps; false when stopped or interrupted meanwhile. */
+    private fun sleepWhileRunning(ms: Long): Boolean {
+        val until = SystemClock.elapsedRealtime() + ms
+        while (running.get()) {
+            val left = until - SystemClock.elapsedRealtime()
+            if (left <= 0) return true
+            try {
+                Thread.sleep(left.coerceAtMost(50L))
+            } catch (_: InterruptedException) {
+                return false
+            }
+        }
+        return false
+    }
+
+    /** A routing callback: the server started a new track for [track]. */
+    private fun onServerTrackStart(track: AudioTrack) {
+        val now = SystemClock.elapsedRealtime()
+        synchronized(meterLock) {
+            if (meterTrack === track) meterOfTrack?.noteRestart(now)
+        }
     }
 
     private fun callConnected(): Boolean = try {
@@ -655,9 +699,14 @@ class TelephonyUplinkInjector(
      * (a Binder call that can stall), and the worker must never wait on it. The sample only
      * counts if the same track is still the measured one afterwards; a track the worker
      * released in between throws IllegalStateException or reads 0, and is skipped.
+     *
+     * The sample time is taken before the read: a read that runs restoreTrack_l returns the
+     * head as of the restore, and timing it after the (slow) restore would hand the meter
+     * the restore time as playing time. Such a slow read is itself a server restart.
      */
     private fun runSampler() {
         var loggedEvents = 0
+        var loggedRestarts = 0
         while (running.get()) {
             try {
                 Thread.sleep(HEALTH_SAMPLE_MS)
@@ -665,13 +714,21 @@ class TelephonyUplinkInjector(
                 break
             }
             val track = synchronized(meterLock) { meterTrack } ?: continue
+            val readAt = SystemClock.elapsedRealtime()
             val head = readHead(track) ?: continue
             val now = SystemClock.elapsedRealtime()
             synchronized(meterLock) {
                 if (meterTrack !== track) return@synchronized
                 val meter = meterOfTrack ?: return@synchronized
                 val t = tuner ?: return@synchronized
-                val lost = meter.sample(now, head)
+                if (now - readAt >= UplinkHealthMeter.SLOW_READ_MS) {
+                    meter.noteRestart(now)
+                    if (loggedRestarts < 5 || loggedRestarts % 20 == 0) {
+                        Log.w(TAG, "uplink health: head read took ${now - readAt}ms (server restart) restarts=${meter.restarts}")
+                    }
+                    loggedRestarts++
+                }
+                val lost = meter.sample(readAt, head)
                 if (lost >= UplinkHealthMeter.MIN_EVENT_MS && (loggedEvents < 5 || loggedEvents % 20 == 0)) {
                     Log.w(
                         TAG,
@@ -682,11 +739,12 @@ class TelephonyUplinkInjector(
                 if (lost >= UplinkHealthMeter.MIN_EVENT_MS) loggedEvents++
                 if (!switchRequested && !t.isUnhealthy(t.current) && meter.isUnhealthy(now)) {
                     val from = t.current
+                    val storm = meter.isStorm(now)
                     val next = t.onUnhealthy()
                     Log.w(
                         TAG,
-                        "uplink health: profile=${from.id} unhealthy lost_ms=${meter.lostMs} " +
-                            "events=${meter.lossEvents} rebuilds=${meter.rebuilds} -> " +
+                        "uplink health: profile=${from.id} unhealthy storm=$storm restarts=${meter.restarts} " +
+                            "lost_ms=${meter.lostMs} events=${meter.lossEvents} rebuilds=${meter.rebuilds} -> " +
                             (next?.id ?: "stay") + " measure_only=${!t.autoSwitch}",
                     )
                     if (next != null) switchRequested = true
@@ -727,6 +785,9 @@ class TelephonyUplinkInjector(
                     switches = t.switches,
                     autoSwitch = t.autoSwitch,
                     live = t.everLive,
+                    restarts = t.serverRestarts(),
+                    cooldowns = t.cooldowns,
+                    finalClean = t.finalClean(),
                 )
             }
             val decision = snap.decision
@@ -755,6 +816,9 @@ class TelephonyUplinkInjector(
                 fit = UplinkTuneStore.fit(appContext),
                 reason = decision.reason ?: UplinkTuneStore.reason(appContext),
                 caps = caps,
+                restarts = snap.restarts,
+                cooldowns = snap.cooldowns,
+                finalClean = snap.finalClean,
             )
             Log.i(
                 TAG,
@@ -763,6 +827,7 @@ class TelephonyUplinkInjector(
                     "buffer_ms=${report.bufferMs} lost_ms=${report.lostMs} events=${report.lossEvents} " +
                     "rebuilds=${report.rebuilds} write_errors=${report.writeErrors} " +
                     "underruns=${report.underruns} switches=${report.switches} " +
+                    "restarts=${report.restarts} cooldowns=${report.cooldowns} final_clean=${report.finalClean} " +
                     "measure_only=${report.measureOnly} audio_ms=${report.audioMs} " +
                     "live=${report.live} fit=${report.fit.id} reason=${report.reason ?: "-"}",
             )
@@ -827,6 +892,7 @@ class TelephonyUplinkInjector(
         // Frames handed to this track (probe, keepalive, call audio) and call audio alone.
         var trackFrames = 0L
         var audioFrames = 0L
+        var restartListener: AudioRouting.OnRoutingChangedListener? = null
         try {
             track = AudioTrack.Builder()
                 .setAudioAttributes(attrs)
@@ -943,6 +1009,19 @@ class TelephonyUplinkInjector(
                 meterTrack = liveTrack
                 meterOfTrack = meter
                 tuner.markLive()
+            }
+            // Every start of a server track for this AudioTrack (also each restoreTrack_l)
+            // sends AUDIO_CLIENT_STARTED for its port, which reaches this listener (AOSP
+            // Threads.cpp addTrack_l -> AudioSystem ioConfigChanged -> AudioTrack
+            // onAudioDeviceUpdate, Android 12 to 16). Only counted, never acted on here.
+            routingHandler?.let { handler ->
+                val listener = AudioRouting.OnRoutingChangedListener { onServerTrackStart(liveTrack) }
+                try {
+                    liveTrack.addOnRoutingChangedListener(listener, handler)
+                    restartListener = listener
+                } catch (e: Exception) {
+                    Log.w(TAG, "routing listener failed: ${e.message}")
+                }
             }
             var consecutiveErrors = 0
             val silence = ByteArray(pcmBytesFor(KEEPALIVE_CHUNK_MS, trackRate, channels))
@@ -1109,6 +1188,12 @@ class TelephonyUplinkInjector(
                 if (activeTrack === track) activeTrack = null
             }
             val liveTrack = track
+            restartListener?.let { listener ->
+                try {
+                    liveTrack?.removeOnRoutingChangedListener(listener)
+                } catch (_: Exception) {
+                }
+            }
             if (wentLive && liveTrack != null) {
                 // A live track that ends while the call goes on, and not for a profile switch,
                 // failed: the audio still in it is lost.

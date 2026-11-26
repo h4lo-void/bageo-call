@@ -111,6 +111,7 @@ pub fn log_line(serial: &str, msg: &Value) -> String {
     format!(
         "uplink health serial={serial} start={} final={} source={} rate={} channels={} buffer_ms={} \
          lost_ms={} loss_events={} rebuilds={} write_errors={} underruns={} switches={} \
+         restarts={} cooldowns={} final_clean={} \
          measure_only={} audio_ms={} live={} fit={fit} reason={} maker={} model={} soc={} \
          soc_model={} sdk={} caps_rates={} caps_channels={} caps_masks={} caps_encodings={}",
         known(msg, "start_profile", PROFILES),
@@ -125,6 +126,13 @@ pub fn log_line(serial: &str, msg: &Value) -> String {
         num(msg, "write_errors"),
         num(msg, "underruns"),
         num(msg, "switches"),
+        num(msg, "restarts"),
+        num(msg, "cooldowns"),
+        match msg.get("final_clean").and_then(Value::as_bool) {
+            Some(true) => "true",
+            Some(false) => "false",
+            None => "-",
+        },
         flag(msg, "measure_only"),
         num(msg, "audio_ms"),
         flag(msg, "live"),
@@ -168,6 +176,9 @@ mod tests {
             "write_errors": 0,
             "underruns": 3,
             "switches": 1,
+            "restarts": 9,
+            "cooldowns": 2,
+            "final_clean": true,
             "measure_only": false,
             "audio_ms": 31000,
             "live": true,
@@ -189,10 +200,17 @@ mod tests {
             line,
             "uplink health serial=pixel-1 start=standard final=primed source=forced rate=48000 \
              channels=1 buffer_ms=160 lost_ms=2400 loss_events=21 rebuilds=0 write_errors=0 \
-             underruns=3 switches=1 measure_only=false audio_ms=31000 live=true fit=adjusted \
+             underruns=3 switches=1 restarts=9 cooldowns=2 final_clean=true measure_only=false \
+             audio_ms=31000 live=true fit=adjusted \
              reason=- maker=Xiaomi model=Phone_Model_X soc=Mediatek soc_model=MT6985 sdk=34 \
              caps_rates=[44100,48000] caps_channels=[] caps_masks=[12] caps_encodings=[2]"
         );
+        // A report from an app that does not send the newer fields.
+        let mut older = report();
+        for key in ["restarts", "cooldowns", "final_clean"] {
+            older.as_object_mut().unwrap().remove(key);
+        }
+        assert!(log_line("pixel-1", &older).contains(" restarts=0 cooldowns=0 final_clean=- "));
     }
 
     #[test]
