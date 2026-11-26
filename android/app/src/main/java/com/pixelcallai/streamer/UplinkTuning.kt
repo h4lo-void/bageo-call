@@ -235,8 +235,9 @@ fun headAdvanceFrames(prev: Int, cur: Int): Long {
  *
  * Each [sample] allows the head to move by the real time since the last one plus unused
  * credit from earlier samples; the credit carried over is capped at [CREDIT_CAP_MS], so a
- * stalled head cannot bank time. Head movement beyond that is lost audio. Underruns, long silence and cleared queues only slow the head down and
- * never count. Gaps over [MAX_SAMPLE_GAP_MS] (the sampler did not run) are skipped.
+ * stalled head cannot bank time. Head movement beyond that is lost audio. Underruns, long
+ * silence and cleared queues only slow the head down and never count. Gaps over
+ * [MAX_SAMPLE_GAP_MS] (the sampler did not run) are skipped.
  */
 class UplinkHealthMeter {
     private var rate = 0
@@ -304,7 +305,7 @@ class UplinkHealthMeter {
         lostMs += ms
         if (ms >= MIN_EVENT_MS) {
             lossEvents++
-            recent.addLast(longArrayOf(nowMs, ms, 0L))
+            record(nowMs, ms, 0L)
         }
         return ms
     }
@@ -315,7 +316,16 @@ class UplinkHealthMeter {
         rebuilds++
         lostMs += ms
         lossEvents++
-        recent.addLast(longArrayOf(nowMs, ms, 1L))
+        record(nowMs, ms, 1L)
+    }
+
+    private fun record(nowMs: Long, ms: Long, rebuild: Long) {
+        recent.addLast(longArrayOf(nowMs, ms, rebuild))
+        prune(nowMs)
+    }
+
+    private fun prune(nowMs: Long) {
+        while (recent.isNotEmpty() && nowMs - recent.first()[0] > WINDOW_MS) recent.removeFirst()
     }
 
     /**
@@ -324,7 +334,7 @@ class UplinkHealthMeter {
      * route change at call start (one event) never qualifies.
      */
     fun isUnhealthy(nowMs: Long): Boolean {
-        while (recent.isNotEmpty() && nowMs - recent.first()[0] > WINDOW_MS) recent.removeFirst()
+        prune(nowMs)
         var lost = 0L
         var rebuildCount = 0
         for (e in recent) {
@@ -334,7 +344,7 @@ class UplinkHealthMeter {
         return (recent.size >= MIN_EVENTS && lost >= MIN_WINDOW_LOST_MS) || rebuildCount >= MIN_REBUILDS
     }
 
-    /** Lost ms per second the profile was in use (for picking the least bad one). */
+    /** Share of the time in use that was lost (for picking the least bad profile). */
     fun lossRate(): Double = if (activeMs > 0) lostMs.toDouble() / activeMs else Double.MAX_VALUE
 
     private fun framesFor(ms: Long): Long = rate.toLong() * ms / 1000L
