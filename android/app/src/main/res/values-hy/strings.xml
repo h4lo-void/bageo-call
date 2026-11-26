@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Օգտագործե՞լ որպես սովորական հեռախոս։</string>
     <string name="connection_hint_usb">USB (լռելյայն, խորհուրդ է տրվում)՝ թողեք ws://127.0.0.1:8765։ Համակարգչի ծրագիրն ավտոմատ ուղղորդում է այս պորտը USB մալուխով՝ adb reverse-ի միջոցով։</string>
     <string name="connection_hint_wifi">Wi-Fi՝ մուտքագրեք համակարգչի ծրագրում նշված հասցեն, օր.՝ ws://192.0.2.10:8787/ws?token=… Հեռախոսը և համակարգիչը պետք է նույն ցանցում լինեն։</string>
+    <string name="fit_adjusted">Զանգի ձայնը ավտոմատ կարգավորվեց</string>
+    <string name="fit_noted">Գրանցվեց՝ այս հեռախոսի զանգի ձայնի հետ խնդիր կա</string>
+    <string name="fit_problem">Զանգի ձայնի հետ խնդիր կա, և բոլոր կարգավորումները փորձվել են. Տե՛ս ուղեցույցի «Նոր հեռախոսի առաջին օգտագործումը» բաժինը.</string>
+    <string name="fit_retest">Զանգի ձայնի այլ կարգավորումներ պատրաստ են. Դրանք փորձելու համար նորից զանգահարեք այս հեռախոսին.</string>
+    <string name="fit_unsupported">Այս հեռախոսը չի կարող AI-ի ձայնը ուղարկել զանգերին</string>
+    <string name="fit_untested">Զանգի ձայնը դեռ չի ստուգվել՝ զանգահարեք այս հեռախոսին մեկ այլ հեռախոսից և մոտ 20 վայրկյան խոսեք AI-ի հետ. Դրանից հետո Bageo-ն ինքը կկարգավորի այն.</string>
     <string name="grant_perms">Տվեք պահանջվող թույլտվությունները, ապա կրկին սեղմեք Միացնել ծառայությունը։</string>
-    <string name="header_compat">Փորձարկված է Pixel 7, 7a, 8 և 9-ում։ Այլ root արված հեռախոսներ կարող են աշխատել՝ փորձեք ձեր ռիսկով։</string>
+    <string name="header_compat">Փորձարկվել է Google Pixel-ի և Redmi K60 Ultra-ի վրա. root ունեցող այլ հեռախոսներ նույնպես աջակցվում են, սակայն ստուգեք ձերը՝ զանգահարեք դրան մեկ այլ հեռախոսից և մոտ 20 վայրկյան խոսեք AI-ի հետ.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Տարբերակ %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo-ն %1$s է (տարբերակը տարբեր է)</string>

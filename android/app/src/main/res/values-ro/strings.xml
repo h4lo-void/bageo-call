@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Folosești ca telefon obișnuit?</string>
     <string name="connection_hint_usb">USB (implicit, recomandat): păstrează ws://127.0.0.1:8765. Programul de pe calculator redirecționează automat acest port prin cablul USB cu adb reverse.</string>
     <string name="connection_hint_wifi">Wi-Fi: introdu adresa afișată de programul de pe calculator, de exemplu ws://192.0.2.10:8787/ws?token=… Telefonul și calculatorul trebuie să fie în aceeași rețea.</string>
+    <string name="fit_adjusted">Sunetul apelurilor a fost reglat automat</string>
+    <string name="fit_noted">Notat: sunetul apelurilor de pe acest telefon are o problemă</string>
+    <string name="fit_problem">Sunetul apelurilor are o problemă și toate setările au fost încercate. Vezi „Prima utilizare pe un telefon nou” în ghid.</string>
+    <string name="fit_retest">Alte setări pentru sunetul apelurilor sunt gata. Sună din nou acest telefon pentru a le testa.</string>
+    <string name="fit_unsupported">Acest telefon nu poate trimite vocea AI în apeluri</string>
+    <string name="fit_untested">Sunetul apelurilor nu a fost încă testat: sună acest telefon de pe alt telefon și vorbește cu AI timp de aproximativ 20 de secunde. Apoi Bageo îl reglează singur.</string>
     <string name="grant_perms">Acordă permisiunile cerute, apoi atinge din nou Pornește serviciul.</string>
-    <string name="header_compat">Testat pe Pixel 7, 7a, 8 și 9. Alte telefoane cu root pot funcționa; încearcă pe propria răspundere.</string>
+    <string name="header_compat">Testat pe Google Pixel și Redmi K60 Ultra. Sunt acceptate și alte telefoane cu root, dar testează-l pe al tău: sună-l de pe alt telefon și vorbește cu AI timp de aproximativ 20 de secunde.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versiunea %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo este %1$s (versiune diferită)</string>

@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">د عادي فون په توګه وکارول شي؟</string>
     <string name="connection_hint_usb">USB (اصلي، سپارښت شوی): ws://127.0.0.1:8765 پرېږدئ. د کمپیوټر پروګرام دا پورټ د USB مزي له لارې په adb reverse خپله لېږدوي.</string>
     <string name="connection_hint_wifi">Wi-Fi: د کمپیوټر پروګرام ښودل شوې پته دننه کړئ، لکه ws://192.0.2.10:8787/ws?token=… فون او کمپیوټر باید په یوه شبکه کې وي.</string>
+    <string name="fit_adjusted">د زنګ غږ په اتوماتيک ډول برابر شو</string>
+    <string name="fit_noted">ثبت شو: د دې فون د زنګ په غږ کې ستونزه شته</string>
+    <string name="fit_problem">د زنګ په غږ کې ستونزه شته او ټول تنظیمات ازمویل شوي. په لارښود کې «په نوي فون کې لومړی ځل کارول» وګورئ.</string>
+    <string name="fit_retest">د زنګ د غږ نور تنظیمات چمتو دي. د ازمایښت لپاره دې فون ته بیا زنګ ووهئ.</string>
+    <string name="fit_unsupported">دا فون نشي کولای د AI غږ زنګونو ته ولیږي</string>
+    <string name="fit_untested">د زنګ غږ لا نه دی ازمویل شوی: له بل فون څخه دې فون ته زنګ ووهئ او شاوخوا 20 ثانیې له AI سره خبرې وکړئ. بیا به Bageo پخپله دا برابر کړي.</string>
     <string name="grant_perms">غوښتل شوې اجازې ورکړئ، بیا ځل «چوپړتیا پیلول» کېکاږئ.</string>
-    <string name="header_compat">پر Pixel 7، 7a، 8 او 9 ازمویل شوی. نور روټ شوي فونونه ښایي کار وکړي؛ په خپل مسوولیت یې وازمایئ.</string>
+    <string name="header_compat">په Google Pixel او Redmi K60 Ultra کې ازمویل شوی. نور root شوي فونونه هم ملاتړ کیږي، خو خپل فون وازمویئ: له بل فون څخه ورته زنګ ووهئ او شاوخوا 20 ثانیې له AI سره خبرې وکړئ.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">نسخه %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo نسخه %1$s ده (نسخه توپیر لري)</string>

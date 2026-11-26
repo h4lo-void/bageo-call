@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Tumia kama simu ya kawaida?</string>
     <string name="connection_hint_usb">USB (chaguomsingi, inapendekezwa): acha ws://127.0.0.1:8765. Programu ya kompyuta huelekeza mlango huu kupitia kebo ya USB kwa adb reverse kiotomatiki.</string>
     <string name="connection_hint_wifi">Wi-Fi: weka anwani inayoonyeshwa na kompyuta, mfano ws://192.0.2.10:8787/ws?token=… Simu na kompyuta lazima ziwe kwenye mtandao mmoja.</string>
+    <string name="fit_adjusted">Sauti ya simu imerekebishwa kiotomatiki</string>
+    <string name="fit_noted">Imebainishwa: simu hii ina tatizo la sauti ya simu</string>
+    <string name="fit_problem">Sauti ya simu ina tatizo na mipangilio yote imejaribiwa. Tazama “Matumizi ya kwanza kwenye simu mpya” kwenye mwongozo.</string>
+    <string name="fit_retest">Mipangilio mingine ya sauti ya simu iko tayari. Piga simu tena kwenda simu hii ili kuijaribu.</string>
+    <string name="fit_unsupported">Simu hii haiwezi kutuma sauti ya AI ndani ya mazungumzo ya simu</string>
+    <string name="fit_untested">Sauti ya simu bado haijajaribiwa: piga simu kwenda simu hii kutoka simu nyingine na zungumza na AI kwa takriban sekunde 20. Kisha Bageo itairekebisha yenyewe.</string>
     <string name="grant_perms">Ruhusu ruhusa zilizoombwa, kisha uguse Anzisha huduma tena.</string>
-    <string name="header_compat">Imejaribiwa kwenye Pixel 7, 7a, 8 na 9. Simu nyingine zenye root zinaweza kufanya kazi; jaribu kwa hatari yako mwenyewe.</string>
+    <string name="header_compat">Imejaribiwa kwenye Google Pixel na Redmi K60 Ultra. Simu nyingine zenye root pia zinatumika, lakini jaribu yako: ipigie kutoka simu nyingine na zungumza na AI kwa takriban sekunde 20.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Toleo %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo ni %1$s (toleo ni tofauti)</string>

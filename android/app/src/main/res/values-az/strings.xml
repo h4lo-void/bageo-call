@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Adi telefon kimi işlədilsin?</string>
     <string name="connection_hint_usb">USB (standart, tövsiyə olunur): ws://127.0.0.1:8765 saxlayın. Kompüter proqramı bu portu USB kabel üzərindən adb reverse ilə avtomatik yönləndirir.</string>
     <string name="connection_hint_wifi">Wi-Fi: kompüter proqramında göstərilən ünvanı yazın, məs. ws://192.0.2.10:8787/ws?token=… Telefon və kompüter eyni şəbəkədə olmalıdır.</string>
+    <string name="fit_adjusted">Zəng səsi avtomatik tənzimləndi</string>
+    <string name="fit_noted">Qeyd olundu: bu telefonun zəng səsində problem var</string>
+    <string name="fit_problem">Zəng səsində problem var və bütün ayarlar sınaqdan keçirilib. Bələdçidə “Yeni telefonda ilk istifadə” bölməsinə baxın.</string>
+    <string name="fit_retest">Zəng səsi üçün digər ayarlar hazırdır. Sınamaq üçün bu telefona yenidən zəng edin.</string>
+    <string name="fit_unsupported">Bu telefon AI-nin səsini zənglərə göndərə bilmir</string>
+    <string name="fit_untested">Zəng səsi hələ yoxlanmayıb: bu telefona başqa telefondan zəng edin və təxminən 20 saniyə AI ilə danışın. Bageo sonra onu özü tənzimləyəcək.</string>
     <string name="grant_perms">Tələb olunan icazələri verin, sonra yenidən Xidməti başlat düyməsinə toxunun.</string>
-    <string name="header_compat">Pixel 7, 7a, 8 və 9-da yoxlanılıb. Digər root olunmuş telefonlar işləyə bilər; risk öz üzərinizdədir.</string>
+    <string name="header_compat">Google Pixel və Redmi K60 Ultra üzərində sınaqdan keçirilib. Root edilmiş digər telefonlar da dəstəklənir, amma öz telefonunuzu yoxlayın: ona başqa telefondan zəng edin və təxminən 20 saniyə AI ilə danışın.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Versiya %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo %1$s versiyasındadır (versiya fərqlidir)</string>

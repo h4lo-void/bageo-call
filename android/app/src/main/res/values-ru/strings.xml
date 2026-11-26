@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Использовать как обычный телефон?</string>
     <string name="connection_hint_usb">USB (по умолчанию, рекомендуется): оставьте ws://127.0.0.1:8765. Программа на компьютере сама перенаправляет этот порт по USB-кабелю через adb reverse.</string>
     <string name="connection_hint_wifi">Wi-Fi: введите адрес, который показывает программа на компьютере, например ws://192.0.2.10:8787/ws?token=… Телефон и компьютер должны быть в одной сети.</string>
+    <string name="fit_adjusted">Звук звонков настроен автоматически</string>
+    <string name="fit_noted">Записано: у этого телефона проблема со звуком звонков</string>
+    <string name="fit_problem">Со звуком звонков есть проблема, все настройки уже опробованы. См. «Первое использование на новом телефоне» в руководстве.</string>
+    <string name="fit_retest">Другие настройки звука звонков готовы. Позвоните на этот телефон ещё раз, чтобы их проверить.</string>
+    <string name="fit_unsupported">Этот телефон не может передавать голос ИИ в звонки</string>
+    <string name="fit_untested">Звук звонков ещё не проверен: позвоните на этот телефон с другого телефона и около 20 секунд поговорите с ИИ. После этого Bageo сам его настроит.</string>
     <string name="grant_perms">Дайте запрошенные разрешения и снова нажмите «Запустить службу».</string>
-    <string name="header_compat">Проверено на Pixel 7, 7a, 8 и 9. На других телефонах с root может работать; пробуйте на свой риск.</string>
+    <string name="header_compat">Проверено на Google Pixel и Redmi K60 Ultra. Другие телефоны с root тоже поддерживаются, но проверьте свой: позвоните на него с другого телефона и около 20 секунд поговорите с ИИ.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Версия %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo версии %1$s (версия отличается)</string>

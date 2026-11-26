@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">সাধারণ ফোন হিসেবে ব্যবহার করবেন?</string>
     <string name="connection_hint_usb">USB (ডিফল্ট, প্রস্তাবিত): ws://127.0.0.1:8765 রাখুন। পিসি প্রোগ্রাম USB কেবলের মাধ্যমে adb reverse দিয়ে স্বয়ংক্রিয়ভাবে পোর্ট ফরোয়ার্ড করে।</string>
     <string name="connection_hint_wifi">Wi-Fi: পিসি প্রোগ্রামে দেখানো ঠিকানা দিন, যেমন ws://192.0.2.10:8787/ws?token=… ফোন ও পিসি একই নেটওয়ার্কে থাকতে হবে।</string>
+    <string name="fit_adjusted">কলের শব্দ নিজে থেকেই ঠিক করা হয়েছে</string>
+    <string name="fit_noted">নোট করা হয়েছে: এই ফোনের কলের শব্দে সমস্যা আছে</string>
+    <string name="fit_problem">কলের শব্দে সমস্যা আছে এবং সব সেটিং চেষ্টা করা হয়েছে। গাইডে “নতুন ফোনে প্রথমবার ব্যবহার” দেখুন।</string>
+    <string name="fit_retest">কলের শব্দের অন্য সেটিং প্রস্তুত। পরীক্ষা করতে এই ফোনে আবার কল করুন।</string>
+    <string name="fit_unsupported">এই ফোন কলে AI-এর কণ্ঠ পাঠাতে পারে না</string>
+    <string name="fit_untested">কলের শব্দ এখনো পরীক্ষা করা হয়নি: অন্য ফোন থেকে এই ফোনে কল করুন এবং প্রায় 20 সেকেন্ড AI-এর সঙ্গে কথা বলুন। এরপর Bageo নিজেই এটি ঠিক করে নেবে।</string>
     <string name="grant_perms">চাওয়া অনুমতিগুলো দিন, তারপর আবার পরিষেবা শুরু করুন চাপুন।</string>
-    <string name="header_compat">Pixel 7, 7a, 8 ও 9-এ পরীক্ষিত। অন্যান্য রুট করা ফোনে কাজ করতে পারে; নিজ ঝুঁকিতে চেষ্টা করুন।</string>
+    <string name="header_compat">Google Pixel ও Redmi K60 Ultra-তে পরীক্ষা করা হয়েছে। রুট করা অন্য ফোনও সমর্থিত, তবে নিজের ফোন পরীক্ষা করে নিন: অন্য ফোন থেকে কল করুন এবং প্রায় 20 সেকেন্ড AI-এর সঙ্গে কথা বলুন।</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">সংস্করণ %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo হলো %1$s (সংস্করণ ভিন্ন)</string>

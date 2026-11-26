@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">సాధారణ ఫోన్‌గా వాడాలా?</string>
     <string name="connection_hint_usb">USB (డిఫాల్ట్, సిఫార్సు చేయబడింది): ws://127.0.0.1:8765 ఉంచండి. కంప్యూటర్ ప్రోగ్రామ్ USB కేబుల్ ద్వారా adb reverse తో ఈ పోర్ట్‌ను ఆటోమేటిక్‌గా ఫార్వార్డ్ చేస్తుంది.</string>
     <string name="connection_hint_wifi">Wi-Fi: కంప్యూటర్ ప్రోగ్రామ్ చూపించే చిరునామా వేయండి, ఉదా. ws://192.0.2.10:8787/ws?token=… ఫోన్ మరియు కంప్యూటర్ ఒకే నెట్‌వర్క్‌లో ఉండాలి.</string>
+    <string name="fit_adjusted">కాల్ ధ్వని ఆటోమేటిక్‌గా సర్దుబాటు చేయబడింది</string>
+    <string name="fit_noted">గమనించబడింది: ఈ ఫోన్ కాల్ ధ్వనిలో సమస్య ఉంది</string>
+    <string name="fit_problem">కాల్ ధ్వనిలో సమస్య ఉంది, అన్ని సెట్టింగ్‌లు ప్రయత్నించబడ్డాయి. గైడ్‌లో “కొత్త ఫోన్‌లో మొదటి వినియోగం” చూడండి.</string>
+    <string name="fit_retest">కాల్ ధ్వనికి ఇతర సెట్టింగ్‌లు సిద్ధంగా ఉన్నాయి. వాటిని పరీక్షించడానికి ఈ ఫోన్‌కు మళ్లీ కాల్ చేయండి.</string>
+    <string name="fit_unsupported">ఈ ఫోన్ కాల్స్‌లోకి AI స్వరాన్ని పంపలేదు</string>
+    <string name="fit_untested">కాల్ ధ్వని ఇంకా పరీక్షించలేదు: మరో ఫోన్ నుండి ఈ ఫోన్‌కు కాల్ చేసి సుమారు 20 సెకన్లు AI తో మాట్లాడండి. ఆ తర్వాత Bageo దాన్ని తనంతట తానే సర్దుబాటు చేస్తుంది.</string>
     <string name="grant_perms">అడిగిన అనుమతులు ఇచ్చి, మళ్లీ సేవ ప్రారంభించు నొక్కండి.</string>
-    <string name="header_compat">Pixel 7, 7a, 8 మరియు 9 లో పరీక్షించబడింది. ఇతర రూట్ చేసిన ఫోన్‌లు పనిచేయవచ్చు; మీ సొంత బాధ్యతపై వాడండి.</string>
+    <string name="header_compat">Google Pixel మరియు Redmi K60 Ultra లో పరీక్షించబడింది. root చేసిన ఇతర ఫోన్‌లు కూడా మద్దతు ఇస్తాయి, కానీ మీ ఫోన్‌ను పరీక్షించండి: మరో ఫోన్ నుండి దానికి కాల్ చేసి సుమారు 20 సెకన్లు AI తో మాట్లాడండి.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">వెర్షన్ %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo %1$s ఉంది (వెర్షన్ వేరుగా ఉంది)</string>

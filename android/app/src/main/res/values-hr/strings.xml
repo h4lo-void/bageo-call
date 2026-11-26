@@ -36,8 +36,14 @@
     <string name="confirm_normal_title">Koristiti kao običan telefon?</string>
     <string name="connection_hint_usb">USB (zadano, preporučeno): ostavite ws://127.0.0.1:8765. Program na računalu automatski prosljeđuje ovaj priključak putem USB kabela uz adb reverse.</string>
     <string name="connection_hint_wifi">Wi-Fi: unesite adresu s računala, npr. ws://192.0.2.10:8787/ws?token=… Telefon i računalo moraju biti na istoj mreži.</string>
+    <string name="fit_adjusted">Zvuk poziva podešen je automatski</string>
+    <string name="fit_noted">Zabilježeno: zvuk poziva na ovom telefonu ima problem</string>
+    <string name="fit_problem">Zvuk poziva ima problem i isprobane su sve postavke. Pogledajte „Prvo korištenje na novom telefonu“ u vodiču.</string>
+    <string name="fit_retest">Druge postavke zvuka poziva spremne su. Nazovite ovaj telefon ponovno da ih isprobate.</string>
+    <string name="fit_unsupported">Ovaj telefon ne može slati glas AI-ja u pozive</string>
+    <string name="fit_untested">Zvuk poziva još nije testiran: nazovite ovaj telefon s drugog telefona i razgovarajte s AI-jem oko 20 sekundi. Zatim će ga Bageo sam podesiti.</string>
     <string name="grant_perms">Dopustite tražena dopuštenja, pa ponovno dodirnite Pokreni uslugu.</string>
-    <string name="header_compat">Testirano na Pixelu 7, 7a, 8 i 9. Drugi telefoni s root pristupom možda rade; isprobajte na vlastitu odgovornost.</string>
+    <string name="header_compat">Testirano na Google Pixelu i Redmi K60 Ultra. Podržani su i drugi telefoni s rootom, ali testirajte svoj: nazovite ga s drugog telefona i razgovarajte s AI-jem oko 20 sekundi.</string>
     <string name="header_device">%1$s · Android %2$s (API %3$d)</string>
     <string name="header_version">Verzija %1$s (%2$d)</string>
     <string name="header_version_diff">Bageo je %1$s (drugačija verzija)</string>
