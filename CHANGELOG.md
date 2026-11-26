@@ -21,6 +21,9 @@
 - **Safer pairing and keys.** Pairing a phone over your home network is better protected, and keys saved in the settings are sealed. A security fix for the desktop app's cookie handling is included.
 - **配對與金鑰更安全。** 手機透過家裡網路配對時保護更完整，存在設定裡的金鑰也加了密。桌面程式也補了一個 cookie 處理的資安修正。
 - **配对与密钥更安全。** 手机通过家里网络配对时保护更完整，存在设置里的密钥也加了密。桌面程序也补了一个 cookie 处理的安全修复。
+- **A new phone tells you how to test its call audio.** Bageo checks by itself how well each phone plays the AI's voice into calls. A new phone gets one notification asking for a test call (call it from another phone and talk to the AI for about 20 seconds), and you get the result. The phone's card in the console and the phone app show a line only when something needs you, and after a good test call the console asks whether you heard the AI. Tested: Google Pixel and the MediaTek Redmi K60 Ultra; Samsung Exynos phones are not supported. See [Phone setup](docs/en/PHONE.md#first-use-on-a-new-phone-test-the-call-audio).
+- **新手機會告訴你怎麼測通話聲音。** Bageo 會自己檢查每支手機把 AI 的聲音送進通話的情況。新手機第一次連上，會通知你打一通測試電話（用另一支電話打給它，跟 AI 講 20 秒左右），測完再通知結果。控制台的手機卡片和手機 App 只在需要你知道或動手時才顯示一行，測試通話後控制台還會問你有沒有聽到 AI。實測過 Google Pixel 和聯發科的 Redmi K60 Ultra；三星 Exynos 手機不支援。見[手機設定](docs/zh-TW/PHONE.md#新手機第一次使用測試通話聲音)。
+- **新手机会告诉你怎么测通话声音。** Bageo 会自己检查每部手机把 AI 的声音送进通话的情况。新手机第一次连接，会通知你打一通测试电话（用另一部电话打给它，跟 AI 讲 20 秒左右），测完再通知结果。控制台的手机卡片和手机应用只在需要你知道或动手时才显示一行，测试通话后控制台还会问你有没有听到 AI。实测过 Google Pixel 和联发科的 Redmi K60 Ultra；三星 Exynos 手机不支持。见[手机设置](docs/zh-CN/PHONE.md#新手机第一次使用测试通话声音)。
 
 # Bageo v1.7.0
 

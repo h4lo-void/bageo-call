@@ -168,4 +168,11 @@
     <string name="wifi_not_ready">Wi-Fi backup is not set up. Connect the USB cable once to set it up.</string>
     <string name="btn_forget_wifi">Forget Wi-Fi connection</string>
     <string name="msg_wifi_forgotten">Wi-Fi connection forgotten. Connect the USB cable once to set it up again.</string>
+    <!-- Call audio: how well this phone carries the AI's voice into calls -->
+    <string name="fit_untested">Call audio not tested yet: call this phone from another phone and talk to the AI for about 20 seconds. Bageo then adjusts it by itself.</string>
+    <string name="fit_adjusted">Call audio was adjusted automatically</string>
+    <string name="fit_problem">Call audio has a problem and all settings were tried. See “First use on a new phone” in the guide.</string>
+    <string name="fit_unsupported">This phone cannot send the AI\'s voice into calls</string>
+    <string name="fit_retest">Other call audio settings are ready. Call this phone again to test them.</string>
+    <string name="fit_noted">Noted: this phone\'s call audio has a problem</string>
 </resources>

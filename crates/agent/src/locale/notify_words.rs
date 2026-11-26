@@ -234,6 +234,16 @@ pub struct Words {
     pub h_stall_spam_nokind: String,
     pub h_scam_stalling_off: String,
     pub h_ai_ended: String,
+    // About a phone's call audio ([`crate::audio_fit`]): a new phone needs a test
+    // call, the result, a later problem.
+    pub n_fit_test_title: String,
+    pub n_fit_test_body: String,
+    pub n_fit_result_title: String,
+    pub n_fit_failed_title: String,
+    pub n_fit_ok: String,
+    pub n_fit_adjusted: String,
+    pub n_fit_problem: String,
+    pub n_fit_unsupported: String,
 }
 
 /// The `strings`, `lists` and `formats` of a file in one object; nothing
@@ -309,18 +319,20 @@ mod tests {
     /// SHA-256 (of the text with LF line ends) and key count of every file.
     /// The first 124 keys were written from the old `Phrases` constants, the
     /// next 22 from the lines of the code that were Chinese and English only,
-    /// and `h_urgent_scam_words` came after them; change a value on purpose
+    /// `h_urgent_scam_words` came after them, then the six `s_ai_fail_` and
+    /// `h_ai_fail_announced` texts on why the AI could not answer, and the eight
+    /// `n_fit_` texts about a phone's call audio; change a value on purpose
     /// and update the line here in the same commit.
     const GOLDEN: [(&str, &str, usize); 9] = [
-        ("en", "6d5028a1f207321a4c015a0a90943e01a202e7a8f5f1a9219c8de27d4e247b35", 153),
-        ("zh-TW", "0b626c42a46561ca5ea957c62c2b702ec21be07370159918f6cf654f91c93a98", 153),
-        ("zh-CN", "b1667689b8faf71a2a5e08f7924fdd9afd6da7d577b9e37c4a4ddb05077b85f4", 153),
-        ("ja", "a0bc5904d874a50d1dd0cba9907fe0c2d5bee1bc92ff4e70a114341cd39276d9", 153),
-        ("ko", "4f80e1ad462b0315e6d9d9f1c4dccfb11c95ac3fb4ea654d218db78dc0f26867", 153),
-        ("es", "2504333d9296622294862901e48f6e75f9e2dcfec55332a5a81b2262f54fbfbd", 153),
-        ("fr", "d61c99eea5ddf53afaf716a82ef5bdd0513425dd0c4d624871246554ddddfeac", 153),
-        ("de", "94c0a9c332bedc83ec18d25ed193db342e83db256aa2aa8013038194caff9dad", 153),
-        ("pt", "242a82d88a420e046ec81e0bcb7a860ed7678613d3ac6d96f2ab6482c898d1a3", 153),
+        ("en", "f101f0a1b09f4b9533e17eed29497bf0462630b9fa23cd468d96226ca32f052f", 161),
+        ("zh-TW", "6786d40000d24c7399b7ff7f82c7774b4b245a4acc9829cebf28a119914b4f32", 161),
+        ("zh-CN", "61a22d1f4da87ec06cd492e1d739b9b1de5906c3884ae623040d2e4afabf8fa6", 161),
+        ("ja", "4511055e1e2b1e54be660494161c9180bf280a34dbfd23cc8c06f3531e5d2659", 161),
+        ("ko", "6b7e9676856d0bc541b3d77e07c1bef26b888bf87ccf7cab0bcd2af34b66f0ab", 161),
+        ("es", "033ed303b04415e6bef4161d0ecf48840d8fc22638d2363b238afbbdecfaf125", 161),
+        ("fr", "38f34ee6aef1e46b2b92a37ce36534e3c234cace5f801cb95a6b6e0fa54c6f8e", 161),
+        ("de", "61fdc281953756b4965419557376bcc95387ca31e69454d898e34053f230f7a9", 161),
+        ("pt", "33f46eef4d0d0c96040b06e33e0ffbb549f064f5ff60b3838672b69084ce8108", 161),
     ];
 
     const META: &str = include_str!("../../data/i18n/notify/_meta.json");

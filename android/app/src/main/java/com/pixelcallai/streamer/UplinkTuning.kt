@@ -54,6 +54,24 @@ enum class AudioFit(val id: String) {
     }
 }
 
+/**
+ * What the owner's "the caller heard nothing" report means for the main screen while it
+ * stands: [RETEST] other settings were chosen and the next call tests them; [NOTED] the phone
+ * only measures (Google Pixel), has nothing else to try, and just keeps the report.
+ */
+enum class OwnerNote(val id: String) {
+    RETEST("retest"),
+    NOTED("noted"),
+}
+
+/** The note for the stored state, or null when it is not the owner's report (any other fit). */
+fun ownerReportNote(fit: AudioFit, reason: String?, measureOnly: Boolean): OwnerNote? =
+    if (fit == AudioFit.PROBLEM && reason == StartSource.OWNER_REPORT.id) {
+        if (measureOnly) OwnerNote.NOTED else OwnerNote.RETEST
+    } else {
+        null
+    }
+
 /** Why a call started from its profile. */
 enum class StartSource(val id: String) {
     /** `setprop debug.bageo.uplink_profile <id>` (testing). */

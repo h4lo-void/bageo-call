@@ -95,6 +95,7 @@ You can receive these messages:
 | Repeated calls from one number | One number called again and again within a minute. You get one message saying how many more calls came, instead of one each. | `repeat_calls` |
 | AI call-back: <number> | The AI called a caller back with your answer to an appointment. The message gives how it went (answered, nobody answered, could not be placed, or the number cannot be called back) and the call's summary. | `ai_callback` |
 | AI errand call: <name or number> | An AI errand you started has ended. The message has the result, details, your decision when one is needed, the next step, the time agreed and a link to the *Errands* page. | `ai_errand` |
+| New phone: test the call audio / Call audio test result / Call audio problem | A new phone needs a test call; the result of that test; the audio turned bad later. See [First use on a new phone](PHONE.md#first-use-on-a-new-phone-test-the-call-audio). | `audio_fit` |
 | Appointment to confirm | A caller set a time with the AI. Telegram receives a card with buttons; every other channel receives signed one-tap **Accept / Decline** buttons or links (see [Appointments](#appointments)). | `appointment_pending` / `summary` |
 | Call forwarded to your phone | Someone ticked under *Who can be forwarded* called while *Transfer* is *Don't answer: send to your phone*. The phone declined the call so your carrier forwards it to you, and you get an instant alert. | `whitelist_direct_transfer` |
 | Urgent call alert | Someone ticked under *Who can be forwarded* called, the AI answered and the caller said it was urgent; you are alerted at once. With *AI answers, puts you through if urgent* and your number filled in, the phone also calls you. | `whitelist_urgent_transfer` |
@@ -792,6 +793,7 @@ With a *Bearer token (optional)* set, it adds `Authorization: Bearer <token>`.
 | `repeat_calls` | one number kept calling and the extra notifications were held back | `caller_id`, `count`, `kind` (`incoming`, `blocked` or `call_waiting`) |
 | `ai_callback` | the AI's call-back for an appointment ended, or could not be placed | `caller_id`, `device`, `time`, `summary` |
 | `ai_errand` | an AI errand ended, or never got going | `number`, `device`, `time`, `summary` |
+| `audio_fit` | a phone's call audio needs a test, has a test result, or turned bad | `device`, `time`, `audio_fit` (`untested`, `ok`, `adjusted`, `problem` or `unsupported`) |
 | `appointment_pending` | a caller booked an appointment waiting for your decision | `task_id`, `caller_id`, `device`, `title`, `start_at`, `accept_url`, `decline_url` |
 | `whitelist_direct_transfer` | a call was declined so your carrier forwards it to your phone | `caller_id`, `device`, `time`, `forward_to`, `contact` |
 | `whitelist_urgent_transfer` | the caller said it was urgent and you were alerted at once | `caller_id`, `device`, `time`, `forward_to`, `reason`, `contact` |

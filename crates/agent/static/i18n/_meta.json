@@ -7218,5 +7218,50 @@
     "where": "under the backup buttons, only in the phone app. “Download” is the button next to each backup. English: Backups are kept inside Bageo and are deleted with the app. To keep one, tap “Download” to save it on your phone.",
     "who": "the owner",
     "placeholders": []
+  },
+  "ph_fit_untested": {
+    "where": "line on a connected phone's card in the console, and on the phone app's main screen, when its call audio has not been tested. English: Call audio not tested yet: call this phone from another phone and talk to the AI for about 20 seconds. Bageo then adjusts it by itself.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ph_fit_adjusted": {
+    "where": "line on a connected phone's card in the console, and on the phone app's main screen, when Bageo changed the phone's call audio settings by itself. English: Call audio was adjusted automatically",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ph_fit_problem": {
+    "where": "line on a connected phone's card in the console, and on the phone app's main screen, when the call audio has a problem although every setting was tried. It points to the guide section First use on a new phone, which exists in English, Traditional and Simplified Chinese. English: Call audio has a problem and all settings were tried. See “First use on a new phone” in the guide.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ph_fit_unsupported": {
+    "where": "line on a connected phone's card in the console, and on the phone app's main screen, when the phone cannot send the AI's voice into calls. English: This phone cannot send the AI's voice into calls",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ph_fit_ask": {
+    "where": "question on a phone's card after its latest call with the AI, with the two buttons Yes and No. The owner talked to the AI from another phone. English: Did you hear the AI's voice on the last call?",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ph_fit_yes": {
+    "where": "button answering the question about hearing the AI's voice. English: Yes",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ph_fit_no": {
+    "where": "button answering the question about hearing the AI's voice: no, the owner heard nothing. English: No",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ph_fit_retest": {
+    "where": "line on a phone's card after the owner said they heard no AI voice: Bageo switched the phone to other call audio settings and the next call is the test. English: Other call audio settings are ready. Call this phone again to test them.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ph_fit_noted": {
+    "where": "line on a phone's card and on the phone app's main screen after the owner said they heard no AI voice on a phone that cannot switch call audio settings (Google Pixel): the report is only kept, no other settings are tried, so it must not say settings were changed. English: Noted: this phone's call audio has a problem",
+    "who": "the owner",
+    "placeholders": []
   }
 }

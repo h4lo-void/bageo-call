@@ -1391,6 +1391,15 @@
     "m_chk_sms_d": "Damit kann Bageo Anrufern per SMS sagen, ob ihr Termin geklappt hat.",
     "er_need_phone": "Das Handy ist noch nicht bereit. Warte ein paar Sekunden; wenn es so bleibt, öffne die App neu.",
     "bk_err_read_failed": "Die Datei ließ sich nicht lesen. Wähle sie noch einmal aus.",
-    "bk_app_note": "Backups liegen in Bageo und werden mit der App gelöscht. Um eins zu behalten, tippe auf „Herunterladen“ und speichere es auf dem Handy."
+    "bk_app_note": "Backups liegen in Bageo und werden mit der App gelöscht. Um eins zu behalten, tippe auf „Herunterladen“ und speichere es auf dem Handy.",
+    "ph_fit_untested": "Anrufton noch nicht getestet: Ruf dieses Telefon von einem anderen an und sprich etwa 20 Sekunden mit der KI. Bageo stellt ihn dann selbst ein.",
+    "ph_fit_adjusted": "Der Anrufton wurde automatisch angepasst",
+    "ph_fit_problem": "Beim Anrufton gibt es ein Problem, und alle Einstellungen wurden probiert. Siehe „First use on a new phone“ in der Anleitung (auf Englisch).",
+    "ph_fit_unsupported": "Dieses Telefon kann die Stimme der KI nicht in Anrufe einspeisen",
+    "ph_fit_ask": "Hast du die Stimme der KI im letzten Anruf gehört?",
+    "ph_fit_yes": "Ja",
+    "ph_fit_no": "Nein",
+    "ph_fit_retest": "Eine andere Toneinstellung ist bereit. Ruf dieses Telefon noch einmal an, um sie zu testen.",
+    "ph_fit_noted": "Notiert: Der Anrufton dieses Telefons hat ein Problem"
   }
 }

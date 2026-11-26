@@ -147,7 +147,15 @@
     "h_stall_spam": "系统判断是推销／诈骗（{t}），AI 改成故意陪他聊、拖时间",
     "h_stall_spam_nokind": "系统判断像推销／诈骗，AI 改成故意陪他聊、拖时间",
     "h_scam_stalling_off": "系统判断是推销／诈骗（{t}）；陪聊功能关着，AI 照一般方式应对",
-    "h_ai_ended": "AI 接听并对话后结束（AI 说掰掰挂断，或对方先挂）"
+    "h_ai_ended": "AI 接听并对话后结束（AI 说掰掰挂断，或对方先挂）",
+    "n_fit_test_title": "新手机：请测试通话声音",
+    "n_fit_test_body": "这部手机还没测过通话声音。请用另一部电话打给它，跟 AI 讲 20 秒左右，Bageo 会自动调整。",
+    "n_fit_result_title": "通话声音测试结果",
+    "n_fit_failed_title": "通话声音出问题",
+    "n_fit_ok": "通话声音正常。",
+    "n_fit_adjusted": "已自动调整通话声音，现在正常。",
+    "n_fit_problem": "通话声音有问题，已试过所有设置。请看说明文档里的“新手机第一次使用”。",
+    "n_fit_unsupported": "这部手机不支持把 AI 的声音送进通话。"
   },
   "lists": {
     "quote": ["“", "”"],

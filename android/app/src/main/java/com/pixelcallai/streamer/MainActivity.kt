@@ -75,6 +75,7 @@ class MainActivity : Activity() {
     private lateinit var agentUrlField: EditText
     private lateinit var urlMessage: TextView
     private lateinit var connRoute: TextView
+    private lateinit var audioFit: TextView
     private lateinit var versionHint: TextView
     private lateinit var wifiState: TextView
     private lateinit var btnForgetWifi: Button
@@ -191,6 +192,7 @@ class MainActivity : Activity() {
         agentUrlField = findViewById(R.id.agentUrl)
         urlMessage = findViewById(R.id.urlMessage)
         connRoute = findViewById(R.id.connRoute)
+        audioFit = findViewById(R.id.audioFit)
         versionHint = findViewById(R.id.versionHint)
         wifiState = findViewById(R.id.wifiState)
         btnForgetWifi = findViewById(R.id.btnForgetWifi)
@@ -884,6 +886,32 @@ class MainActivity : Activity() {
             versionHint.visibility = View.GONE
         }
         bindRoute(ai && !switching)
+        bindAudioFit(ai && !switching)
+    }
+
+    /** The owner's report comes first: other settings are waiting for a test, or it is only noted. */
+    private fun audioFitText(fit: AudioFit): Int? =
+        when (ownerReportNote(fit, UplinkTuneStore.reason(this), UplinkTuneStore.measureOnly)) {
+            OwnerNote.RETEST -> R.string.fit_retest
+            OwnerNote.NOTED -> R.string.fit_noted
+            null -> when (fit) {
+                AudioFit.OK -> null
+                AudioFit.UNTESTED -> R.string.fit_untested
+                AudioFit.ADJUSTED -> R.string.fit_adjusted
+                AudioFit.PROBLEM -> R.string.fit_problem
+                AudioFit.UNSUPPORTED -> R.string.fit_unsupported
+            }
+        }
+
+    /** Under the status: how well this phone carries the AI's voice into calls; nothing when it works. */
+    private fun bindAudioFit(show: Boolean) {
+        val text = if (show) audioFitText(UplinkTuneStore.fit(this)) else null
+        if (text == null) {
+            audioFit.visibility = View.GONE
+            return
+        }
+        audioFit.setText(text)
+        audioFit.visibility = View.VISIBLE
     }
 
     /** Under the status: how the phone reaches Bageo now (USB or Wi-Fi) and whether Wi-Fi is ready. */

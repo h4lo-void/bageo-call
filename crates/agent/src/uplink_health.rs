@@ -6,10 +6,12 @@
 //! model, chip and Android version; no hardware serial number, IMEI, phone number, system
 //! build fingerprint or call content.
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// How well a phone carries the AI's voice into calls, as the phone app reports it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum AudioFit {
     Untested,
     Ok,

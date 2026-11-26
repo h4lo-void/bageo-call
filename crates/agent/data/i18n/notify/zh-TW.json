@@ -147,7 +147,15 @@
     "h_stall_spam": "系統判斷是推銷／詐騙（{t}），AI 改成故意陪他聊、拖時間",
     "h_stall_spam_nokind": "系統判斷像推銷／詐騙，AI 改成故意陪他聊、拖時間",
     "h_scam_stalling_off": "系統判斷是推銷／詐騙（{t}）；陪聊功能關著，AI 照一般方式應對",
-    "h_ai_ended": "AI 接聽並對話後結束（AI 說掰掰掛斷，或對方先掛）"
+    "h_ai_ended": "AI 接聽並對話後結束（AI 說掰掰掛斷，或對方先掛）",
+    "n_fit_test_title": "新手機：請測試通話聲音",
+    "n_fit_test_body": "這支手機還沒測過通話聲音。請用另一支電話打給它，跟 AI 講 20 秒左右，Bageo 會自動調整。",
+    "n_fit_result_title": "通話聲音測試結果",
+    "n_fit_failed_title": "通話聲音出問題",
+    "n_fit_ok": "通話聲音正常。",
+    "n_fit_adjusted": "已自動調整通話聲音，現在正常。",
+    "n_fit_problem": "通話聲音有問題，已試過所有設定。請看說明文件的「新手機第一次使用」。",
+    "n_fit_unsupported": "這支手機不支援把 AI 的聲音送進通話。"
   },
   "lists": {
     "quote": ["「", "」"],

@@ -168,4 +168,11 @@
     <string name="wifi_not_ready">還沒設定 Wi-Fi 備援。用 USB 線連接一次就會設定好。</string>
     <string name="btn_forget_wifi">忘記 Wi-Fi 連線</string>
     <string name="msg_wifi_forgotten">已忘記 Wi-Fi 連線。要再使用時，請用 USB 線連接一次。</string>
+    <!-- Call audio: how well this phone carries the AI's voice into calls -->
+    <string name="fit_untested">還沒測過通話聲音：請用另一支電話打給這支手機，跟 AI 講 20 秒左右，Bageo 會自動調整。</string>
+    <string name="fit_adjusted">已自動調整通話聲音</string>
+    <string name="fit_problem">通話聲音有問題，已試過所有設定。請看說明文件的「新手機第一次使用」。</string>
+    <string name="fit_unsupported">這支手機不支援把 AI 的聲音送進通話</string>
+    <string name="fit_retest">已換一組通話聲音設定，請再打一通電話測試。</string>
+    <string name="fit_noted">已記下這支手機的通話聲音有問題</string>
 </resources>

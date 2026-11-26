@@ -141,17 +141,33 @@ fn the_language_list_names_the_nine_and_every_exported_language() {
     assert!(!repo().join("desktop/ui/i18n.ext.json").exists(), "desktop/ui/i18n.ext.json must not be bundled");
 }
 
+/// English strings the 70 generated files do not have yet: the call audio lines of the main
+/// screen. Until the next `packs export-app` brings their translations the app shows the
+/// English line. Empty this list after that export; a key that no longer needs to be here
+/// fails the test below.
+const NOT_YET_TRANSLATED: [&str; 6] = ["fit_untested", "fit_adjusted", "fit_problem", "fit_unsupported", "fit_retest", "fit_noted"];
+
 #[test]
 fn exported_strings_keep_the_english_names_and_arguments() {
     let en = strings(&read(&res().join("values/strings.xml")));
+    for key in NOT_YET_TRANSLATED {
+        assert!(en.contains_key(key), "NOT_YET_TRANSLATED lists {key}, which English does not have");
+    }
+    let mut still_missing: BTreeSet<&str> = BTreeSet::new();
     for (suffix, text) in generated() {
         let tr = strings(&text);
-        assert_eq!(tr.len(), en.len(), "values-{suffix} key count");
+        for key in en.keys().filter(|k| !tr.contains_key(*k)) {
+            assert!(NOT_YET_TRANSLATED.contains(&key.as_str()), "values-{suffix} lacks {key}: translate it, or list it in NOT_YET_TRANSLATED");
+            still_missing.insert(NOT_YET_TRANSLATED.iter().find(|k| **k == key.as_str()).unwrap());
+        }
         for (name, (literal, value)) in &tr {
             let (_, english) = en.get(name).unwrap_or_else(|| panic!("values-{suffix} has {name}, English does not"));
             if !literal {
                 assert_eq!(tokens(value), tokens(english), "values-{suffix} {name}: arguments differ from English");
             }
         }
+    }
+    for key in NOT_YET_TRANSLATED {
+        assert!(still_missing.contains(key), "{key} is translated everywhere now: take it out of NOT_YET_TRANSLATED");
     }
 }

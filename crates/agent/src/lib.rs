@@ -30,6 +30,7 @@ mod android_jni;
 mod adpcm;
 mod ambience;
 mod appointments;
+mod audio_fit;
 mod backup;
 mod backup_crypt;
 mod calendar;
@@ -1313,7 +1314,7 @@ async fn bootstrap_runtime() -> Result<(AppState, CallsState, Arc<control::Contr
     }
     let control = ControlRegistry::new();
     control.set_sim_book(phone_sims);
-    let phones = calls_http::PhoneDevices::new();
+    let phones = calls_http::PhoneDevices::open(PathBuf::from(&settings.calls_data_dir).join("audio_fit.json"));
     let state = AppState {
         settings: settings.clone(),
         settings_store: settings_store.clone(),
@@ -2889,7 +2890,8 @@ async fn handle_control_idle_ws(
                     // After a call: how the track carrying the AI's voice behaved.
                     "uplink_health" => {
                         info!("{}", uplink_health::log_line(&serial, &parsed));
-                        state.phones.on_audio_fit(&serial, &parsed);
+                        let notice = state.phones.on_audio_fit(&serial, &parsed);
+                        tell_owner_about_call_audio(&state, &serial, notice);
                     }
                     // Answer to `uplink_fit` (the owner said the caller heard nothing).
                     "uplink_fit_result" => {
@@ -2897,7 +2899,8 @@ async fn handle_control_idle_ws(
                             "uplink fit serial={serial} fit={}",
                             uplink_health::AudioFit::from_msg(&parsed).map_or("?", uplink_health::AudioFit::as_str)
                         );
-                        state.phones.on_audio_fit(&serial, &parsed);
+                        let notice = state.phones.on_audio_fit(&serial, &parsed);
+                        tell_owner_about_call_audio(&state, &serial, notice);
                     }
                     // Phone rings (not answered yet): how long to ring, and the AI gets
                     // ready meanwhile (ring once before answering).
@@ -3343,7 +3346,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         .control
                                         .register_client(serial.clone(), sink.clone())
                                         .await;
-                                    state.phones.connected(&serial, sink.clone(), &parsed);
+                                    let fit_notice = state.phones.connected(&serial, sink.clone(), &parsed);
+                                    tell_owner_about_call_audio(&state, &serial, fit_notice);
                                     state.phones.set_wifi(&serial, link.wifi);
                                     sync_normal_mode(&state, &serial).await;
                                     // An app that lists its SIMs: errands dial from the right one.
@@ -5210,6 +5214,29 @@ fn call_waiting_summary(caller: &str, sim_country: Option<&str>) -> String {
         p.s_todo,
         p.s_call_back_if_needed,
     )
+}
+
+/// Tell the owner about a phone's call audio ([`audio_fit::Notice`]) in the background.
+fn tell_owner_about_call_audio(state: &AppState, serial: &str, notice: Option<audio_fit::Notice>) {
+    let Some(notice) = notice else {
+        return;
+    };
+    let state = state.clone();
+    let serial = serial.to_string();
+    tokio::spawn(async move {
+        let settings = state.settings_store.snapshot().effective(&state.settings);
+        // No channel to take "please test": not done, due again when the phone next reports
+        // untested. The other messages are not repeated.
+        if !notify::can_reach_owner(&settings) {
+            if notice == audio_fit::Notice::AskTest {
+                state.phones.fit_test_unsent(&serial);
+            }
+            info!("call audio notify serial={serial} notice={notice:?} no channel");
+            return;
+        }
+        let ok = notify::notify_audio_fit(&state.http, &settings, &serial, notice).await;
+        info!("call audio notify serial={serial} notice={notice:?} ok={ok}");
+    });
 }
 
 /// `call_waiting_rejected`: a second call came in during a call and the phone

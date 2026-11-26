@@ -187,6 +187,7 @@ pre.block.prose{font:inherit;font-size:.9rem}
 .hero-sw:checked::after{inset-inline-start:26px}
 .hero-sw:disabled{opacity:.48}
 .hero-err{margin-top:10px;padding:9px 12px;border-radius:10px;background:var(--bad-soft);color:var(--bad);font-size:.85rem;font-weight:500}
+.hero-fit{margin-top:10px;padding:9px 12px;border-radius:10px;background:var(--warn-soft);color:var(--warn);font-size:.85rem;font-weight:500}
 .hero-note{margin-top:11px;padding:9px 12px;border-radius:10px;background:var(--surface2);font-size:.86rem;display:flex;align-items:center;gap:8px;cursor:pointer}
 .hero-note b{color:var(--accent-ink);white-space:nowrap}
 .hero-note span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0}
@@ -785,6 +786,7 @@ input[type=text],input[type=search],input[type=password],input[type=url],input[t
           <input type="checkbox" class="hero-sw" id="heroAiSwitch" checked data-i18n-aria="m_ai_title" />
         </div>
         <div class="hero-err" id="heroErr" hidden role="alert"></div>
+        <div class="hero-fit" id="heroFit" hidden></div>
         <div class="hero-note" id="heroNoteBar" hidden role="button" tabindex="0">
           <b data-i18n="note_on"></b>
           <span id="heroNoteText"></span>
@@ -1953,6 +1955,8 @@ let native = {
   ai_enabled: true,
   switching: false,
   mode_error: "",
+  audio_fit: "",
+  audio_fit_note: "",
   live_ai_call: false,
   owner_in_call: false,
   call_busy: false,
@@ -2703,6 +2707,18 @@ function renderHero() {
   const err = String(native.mode_error || "").trim();
   $("heroErr").textContent = err;
   $("heroErr").hidden = !err;
+
+  // How well the phone carries the AI's voice into calls: a line only when the owner
+  // needs to know or act (nothing when it works).
+  // The owner's report ("the caller heard nothing") comes first: other settings wait for a
+  // test (retest), or the phone cannot switch and only keeps it (noted).
+  const fit = String(native.audio_fit || "");
+  const note = String(native.audio_fit_note || "");
+  const fitKey = ["retest", "noted"].includes(note) ? "ph_fit_" + note
+    : ["untested", "adjusted", "problem", "unsupported"].includes(fit) ? "ph_fit_" + fit : "";
+  const showFit = ai && !native.switching && !!fitKey;
+  $("heroFit").textContent = showFit ? t(fitKey) : "";
+  $("heroFit").hidden = !showFit;
 
   const noteOn = !!(S && S.owner_status_enabled);
   const noteText = noteOn ? String(S.owner_status_text || "").trim() : "";

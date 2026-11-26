@@ -82,7 +82,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - `POST /calls/api/appointments/{id}/retry-sms`；
 - `POST /calls/api/calls/clear`；
 - `POST /calls/api/sms/send`、`…/retry`、`…/clear`、`POST /calls/api/sms/thread/read` 和 `DELETE /calls/api/sms/thread`；
-- `POST /calls/api/devices/{serial}/mode`、`POST /calls/api/devices/{serial}/audio-problem` 和 `PUT /calls/api/devices/{serial}/sim-number`；
+- `POST /calls/api/devices/{serial}/mode`、`POST /calls/api/devices/{serial}/audio-problem`、`POST /calls/api/devices/{serial}/audio-heard` 和 `PUT /calls/api/devices/{serial}/sim-number`；
 - `POST /calls/api/contacts`、`PUT /calls/api/contacts/{id}`、`POST /calls/api/contacts/batch`、`POST /calls/api/contacts/block`（`POST /calls/api/contacts/import` 则改为要带 `X-Filename` 请求头）；
 - `POST /calls/api/errands`、`…/{id}/cancel`、`…/{id}/retry`、`…/{id}/say`；
 - `POST /calls/api/backup/run`、`…/export`、`…/file-ticket`、`…/restore`、`…/delete`、`…/unlock`、`…/apply`、`…/discard`、`…/open-folder`（`POST /calls/api/backup/import` 则改成要带 `X-Filename` 标头）。
@@ -762,6 +762,7 @@ Content-Type: application/json
 | `GET /calls/api/devices` | 手机列表和连接状态。响应格式见下方。 |
 | `POST /calls/api/devices/{serial}/mode` | 请求体 `{"mode": "ai" \| "normal"}`。让手机切换，最多等 15 秒等它回复。返回 `{ok, mode, error_code}`（400 时另附说明 `error`）。 |
 | `POST /calls/api/devices/{serial}/audio-problem` | 请求体 `{}`（JSON）。对方在这部手机上听不到 AI：手机 App 记下 `audio_fit` 为 `problem`，下一通改用另一组播放设置（Google Pixel 只记下、不换）。返回 `{ok, audio_fit}`；手机未连接返回 HTTP 409 `offline`，不回报 `audio_fit` 的旧版 App 返回 HTTP 409 `unsupported`。 |
+| `POST /calls/api/devices/{serial}/audio-heard` | 请求体 `{}`（JSON）。主人在这部手机上听到了 AI：控制台不再询问，直到手机又回到 `untested`（系统更新后）。返回 `{ok}`；手机从未回报过 `audio_fit` 返回 HTTP 404 `not_found`。 |
 | `DELETE /calls/api/devices/{serial}` | 移除一台未连接的旧手机（同时清除手机列表、已存名称与 SIM 记录，保留过往通话记录）：`{ok, serial}`。手机仍在线或通话中返回 HTTP 409 `device_online`／`device_in_call`。 |
 | `PUT /calls/api/devices/{serial}/sim-number` | 请求体 `{"sub_id": <整数>, "number": "..."}`。设置（留空表示清除）这部手机某张 SIM 的号码，让来电与 AI 代打直接显示并按号码挑选：`{ok, serial, sims}`。 |
 | `POST /calls/api/phone-pairing/renew` | 更换 Wi-Fi 配对密钥（`phone-pairing.key`）并断开通过 Wi-Fi 连接的手机，每部手机重新插上 USB 一次即可获取新密钥：`{ok: true}`（失败返回 HTTP 500 `save_failed`）。密钥本身不会返回。 |
@@ -777,6 +778,7 @@ Content-Type: application/json
 - `mode` 是 `ai`（AI 接听）或 `normal`（一般手机，见[手机设置](PHONE.md#普通手机模式)）。
 - 比这个功能旧的 App，`supports_mode` 是 false，永远是 `ai`。
 - `audio_fit`（新版手机 App 才有，旧版没有这个字段）表示这部手机把 AI 的声音播进通话的情况：`untested`（还没有够长的通话）、`ok`（Google Pixel 是已知机型，一开始就是 `ok`）、`adjusted`（换过播放设置，已记住新的）、`problem`（仍会掉声音，或主人说对方听不到）、`unsupported`（手机没有通话用的播放设备，或每组设置都被拒绝）。App 连接时和每通结束时都会发送；每通也会在 Bageo 的日志写一行 `uplink health …`。
+- `audio_fit_ask`、`audio_fit_retest` 和 `audio_fit_noted` 只在为 true 时才有。`audio_fit_ask`：一通有 AI 声音的电话结束时 `audio_fit` 是 `ok` 或 `adjusted`，而主人还没回答，所以控制台会问“有听到 AI 的声音吗？”。`audio_fit_retest`：主人回答没有（`audio-problem`），下一通会用另一组设置测试；要等有通话用新设置测完才会消失（太短、判断不了的通话不算）。`audio_fit_noted`：在不能换设置的手机（Google Pixel）上同样的回答，只会记着，直到系统更新。Bageo 把这三项和通知状态存在数据文件夹的 `audio_fit.json`；手机又回到 `untested` 就开始新的一轮。
 
 `GET /health` 的内容：
 

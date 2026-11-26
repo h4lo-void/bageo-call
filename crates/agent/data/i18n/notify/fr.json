@@ -147,7 +147,15 @@
     "h_stall_spam": "le système l'a jugé être un appel de démarchage / arnaque ({t}), donc l'IA a volontairement fait parler l'appelant pour lui faire perdre du temps",
     "h_stall_spam_nokind": "le système l'a jugé être un appel de démarchage / arnaque, donc l'IA a volontairement fait parler l'appelant pour lui faire perdre du temps",
     "h_scam_stalling_off": "le système l'a jugé être un appel de démarchage / arnaque ({t}) ; la fonction pour faire traîner est désactivée, donc l'IA a répondu comme d'habitude",
-    "h_ai_ended": "l'IA a répondu et parlé ; l'appel s'est terminé normalement (l'IA a dit au revoir et raccroché, ou l'appelant a raccroché le premier)"
+    "h_ai_ended": "l'IA a répondu et parlé ; l'appel s'est terminé normalement (l'IA a dit au revoir et raccroché, ou l'appelant a raccroché le premier)",
+    "n_fit_test_title": "Nouveau téléphone : testez le son des appels",
+    "n_fit_test_body": "Ce téléphone n'a pas encore été testé. Appelez-le depuis un autre téléphone et parlez à l'IA pendant environ 20 secondes. Bageo règle ensuite le son tout seul.",
+    "n_fit_result_title": "Résultat du test du son des appels",
+    "n_fit_failed_title": "Problème de son pendant les appels",
+    "n_fit_ok": "Le son des appels fonctionne.",
+    "n_fit_adjusted": "Bageo a réglé le son des appels tout seul. Il fonctionne maintenant.",
+    "n_fit_problem": "Le son des appels pose problème et tous les réglages ont été essayés. Voir « First use on a new phone » dans le guide (en anglais).",
+    "n_fit_unsupported": "Ce téléphone ne peut pas envoyer la voix de l'IA dans les appels."
   },
   "lists": {
     "quote": ["« ", " »"],
