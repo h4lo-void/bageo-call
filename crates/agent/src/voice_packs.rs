@@ -794,7 +794,7 @@ pub(crate) fn list_json(root: &Path, bundled: &Path, dismissed: &[String]) -> Va
             let id = e.id();
             let shipped = (e.region.is_none()
                 || e.region.as_deref() == Some("default")
-                || crate::locale::Lang::from_code(&e.lang).and_then(region_for) == e.region.as_deref())
+                || crate::locale::Lang::parse_any(&e.lang).and_then(region_for) == e.region.as_deref())
                 && bundled.join(&e.lang).is_dir();
             json!({"id": id, "lang": e.lang, "region": e.region, "bytes": e.bytes, "downloaded": have.iter().any(|(h, _)| *h == id), "bundled": shipped})
         })
