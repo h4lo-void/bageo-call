@@ -3561,7 +3561,7 @@
     "placeholders": []
   },
   "f_reply_lang_h": {
-    "where": "a label or sentence in the console. English: When the caller speaks another language, the AI switches to it.",
+    "where": "a label or sentence in the console. English: The AI switches only when the caller clearly speaks another language in full sentences. A quick “hello” or unclear words don't count.",
     "who": "the owner",
     "placeholders": []
   },

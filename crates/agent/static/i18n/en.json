@@ -410,7 +410,7 @@
     "f_vad": "Let Gemini decide when the caller has finished",
     "f_vad_h": "Recommended. Off: loudness alone decides instead.",
     "f_reply_lang": "Reply in the caller's language",
-    "f_reply_lang_h": "When the caller speaks another language, the AI switches to it.",
+    "f_reply_lang_h": "The AI switches only when the caller clearly speaks another language in full sentences. A quick “hello” or unclear words don't count.",
     "f_status": "Status note",
     "f_status_h": "A note about right now, such as where a courier should leave a parcel. The AI mentions it only when it fits the call.",
     "f_status_ph": "e.g. Deliveries: please leave the parcel at the front desk.",

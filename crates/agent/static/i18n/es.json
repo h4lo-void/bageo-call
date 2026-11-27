@@ -410,7 +410,7 @@
     "f_vad": "Dejar que Gemini decida cuándo ha terminado de hablar la otra persona",
     "f_vad_h": "Recomendado. Desactivado: se decide solo por el volumen.",
     "f_reply_lang": "Responder en el idioma de quien llama",
-    "f_reply_lang_h": "Si quien llama habla otro idioma, la IA cambia a ese idioma.",
+    "f_reply_lang_h": "La IA cambia solo cuando quien llama habla claramente otro idioma, con frases completas. Un «hola» o palabras poco claras no cuentan.",
     "f_status": "Nota de estado",
     "f_status_h": "Una nota sobre el momento actual, por ejemplo dónde debe dejar un paquete el repartidor. La IA solo la menciona si viene al caso.",
     "f_status_ph": "p. ej. Si es un reparto: dejen el paquete en recepción.",

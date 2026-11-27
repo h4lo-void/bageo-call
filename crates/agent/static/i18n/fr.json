@@ -410,7 +410,7 @@
     "f_vad": "Laisser Gemini décider quand le correspondant a fini de parler",
     "f_vad_h": "Recommandé. Désactivé : seul le volume sonore décide.",
     "f_reply_lang": "Répondre dans la langue du correspondant",
-    "f_reply_lang_h": "Si le correspondant parle une autre langue, l'IA passe à cette langue.",
+    "f_reply_lang_h": "L'IA ne change que si le correspondant parle clairement une autre langue, en phrases complètes. Un simple « allô » ou des mots peu clairs ne comptent pas.",
     "f_status": "Note de statut",
     "f_status_h": "Une note sur la situation du moment, par exemple où un livreur doit déposer un colis. L'IA n'en parle que si cela concerne l'appel.",
     "f_status_ph": "ex. Pour une livraison : merci de déposer le colis à l'accueil.",

@@ -1520,6 +1520,50 @@ mod carrier_filter_tests {
         }
     }
 
+    /// The warning alone, or with a short noise after it, never tells the call's
+    /// language: Taiwan's in Chinese, Hong Kong's in Chinese and English, Korea's.
+    #[test]
+    fn the_warning_and_a_short_noise_after_it_tell_no_language() {
+        use super::{turn_tells_language, CARRIER_PROMPT_SPAN};
+        use crate::lang_lock::{CallLanguage, Spoken};
+        use crate::locale::Lang;
+        use std::time::Duration;
+        // (warning, the call's opening language, its prompt's)
+        for (pieces, opening, prompt) in [
+            (WARNINGS[0], Lang::En, Lang::ZhTw),
+            (WARNINGS[1], Lang::ZhTw, Lang::ZhTw),
+            (WARNINGS[4], Lang::En, Lang::ZhTw),
+            (WARNINGS[2], Lang::En, Lang::Ko),
+            (WARNINGS[3], Lang::Ja, Lang::Ko),
+        ] {
+            for noise in ["", "Sí.", "Oi.", "Hallo", "das Frühstück", "Ja.", "喂？", "여보세요", "もしもし", "Hello?"] {
+                let mut call = Call::default();
+                for p in pieces {
+                    call.hear(p);
+                }
+                if !noise.is_empty() {
+                    call.hear(noise);
+                }
+                let (carrier_only, turn) = call.turn_end();
+                let mut lang = CallLanguage::new(opening, prompt);
+                if turn_tells_language(carrier_only, None, None) {
+                    assert_eq!(lang.caller_turn(&turn), None, "{pieces:?} {noise}");
+                }
+                assert_eq!(lang.spoken(), Spoken::Lang(opening), "{pieces:?} {noise}");
+            }
+        }
+        // All of the turn's voice within the warning's span: whatever its words
+        // (a foreign caller's hints can turn the warning into Spanish), no language.
+        let t0 = tokio::time::Instant::now();
+        let until = t0 + CARRIER_PROMPT_SPAN;
+        assert!(!turn_tells_language(false, Some(until), Some(t0 + Duration::from_millis(6_120))));
+        assert!(!turn_tells_language(true, None, Some(t0)));
+        // Voice after it, or no warning on the call: the caller's turn.
+        assert!(turn_tells_language(false, Some(until), Some(until + Duration::from_millis(1))));
+        assert!(turn_tells_language(false, None, Some(t0)));
+        assert!(turn_tells_language(false, Some(until), None));
+    }
+
     /// Calls the filter is off for (not persona, a call-back): nothing swallowed,
     /// every turn the caller's.
     #[test]
@@ -1647,6 +1691,10 @@ pub struct CallLangPlan {
     /// identity guard, the stalling prompt, the contact and appointment parts are
     /// in it. `None` = the setting's.
     pub prompt_lang: Option<crate::locale::Lang>,
+    /// The main language the owner set for the SIM that took the call (setting
+    /// `sim_languages`), whatever the number: one of the call's base languages
+    /// ([`crate::lang_lock::CallLanguage::with_base`]). Not compared between plans.
+    pub sim_lang: Option<crate::locale::Lang>,
     /// Speech-to-text code of the language of the caller's country when the AI has
     /// no setting for it (Thai, Russian, Arabic, Hindi: [`other_lang_stt_of_country`]):
     /// added to the hints for the AI's own voice, which answers the caller in it.
@@ -1813,6 +1861,7 @@ pub fn call_lang_plan(
         caller_stt,
         sim_local,
         prompt_lang,
+        sim_lang,
         caller_other_stt,
         sim_country: sim.map(str::to_string),
         region,
@@ -3233,6 +3282,54 @@ fn session_prompt(prompt: &str, outbound: Outbound) -> String {
             crate::prompts::with_caller_language_note(prompt, crate::locale::current())
         }
     }
+}
+
+/// The language a call starts held in and its base languages
+/// ([`crate::lang_lock::CallLanguage`]): the opening's (`opening`, else the
+/// prompt's), the prompt's (`prompt`), the SIM's main language (setting
+/// `sim_languages`, else `language`), and a local way of answering's when the
+/// call opened that way (persona mode, [`CallLangPlan::local_hello`]). The call
+/// leaves them only when it follows the caller into their language: a call that
+/// came in whose prompt has the note (setting `reply_in_caller_language`), and
+/// every call the phone dials ([`session_prompt`] gives those the note).
+fn call_language_for(
+    plan: &CallLangPlan,
+    opening: Option<crate::locale::Lang>,
+    prompt: crate::locale::Lang,
+    persona: bool,
+    outbound: Outbound,
+    system_prompt: &str,
+) -> crate::lang_lock::CallLanguage {
+    use crate::locale::Lang;
+    let local = plan
+        .local_hello
+        .filter(|_| persona && opening.is_none())
+        .and_then(|h| Lang::parse_any(h.code));
+    // A language without a setting that the translations do not carry to calls
+    // is read as one without a setting.
+    let local_lang = local.filter(|l| {
+        !matches!(l, Lang::Ext(_)) || crate::locales_store::stage(*l) >= crate::locales_store::Stage::Call
+    });
+    let follows = outbound != Outbound::Incoming || crate::prompts::has_caller_language_note(system_prompt);
+    crate::lang_lock::CallLanguage::new(opening.unwrap_or(prompt), prompt)
+        .with_base(
+            std::iter::once(plan.sim_lang.unwrap_or_else(crate::locale::current)).chain(local_lang),
+            local.is_some() && local_lang.is_none(),
+        )
+        .following_others(follows)
+}
+
+/// The caller's turn can tell the call's language: not when it held only the
+/// carrier's recorded warning (`carrier_only`: its words), nor when all its
+/// voice came within the warning's span (`prompt_until`, `last_voice`): a
+/// foreign caller's speech hints can turn the warning into other words
+/// (「Sí.」, 「Oi.」).
+fn turn_tells_language(
+    carrier_only: bool,
+    prompt_until: Option<tokio::time::Instant>,
+    last_voice: Option<tokio::time::Instant>,
+) -> bool {
+    !carrier_only && !prompt_until.is_some_and(|until| last_voice.is_some_and(|t| t <= until))
 }
 
 /// The call can hear a carrier's recorded warning, so its prompt keeps the note
@@ -6846,10 +6943,28 @@ pub async fn run_session(
     let mut caller_text_all = String::new();
     // The carrier's warning in it: swallowed, and its turn not the caller's.
     let mut carrier_filter = CarrierPromptFilter::default();
-    // The language the call is held in (lang_lock): the opening's, then the
-    // caller's first clear words; it follows them only into whole turns of
-    // another language, two in a row. Every mid-call instruction names it.
-    let mut call_language = crate::lang_lock::CallLanguage::new(opening_lang.unwrap_or(prompt_lang), prompt_lang);
+    // The language the call is held in (lang_lock), Bageo's to decide: the
+    // opening's; one clear line moves it into another base language (the prompt's,
+    // the SIM's, a local way of answering's), anything else needs it certain (two
+    // whole clear turns, or a request), and never with the setting
+    // `reply_in_caller_language` off. Every mid-call instruction names it.
+    let mut call_language = call_language_for(&lang_plan, opening_lang, prompt_lang, persona, outbound, &system_prompt);
+    info!(
+        "call_language base={} follows_others={} serial={serial}",
+        call_language
+            .base()
+            .iter()
+            .map(|s| match s {
+                crate::lang_lock::Spoken::Lang(l) => l.code(),
+                crate::lang_lock::Spoken::Other => "other",
+            })
+            .collect::<Vec<_>>()
+            .join(","),
+        call_language.follows_others()
+    );
+    // A change of the call's language the model has not been told of yet (told
+    // in the pause after its turn, like the drift reminder).
+    let mut lang_switch_owed: Option<crate::lang_lock::Spoken> = None;
     // Hints for the AI's own voice. A caller found to speak Thai, Russian, Arabic or
     // Hindi adds theirs; the next rotated session carries it (`ai_stt_grown`).
     let mut ai_stt_codes = stt_ai_codes(opening_lang, lang_plan.caller_other_stt);
@@ -9546,7 +9661,16 @@ pub async fn run_session(
                                         if let Some(e) = stall_engine.as_mut().filter(|_| !carrier_only) {
                                             e.on_caller_turn(&caller_turn);
                                         }
-                                        if let Some(now_in) = (!carrier_only)
+                                        // Nor does a turn whose voice all came within the warning's
+                                        // span tell the call's language, whatever its words.
+                                        let tells_language =
+                                            turn_tells_language(carrier_only, carrier_prompt_until, last_caller_voice_at);
+                                        if !carrier_only && !tells_language {
+                                            info!(
+                                                "call_language kept serial={serial} — the caller's turn came within the carrier prompt"
+                                            );
+                                        }
+                                        if let Some(now_in) = tells_language
                                             .then(|| call_language.caller_turn(&caller_turn))
                                             .flatten()
                                         {
@@ -9557,6 +9681,7 @@ pub async fn run_session(
                                                     crate::lang_lock::Spoken::Other => "other",
                                                 }
                                             );
+                                            lang_switch_owed = Some(now_in);
                                             // The closing follows the call's language, and so
                                             // does the goodbye clock when the SIM's country has none.
                                             let lang = crate::closing::closing_lang(call_language.lang(), closing_lang_opened);
@@ -10105,15 +10230,45 @@ pub async fn run_session(
                                             }
                                         }
                                     }
+                                    // The call's language changed (lang_lock): the model switches
+                                    // only on this note, sent in this pause; it asks for no reply.
+                                    // Its turn just now answered before it knew: no drift.
+                                    let lang_can_tell = keep.is_none()
+                                        && !model_turn_pending
+                                        && !activity_open
+                                        && !goodbye_pending
+                                        && ivr_since.is_none();
+                                    let mut lang_switch_told = false;
+                                    if let Some(to) = lang_switch_owed.filter(|_| persona && errand.is_none() && lang_can_tell) {
+                                        lang_switch_owed = None;
+                                        let to_lang = match to {
+                                            crate::lang_lock::Spoken::Lang(l) => Some(l),
+                                            crate::lang_lock::Spoken::Other => None,
+                                        };
+                                        let note = crate::prompts::language_switch_note(crate::locale::current(), to_lang);
+                                        match send_text_before_deadline(
+                                            &mut sink,
+                                            crate::stall_script::client_note(&note),
+                                            tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
+                                            "gemini persona language switch note send",
+                                        )
+                                        .await
+                                        {
+                                            Ok(()) => {
+                                                lang_switch_told = true;
+                                                info!(
+                                                    "language_switch call={} serial={serial}",
+                                                    to_lang.map_or("other", |l| l.code())
+                                                );
+                                            }
+                                            Err(e) => warn!("Persona language switch note send failed serial={serial}: {e:#}"),
+                                        }
+                                    }
                                     // The AI's turn came out in another language than the call's
-                                    // though the caller did not switch: a short reminder in this
-                                    // pause, asking for no reply (lang_lock, at most twice a call).
+                                    // though Bageo did not switch it: a short reminder in this
+                                    // pause, asking for no reply (lang_lock, at most three times a call).
                                     if persona && errand.is_none() && !turn_out_text.trim().is_empty() {
-                                        let can_tell = keep.is_none()
-                                            && !model_turn_pending
-                                            && !activity_open
-                                            && !goodbye_pending
-                                            && ivr_since.is_none();
+                                        let can_tell = lang_can_tell && !lang_switch_told;
                                         // The caller's words that came in after this turn began
                                         // (their speech-to-text lags) count as what it answers.
                                         if let Some(d) = call_language.ai_turn_after(&turn_out_text, &caller_recent, can_tell) {
@@ -16442,5 +16597,67 @@ mod review_probe_tests {
         }
         // Unchanged behavior: the caller talking after the prompt flips it.
         assert!(!prompt("這是國際電話，請注意小心詐騙。喂？不好意思我打錯了"));
+    }
+}
+
+/// The languages a call is held in, from its plan and prompt (lang_lock).
+#[cfg(test)]
+mod call_language_tests {
+    use super::{call_lang_plan, call_language_for, Outbound};
+    use crate::lang_lock::Spoken;
+    use crate::locale::Lang;
+    use std::collections::BTreeMap;
+
+    fn langs(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    /// A Taiwan SIM set to Traditional Chinese taking a US number: English or
+    /// Chinese, and nothing else on a misheard hello.
+    #[test]
+    fn a_us_number_on_a_taiwan_sim_holds_english_or_chinese() {
+        let tw = langs(&[("tw", "zh-TW"), ("us", "zh-TW")]);
+        let plan = call_lang_plan("+12025550143", Some("tw"), Lang::ZhTw, "886", &tw);
+        assert_eq!(plan.opening, Some(Lang::En));
+        assert_eq!(plan.sim_lang, Some(Lang::ZhTw));
+        let on = crate::prompts::with_caller_language_note("x", Lang::ZhTw);
+        let mut c = call_language_for(&plan, plan.opening, Lang::ZhTw, true, Outbound::Incoming, &on);
+        assert!(c.follows_others());
+        assert_eq!(c.base(), &[Spoken::Lang(Lang::En), Spoken::Lang(Lang::ZhTw)]);
+        for said in ["Sí.", "Oi.", "Hallo", "das Frühstück", "Ja."] {
+            assert_eq!(c.caller_turn(said), None, "{said}");
+        }
+        assert_eq!(c.lang(), Some(Lang::En));
+        assert_eq!(c.caller_turn("你好，我是快遞，你的包裹要放哪裡？"), Some(Spoken::Lang(Lang::ZhTw)));
+        assert_eq!(c.caller_turn("I need to know if you are at home right now."), Some(Spoken::Lang(Lang::En)));
+        // The setting off: the prompt has no note, the call keeps to its base.
+        assert!(!call_language_for(&plan, plan.opening, Lang::ZhTw, true, Outbound::Incoming, "x").follows_others());
+        // The calls the phone dials always follow the callee.
+        assert!(call_language_for(&plan, plan.opening, Lang::ZhTw, true, Outbound::Errand, "x").follows_others());
+    }
+
+    /// A SIM's own language counts whatever the number: a US SIM set to
+    /// Traditional Chinese taking a Japanese number, a Japanese SIM taking a
+    /// Korean one, a German owner's French number.
+    #[test]
+    fn the_sims_language_is_a_base_language_whatever_the_number() {
+        let us = langs(&[("us", "zh-TW")]);
+        let plan = call_lang_plan("+81312345678", Some("us"), Lang::En, "1", &us);
+        assert_eq!(plan.opening, Some(Lang::Ja));
+        let c = call_language_for(&plan, plan.opening, Lang::En, true, Outbound::Incoming, "x");
+        assert!(c.base().contains(&Spoken::Lang(Lang::Ja)) && c.base().contains(&Spoken::Lang(Lang::ZhTw)), "{:?}", c.base());
+        let jp = langs(&[("jp", "ja")]);
+        let plan = call_lang_plan("+82212345678", Some("jp"), Lang::Ja, "81", &jp);
+        assert_eq!(plan.opening, Some(Lang::Ko));
+        let mut c = call_language_for(&plan, plan.opening, Lang::Ja, true, Outbound::Incoming, "x");
+        assert_eq!(c.caller_turn("여보세요"), None);
+        assert_eq!(c.caller_turn("もしもし、大和運輸の田中です。お荷物のお届けに参りました。"), Some(Spoken::Lang(Lang::Ja)));
+        let plan = call_lang_plan("+33123456789", Some("de"), Lang::De, "49", &BTreeMap::new());
+        assert_eq!(plan.opening, Some(Lang::Fr));
+        let mut c = call_language_for(&plan, plan.opening, Lang::De, true, Outbound::Incoming, "x");
+        for said in ["Allô ?", "Oui.", "Hallo", "Ja."] {
+            assert_eq!(c.caller_turn(said), None, "{said}");
+        }
+        assert_eq!(c.lang(), Some(Lang::Fr));
     }
 }

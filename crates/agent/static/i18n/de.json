@@ -410,7 +410,7 @@
     "f_vad": "Gemini entscheiden lassen, wann der Anrufer fertig ist",
     "f_vad_h": "Empfohlen. Aus: Es entscheidet nur die Lautstärke.",
     "f_reply_lang": "In der Sprache des Anrufers antworten",
-    "f_reply_lang_h": "Spricht der Anrufer eine andere Sprache, wechselt die KI zu dieser.",
+    "f_reply_lang_h": "Die KI wechselt nur, wenn der Anrufer eindeutig in ganzen Sätzen eine andere Sprache spricht. Ein kurzes „Hallo“ oder Unverständliches zählt nicht.",
     "f_status": "Statusnotiz",
     "f_status_h": "Eine Notiz zur aktuellen Lage, etwa wo ein Kurier ein Paket abgeben soll. Die KI erwähnt sie nur, wenn sie zum Anruf passt.",
     "f_status_ph": "z. B. Bei Lieferungen: Paket bitte am Empfang abgeben.",
