@@ -265,6 +265,11 @@ impl CallLanguage {
         // it. A greeting or "yes" of another core language than the call's is a drift.
         let short = words_or_letters(said) < SHORT_TURN_WORDS;
         let ai = if short {
+            // Words like "Ja" or "Hallo" belong to several languages (Dutch, Swedish,
+            // Romanian…): on a call in one without a setting, a short word is no drift.
+            if matches!(call, Lang::Ext(_)) {
+                return None;
+            }
             short_word_lang(said).filter(|l| !(l.is_zh() && call.is_zh()))?
         } else {
             match self.clear(said)? {
@@ -1106,5 +1111,15 @@ mod one_misheard_line {
         // Not while it cannot be told.
         let mut c = CallLanguage::new(Lang::En, Lang::En);
         assert_eq!(c.ai_turn("Sí.", false), None);
+    }
+
+    #[test]
+    fn a_short_word_on_a_call_in_a_language_without_a_setting_is_no_drift() {
+        for code in ["nl", "sv", "ro"] {
+            for said in ["Ja.", "Hallo.", "Salut."] {
+                let mut c = CallLanguage::new(Lang::Ext(crate::locale::Ext::from_code(code).unwrap()), Lang::En);
+                assert_eq!(c.ai_turn(said, true), None, "{code}: {said}");
+            }
+        }
     }
 }

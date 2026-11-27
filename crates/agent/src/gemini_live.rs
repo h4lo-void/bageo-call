@@ -4935,6 +4935,11 @@ fn intl_drops_model_audio(gate: IntlGate, reply_window: Option<tokio::time::Inst
     matches!(gate, IntlGate::Prompt { .. }) || reply_window.is_some() || voice_menu
 }
 
+/// The caller really talks (not a click) while the window is open: it ends.
+fn caller_spoke_in_reply_window(activity_open: bool, voiced_ms: u32) -> bool {
+    activity_open || voiced_ms >= LOCAL_MIN_VOICE_MS
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PromptReplyStep {
     /// Still inside the window (or its turn is open): keep dropping.
@@ -7450,6 +7455,10 @@ pub async fn run_session(
         // while the line stays quiet, and plays if it stays so; once the line talks
         // (the carrier's prompt) it is dropped, so is anything the model says during
         // the prompt, and the model's own 「喂？」 after it is the first thing heard.
+        if prompt_reply_until.is_some() && activity_open {
+            prompt_reply_until = None;
+            intl_kick_owed = false;
+        }
         if let Some(until) = prompt_reply_until {
             let now = tokio::time::Instant::now();
             if prompt_reply_step(until, now, model_generating || intl_gated_turn) == PromptReplyStep::Kick {
@@ -10679,6 +10688,13 @@ pub async fn run_session(
                             if persona && goodbye_pending {
                                 voice_since_arm_ms = voice_since_arm_ms.saturating_add(frame_ms);
                             }
+                            // The caller speaks after the carrier's prompt: the model answers
+                            // them, so nothing is dropped and no opening is added.
+                            if prompt_reply_until.is_some() && caller_spoke_in_reply_window(activity_open, voiced_ms) {
+                                prompt_reply_until = None;
+                                intl_kick_owed = false;
+                                info!("Gemini Live intl caller serial={serial} — the caller spoke after the carrier prompt: the model's answer plays");
+                            }
                             // An appointment's call-back not picked up yet: a ringing tone is nobody.
                             if voiced_ms >= LOCAL_MIN_VOICE_MS && (!cb_once || cb_floor.turn_may_open()) {
                                 caller_had_voice = true;
@@ -11742,6 +11758,14 @@ mod tests {
         assert_eq!(prompt_reply_step(window, window, false), PromptReplyStep::Kick);
         // …never while a turn is still open (it ends first, then the kick).
         assert_eq!(prompt_reply_step(window, window + Duration::from_secs(1), true), PromptReplyStep::Hold);
+        // The caller speaks inside the window: it is cancelled, so their answer is not dropped.
+        assert!(caller_spoke_in_reply_window(true, 0));
+        assert!(caller_spoke_in_reply_window(false, LOCAL_MIN_VOICE_MS));
+        assert!(!caller_spoke_in_reply_window(false, LOCAL_MIN_VOICE_MS - 1));
+        let cancelled: Option<tokio::time::Instant> = None;
+        assert!(!intl_drops_model_audio(open, cancelled, false));
+        // …and no opening is added over them (they are talking).
+        assert_eq!(kick_after_carrier_prompt(false, false, 0, true, false, false, true), PromptKick::Skip);
         // Once, and not over the caller's words or after a hello that was heard.
         assert_eq!(kick_after_carrier_prompt(false, true, 0, true, false, false, false), PromptKick::Send);
         assert_eq!(kick_after_carrier_prompt(false, true, 0, true, false, true, false), PromptKick::Skip);
