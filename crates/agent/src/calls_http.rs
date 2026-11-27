@@ -1439,6 +1439,19 @@ async fn preview(
     if kind != "off" && !crate::ambience::valid_kind(&kind) {
         return api_error(StatusCode::BAD_REQUEST, "unknown_background", format!("unknown background sound {kind}"));
     }
+    // The owner asked to hear it: a bed that is not here yet is downloaded now.
+    let bed = if kind == "off" {
+        None
+    } else {
+        let got = match state.ambience.get(&kind) {
+            Some(b) => Ok(b),
+            None => state.ambience.ensure_official(&kind).await,
+        };
+        match got {
+            Ok(b) => Some((b, crate::ambience::level_gain(level), crate::ambience::preview_start_s(&kind))),
+            Err(e) => return crate::ambience::download_error(&e),
+        }
+    };
     let sr = state.settings.sample_rate.max(8000);
     let lines = if voice == "none" {
         Vec::new()
@@ -1460,20 +1473,6 @@ async fn preview(
             Err(e) => {
                 tracing::warn!("voice preview failed voice={voice}: {e:#}");
                 return api_error(StatusCode::BAD_GATEWAY, "preview_failed", format!("{e:#}"));
-            }
-        }
-    };
-    let bed = if kind == "off" {
-        None
-    } else {
-        match state.ambience.get(&kind) {
-            Some(b) => Some((b, crate::ambience::level_gain(level), crate::ambience::preview_start_s(&kind))),
-            None => {
-                return api_error(
-                    StatusCode::NOT_FOUND,
-                    "background_missing",
-                    format!("the sound file for background {kind} is not loaded"),
-                )
             }
         }
     };
@@ -1604,6 +1603,19 @@ async fn settings_put(
             purge_after_fewer_days(&state, days_before, rt.retention_days);
             // Language, answer style, owner name: what the next call's helpers read.
             rt.apply_globals();
+            // The owner just picked a background sound this computer does not have:
+            // fetch it now, in a task of its own. Saving never waits for it or fails with it.
+            if patch.get("ambience_kind").is_some_and(Value::is_string)
+                && rt.ambience_kind != "off"
+                && state.ambience.get(&rt.ambience_kind).is_none()
+            {
+                let (lib, kind) = (state.ambience.clone(), rt.ambience_kind.clone());
+                tokio::spawn(async move {
+                    if let Err(e) = lib.ensure_official(&kind).await {
+                        tracing::warn!("background sound {kind} was not downloaded: {e}");
+                    }
+                });
+            }
             // Blocked numbers / hidden numbers / voice / model changed: have the "cannot be
             // reached" announcement ready before the next such call (cached: free when it exists).
             if [
@@ -6516,6 +6528,7 @@ pub fn router(state: CallsState) -> Router {
         .merge(crate::backup::router())
         .merge(crate::pack_update::router())
         .merge(crate::voice_packs::router())
+        .merge(crate::ambience::router())
         .merge(crate::extras::router())
         .with_state(state)
 }

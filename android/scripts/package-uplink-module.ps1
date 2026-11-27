@@ -116,6 +116,8 @@ try {
                 if (Test-Path $enVoices) {
                     Copy-Item -Path $enVoices -Destination (Join-Path $dstVoices "en") -Recurse -Force
                 }
+            } elseif ($_.Name -like "ambience_*.wav") {
+                # Background sounds are not bundled; they download from bageo-packs on demand.
             } else {
                 Copy-Item -Path $_.FullName -Destination (Join-Path $dstAssets $_.Name) -Recurse -Force
             }
@@ -164,13 +166,16 @@ $verifyZip = [System.IO.Compression.ZipFile]::OpenRead($zipOut)
 try {
     $znames = $verifyZip.Entries | ForEach-Object { $_.FullName }
     $soEntry = "system/priv-app/com.pixelcallai.streamer/lib/arm64/libbageo_agent.so"
-    $assetEntry = "system/priv-app/com.pixelcallai.streamer/bageo_assets/ambience_office.wav"
+    $voicePrefix = "system/priv-app/com.pixelcallai.streamer/bageo_assets/voices/en/"
+    $voices = @($znames | Where-Object { $_.StartsWith($voicePrefix) -and $_.EndsWith(".wav") })
+    $beds = @($znames | Where-Object { $_ -like "*/bageo_assets/*ambience_*.wav" })
     if ($Standalone) {
         if ($znames -notcontains $soEntry) { throw "$soEntry missing in $zipOut" }
-        if ($znames -notcontains $assetEntry) { throw "$assetEntry missing in $zipOut" }
+        if ($voices.Count -eq 0) { throw "no English voice files under $voicePrefix in $zipOut" }
+        if ($beds.Count -gt 0) { throw "background sounds must not be bundled: $($beds -join ', ')" }
     } else {
         if ($znames -contains $soEntry) { throw "$soEntry unexpectedly present in $zipOut" }
-        if ($znames -contains $assetEntry) { throw "$assetEntry unexpectedly present in $zipOut" }
+        if ($voices.Count -gt 0) { throw "$voicePrefix unexpectedly present in $zipOut" }
     }
 } finally {
     $verifyZip.Dispose()

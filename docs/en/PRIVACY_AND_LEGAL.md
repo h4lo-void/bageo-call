@@ -43,8 +43,9 @@ Details for some rows:
   language you download ([API](API.md#voice-downloads)).
 - **Extra languages and regional artwork**: the Android app has all 79
   languages built in. The console has nine built in and can download 70 more.
-  The installers carry only the English voices; other voices download when you
-  pick them. Extra console/notification language packs (with the artwork of the
+  The installers carry only the English voices and none of the 12 background
+  sounds; other voices and a background sound download when you pick or preview
+  them (never at start-up, in the background or during a call). Extra console/notification language packs (with the artwork of the
   regions that speak them), local data updates (the prompt texts file
   `bageo-prompts.json.gz` comes down with them), voice packs and Bageo release
   checks never connect to the internet automatically; they connect to GitHub

@@ -9,6 +9,8 @@
 //!             [--call-only]
 //! packs build-extras <source folder> --version <YYYYMMDDNN> --commit <text> --out <folder>
 //!             [--built-at <time>] [--min-bageo <x.y.z>]
+//! packs build-ambience <source folder> --version <YYYYMMDDNN> --commit <text> --out <folder>
+//!             [--built-at <time>]
 //! packs build-art <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-art.json.gz>
 //!             [--built-at <time>]
 //! packs build-prompts <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-prompts.json.gz>
@@ -41,6 +43,7 @@ const USAGE: &str = "usage:
   packs build-locales <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-locales.json.gz> [--index <bageo-pack-index.json>] [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>] [--check] [--call-only]
   packs build-scams <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-scams.json.gz> [--index <bageo-pack-index.json>] [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>]
   packs build-extras <source folder> --version <YYYYMMDDNN> --commit <text> --out <folder> [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>]
+  packs build-ambience <source folder> --version <YYYYMMDDNN> --commit <text> --out <folder> [--built-at <YYYY-MM-DDTHH:MM:SSZ>]
   packs build-art <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-art.json.gz> [--built-at <YYYY-MM-DDTHH:MM:SSZ>]
   packs build-prompts <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-prompts.json.gz> [--index <bageo-pack-index.json>] [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>]
   packs sync-source --bageo-call <checkout> --out <packs folder> [--commit <text>]
@@ -75,6 +78,7 @@ fn main() -> ExitCode {
         Some("build-locales") => cmd_build_locales(&args[1..]),
         Some("build-scams") => cmd_build_scams(&args[1..]),
         Some("build-extras") => cmd_build_extras(&args[1..]),
+        Some("build-ambience") => cmd_build_ambience(&args[1..]),
         Some("build-art") => cmd_build_art(&args[1..]),
         Some("build-prompts") => cmd_build_prompts(&args[1..]),
         Some("sync-source") => cmd_sync_source(&args[1..]),
@@ -138,6 +142,7 @@ fn cmd_check(args: &[String]) -> ExitCode {
     }
     let (drawings, art_issues) = check_art_sources(Path::new(dir), &locales);
     issues.extend(art_issues);
+    issues.extend(bageo_packs::check_ambience(Path::new(dir)));
     let mut scams_info = None;
     if Path::new(dir).join("scams/base.json").is_file() {
         match build_scams_at(Path::new(dir), bageo_packs::util::today_version(), "0000000000000000000000000000000000000000", &now_rfc3339()) {
@@ -477,6 +482,41 @@ fn cmd_build_extras(args: &[String]) -> ExitCode {
     }
     println!("wrote {EXTRAS_INDEX_FILE}: {} bytes", built.index_json.len());
     println!("built {} language file(s) and {} art file(s), version {version}", built.index.langs.len(), built.index.art.len());
+    ExitCode::SUCCESS
+}
+
+/// build-ambience: the twelve background sounds and their index, written into one folder.
+fn cmd_build_ambience(args: &[String]) -> ExitCode {
+    let Some(a) = parse_args(args, &["--version", "--commit", "--out", "--built-at"], &[]) else { return usage() };
+    let ([dir], Some(version), Some(commit), Some(out)) = (a.pos.as_slice(), a.opts.get("--version"), a.opts.get("--commit"), a.opts.get("--out"))
+    else {
+        return usage();
+    };
+    let built_at = a.opts.get("--built-at").cloned().unwrap_or_else(now_rfc3339);
+    if !valid_rfc3339_utc(&built_at) || !valid_commit_arg(commit) {
+        return usage();
+    }
+    // Everything is checked in memory before any file is written.
+    let built = match bageo_packs::build_ambience(Path::new(dir), version, commit, &built_at) {
+        Ok(b) => b,
+        Err(issues) => {
+            report(&issues);
+            return ExitCode::from(1);
+        }
+    };
+    if let Err(e) = fs::create_dir_all(out) {
+        return fail(format!("cannot create {out}: {e}"));
+    }
+    for (name, body) in &built.files {
+        if let Err(e) = fs::write(Path::new(out).join(name), body) {
+            return fail(format!("cannot write {name}: {e}"));
+        }
+        println!("wrote {name}: {} bytes, sha256 {}", body.len(), &sha256_hex(body)[..8]);
+    }
+    if let Err(e) = fs::write(Path::new(out).join(bageo_packs::AMBIENCE_INDEX_FILE), built.index_json.as_bytes()) {
+        return fail(format!("cannot write {}: {e}", bageo_packs::AMBIENCE_INDEX_FILE));
+    }
+    println!("built {} background sound(s), version {version}", built.index.beds.len());
     ExitCode::SUCCESS
 }
 

@@ -1353,7 +1353,8 @@ async fn bootstrap_runtime() -> Result<(AppState, CallsState, Arc<control::Contr
                 .map(PathBuf::from)
                 .unwrap_or_else(config::assets_dir),
             settings.sample_rate,
-        )),
+        )
+        .with_download_dir(packs_store::data_dir().join("ambience"))),
         errands: errand_store.clone(),
         sms: sms_store.clone(),
     };

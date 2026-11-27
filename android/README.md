@@ -101,7 +101,7 @@ magisk/dist/bageo-phone-module-<versionName>.zip
 Pass `-Standalone` (Windows) or `--standalone` (macOS / Linux) to cross-compile
 the Rust agent into `arm64-v8a` `libbageo_agent.so` (requires Android NDK and
 `rustup target add aarch64-linux-android`), assemble `:app:assembleStandaloneRelease`,
-bundle `bageo_assets/` (ambience WAVs and default `en` voices), and output
+bundle `bageo_assets/` (the default `en` voices; background sounds download on demand), and output
 `magisk/dist/bageo-phone-standalone-<versionName>.zip`.
 
 To build only the APKs, run `.\gradlew.bat :app:assembleBridgeRelease :app:assembleStandaloneRelease` (Windows) or

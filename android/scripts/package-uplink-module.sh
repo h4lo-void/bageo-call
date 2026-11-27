@@ -160,13 +160,16 @@ zip_out, standalone = sys.argv[1], sys.argv[2] == "1"
 with zipfile.ZipFile(zip_out) as zf:
     names = set(zf.namelist())
 so_path = "system/priv-app/com.pixelcallai.streamer/lib/arm64/libbageo_agent.so"
-asset_path = "system/priv-app/com.pixelcallai.streamer/bageo_assets/ambience_office.wav"
+voice_prefix = "system/priv-app/com.pixelcallai.streamer/bageo_assets/voices/en/"
+voices = [n for n in names if n.startswith(voice_prefix) and n.endswith(".wav")]
+beds = [n for n in names if "/bageo_assets/" in n and "ambience_" in n.rsplit("/", 1)[-1]]
 if standalone:
     assert so_path in names, f"{so_path} missing in {zip_out}"
-    assert asset_path in names, f"{asset_path} missing in {zip_out}"
+    assert voices, f"no English voice files under {voice_prefix} in {zip_out}"
+    assert not beds, f"background sounds must not be bundled: {beds}"
 else:
     assert so_path not in names, f"{so_path} unexpectedly present in {zip_out}"
-    assert asset_path not in names, f"{asset_path} unexpectedly present in {zip_out}"
+    assert not voices, f"{voice_prefix} unexpectedly present in {zip_out}"
 PY
 fi
 

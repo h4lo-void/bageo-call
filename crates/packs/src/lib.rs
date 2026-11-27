@@ -22,7 +22,10 @@
 //! of its regions, and the drawings built into Bageo.
 //! The [prompts] module holds the words Bageo tells the models and the
 //! download of changed ones, bageo-prompts.json.gz.
+//! The [ambience] module holds the background sounds (ambience/*.wav), which
+//! ship only as a download, next to bageo-ambience-index.json.
 
+pub mod ambience;
 pub mod check;
 pub mod data;
 pub mod export;
@@ -38,6 +41,7 @@ pub mod util;
 
 use std::fmt;
 
+pub use ambience::{build_ambience, check_ambience, AmbienceBuild, AmbienceIndex, AMBIENCE_INDEX_FILE, AMBIENCE_KINDS};
 pub use check::{
     check_bundle, check_bundle_at, check_index, pack_bundle, parse_bundle, parse_bundle_bytes, parse_index, parse_index_noting,
     sound_locales,

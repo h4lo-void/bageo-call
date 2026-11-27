@@ -356,8 +356,19 @@ opens one.
 Languages and regions whose recordings do not come with Bageo can be added as
 voice packs ([Voice downloads](#voice-downloads)).
 
-Errors: 400 `unknown_voice` / `unknown_background`, 404 `background_missing`
-(the sound file is not loaded), 502 `preview_failed`.
+The 12 background sounds are not in the installers. A preview of one that this
+computer does not have yet downloads it first from the latest `bageo-packs`
+release (size and SHA-256 are checked against `bageo-ambience-index.json`), and
+it works at once. Saving a settings change that picks such a sound starts the
+same download without delaying the save, and
+`POST /calls/api/ambience/download` with `{"kind": "home"}` (same password and
+`Content-Type: application/json` rules as the other routes) downloads one on
+request. Nothing is downloaded at start-up, in the background or during a call.
+
+Errors: 400 `unknown_voice` / `unknown_background`, 404 `background_not_listed`
+(the release has no such sound), 502 `background_offline` / `background_refused`
+(no connection, or the file did not pass the checks), 500 `background_not_saved`,
+502 `preview_failed`.
 
 ## Appointments and tasks
 

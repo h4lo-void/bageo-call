@@ -321,7 +321,9 @@ curl -s -X PUT "http://127.0.0.1:8787/calls/api/settings" \
 内置的 30 个声音在 9 种语言下都预先录好了试听和拒接语音（源码的 `assets/voices/` 里共 1,080 段），安装包和 Docker 镜像只带英文那份。有录好的就不用连接 Gemini；只有 `regen=true` 或没有预录的声音才会开一次连接。
 Bageo 没有自带的语言和地区，可以另外下载语音包（见[语音下载](#语音下载)）。
 
-错误：400 `unknown_voice`／`unknown_background`、404 `background_missing`（背景音文件没加载）、502 `preview_failed`。
+12 种背景音不在安装包里。试听一种这台电脑还没有的背景音时，会先从 `bageo-packs` 最新的 Release 下载（大小与 SHA-256 按 `bageo-ambience-index.json` 检查），下载完立刻可用。保存设置时选了这种背景音，也会开始同样的下载，但不会拖慢保存；`POST /calls/api/ambience/download` 带 `{"kind": "home"}`（密码与 `Content-Type: application/json` 规则同其他路由）则是手动下载。启动时、后台或通话中都不会下载。
+
+错误：400 `unknown_voice`／`unknown_background`、404 `background_not_listed`（Release 没有这种背景音）、502 `background_offline`／`background_refused`（连不上，或文件没通过检查）、500 `background_not_saved`、502 `preview_failed`。
 
 ## 日程预约与任务
 

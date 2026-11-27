@@ -30,7 +30,8 @@ The parts listed below come under other terms or from other projects.
   Gunnerson; see the header of the file). It is a standalone installer script
   run by the root manager when the module zip is flashed; it is not linked into
   the Android app or the Bageo program.
-- `assets/ambience_*.wav` — built from CC0 (public-domain) recordings from
+- `ambience_*.wav` (background sounds; kept in bageo-packs `ambience/`, not in
+  the installers) — built from CC0 (public-domain) recordings from
   Freesound plus sounds synthesised for this project. Sources are listed in
   [`assets/README.md`](assets/README.md).
 - `assets/voices/*/*.wav` — 1,080 prerecorded voice preview and

@@ -1,22 +1,28 @@
 # Bageo bundled sounds: background ambience and voice samples
 
-This folder holds the audio the Bageo agent ships with: background sounds that play
-quietly under the AI's voice on a phone call, and pre-recorded Gemini Live voice
-samples for previews and blocked-number announcements. Use this page to see where each
-sound comes from and how to add or re-record your own.
+This folder holds the audio the Bageo agent ships with: pre-recorded Gemini Live voice
+samples for previews and blocked-number announcements. The background sounds that play
+quietly under the AI's voice on a phone call are **not** in this folder or in the
+installers any more; they live in bageo-packs (`ambience/`) and Bageo downloads one when
+its owner picks or previews it. Use this page to see where each sound comes from and how
+to add or re-record your own.
 
 | File pattern | What it is |
 |---|---|
-| `ambience_<kind>.wav` | [Background sounds](#background-sounds-ambience_kindwav), all CC0 |
+| `ambience_<kind>.wav` | [Background sounds](#background-sounds-ambience_kindwav), all CC0, kept in bageo-packs, not here |
 | `voices/<language>/<Voice>_<n>.wav` | [Voice samples](#voice-samples-voiceslanguagevoice_nwav) recorded with Gemini Live |
 | `ivr_*.wav`, `hold_transfer.wav` | [Older menu flows](#optional-sounds-of-the-older-menu-flows), not shipped |
 
 ## Background sounds (`ambience_<kind>.wav`)
 
 A background sound sets the room the AI seems to be in: a quiet bed under its voice,
-chosen in the web console (*Settings → How it answers → Background sound*). The agent
-loads every `ambience_<kind>.wav` it finds here at start-up (16 kHz mono, IMA ADPCM,
-a quarter of the size of plain 16-bit WAV; plain 16-bit PCM WAV files are read too).
+chosen in the web console (*Settings → How it answers → Background sound*). Bageo
+downloads `ambience_<kind>.wav` from the latest bageo-packs release the first time it
+is picked or previewed (never at start-up, never in the background), checks its size
+and SHA-256 against `bageo-ambience-index.json`, and keeps it in its data folder. At
+start-up it loads the beds it already has, and any `ambience_<kind>.wav` an older
+install still keeps here (16 kHz mono, IMA ADPCM, a quarter of the size of plain
+16-bit WAV; plain 16-bit PCM WAV files are read too).
 
 All recordings are **CC0 (public domain)** from [Freesound](https://freesound.org).
 The numbers below are Freesound sound IDs (`https://freesound.org/s/<id>/`). Sounds
@@ -29,7 +35,7 @@ Each recording was:
 3. cross-faded into a seamless loop,
 4. normalised to −30 dBFS RMS.
 
-The agent plays it at about −50 / −44 / −38 dBFS for level 1 / 2 / 3; the AI's voice
+Bageo plays it at about −50 / −44 / −38 dBFS for level 1 / 2 / 3; the AI's voice
 sits around −16 dBFS.
 
 | File | Length | Sources |
@@ -52,10 +58,12 @@ construction beds.
 
 ### Adding your own
 
-- **Replace a sound:** overwrite the file of an existing kind with a 16 kHz mono
-  16-bit WAV (ADPCM or plain PCM). No code change is needed.
-- **Add a new kind:** drop `ambience_<kind>.wav` here, add the kind to `KINDS` in
-  `crates/agent/src/ambience.rs` and add its name to the web console's translations.
+- **Replace a sound:** overwrite the file of an existing kind in bageo-packs
+  `ambience/` with a 16 kHz mono 16-bit WAV (ADPCM or plain PCM), then publish a
+  bageo-packs release (`packs build-ambience`). No code change is needed.
+- **Add a new kind:** add `ambience_<kind>.wav` to bageo-packs `ambience/`, add the kind
+  to `KINDS` in `crates/agent/src/ambience.rs` and `AMBIENCE_KINDS` in
+  `crates/packs/src/ambience.rs`, and add its name to the web console's translations.
 
 Use material you have the right to distribute, without recognisable voices.
 
@@ -76,14 +84,14 @@ every recording against Gemini's transcript of it. After changing a line in
 `locale.rs` (`preview`, `unavailable`), delete that language's files and run it
 again.
 
-The agent uses a sample only when it runs at the same sample rate (`SAMPLE_RATE`,
+Bageo uses a sample only when it runs at the same sample rate (`SAMPLE_RATE`,
 default 16000); otherwise it records its own on first use.
 
 ## Optional sounds of the older menu flows
 
-The agent also looks here for `ivr_*.wav` and `hold_transfer.wav`: greeting,
+Bageo also looks here for `ivr_*.wav` and `hold_transfer.wav`: greeting,
 voicemail and hold-music clips of the older menu-based modes. None are shipped. The
-default mode, an AI voice answering directly, does not use them, and the agent runs
+default mode, an AI voice answering directly, does not use them, and Bageo runs
 without them.
 
 <!-- SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call> -->
