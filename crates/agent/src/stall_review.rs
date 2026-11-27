@@ -193,6 +193,13 @@ impl CallerContext {
     pub fn protected(&self) -> bool {
         self.saved_contact.is_some() || self.owner_safe
     }
+
+    /// Never looked at for sales / scam and never stalled: a saved contact, a
+    /// whitelisted number or one the owner marked safe, unless the number is
+    /// on the Stall list (`force_stall`: that list wins).
+    pub fn trusted(&self, force_stall: bool) -> bool {
+        !force_stall && self.protected()
+    }
 }
 
 /// How long the verdict may take. Nobody waits for it: the AI talks on and the

@@ -315,6 +315,9 @@ pub struct Errand {
     /// The specific SIM line the owner picked on `phone_asked` (`None`: any SIM matching the destination country).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sub_id_asked: Option<i64>,
+    /// The owner confirmed a call on the picked SIM to a number of another country.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub abroad_ok: bool,
     /// The SIM it dials from (Android subscription id; None: the phone's default).
     pub sub_id: Option<i64>,
     /// That SIM's country (the number's): the call's own report must say it.
@@ -738,6 +741,43 @@ pub fn pick_phone_sim(
     asked_sub_id: Option<i64>,
     home: &str,
 ) -> Result<Pick, &'static str> {
+    pick_phone_abroad(phones, number, asked, asked_sub_id, home, false)
+}
+
+/// The country of the SIM `asked_sub_id` on the (asked) phones, if one reported it.
+fn picked_sim_country(phones: &[PhoneView], asked: &str, asked_sub_id: Option<i64>) -> Option<String> {
+    let asked = asked.trim();
+    let want_sub = asked_sub_id?;
+    phones
+        .iter()
+        .filter(|p| !p.normal)
+        .filter(|p| asked.is_empty() || p.serial.eq_ignore_ascii_case(asked))
+        .find_map(|p| p.sims.iter().find(|(sub, _)| *sub == want_sub).map(|(_, c)| c.clone()))
+}
+
+/// (SIM country, number country) when the owner picked a SIM and the number
+/// (written with `+`) is of another country: the owner must confirm that call.
+pub fn cross_country(phones: &[PhoneView], number: &str, asked: &str, asked_sub_id: Option<i64>) -> Option<(String, String)> {
+    let n = clean_number(number)?;
+    if !n.starts_with('+') {
+        return None;
+    }
+    let sim = picked_sim_country(phones, asked, asked_sub_id)?;
+    let dest = crate::phone_region::normalize(&n, None)?.country.to_string();
+    (sim != dest).then_some((sim, dest))
+}
+
+/// [`pick_phone_sim`]; `abroad_ok`: the owner confirmed a call on the picked SIM
+/// to a number of another country (without it: `sim_other_country`). Only that
+/// one check is relaxed: the number is still validated as its own country's.
+pub fn pick_phone_abroad(
+    phones: &[PhoneView],
+    number: &str,
+    asked: &str,
+    asked_sub_id: Option<i64>,
+    home: &str,
+    abroad_ok: bool,
+) -> Result<Pick, &'static str> {
     let n = clean_number(number).ok_or("bad_number")?;
     if short_code(&n) {
         return Err("not_allowed");
@@ -750,16 +790,12 @@ pub fn pick_phone_sim(
         .collect();
     // When the owner explicitly picked a SIM line and typed a local number without '+',
     // interpret that national number in the chosen SIM's country rather than `home`.
-    let picked_sim_country = asked_sub_id.and_then(|want_sub| {
-        usable_for_region
-            .iter()
-            .find_map(|p| p.sims.iter().find(|(sub, _)| *sub == want_sub).map(|(_, c)| c.clone()))
-    });
+    let picked_sim_country = picked_sim_country(phones, asked, asked_sub_id);
     let country = if n.starts_with('+') {
         crate::phone_region::normalize(&n, None)
             .map(|p| p.country.to_string())
             .ok_or("bad_number")?
-    } else if let Some(sim_c) = picked_sim_country {
+    } else if let Some(sim_c) = picked_sim_country.clone() {
         sim_c
     } else {
         home.trim().to_ascii_lowercase()
@@ -768,6 +804,12 @@ pub fn pick_phone_sim(
     if usable_for_region.is_empty() {
         return Err("no_phone");
     }
+    let cross = if n.starts_with('+') { picked_sim_country.filter(|sc| *sc != country) } else { None };
+    if cross.is_some() && !abroad_ok {
+        return Err("sim_other_country");
+    }
+    // A confirmed call abroad: the SIM's country is the one its call reports.
+    let country = cross.unwrap_or(country);
     let unknown = usable_for_region.iter().any(|p| p.sims.is_empty());
     let mut found: Vec<Pick> = usable_for_region
         .into_iter()
@@ -3537,6 +3579,17 @@ fn body_str(body: &Value, key: &str) -> String {
 
 /// `POST /calls/api/errands`. Err: the 400 code.
 pub async fn create(env: &Env<'_>, body: &Value) -> Result<Errand, &'static str> {
+    create_detail(env, body).await.map_err(|(code, _)| code)
+}
+
+/// [`create`]; with `sim_other_country` also (SIM country, number country).
+pub async fn create_detail(env: &Env<'_>, body: &Value) -> Result<Errand, (&'static str, Option<(String, String)>)> {
+    let mut cross = None;
+    let made = create_base(env, body, &mut cross).await;
+    made.map_err(|code| (code, cross.take()))
+}
+
+async fn create_base(env: &Env<'_>, body: &Value, cross: &mut Option<(String, String)>) -> Result<Errand, &'static str> {
     let follow_up_of = body_str(body, "follow_up_of").trim().to_string();
     let earlier = if follow_up_of.is_empty() {
         None
@@ -3598,7 +3651,16 @@ pub async fn create(env: &Env<'_>, body: &Value) -> Result<Errand, &'static str>
     if !asked.is_empty() && !id_safe(&asked) {
         return Err("no_phone");
     }
-    let pick = pick_phone_sim(&env.phones, &number, &asked, asked_sub_id, &home_region(env.rt))?;
+    let abroad_ok = body.get("abroad_ok").and_then(Value::as_bool).unwrap_or(false);
+    let pick = match pick_phone_abroad(&env.phones, &number, &asked, asked_sub_id, &home_region(env.rt), abroad_ok) {
+        Ok(p) => p,
+        Err(code) => {
+            if code == "sim_other_country" {
+                *cross = cross_country(&env.phones, &number, &asked, asked_sub_id);
+            }
+            return Err(code);
+        }
+    };
     let now = now_stamp();
     let e = Errand {
         id: new_id(),
@@ -3614,6 +3676,7 @@ pub async fn create(env: &Env<'_>, body: &Value) -> Result<Errand, &'static str>
         follow_up_of,
         phone_asked: asked,
         sub_id_asked: asked_sub_id,
+        abroad_ok,
         redial: body.get("redial").and_then(Value::as_bool).unwrap_or(false),
         answers,
         place_type: crate::place_habits::clean_type(&body_str(body, "place_type")),
@@ -3667,7 +3730,7 @@ pub async fn retry(env: &Env<'_>, id: &str) -> Result<Errand, &'static str> {
     if !e.is_final() || appointments::errand_call_known(id) {
         return Err("busy");
     }
-    let pick = pick_phone_sim(&env.phones, &e.number, &e.phone_asked, e.sub_id_asked, &home_region(env.rt))?;
+    let pick = pick_phone_abroad(&env.phones, &e.number, &e.phone_asked, e.sub_id_asked, &home_region(env.rt), e.abroad_ok)?;
     let updated = env.store.update_if(id, Errand::is_final, |e| {
         e.history.push(Attempt {
             attempt: e.attempts,
@@ -3781,7 +3844,7 @@ pub async fn sweep(env: &Env<'_>) {
         if behind {
             continue;
         }
-        if let Ok(pick) = pick_phone_sim(&env.phones, &e.number, &e.phone_asked, e.sub_id_asked, &home) {
+        if let Ok(pick) = pick_phone_abroad(&env.phones, &e.number, &e.phone_asked, e.sub_id_asked, &home, e.abroad_ok) {
             if !pick.busy {
                 dial(env, &e.id, &pick).await;
             }
@@ -3801,7 +3864,7 @@ async fn redial_due(env: &Env<'_>, home: &str) {
         if due > now || appointments::errand_call_known(&e.id) {
             continue;
         }
-        match pick_phone_sim(&env.phones, &e.number, &e.phone_asked, e.sub_id_asked, home) {
+        match pick_phone_abroad(&env.phones, &e.number, &e.phone_asked, e.sub_id_asked, home, e.abroad_ok) {
             Ok(pick) => {
                 info!(errand = e.id.as_str(), next_try = e.redial_try(), "errand: dialed again");
                 dial(env, &e.id, &pick).await;
@@ -3927,9 +3990,14 @@ async fn create_errand(State(state): State<CallsState>, headers: HeaderMap, Quer
     };
     let now = now_of(&state).await;
     // A contact or earlier errand that is not there is a bad request here (400).
-    match create(&env_of(&state, &now), &body).await {
+    match create_detail(&env_of(&state, &now), &body).await {
         Ok(e) => Json(json!({"ok": true, "errand": e})).into_response(),
-        Err(code) => bad(code),
+        Err((code, Some((sim, dest)))) if code == "sim_other_country" => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"ok": false, "error": code, "code": code, "sim_country": sim, "number_country": dest})),
+        )
+            .into_response(),
+        Err((code, _)) => bad(code),
     }
 }
 
@@ -4450,6 +4518,68 @@ mod tests {
         let late = rig.store.get(&behind.id).unwrap();
         assert_eq!((late.status.as_str(), late.call_code.as_str()), (FAILED, "number_busy"));
         assert!(!appointments::errand_call_known(&behind.id));
+    }
+
+    #[test]
+    fn a_picked_sim_of_another_country_needs_the_owners_confirmation() {
+        let ph = |c: &str| vec![phone("p-x", &[(7, c)])];
+        for (sim, number, dest, e164) in [
+            ("tw", "+1 650 555 0123", "us", "+16505550123"),
+            ("jp", "+82 10 1234 5678", "kr", "+821012345678"),
+            ("us", "+49 30 12345678", "de", "+493012345678"),
+        ] {
+            let phones = ph(sim);
+            assert_eq!(pick_phone_abroad(&phones, number, "", Some(7), "tw", false), Err("sim_other_country"), "{sim} {number}");
+            assert_eq!(cross_country(&phones, number, "", Some(7)), Some((sim.to_string(), dest.to_string())));
+            let p = pick_phone_abroad(&phones, number, "", Some(7), "tw", true).unwrap();
+            assert_eq!((p.serial.as_str(), p.sub_id, p.country.as_str(), p.e164.as_str()), ("p-x", Some(7), sim, e164));
+            // pick_phone_sim never confirms.
+            assert_eq!(pick_phone_sim(&phones, number, "", Some(7), "tw"), Err("sim_other_country"));
+            // No SIM picked: the automatic choice still wants a SIM of the country.
+            assert_eq!(pick_phone_abroad(&phones, number, "", None, "tw", true), Err("no_sim_for_country"));
+            assert_eq!(cross_country(&phones, number, "", None), None);
+        }
+        // The confirmation relaxes nothing else.
+        let tw = ph("tw");
+        for (n, want) in [("+1 900 555 0100", "not_allowed"), ("+1 976 555 0100", "not_allowed"), ("112", "not_allowed"), ("abc", "bad_number")] {
+            assert_eq!(pick_phone_abroad(&tw, n, "", Some(7), "tw", true), Err(want), "{n}");
+            assert_eq!(pick_phone_abroad(&tw, n, "", Some(7), "tw", false), Err(want), "{n}");
+        }
+        // A number without a plus is read in the picked SIM's country: no mismatch.
+        assert_eq!(pick_phone_abroad(&tw, "0912345678", "", Some(7), "us", false).unwrap().e164, "+886912345678");
+        assert_eq!(cross_country(&tw, "0912345678", "", Some(7)), None);
+        // The picked SIM is of the number's country: nothing to confirm.
+        assert!(pick_phone_abroad(&ph("us"), "+1 650 555 0123", "", Some(7), "tw", false).is_ok());
+        // An unknown SIM id stays what it was.
+        assert_eq!(pick_phone_abroad(&tw, "+1 650 555 0123", "", Some(8), "tw", true), Err("no_sim_for_country"));
+    }
+
+    #[tokio::test]
+    async fn a_confirmed_call_abroad_is_remembered_for_retry_and_queue() {
+        let rig = Rig::new();
+        let mut busy = phone("pixel-abroad-1", &[(7, "tw")]);
+        busy.busy = true;
+        let body = json!({"number": "+1 650 555 0123", "task": "問營業時間", "serial": "pixel-abroad-1", "sub_id": 7});
+        let env = rig.env(vec![busy.clone()]);
+        assert_eq!(create(&env, &body).await.map(|e| e.id), Err("sim_other_country"));
+        let (code, countries) = create_detail(&env, &body).await.map(|e| e.id).unwrap_err();
+        assert_eq!((code, countries), ("sim_other_country", Some(("tw".to_string(), "us".to_string()))));
+        let mut yes = body.clone();
+        yes["abroad_ok"] = json!(true);
+        let e = create(&env, &yes).await.unwrap();
+        assert!(e.abroad_ok);
+        assert_eq!((e.status.as_str(), e.call_code.as_str()), (QUEUED, "phone_busy"));
+        // Retry uses the stored confirmation.
+        cancel(&rig.env(vec![]), &e.id).await.unwrap();
+        let again = retry(&rig.env(vec![busy.clone()]), &e.id).await.unwrap();
+        assert_eq!((again.attempts, again.status.as_str()), (2, QUEUED));
+        // The queue dials it once the phone is free.
+        let (sink, mut ph) = phone_socket().await;
+        rig.control.register_client("pixel-abroad-1".into(), sink).await;
+        sweep(&rig.env(vec![phone("pixel-abroad-1", &[(7, "tw")])])).await;
+        let dialing = rig.store.get(&e.id).unwrap();
+        assert_eq!((dialing.status.as_str(), dialing.sub_id, dialing.sim_country.as_str()), (DIALING, Some(7), "tw"));
+        assert!(next_json(&mut ph, Duration::from_secs(2)).await.is_some());
     }
 
     #[tokio::test]

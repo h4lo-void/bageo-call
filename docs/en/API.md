@@ -592,6 +592,7 @@ Details for these routes:
 - Creating an errand requires `task`, and a number (or a contact or an earlier errand whose number is used). Empty `identity` means `errand_identity`; empty `serial` means any suitable phone.
 - `answers` is optional: what you added after the questions, as `{key: text}`. The keys are the ones `preflight` returns in `missing` and `optional`, plus `note` for free text; up to 80 characters each (`note`: 120). Unknown keys are dropped. They reach the AI as a short block in the call's script.
 - `place_type` is optional: the `type` that `preflight` returned. Without it, Bageo reads the kind of call from the task.
+- `sub_id` is optional: the SIM to dial from on the `serial` phone (or write `serial` as `<serial>:<sub_id>`). When that SIM is of another country than a number written with `+`, the errand is refused with `sim_other_country` until you send the same body again with `"abroad_ok": true` (the owner agreed to an international call). The errand keeps it for **Try again** and redials.
 - `lines`: the captions after `seq`, `[{seq, who, text, at}]`, with `who` `ai`, `callee`, `owner` or `system`. The newest 400 are kept; a line is complete after 1.2 s without more words.
 - `question`: `null` or `{id, text, options, asked_at, expires_at}`, the question waiting for you.
 - `watching`: whether you count as watching. Each read marks you as watching for 6 seconds, so poll every few seconds while you follow the call.
@@ -620,6 +621,7 @@ Error codes (HTTP 400 `{ok: false, error, code}`, the same word in both):
 | `no_phone` | create, retry | No connected phone in AI mode (or the `serial` asked for is not one). |
 | `sim_unknown` | create, retry | No phone fits, and at least one has SIMs Bageo has not learned yet: call it once. |
 | `no_sim_for_country` | create, retry | No phone has a SIM of the number's country. |
+| `sim_other_country` | create, retry | The SIM picked (`sub_id`) is of another country than the number. The answer also carries `sim_country` and `number_country` (two-letter codes). Send again with `"abroad_ok": true` to call anyway. |
 | `not_found` | create | `contact_id` or `follow_up_of` does not exist (400 here). |
 | `busy` | retry, delete | The errand is still dialing or on the call. |
 | `not_on_call` | say | The call is not (or no longer) running. |

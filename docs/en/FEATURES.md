@@ -132,9 +132,9 @@ scamming:
    increases, soft sales pitches, and newer scam patterns (ATM steps, payment
    "errors", gift cards, "add me on LINE").
 3. **A second look at the meaning.** When the keywords cross the line,
-   `gemini-flash-lite` reads the conversation so far, knowing whether the
-   caller is in your contacts, while the AI keeps talking (at most 1.5
-   seconds).
+   `gemini-flash-lite` reads the conversation so far while the AI keeps
+   talking (at most 1.5 seconds). Saved contacts, Whitelist numbers and
+   numbers you marked *It was not* skip all three steps.
 
 A caller who has only said who they are is `too_early` and is looked at again
 after their next turn.
@@ -189,7 +189,7 @@ Bageo never holds a calendar login or token.
 
 Contacts let Bageo know who is calling: they show up by name in the call list,
 the summary and the notification, the AI reads your note about them, and saved
-contacts are protected in the scam review. Import from:
+contacts are never put through the scam check. Import from:
 
 - vCard 2.1 / 3.0 / 4.0, Google and Outlook CSV, TSV and plain text, read on
   your computer with automatic encoding detection (UTF-8, UTF-16, Big5, GBK,
