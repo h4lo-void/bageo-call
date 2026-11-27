@@ -3436,13 +3436,28 @@ pub(crate) fn dialogue_is_sales_for(dialogue: &str, owner_flagged: bool) -> bool
         return false;
     }
     let hard = hits.iter().any(|h| crate::scam_db::is_hard(h));
-    let Some(everyday) = ordinary_call(None, &caller, hard, owner_flagged) else {
-        return true;
-    };
-    let sales = crate::scam_db::typology_for_hits(&hits)
+    everyday_for_keywords(None, &caller, &hits, hard, owner_flagged).is_none()
+}
+
+/// The keywords heard point to a sales pitch ([`crate::scam_db::typology_for_hits`]).
+fn hits_point_to_sales(hits: &[&str]) -> bool {
+    crate::scam_db::typology_for_hits(hits)
         .and_then(crate::scam_db::typology)
-        .is_some_and(|t| t.category == crate::scam_db::Category::Sales);
-    sales && everyday != crate::scenario::Scenario::BankVerify
+        .is_some_and(|t| t.category == crate::scam_db::Category::Sales)
+}
+
+/// [`ordinary_call`] when the keywords alone decide (no look, or it keeps
+/// failing): no everyday call when they point to a sales pitch, unless it is a
+/// card desk checking one purchase (a card's name reads as a card sale).
+fn everyday_for_keywords(
+    known: Option<crate::scenario::Scenario>,
+    caller: &str,
+    hits: &[&str],
+    hard_hit: bool,
+    owner_flagged: bool,
+) -> Option<crate::scenario::Scenario> {
+    let s = ordinary_call(known, caller, hard_hit, owner_flagged)?;
+    (s == crate::scenario::Scenario::BankVerify || !hits_point_to_sales(hits)).then_some(s)
 }
 
 /// The caller has said words only scammers say ([`crate::scam_db::has_hard_hit`]:
@@ -3724,6 +3739,8 @@ struct StallFacts {
     owner_flagged: bool,
     /// An everyday call ([`ordinary_call`]): keywords alone do not back a "scam".
     ordinary: Option<crate::scenario::Scenario>,
+    /// The keywords heard point to a sales pitch ([`hits_point_to_sales`]).
+    sales_hits: bool,
 }
 
 /// Whether the call is still watched for sales / scam (keywords, the second
@@ -3755,6 +3772,16 @@ impl StallFacts {
             .and_then(crate::scam_db::typology)
             .is_some_and(|t| t.category == crate::scam_db::Category::Sales);
         if sales && self.flagged && self.ordinary != Some(crate::scenario::Scenario::BankVerify) {
+            return StallFacts { ordinary: None, ..self };
+        }
+        self
+    }
+
+    /// The facts when the keywords alone decide (the look keeps failing):
+    /// keywords pointing to a sales pitch make it no everyday call
+    /// ([`everyday_for_keywords`]).
+    fn for_keywords(self) -> StallFacts {
+        if self.sales_hits && self.flagged && self.ordinary != Some(crate::scenario::Scenario::BankVerify) {
             return StallFacts { ordinary: None, ..self };
         }
         self
@@ -3839,6 +3866,12 @@ struct StallReview {
     /// A sure "scam" with nothing else behind it: it stalls only if the look
     /// after the caller's next turn says so again (not past [`BLIND_MAX`]).
     unbacked_scam: bool,
+    /// There is no Gemini key: no look is asked again.
+    no_key: bool,
+    /// The call was let be only because it is an everyday one (the keywords
+    /// would have stalled it): looked at again once it is not
+    /// ([`StallReview::reopen_unless_everyday`]).
+    everyday_normal: bool,
 }
 
 /// What a verdict does to the call.
@@ -3865,7 +3898,7 @@ enum StallVerdictStep {
 impl StallReview {
     /// The keyword score is now `score` (`flagged`: [`stall_engages`]): ask for a review?
     fn should_ask(&mut self, flagged: bool, score: u32) -> bool {
-        if !flagged || self.pending || self.after_turn.is_some() || self.kw_spent >= STALL_REVIEW_MAX {
+        if !flagged || self.no_key || self.pending || self.after_turn.is_some() || self.kw_spent >= STALL_REVIEW_MAX {
             return false;
         }
         if self.normal_at.is_some_and(|at| score < at + STALL_REVIEW_STEP) {
@@ -3951,6 +3984,16 @@ impl StallReview {
     /// A look of any kind was asked when the caller had said `units`.
     fn seen(&mut self, units: usize) {
         self.units_seen = self.units_seen.max(units);
+    }
+
+    /// The call was let be only because it is an everyday one; `everyday`: it
+    /// still is. Once it is not (the caller asked for a code, a fee, a
+    /// transfer…), the keywords may ask for a look again at once.
+    fn reopen_unless_everyday(&mut self, everyday: bool) {
+        if self.everyday_normal && !everyday {
+            self.everyday_normal = false;
+            self.normal_at = None;
+        }
     }
 
     /// Stalling started when the caller had said `units`.
@@ -4069,7 +4112,16 @@ impl StallReview {
                 return StallVerdictStep::Carry;
             }
             if review.no_key || self.fails_in_row >= STALL_REVIEW_FAIL_MAX {
+                let facts = facts.for_keywords();
+                if facts.ordinary.is_some() && !review.no_key {
+                    // An everyday call: the keywords alone do not stall it, and
+                    // the call is not left to them for good either (a pitch or
+                    // Gemini back later still counts). Look again after the
+                    // caller's next turn.
+                    return self.again(origin, false);
+                }
                 self.keyword_rule = true;
+                self.no_key |= review.no_key;
                 if facts.keywords_back() {
                     self.why = EngageWhy::KeywordRule;
                     return StallVerdictStep::Engage;
@@ -4109,6 +4161,7 @@ impl StallReview {
                     // Unsure twice, and no keyword says so either (or only on an
                     // everyday call): let it be.
                     self.normal_at = Some(asked_at);
+                    self.everyday_normal = facts.flagged && facts.ordinary.is_some();
                     return StallVerdictStep::Carry;
                 }
                 self.again(origin, more)
@@ -4140,6 +4193,7 @@ impl StallReview {
                     return self.again(origin, more);
                 }
                 self.normal_at = Some(asked_at);
+                self.everyday_normal = false;
                 StallVerdictStep::Carry
             }
             Verdict::TooEarly => {
@@ -4148,11 +4202,17 @@ impl StallReview {
                 if self.early >= STALL_REVIEW_EARLY_MAX {
                     // Still only who they are: a keyword-flagged call is a scam, as
                     // without the review; an unflagged or everyday one is let be.
-                    return if (origin == LookOrigin::Keywords || facts.flagged) && facts.ordinary.is_none() {
-                        StallVerdictStep::Engage
-                    } else {
-                        StallVerdictStep::Carry
-                    };
+                    let keywords = origin == LookOrigin::Keywords || facts.flagged;
+                    if keywords && facts.ordinary.is_none() {
+                        return StallVerdictStep::Engage;
+                    }
+                    if keywords {
+                        // Let be only because it is an everyday call: not asked
+                        // again on every word, but again once it is not one.
+                        self.normal_at = Some(asked_at);
+                        self.everyday_normal = true;
+                    }
+                    return StallVerdictStep::Carry;
                 }
                 self.again(origin, more)
             }
@@ -9324,6 +9384,21 @@ pub async fn run_session(
                                         let flagged = stall_engages(stall_score, &stall_hits);
                                         let hard = stall_hits.iter().any(|h| crate::scam_db::is_hard(h));
                                         let protected = review_ctx().protected();
+                                        // An everyday call the keywords alone would stall (or that was
+                                        // let be only for being one): is it still one?
+                                        let everyday = if flagged && !hard && (stall_review.keyword_rule || stall_review.everyday_normal) {
+                                            everyday_for_keywords(
+                                                scenario_router.known(),
+                                                &caller_side(&transcript_out),
+                                                &stall_hits,
+                                                false,
+                                                review_ctx().owner_flagged,
+                                            )
+                                            .is_some()
+                                        } else {
+                                            false
+                                        };
+                                        stall_review.reopen_unless_everyday(everyday);
                                         if stall_engage_now.is_none()
                                             && stall_review.engage_hard_at_once(flagged, hard, protected)
                                         {
@@ -9335,28 +9410,25 @@ pub async fn run_session(
                                             info!(
                                                 "Persona stall by scam-only keywords at once serial={serial} score={stall_score} hits={stall_hits:?}"
                                             );
-                                        } else if flagged && stall_review.keyword_rule && stall_engage_now.is_none() {
+                                        } else if flagged
+                                            && stall_review.keyword_rule
+                                            && stall_engage_now.is_none()
+                                            && (hard || (!protected && !everyday))
+                                        {
                                             // The look kept failing: the keywords decide alone, as
                                             // before it existed (a contact only on words only
-                                            // scammers say, an everyday call too).
-                                            let everyday = !hard
-                                                && ordinary_call(
-                                                    scenario_router.known(),
-                                                    &caller_side(&transcript_out),
-                                                    false,
-                                                    review_ctx().owner_flagged,
-                                                )
-                                                .is_some();
-                                            if hard || (!protected && !everyday) {
-                                                stall_engage_now = Some(judgement_of(
-                                                    &crate::stall_review::Review::of(crate::stall_review::Verdict::Unavailable),
-                                                    &stall_hits,
-                                                    EngageWhy::KeywordRule,
-                                                ));
-                                                info!(
-                                                    "Persona stall by keywords alone (the second look kept failing) serial={serial} score={stall_score} hits={stall_hits:?}"
-                                                );
-                                            }
+                                            // scammers say). An everyday call is looked at instead
+                                            // (below), unless the keywords point to a pitch.
+                                            stall_engage_now = Some(judgement_of(
+                                                &crate::stall_review::Review::of(crate::stall_review::Verdict::Unavailable),
+                                                &stall_hits,
+                                                EngageWhy::KeywordRule,
+                                            ));
+                                            info!(
+                                                "Persona stall by keywords alone (the second look kept failing) serial={serial} score={stall_score} hits={stall_hits:?}"
+                                            );
+                                        } else if flagged && stall_review.keyword_rule && (protected || stall_engage_now.is_some()) {
+                                            // A contact or a call already judged: the keywords add nothing.
                                         } else if stall_review.should_ask(flagged, stall_score) {
                                             stall_review.seen(caller_said().1);
                                             spawn_stall_review(
@@ -10718,6 +10790,7 @@ pub async fn run_session(
                     protected: ctx.protected(),
                     owner_flagged: ctx.owner_flagged,
                     ordinary: ordinary_call(scenario_router.known(), &caller_side(&transcript_out), hard_hit, ctx.owner_flagged),
+                    sales_hits: hits_point_to_sales(&stall_hits),
                 };
                 let step = stall_review.decide(&review, score, stall_score, facts);
                 info!(
@@ -12604,8 +12677,9 @@ mod tests {
                 }
                 assert_eq!(r.decide(&review_of(TooEarly, High), 3, 3, f), want, "{line} {f:?}");
             }
-            // No answer twice: the keywords alone do not stall an everyday call.
-            for (f, want) in [(facts, StallVerdictStep::Carry), (plain, StallVerdictStep::Engage)] {
+            // No answer twice: the keywords alone do not stall an everyday call;
+            // it is looked at again after the next turn.
+            for (f, want) in [(facts, StallVerdictStep::AfterTurn), (plain, StallVerdictStep::Engage)] {
                 let mut r = StallReview::default();
                 assert!(r.should_ask(true, 3));
                 assert_eq!(r.decide(&review_of(Unavailable, Medium), 3, 3, f), StallVerdictStep::AfterTurn);
@@ -12774,6 +12848,121 @@ mod tests {
             "Courier here, read me the verification code and I'll drop off the parcel.",
         ] {
             assert!(dialogue_is_sales_for(&format!("接聽：喂？\n對方：{line}"), false), "{line}");
+        }
+    }
+
+    /// An everyday call whose looks keep failing is not left to the keywords for
+    /// good (they would never stall it, and no look would come again): it is
+    /// looked at again after each caller turn, and once Gemini answers its
+    /// verdict counts. Keywords pointing to a pitch still stall it by the
+    /// keyword rule (not on a card desk's purchase check); without a key it is
+    /// let be and nothing is asked again.
+    #[test]
+    fn an_everyday_call_whose_looks_fail_is_looked_at_again() {
+        use crate::scenario::Scenario;
+        use crate::stall_review::{Confidence::*, Verdict::*};
+        let failed = review_of(Unavailable, Medium);
+        let everyday = StallFacts { flagged: true, ordinary: Some(Scenario::Delivery), ..StallFacts::default() };
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, 3));
+        assert_eq!(r.decide(&failed, 3, 3, everyday), StallVerdictStep::AfterTurn);
+        for _ in 0..4 {
+            assert!(r.should_ask_after_turn());
+            assert_eq!(r.decide(&failed, 3, 3, everyday), StallVerdictStep::AfterTurn);
+            assert!(!r.keyword_rule);
+        }
+        // Gemini back: its verdict counts (a sure scam twice stalls).
+        assert!(r.should_ask_after_turn());
+        assert_eq!(r.decide(&review_of(ScamOrSales, High), 3, 3, everyday), StallVerdictStep::AfterTurn);
+        assert!(r.should_ask_after_turn());
+        assert_eq!(r.decide(&review_of(ScamOrSales, High), 3, 3, everyday), StallVerdictStep::Engage);
+        // Keywords pointing to a pitch: the keyword rule, as before.
+        let pitch = StallFacts { sales_hits: true, ..everyday };
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, 3));
+        assert_eq!(r.decide(&failed, 3, 3, pitch), StallVerdictStep::AfterTurn);
+        assert!(r.should_ask_after_turn());
+        assert_eq!(r.decide(&failed, 3, 3, pitch), StallVerdictStep::Engage);
+        assert_eq!(r.why, EngageWhy::KeywordRule);
+        // …but a card's name on a card desk's purchase check is no pitch.
+        let card = StallFacts { sales_hits: true, ordinary: Some(Scenario::BankVerify), ..everyday };
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, 3));
+        assert_eq!(r.decide(&failed, 3, 3, card), StallVerdictStep::AfterTurn);
+        assert!(r.should_ask_after_turn());
+        assert_eq!(r.decide(&failed, 3, 3, card), StallVerdictStep::AfterTurn);
+        // No key: let be, and no look is asked again.
+        let no_key = crate::stall_review::Review { no_key: true, ..failed };
+        let mut r = StallReview::default();
+        assert!(r.should_ask(true, 3));
+        assert_eq!(r.decide(&no_key, 3, 3, everyday), StallVerdictStep::Carry);
+        assert!(r.keyword_rule && !r.should_ask(true, 9));
+        // Keywords that point to a pitch, in many languages; a card desk's card name does not count.
+        for line in [
+            "병원입니다. 검진 일정 변경 안내드리고, 보험 상품도 소개해 드릴게요.",
+            "Hi, this is the clinic, your appointment is moved; we also have a life insurance offer for you.",
+        ] {
+            let hits = stall_keyword_hits(line);
+            assert!(hits_point_to_sales(&hits), "{line} {hits:?}");
+            assert_eq!(everyday_for_keywords(None, line, &hits, false, false), None, "{line}");
+            assert!(ordinary_call(None, line, false, false).is_some(), "{line}");
+        }
+        for line in [
+            "Hi, this is your bank's card desk. There was a suspicious transaction on your credit card, did you make this purchase yourself?",
+            "Hola, le llamamos del banco por un cargo en su tarjeta de crédito de anoche, ¿podría confirmar si fue usted?",
+            "Buongiorno, sono della sua banca, vorrei verificare un addebito di ieri sulla sua carta di credito, è stato lei?",
+        ] {
+            let hits = stall_keyword_hits(line);
+            assert_eq!(everyday_for_keywords(None, line, &hits, false, false), Some(Scenario::BankVerify), "{line}");
+        }
+    }
+
+    /// An everyday call let be on unsure answers, or still only "who we are" to
+    /// the last look, is not asked about again on every word; once more
+    /// keywords come, or the caller turns to scam things, it is looked at again.
+    #[test]
+    fn an_everyday_call_let_be_is_looked_at_again_once_it_is_not_one() {
+        use crate::scenario::Scenario;
+        use crate::stall_review::{Confidence::*, Verdict::*};
+        let everyday = StallFacts { flagged: true, ordinary: Some(Scenario::Delivery), ..StallFacts::default() };
+        let let_be_unsure = || {
+            let mut r = StallReview::default();
+            assert!(r.should_ask(true, 3));
+            assert_eq!(r.decide(&review_of(ScamOrSales, Low), 3, 3, everyday), StallVerdictStep::AfterTurn);
+            assert!(r.should_ask_after_turn());
+            assert_eq!(r.decide(&review_of(ScamOrSales, Low), 3, 3, everyday), StallVerdictStep::Carry);
+            r
+        };
+        let let_be_early = || {
+            let mut r = StallReview::default();
+            assert!(r.should_ask(true, 3));
+            for _ in 1..STALL_REVIEW_EARLY_MAX {
+                assert_eq!(r.decide(&review_of(TooEarly, High), 3, 3, everyday), StallVerdictStep::AfterTurn);
+                assert!(r.should_ask_after_turn());
+            }
+            assert_eq!(r.decide(&review_of(TooEarly, High), 3, 3, everyday), StallVerdictStep::Carry);
+            r
+        };
+        for mut r in [let_be_unsure(), let_be_early()] {
+            assert!(!r.should_ask(true, 3), "not on every word");
+            r.reopen_unless_everyday(true);
+            assert!(!r.should_ask(true, 3), "still an everyday call");
+            assert!(r.should_ask(true, 3 + STALL_REVIEW_STEP), "more keywords");
+        }
+        for mut r in [let_be_unsure(), let_be_early()] {
+            r.reopen_unless_everyday(false);
+            assert!(r.should_ask(true, 3), "no everyday call any more");
+        }
+        // A courier who turns to customs and a fee by link is no everyday call any more.
+        for (first, then) in [
+            ("Courier here, I have a parcel for you.", "It's held at customs, click the link and pay the fee."),
+            ("我是順豐派件的，您有一個包裹。", "包裹卡在海關，要先付關稅。"),
+            ("Soy el repartidor, tengo un paquete para usted.", "Está en la aduana, pague la tarifa."),
+            ("ヤマト運輸です。お荷物のお届けです。", "税関で止まっています。"),
+        ] {
+            assert!(everyday_for_keywords(None, first, &[], false, false).is_some(), "{first}");
+            let both = format!("{first}\n{then}");
+            assert!(everyday_for_keywords(Some(Scenario::Delivery), &both, &[], false, false).is_none(), "{both}");
         }
     }
 

@@ -312,11 +312,15 @@ const SCAM_ASK_WORDS: &[&str] = &[
     "暗証番号", "認証", "振込", "振り込", "비밀번호", "인증", "이체", "contraseña", "código", "codigo",
     "transferencia", "mot de passe", "virement", "passwort", "überweisung", "senha", "transferência", "pix",
     "codice", "bonifico", "polizia", "conto sicuro", "пароль", "перевод", "полиция", "безопасный счет", "безопасный счёт",
-    "mật khẩu", "chuyển khoản", "công an", "kata sandi", "pinjaman", "polisi", "รหัสผ่าน", "โอนเงิน", "ตำรวจ",
+    // Not "chuyển khoản" alone: a real courier asks for the goods' price by transfer.
+    "mật khẩu", "chuyển khoản trước", "chuyển khoản ngay", "số tài khoản", "công an", "kata sandi", "pinjaman",
+    "polisi", "รหัสผ่าน", "โอนเงิน", "ตำรวจ",
     "पासवर्ड", "ओटीपी", "पुलिस", "ट्रांसफर", "كلمة المرور", "رمز التحقق", "تحويل", "الشرطة",
     "身份證", "身分证", "出生", "生日", "有效期", "帳號", "帐号", "帳戶", "账户", "連結", "链接", "網址", "网址", "點擊",
     "点击", "運費", "运费", "關稅", "关税", "click", "link", "date of birth", "birthday", "expiry", "expiration",
-    "account number", "delivery fee", "customs", "生年月日", "口座", "リンク", "생년월일", "계좌", "링크",
+    // Not "계좌" alone: a clinic refunds to the account on file.
+    "account number", "delivery fee", "customs", "生年月日", "口座", "リンク", "생년월일", "계좌번호", "계좌 번호", "계좌이체",
+    "계좌 이체", "링크",
     "繳費", "缴费", "付款", "付費", "付费", "繳款", "缴款", "證件", "证件", "送金", "お支払い", "支払って", "송금", "결제",
     "pay a", "pay the", "pay us", "to pay", "fee", "your id", "id card", "photo of your", "pagar", "payer", "zahlen",
     "pagamento",
@@ -344,28 +348,37 @@ const SCAM_ASK_WORDS: &[&str] = &[
 /// transaksi mencurigakan, movimientos fraudulentos), a courier (coursier),
 /// unloading (descargar), paying a courier by QR code (mã QR), a voucher
 /// delivered (상품권), a real jury summons, a clinic that cannot tell you
-/// something on the phone (不能告訴你).
+/// something on the phone (不能告訴你), a card desk worried the card was misused
+/// (盜刷, 不正利用, 도용 alone: only an ID or insurance card misused counts), the
+/// French "seize" (sixteen), a rent deposit (保證金 alone).
 const THREAT_WORDS: &[&str] = &[
     "cajero automático", "cajero automatico", "caixa eletrônico", "caixa eletronico", "distributeur automatique",
     "distributeur de billets", "geldautomat*", "bancomat", "atm'*",
     "enlace", "lien", "liên kết", "đường link", "tautan", "ลิงก์",
     // zh-TW
     "停話", "停機", "斷話", "即將停電", "被凍結", "遭凍結", "將凍結", "解除凍結", "查封", "扣押", "逮捕", "拘提", "通緝",
-    "盜用", "盜刷", "冒用", "洗錢", "涉案", "涉嫌", "刑案", "毒品", "緊急代管", "偵查不公開", "視訊筆錄", "交付存摺",
+    "身分證被冒用", "身份證被冒用", "證件被冒用", "健保卡被盜用", "名義被冒用", "冒名", "洗錢", "涉案", "涉嫌", "刑案",
+    "毒品", "緊急代管", "偵查不公開", "視訊筆錄", "交付存摺",
     "交付提款卡", "提款卡交給", "存摺交給", "提款卡寄", "存摺寄", "指定帳戶", "不能告訴家人", "不要告訴家人",
     "不可以告訴家人", "不得撥打其他電話", "討債", "催收", "借錢", "借我錢", "借點錢", "海關",
     // zh-CN
-    "停话", "停机", "断话", "被冻结", "将冻结", "解除冻结", "通缉", "盗用", "盗刷", "洗钱", "贩毒", "販毒", "资金有风险",
-    "安全賬戶", "银行账号", "会员费", "保证金", "保證金", "解冻费", "解凍費", "讨债", "借钱", "借我钱", "借点钱", "海关",
+    "停话", "停机", "断话", "被冻结", "将冻结", "解除冻结", "通缉", "身份证被冒用", "证件被冒用", "医保卡被盗用",
+    "醫保卡被盜用", "名义被冒用", "洗钱", "贩毒", "販毒", "资金有风险", "安全賬戶", "银行账号", "会员费",
+    // Not 保證金 alone: a landlord says it for the rent deposit.
+    "交保证金", "缴保证金", "交保證金", "繳保證金", "解冻保证金", "解凍保證金", "保证金账户", "保證金帳戶", "解冻费",
+    "解凍費", "讨债", "借钱", "借我钱", "借点钱", "海关",
     // ja
     "口座凍結", "差し押さえ", "差押", "犯罪に使われ", "共犯", "時間後に止まります", "指定口座", "全額移動", "口座を新設",
-    "口座の新設", "lineに招待", "令状", "不正利用", "マネーロンダリング", "お金を貸して", "税関",
+    "口座の新設", "lineに招待", "令状", "名義を不正利用", "名義が不正利用", "保険証が不正利用", "マネーロンダリング",
+    "お金を貸して", "税関",
     // ko
-    "통화정지", "통화 정지", "범죄에 연루", "안전계좌", "동결", "압류", "체포", "구속", "도용", "자금세탁", "원격제어",
-    "팀뷰어", "앱 설치", "악성앱", "돈 좀 빌려", "돈 빌려", "세관",
+    "통화정지", "통화 정지", "범죄에 연루", "안전계좌", "동결", "압류", "체포", "구속", "명의도용", "명의 도용", "자금세탁",
+    "원격제어", "팀뷰어", "앱 설치", "악성앱", "돈 좀 빌려", "돈 빌려", "세관",
     // en
     "frozen account", "account frozen", "account will be frozen", "freeze your account", "suspend your account",
-    "account suspended", "account will be suspended", "arrest", "seize", "lawsuit", "illegal items", "diplomatic pouch",
+    // Not "seize" alone: French says it for sixteen.
+    "account suspended", "account will be suspended", "arrest", "seize your", "seize the", "seized", "lawsuit",
+    "illegal items", "diplomatic pouch",
     "missed jury duty", "benefits will end", "keep your utilities on", "prepaid card", "cryptocurrency", "bitcoin", "payment app",
     "identity theft", "stolen identity", "money laundering", "debt collector", "collection agency", "lend me money",
     "lend me some money", "borrow money",
@@ -398,10 +411,16 @@ const THREAT_WORDS: &[&str] = &[
     "bloke ed*", "bloke oldu*", "dondurul*", "haciz*", "tutuklama*", "gözaltı*", "kara para*", "kimlik hırsızlığı", "borç ver*",
     // vi
     "khóa tài khoản", "phong tỏa", "đóng băng", "bắt giữ", "lệnh bắt", "rửa tiền", "cho mượn tiền", "nợ cước",
-    "xử lý vi phạm", "phạt nguội", "cài đặt ứng dụng", "điều khiển từ xa", "chuyển tiền", "hải quan",
+    "xử lý vi phạm", "phạt nguội", "cài đặt ứng dụng", "điều khiển từ xa", "chuyển tiền ngay", "hải quan",
     // id
     "diblokir", "dibekukan", "pemblokiran", "penyitaan", "ditangkap", "pencucian uang", "pinjam uang", "pinjamkan uang",
     "penagih utang", "bea cukai", "tagihan pajak", "nomor rekening", "unduh", "apk",
+    // ru, th, hi, ar: customs, a link, a fee or duty to pay first.
+    "таможн", "пошлин", "ссылк", "оплатите доставку", "оплатить доставку", "код из смс",
+    "ศุลกากร", "ภาษีนำเข้า", "ชำระค่าธรรมเนียม", "จ่ายค่าธรรมเนียม", "คลิกลิงก์",
+    // Not "कस्टम" alone: it starts "कस्टमर" (customer).
+    "कस्टम विभाग", "कस्टम ड्यूटी", "सीमा शुल्क", "लिंक", "शुल्क जमा", "शुल्क भरें",
+    "جمارك", "جمركي", "رابط", "دفع الرسوم", "ادفع الرسوم",
 ];
 
 /// Paying the courier at the door: what a real courier asks for ("付款" alone
@@ -559,9 +578,10 @@ fn eases_the_check(s: Scenario) -> bool {
 /// sales / scam ([eases_the_check]): the caller's words (`caller`: all of their
 /// side so far) as they read now ([local_guess]), else what an earlier look named
 /// (`known`). A card desk only while its words are still a plain purchase check
-/// ([card_check]): it is the desk scammers pose as most. None once the caller
-/// asks for anything a scammer asks for or threatens what one threatens
-/// ([scam_ask]), anywhere in the call.
+/// ([card_check]): it is the desk scammers pose as most, so a bank the look
+/// takes for a notice or for setting a time is none either (as in
+/// [local_guess]). None once the caller asks for anything a scammer asks for or
+/// threatens what one threatens ([scam_ask]), anywhere in the call.
 pub fn ordinary(known: Option<Scenario>, caller: &str) -> Option<Scenario> {
     if scam_ask(caller) {
         return None;
@@ -571,6 +591,9 @@ pub fn ordinary(known: Option<Scenario>, caller: &str) -> Option<Scenario> {
         s => s,
     };
     if !eases_the_check(s) || (s == Scenario::BankVerify && !card_check(caller)) {
+        return None;
+    }
+    if matches!(s, Scenario::ImportantNotice | Scenario::ScheduleInvite) && Words::of(caller).any(BANK_WORDS) {
         return None;
     }
     Some(s)
@@ -1134,9 +1157,79 @@ mod everyday_calls {
             ("Em là shipper giao hàng, anh quét mã QR thanh toán khi nhận hàng nhé", Scenario::Delivery),
             ("Halo, saya kurir, paket anda sampai besok, bayar di tempat", Scenario::Delivery),
             ("Merhaba, kurye geldi, kargonuz için kapınızdayım", Scenario::Delivery),
+            // French sixteen is no "seize".
+            ("Bonjour, c'est le livreur, je passe à seize heures avec votre colis", Scenario::Delivery),
+            ("Bonjour, c'est le livreur, votre colis coûte seize euros, paiement à la livraison", Scenario::Delivery),
+            // A card desk worried the card was misused.
+            ("這邊是銀行信用卡中心，擔心您的卡被盜刷，昨天一筆刷卡消費想跟您確認是不是本人", Scenario::BankVerify),
+            ("这边是银行信用卡中心，担心您的卡被盗刷，昨天一笔刷卡消费想跟您确认是不是本人", Scenario::BankVerify),
+            ("カード会社です。不正利用の可能性があるため、昨夜のご利用がご本人様か確認させてください", Scenario::BankVerify),
+            ("카드사입니다. 도용이 의심되어 어제 승인 건 본인 확인 부탁드립니다", Scenario::BankVerify),
+            // A clinic refunding to the account on file; a courier taken by transfer.
+            ("서울병원입니다. 검진 결과 나왔고 진료비는 등록된 계좌로 환불됩니다", Scenario::ImportantNotice),
+            ("Em là shipper giao hàng, anh chuyển khoản tiền hàng cho em cũng được", Scenario::Delivery),
+            ("Em là shipper giao hàng, anh chuyển tiền hàng qua tài khoản cũng được ạ", Scenario::Delivery),
         ] {
             assert!(!scam_ask(t), "{t}");
             assert_eq!(ordinary(None, t), Some(want), "{t}");
+        }
+        // A landlord's rent deposit is no scammer's fee.
+        for t in ["房東說保證金下個月退給你", "房东说保证金月底退给你", "看房約週六下午，保證金是兩個月"] {
+            assert!(!scam_ask(t), "{t}");
+            assert_eq!(ordinary(Some(Scenario::ScheduleInvite), t), Some(Scenario::ScheduleInvite), "{t}");
+        }
+        for t in ["要先繳保證金才能解凍", "请先交保证金到保证金账户"] {
+            assert!(scam_ask(t), "{t}");
+        }
+    }
+
+    /// A bank the look takes for a notice or for setting a time is the desk
+    /// scammers pose as most: no everyday call without the words of a purchase
+    /// check. Many languages.
+    #[test]
+    fn a_bank_the_look_takes_for_a_notice_is_no_everyday_call() {
+        for t in [
+            "這裡是銀行櫃檯，您的貸款期限快到了，請回電",
+            "This is your bank, your loan deadline has moved, please call us back",
+            "銀行の受付です。お手続きの期限が変更になりました",
+            "안녕하세요, 은행입니다. 대출 서류 기한이 변경되었습니다",
+            "Hola, le llamamos del banco, su cita en la oficina ha cambiado",
+            "Bonjour, c'est votre banque, votre rendez-vous est déplacé à jeudi",
+        ] {
+            for known in [Scenario::ImportantNotice, Scenario::ScheduleInvite] {
+                assert_eq!(ordinary(Some(known), t), None, "{t} {known:?}");
+            }
+        }
+        // A clinic's notice is still one.
+        assert_eq!(
+            ordinary(Some(Scenario::ImportantNotice), "Hi, this is the clinic, your appointment has been rescheduled"),
+            Some(Scenario::ImportantNotice)
+        );
+    }
+
+    /// Couriers in Russian, Thai, Hindi and Arabic asking for customs, a link or
+    /// a fee are no plain courier; the plain ones still are.
+    #[test]
+    fn couriers_in_russian_thai_hindi_and_arabic_asking_for_customs_or_a_link_are_no_everyday_call() {
+        for t in [
+            "Здравствуйте, курьер доставки, ваша посылка на таможне, оплатите пошлину по ссылке",
+            "Курьер доставки: чтобы получить посылку, оплатите доставку и назовите код из смс",
+            "มีพัสดุมาส่งครับ แต่ติดศุลกากร ต้องจ่ายภาษีนำเข้าก่อน",
+            "มีพัสดุมาส่งครับ กรุณาคลิกลิงก์เพื่อชำระค่าธรรมเนียม",
+            "नमस्ते, मैं डिलीवरी से हूँ, आपका पार्सल कस्टम विभाग में रुका है, लिंक पर सीमा शुल्क भरें",
+            "مرحبا، معك مندوب التوصيل، شحنتك في الجمارك، ادفع الرسوم عبر الرابط",
+        ] {
+            assert!(scam_ask(t), "{t}");
+            assert_eq!(ordinary(Some(Scenario::Delivery), t), None, "{t}");
+        }
+        for t in [
+            "Здравствуйте, курьер доставки, у меня посылка для вас",
+            "มีพัสดุมาส่งครับ",
+            "नमस्ते, मैं डिलीवरी और पार्सल लेकर आया हूँ, कस्टमर केयर ने नंबर दिया",
+            "مرحبا، معك مندوب التوصيل وعندي شحنة لك",
+        ] {
+            assert!(!scam_ask(t), "{t}");
+            assert_eq!(ordinary(None, t), Some(Scenario::Delivery), "{t}");
         }
     }
 
