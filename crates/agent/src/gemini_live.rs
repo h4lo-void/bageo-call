@@ -16636,6 +16636,60 @@ mod call_language_tests {
         assert!(call_language_for(&plan, plan.opening, Lang::ZhTw, true, Outbound::Errand, "x").follows_others());
     }
 
+    /// The language a call opens in, in order: what the owner set for the SIM
+    /// (`sim_languages`), the country of a number from abroad (+1 → English),
+    /// then the SIM's country for a local or hidden number. After the opening, a
+    /// hello in any language changes nothing.
+    #[test]
+    fn the_opening_follows_the_owners_setting_then_the_number_then_the_sim() {
+        let hellos = ["Sí.", "Oi.", "Hallo", "das Frühstück", "喂？", "もしもし", "여보세요", "Allô ?", "Ciao."];
+        // (number, SIM, the setting `language`, `sim_languages`, the opening, why)
+        let cases: &[(&str, &str, Lang, &[(&str, &str)], Lang, &str)] = &[
+            // 1. The owner's language for the SIM, over the SIM's country.
+            ("2025550143", "us", Lang::En, &[("us", "zh-TW")], Lang::ZhTw, "us sim set to zh-TW"),
+            ("0912345678", "tw", Lang::ZhTw, &[("tw", "en")], Lang::En, "tw sim set to en"),
+            ("", "jp", Lang::ZhTw, &[("jp", "es")], Lang::Es, "jp sim set to es, hidden"),
+            ("01012345678", "kr", Lang::Ko, &[("kr", "ja")], Lang::Ja, "kr sim set to ja"),
+            // 2. A number from abroad: its country's language, whatever the SIM's setting.
+            ("+12025550143", "tw", Lang::ZhTw, &[("tw", "zh-TW")], Lang::En, "+1 on tw"),
+            ("+12025550143", "tw", Lang::ZhTw, &[], Lang::En, "+1 on tw, nothing set"),
+            ("+81312345678", "tw", Lang::ZhTw, &[("tw", "zh-TW")], Lang::Ja, "+81 on tw"),
+            ("+82212345678", "tw", Lang::ZhTw, &[], Lang::Ko, "+82 on tw"),
+            ("+33123456789", "jp", Lang::Ja, &[], Lang::Fr, "+33 on jp"),
+            ("+4930123456789", "us", Lang::En, &[], Lang::De, "+49 on us"),
+            ("+34912345678", "de", Lang::De, &[], Lang::Es, "+34 on de"),
+            ("+5511912345678", "fr", Lang::Fr, &[], Lang::Pt, "+55 on fr"),
+            ("+12025550143", "jp", Lang::Ja, &[("jp", "ja")], Lang::En, "+1 on jp set to ja"),
+            // 3. Local or hidden: the SIM's country.
+            ("0912345678", "tw", Lang::ZhTw, &[], Lang::ZhTw, "tw local"),
+            ("", "tw", Lang::ZhTw, &[], Lang::ZhTw, "tw hidden"),
+            ("0312345678", "jp", Lang::ZhTw, &[], Lang::Ja, "jp local"),
+            ("", "kr", Lang::ZhTw, &[], Lang::Ko, "kr hidden"),
+            ("2025550143", "us", Lang::ZhTw, &[], Lang::En, "us local"),
+            ("", "fr", Lang::En, &[], Lang::Fr, "fr hidden"),
+            ("", "de", Lang::ZhTw, &[], Lang::De, "de hidden"),
+            ("", "es", Lang::En, &[], Lang::Es, "es hidden"),
+            ("", "br", Lang::En, &[], Lang::Pt, "br hidden"),
+        ];
+        for &(number, sim, lang, set, want, why) in cases {
+            let langs = langs(set);
+            let plan = call_lang_plan(number, Some(sim), lang, "886", &langs);
+            let prompt = plan.prompt_lang.unwrap_or(lang);
+            let opening = plan.opening.unwrap_or(prompt);
+            assert!(opening == want || (opening.is_zh() && want.is_zh()), "{why}: {opening:?} {plan:?}");
+            let mut c = call_language_for(&plan, plan.opening, prompt, true, Outbound::Incoming, &follow_note());
+            for said in hellos {
+                assert_eq!(c.caller_turn(said), None, "{why}: {said}");
+            }
+            assert!(c.lang().is_some_and(|l| l == want || (l.is_zh() && want.is_zh())), "{why}: {:?}", c.lang());
+        }
+    }
+
+    /// A prompt with the note on following the caller (the setting's default).
+    fn follow_note() -> String {
+        crate::prompts::with_caller_language_note("x", Lang::En)
+    }
+
     /// A SIM's own language counts whatever the number: a US SIM set to
     /// Traditional Chinese taking a Japanese number, a Japanese SIM taking a
     /// Korean one, a German owner's French number.
