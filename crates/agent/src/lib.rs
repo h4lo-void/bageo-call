@@ -5303,7 +5303,7 @@ fn call_lang_plan(
     caller_id: &str,
     sim: Option<&str>,
 ) -> gemini_live::CallLangPlan {
-    gemini_live::call_lang_plan(
+    gemini_live::call_lang_plan_for(
         caller_id,
         sim,
         rt.lang(),
@@ -12492,7 +12492,7 @@ mod ring_prewarm_tests {
         let mut rt = tw_settings();
         rt.gemini_persona_mode = true;
         rt.owner_name = "林先生".into();
-        rt.sim_languages = [("us".to_string(), "en".to_string())].into_iter().collect();
+        rt.sim_languages = [("us".to_string(), crate::settings_store::SimLang::main("en"))].into_iter().collect();
         let en_guard = crate::prompts::pack(locale::Lang::En).injection_guard.clone();
         let tw_guard = crate::prompts::pack(locale::Lang::ZhTw).injection_guard.clone();
         // A US number on the US SIM: English prompt, stalling prompt and guard.

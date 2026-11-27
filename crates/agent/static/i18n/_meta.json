@@ -3584,7 +3584,7 @@
     "placeholders": []
   },
   "f_reply_lang_h": {
-    "where": "a label or sentence in the console. English: When the caller speaks another language, the AI switches to it.",
+    "where": "a label or sentence in the console. English: The AI switches only when the caller clearly speaks another language in full sentences. A quick “hello” or unclear words don't count.",
     "who": "the owner",
     "placeholders": []
   },
@@ -3609,12 +3609,12 @@
     "placeholders": []
   },
   "f_simlang": {
-    "where": "a label or sentence in the console. English: Main language for each SIM",
+    "where": "a label or sentence in the console. English: Languages for each SIM",
     "who": "the owner",
     "placeholders": []
   },
   "f_simlang_h": {
-    "where": "a label or sentence in the console. English: Only for a phone with a SIM from another region: calls to that SIM start in the language you pick here.",
+    "where": "a label or sentence in the console. English: Calls to this SIM start in the main language; a call from abroad uses the second language set for its region, else its country's language. Needs the phone app 1.0 or newer.",
     "who": "the owner",
     "placeholders": []
   },
@@ -6228,8 +6228,28 @@
     "who": "the owner",
     "placeholders": []
   },
+  "sl_lang_sim": {
+    "where": "the first choice of a SIM's main-language menu (Settings, \"Languages for each SIM\"): nothing picked, the language of the SIM's country is used. English: The SIM region's language",
+    "who": "the owner",
+    "placeholders": []
+  },
   "sl_pick": {
     "where": "a label or sentence in the console. English: Choose a region",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "sl_region": {
+    "where": "the label of a region menu next to a SIM's main or second language (Settings, \"Languages for each SIM\"): the region whose local ways the main language follows, or whose numbers open in the second language. English: Region",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "sl_region_none": {
+    "where": "the first choice of a second language's region menu (Settings, \"Languages for each SIM\"): no region picked. English: Not set",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "sl_region_sim": {
+    "where": "the first choice of a SIM's main-language region menu (Settings, \"Languages for each SIM\"): the SIM's own region. English: Same as the SIM",
     "who": "the owner",
     "placeholders": []
   },
@@ -6240,6 +6260,21 @@
   },
   "sl_reply": {
     "where": "a label or sentence in the console. English: AI said",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "sl_second1": {
+    "where": "the label of a SIM's first second-language menu (Settings, \"Languages for each SIM\"). English: Second language 1",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "sl_second2": {
+    "where": "the label of a SIM's second second-language menu (Settings, \"Languages for each SIM\"). English: Second language 2",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "sl_second_none": {
+    "where": "the first choice of a second-language menu (Settings, \"Languages for each SIM\"): no second language. English: None",
     "who": "the owner",
     "placeholders": []
   },

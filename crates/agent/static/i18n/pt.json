@@ -336,8 +336,8 @@
     "f_notify_lang": "Idioma das notificações e resumos",
     "f_notify_lang_h": "O idioma das notificações e dos resumos que você lê. Não muda o idioma em que a IA fala com quem liga.",
     "nl_same": "O mesmo idioma da IA",
-    "f_simlang": "Idioma principal de cada SIM",
-    "f_simlang_h": "Só é preciso se um telefone tiver um chip de outra região: as chamadas para esse chip começam no idioma escolhido aqui. Requer o app 1.0 ou mais recente.",
+    "f_simlang": "Idiomas de cada SIM",
+    "f_simlang_h": "As chamadas para este chip começam no idioma principal; as do exterior usam o idioma secundário da região delas ou, se não houver, o do país. Requer o app 1.0 ou mais recente.",
     "sl_country": "Região do SIM",
     "sl_lang": "Idioma principal",
     "sl_pick": "Escolha uma região",
@@ -410,7 +410,7 @@
     "f_vad": "Deixar o Gemini decidir quando a pessoa terminou de falar",
     "f_vad_h": "Recomendado. Desligado: só o volume do som decide.",
     "f_reply_lang": "Responder no idioma de quem ligou",
-    "f_reply_lang_h": "Se a pessoa falar outro idioma, a IA muda para ele.",
+    "f_reply_lang_h": "A IA só muda quando a pessoa fala claramente outro idioma, em frases completas. Um “alô” ou palavras pouco claras não contam.",
     "f_status": "Nota de status",
     "f_status_h": "Um recado sobre o momento atual, como onde o entregador deve deixar um pacote. A IA só menciona quando tem a ver com a chamada.",
     "f_status_ph": "ex.: Se for entrega, deixe o pacote na portaria.",
@@ -1403,6 +1403,13 @@
     "ph_fit_yes": "Sim",
     "ph_fit_no": "Não",
     "ph_fit_retest": "Outra configuração de áudio está pronta. Ligue de novo para este telefone para testar.",
-    "ph_fit_noted": "Anotado: o áudio das chamadas deste telefone tem um problema"
+    "ph_fit_noted": "Anotado: o áudio das chamadas deste telefone tem um problema",
+    "sl_lang_sim": "O idioma da região do SIM",
+    "sl_region": "Região",
+    "sl_region_sim": "A mesma do SIM",
+    "sl_region_none": "Nenhuma",
+    "sl_second1": "Idioma secundário 1",
+    "sl_second2": "Idioma secundário 2",
+    "sl_second_none": "Nenhum"
   }
 }

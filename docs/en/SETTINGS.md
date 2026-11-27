@@ -51,7 +51,7 @@ Details for each:
 
 - **Other names callers use for you** (on the *About you* card): this works in both answer styles, and with your own prompt too. Call summaries still write *Your name*. Saved as `owner_aliases` (a list).
 - **Language of notifications and summaries**: notifications, call summaries (also in the call list), appointment cards and their results, and messages from the SMS forwarder use this language. Handy abroad: the AI answers in English, your notifications stay in 繁體中文. Switching the console's display language (top right) sets this to the same language.
-- **Main language for each SIM**: e.g. *United States (US)* → English while *Language* stays 繁體中文; a Japanese number calling the US SIM still hears Japanese. Needs phone app 1.0 or later, which reports the SIM of each call. Saved as `sim_languages`, e.g. `{"us": "en"}`.
+- **Languages for each SIM**: each SIM gets a main language and region, plus up to two second languages, each with a region. Local and hidden numbers start in the main language, with the main region's local ways. A number from abroad starts in the second language whose region it comes from, else in its country's language (a Japanese number calling the US SIM still hears Japanese). The AI moves between these languages when the caller clearly speaks one of them in a full sentence; any other language needs two such sentences in a row, or the caller asking for it. Nothing set: the SIM country's language. Needs phone app 1.0 or later, which reports the SIM of each call. Saved as `sim_languages`, e.g. `{"us": "en"}`, or `{"tw": {"lang": "zh-TW", "region": "tw", "more": [{"lang": "en", "region": "us"}]}}` with a region or second languages.
 - **AI calls: call as**: who the AI says it is on the calls it makes from the **Errands** tab ([AI errands](#ai-errands)): **Your assistant** (it calls on your behalf, and admits to being an AI when sincerely asked) or **You in person** (it speaks as you). Saved as `errand_identity` (`assistant` / `owner`; anything else reads as `assistant`).
 
 ### How it answers
@@ -99,7 +99,7 @@ Two limits apply to urgent calls. Once a call is judged sales or scam, you get n
 
 *Get the AI ready while the phone rings* connects to Gemini and prepares the first words before pick-up. It costs one short Gemini session even when the caller hangs up while it rings.
 
-**The caller's language.** *Reply in the caller's language* is on by default: when a caller clearly speaks another language, or asks whether you speak one, the AI switches to it. Turn it off to keep the AI in your *Language* on every call. It is saved as `reply_in_caller_language`.
+**The caller's language.** *Reply in the caller's language* is on by default: the AI switches only when it is sure the caller speaks another language. One clear, full sentence in one of the call's languages (the SIM's main and second languages, the number's country language) is enough; any other language needs two in a row, or the caller asking for it. A quick hello, a word or two or something unclear changes nothing. Turned off, the AI moves only between the call's languages, never to another one. It is saved as `reply_in_caller_language`.
 
 **Calls from abroad and the carrier's warning.** Taiwan's carriers play a recorded fraud warning at the start of every call from abroad. When a Taiwanese SIM takes a call from another country (a `+…` or `00…` number with another country code), the AI waits for that warning to end: it speaks once the line goes quiet, or after 7.5 seconds at most, and says its opening line only once.
 

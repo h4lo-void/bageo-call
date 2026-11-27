@@ -256,6 +256,10 @@ crate::prompt_book::prompt_texts! {
     EN_OTHER_CALL_LANGUAGE_NOTE = "en/prompts_other_call_language_note";
     ZH_LANGUAGE_DRIFT_NOTE = "zh-TW/prompts_language_drift_note";
     EN_LANGUAGE_DRIFT_NOTE = "en/prompts_language_drift_note";
+    ZH_LANGUAGE_SWITCH_NOTE = "zh-TW/prompts_language_switch_note";
+    EN_LANGUAGE_SWITCH_NOTE = "en/prompts_language_switch_note";
+    ZH_LANGUAGE_SWITCH_OTHER_NOTE = "zh-TW/prompts_language_switch_other_note";
+    EN_LANGUAGE_SWITCH_OTHER_NOTE = "en/prompts_language_switch_other_note";
     ZH_NO_WAIT_NOTE = "zh-TW/prompts_no_wait_note";
     EN_NO_WAIT_NOTE = "en/prompts_no_wait_note";
     ZH_LEGACY_PERSONA_V2 = "zh-TW/prompts_legacy_persona_v2";
@@ -797,6 +801,34 @@ pub fn other_call_language_note(pack_lang: Lang) -> String {
     } else {
         EN_OTHER_CALL_LANGUAGE_NOTE.get().to_string()
     }
+}
+
+/// Told to the model, in the pause after its turn, when the call's language
+/// changed (`crate::lang_lock::CallLanguage::caller_turn`): the model switches
+/// only on this. `call`: the new language (`None`: one without a setting). A
+/// direction only; it asks for no reply.
+pub fn language_switch_note(pack_lang: Lang, call: Option<Lang>) -> String {
+    match call {
+        Some(call) if zh_ins(pack_lang) => {
+            let l = zh_call_label(call);
+            zh_text(pack_lang, ZH_LANGUAGE_SWITCH_NOTE.fill(&[("caller_language", &l)]))
+        }
+        Some(call) => {
+            let l = crate::urgency::language_name(call);
+            EN_LANGUAGE_SWITCH_NOTE.fill(&[("caller_language", &l)])
+        }
+        None if zh_ins(pack_lang) => zh_text(pack_lang, ZH_LANGUAGE_SWITCH_OTHER_NOTE.get().to_string()),
+        None => EN_LANGUAGE_SWITCH_OTHER_NOTE.get().to_string(),
+    }
+}
+
+/// `prompt` carries the note on following a caller into their language (the
+/// setting `reply_in_caller_language`, or a call the phone dialed), in any language.
+pub fn has_caller_language_note(prompt: &str) -> bool {
+    locale::ALL.iter().any(|l| {
+        let note = pack(*l).auto_language_note.trim();
+        !note.is_empty() && prompt.contains(note)
+    })
 }
 
 /// Told to the model, in the pause after its turn, when that turn came out in
@@ -1365,6 +1397,15 @@ pub fn build_parts(ctx: &Ctx) -> (String, String) {
     } else {
         ctx.custom.trim().to_string()
     };
+    // The Chinese persona's line that has the AI follow any caller into their
+    // language goes: with the setting `reply_in_caller_language` on, the full
+    // note says how instead; off, Bageo keeps the call in its base languages
+    // and tells the AI of a change.
+    let base = if ctx.lang.is_zh() {
+        base.replacen(zh_text(ctx.lang, ZH_FOLLOW_LANGUAGE.get().to_string()).as_str(), "", 1)
+    } else {
+        base
+    };
     let base = match ctx.stall {
         StallPrompt::Off => base,
         StallPrompt::ListenFirst if base.contains(&p.sales_reject_line) => {
@@ -1741,26 +1782,37 @@ mod tests {
     }
 
     #[test]
-    fn a_caller_in_another_language_gets_it_from_the_next_sentence_on_and_the_ai_stays_in_it() {
+    fn the_ai_keeps_to_the_calls_language_and_switches_only_when_told_or_asked() {
         let zh = pack(Lang::ZhTw).auto_language_note.as_str();
         assert!(zh.contains("【對方講別的語言】") && zh.contains("問你能不能講某種語言"), "{zh}");
-        // Whatever number it comes from; the AI stays in the caller's language.
-        assert!(zh.contains("一直用對方正在講的語言回") && zh.contains("本地號碼、隱藏號碼"), "{zh}");
-        assert!(zh.contains("你的下一句就整句改用他的語言") && zh.contains("你不要自己換語言"), "{zh}");
-        // A stray foreign word is no switch.
-        assert!(zh.contains("整句明顯換成另一種語言才跟著換") && zh.contains("夾幾個外文詞"), "{zh}");
-        // One odd line mid-call is likely misheard.
-        assert!(zh.contains("中途只冒一句多半是聽錯"), "{zh}");
-        // The fixed rules still hold, said in the caller's language.
-        assert!(zh.contains("不給個資") && zh.contains("銀行核對刷卡") && zh.contains("自己翻成他的語言講"), "{zh}");
+        // Whatever number it comes from; the AI stays in the call's language.
+        assert!(zh.contains("一直用這通電話的語言講到掛電話") && zh.contains("本地號碼、隱藏號碼"), "{zh}");
+        assert!(zh.contains("只有系統提示說對方換了") && zh.contains("你不要自己換語言"), "{zh}");
+        // A hello, a stray foreign word or one odd line mid-call is no switch.
+        assert!(zh.contains("打招呼、一兩個字") && zh.contains("夾幾個外文詞") && zh.contains("中途只冒一句都不算"), "{zh}");
+        // The fixed rules still hold, said in the call's language.
+        assert!(zh.contains("不給個資") && zh.contains("銀行核對刷卡") && zh.contains("自己翻成那種語言講"), "{zh}");
         let en = pack(Lang::En).auto_language_note.as_str();
-        assert!(en.contains("[Caller speaks another language]") && en.contains("A stray word or one odd line is no switch"), "{en}");
+        assert!(en.contains("[Caller speaks another language]") && en.contains("a hello or stray word is no switch"), "{en}");
         assert!(en.contains("never switch on your own or mix languages"), "{en}");
-        assert!(en.contains("local, hidden or foreign number") && en.contains("your very next sentence is in their language"), "{en}");
-        assert!(en.contains("never answer in English again") && en.contains("a bank checking a card charge"), "{en}");
-        // Every other language names its own.
-        assert!(pack(Lang::Ja).auto_language_note.contains("never answer in Japanese again"));
-        assert!(pack(Lang::Es).auto_language_note.contains("never answer in Spanish again"));
+        assert!(en.contains("local, hidden or foreign number") && en.contains("Switch only on a system note or when asked for a language"), "{en}");
+        assert!(en.contains("a bank checking a card charge"), "{en}");
+        // An opening in another language keeps to it; the owner's language, said
+        // clearly, takes the call back. Every language names its own.
+        for (lang, own) in [(Lang::En, "English"), (Lang::Ja, "Japanese"), (Lang::Es, "Spanish")] {
+            let k = kick_open(lang, false, Some(Lang::Ko));
+            assert!(k.contains("Then stay in Korean") && k.contains(&format!("clear sentences of {own}, switch to {own}")), "{k}");
+            assert!(!k.contains("whatever language"), "{k}");
+        }
+        let k = kick_open(Lang::ZhTw, false, Some(Lang::Ko));
+        assert!(k.contains("對方整句清楚地講中文，就改用中文") && !k.contains("講什麼語言"), "{k}");
+        // The model is told of a switch.
+        assert!(language_switch_note(Lang::ZhTw, Some(Lang::En)).contains("對方現在改講英文"));
+        assert!(language_switch_note(Lang::ZhCn, Some(Lang::En)).contains("对方现在改讲英文"));
+        assert!(language_switch_note(Lang::De, Some(Lang::Es)).contains("now speaking Spanish"));
+        assert!(language_switch_note(Lang::En, None).contains("another language"));
+        assert!(has_caller_language_note(&format!("x{}", pack(Lang::Ko).auto_language_note)));
+        assert!(!has_caller_language_note("x"));
     }
 
     fn ctx(lang: Lang, assistant: bool, stall: StallPrompt) -> Ctx<'static> {
@@ -2134,7 +2186,7 @@ mod tests {
         }
         let ja = pack(Lang::Ja);
         assert!(ja.kick_open_persona.contains("もしもし？") && ja.kick_wrap_up.contains("失礼します"));
-        assert!(ja.auto_language_note.contains("never answer in Japanese again"));
+        assert!(ja.kick_open_persona_in.contains("clear sentences of Japanese, switch to Japanese"));
         let es = pack(Lang::Es);
         assert!(es.kick_wrap_up.contains("\"Adiós\""));
         assert!(es.kick_open_persona.starts_with(SYS.get()));
@@ -2673,8 +2725,14 @@ mod tests {
         custom.custom = "我是{owner}，快遞請放管理室。";
         let custom_scoped = scope_to_region(&build(&custom), Lang::ZhTw, Scope { region: Some(r("tw")), carrier_note: false, ..Default::default() });
         assert_eq!(custom_scoped.matches("管理室").count(), 1, "{custom_scoped}");
-        // The persona's short language line goes only where the full note is.
-        assert!(built.contains(ZH_FOLLOW_LANGUAGE.get()) && p.contains(ZH_FOLLOW_LANGUAGE.get()));
+        // The persona's short "follow any language" line never stays: the full
+        // note takes its place, and with the setting off it goes (Bageo switches).
+        assert!(!built.contains(ZH_FOLLOW_LANGUAGE.get()) && !p.contains(ZH_FOLLOW_LANGUAGE.get()), "{built}");
+        assert!(!built.contains("【對方講別的語言】") && built.contains("用自然的口語中文。"), "{built}");
+        let cn = build(&ctx(Lang::ZhCn, false, StallPrompt::Off));
+        assert!(!cn.contains(&zh_text(Lang::ZhCn, ZH_FOLLOW_LANGUAGE.get().to_string())), "{cn}");
+        let stall = build(&ctx(Lang::ZhTw, false, StallPrompt::Full));
+        assert!(!stall.contains(ZH_FOLLOW_LANGUAGE.get()), "{stall}");
         let mut c = ctx(Lang::ZhTw, false, StallPrompt::Off);
         c.auto_language = true;
         let with_note = scope_to_region(&build(&c), Lang::ZhTw, Scope { region: Some(r("tw")), carrier_note: false, ..Default::default() });
@@ -2700,9 +2758,9 @@ mod tests {
             }
         }
         let us = pack(Lang::En).auto_language_note.as_str();
-        assert!(us.contains("your very next sentence is in their language") && us.contains("local, hidden or foreign number"), "{us}");
+        assert!(us.contains("when asked for a language") && us.contains("local, hidden or foreign number"), "{us}");
         let tw = pack(Lang::ZhTw).auto_language_note.as_str();
-        assert!(tw.contains("改用他的語言") && tw.contains("不管本地號碼、隱藏號碼或國外號碼"), "{tw}");
+        assert!(tw.contains("請你改講") && tw.contains("不管本地號碼、隱藏號碼或國外號碼"), "{tw}");
     }
 
     /// Words that would put on a language Gemini Live does not speak, or hold a

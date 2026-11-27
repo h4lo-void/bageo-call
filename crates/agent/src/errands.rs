@@ -2883,7 +2883,7 @@ pub fn errand_prompt_with(s: &Script, redial: bool) -> String {
 
 /// The script of `e`'s next call from a SIM of country `sim`.
 async fn build_script(env: &Env<'_>, e: &Errand, sim: &str) -> String {
-    let plan = crate::gemini_live::call_lang_plan(&e.number, Some(sim), env.rt.lang(), &env.rt.effective_country_code(), &env.rt.sim_languages);
+    let plan = crate::gemini_live::call_lang_plan_for(&e.number, Some(sim), env.rt.lang(), &env.rt.effective_country_code(), &env.rt.sim_languages);
     let lang = plan.opening.unwrap_or_else(|| env.rt.lang());
     let note = if e.contact_id.is_empty() {
         String::new()
