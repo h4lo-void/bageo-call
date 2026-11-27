@@ -4609,12 +4609,14 @@ function simRegionOptions(callLang, cur, simCountry) {
   if (!l) return [{ value: "", label: t("sl_region_sim"), search: [] }];
   const allowed = countriesForLang(l);
   const list = allowed.length ? allowed.slice() : (Array.isArray(S && S.countries) ? S.countries.slice() : []);
-  if (cur && !list.includes(cur)) list.push(cur);
+  if (!allowed.length && cur && !list.includes(cur)) list.push(cur);
   return simCountryOptionRows(list, simCountry ? [simCountry] : []).sort((a, b) => a.rank - b.rank);
 }
 const simCombos = [];
 function simComboSync(c) {
-  const opts = c.getOptions();
+  const target = c.want != null ? c.want : c.sel.value;
+  delete c.want;
+  const opts = c.getOptions(target);
   const sig = lang + "|" + (packRegions ? packRegions.length : 0) + "|" + opts.map((o) => o.value + "=" + o.label).join("|");
   if (sig !== c.sig) {
     c.sig = sig;
@@ -4622,7 +4624,7 @@ function simComboSync(c) {
     for (const o of opts) c.sel.append(h("option", { value: o.value, text: o.label }));
     c.combo.setOptions(opts);
   }
-  if (c.want != null) { c.sel.value = c.want; delete c.want; }
+  c.sel.value = target;
   c.combo.setValue(c.sel.value);
   const al = c.sel.getAttribute("aria-label");
   if (al) c.combo.input.setAttribute("aria-label", al);
@@ -4699,9 +4701,9 @@ function simLangRow(e) {
   const packBox = h("div", { class: "pv sl-pack", hidden: true });
   const top = h("div", { class: "sl-top" }, ccField, lgField, rgField, h("div", { class: "sl-acts" }, addMoreBtn, delBtn));
   const row = h("div", { class: "slrow" }, top, moresBox, packBox);
-  simCombo(cc, () => simAllCountryOptions(cc.value), e.country);
+  simCombo(cc, (cur) => simAllCountryOptions(cur), e.country);
   langCombo(lg, false, "cb-sl");
-  const rgCombo = simCombo(rg, () => simRegionOptions(simLangPicked(lg), rg.value, cc.value), initReg);
+  const rgCombo = simCombo(rg, (cur) => simRegionOptions(simLangPicked(lg), cur, cc.value), initReg);
   function syncMoreLabels() {
     const items = Array.from(moresBox.querySelectorAll(".sl-more-row"));
     items.forEach((mrRow, idx) => {
@@ -4729,7 +4731,7 @@ function simLangRow(e) {
     const mRow = h("div", { class: "sl-more-row" }, mlField, mrField, rmBtn);
     moresBox.append(mRow);
     langCombo(ml, false, "cb-sl");
-    const mrCombo = simCombo(mr, () => simRegionOptions(simLangPicked(ml), mr.value, cc.value), initMr);
+    const mrCombo = simCombo(mr, (cur) => simRegionOptions(simLangPicked(ml), cur, cc.value), initMr);
     ml.addEventListener("change", () => {
       const l = simLangPicked(ml);
       mrField.hidden = !l;

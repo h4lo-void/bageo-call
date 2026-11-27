@@ -5601,12 +5601,14 @@ function simRegionOptions(callLang, cur, simCountry) {
   if (!l) return [{ value: "", label: t("sl_region_sim"), search: [] }];
   const allowed = countriesForLang(l);
   const list = allowed.length ? allowed.slice() : (Array.isArray(S && S.countries) ? S.countries.slice() : []);
-  if (cur && !list.includes(cur)) list.push(cur);
+  if (!allowed.length && cur && !list.includes(cur)) list.push(cur);
   return simCountryOptionRows(list, simCountry ? [simCountry] : []).sort((a, b) => a.rank - b.rank);
 }
 const simCombos = [];
 function simComboSync(c) {
-  const opts = c.getOptions();
+  const target = c.want != null ? c.want : c.sel.value;
+  delete c.want;
+  const opts = c.getOptions(target);
   const sig = lang + "|" + (packRegions ? packRegions.length : 0) + "|" + opts.map((o) => o.value + "=" + o.label).join("|");
   if (sig !== c.sig) {
     c.sig = sig;
@@ -5614,7 +5616,7 @@ function simComboSync(c) {
     for (const o of opts) c.sel.append(h("option", { value: o.value, text: o.label }));
     c.combo.setOptions(opts);
   }
-  if (c.want != null) { c.sel.value = c.want; delete c.want; }
+  c.sel.value = target;
   c.combo.setValue(c.sel.value);
   const al = c.sel.getAttribute("aria-label");
   if (al) c.combo.input.setAttribute("aria-label", al);
@@ -5690,9 +5692,9 @@ function simLangRow(e) {
   const packBox = h("div", { class: "pv sl-pack", hidden: true });
   const top = h("div", { class: "sl-top" }, ccField, lgField, rgField, h("div", { class: "sl-acts" }, addMoreBtn, delBtn));
   const row = h("div", { class: "slrow" }, top, moresBox, packBox);
-  simCombo(cc, () => simAllCountryOptions(cc.value), e.country);
+  simCombo(cc, (cur) => simAllCountryOptions(cur), e.country);
   langCombo(lg, false, "cb-sl");
-  const rgCombo = simCombo(rg, () => simRegionOptions(simLangPicked(lg), rg.value, cc.value), initReg);
+  const rgCombo = simCombo(rg, (cur) => simRegionOptions(simLangPicked(lg), cur, cc.value), initReg);
   function syncMoreLabels() {
     const items = Array.from(moresBox.querySelectorAll(".sl-more-row"));
     items.forEach((mrRow, idx) => {
@@ -5720,7 +5722,7 @@ function simLangRow(e) {
     const mRow = h("div", { class: "sl-more-row" }, mlField, mrField, rmBtn);
     moresBox.append(mRow);
     langCombo(ml, false, "cb-sl");
-    const mrCombo = simCombo(mr, () => simRegionOptions(simLangPicked(ml), mr.value, cc.value), initMr);
+    const mrCombo = simCombo(mr, (cur) => simRegionOptions(simLangPicked(ml), cur, cc.value), initMr);
     ml.addEventListener("change", () => {
       const l = simLangPicked(ml);
       mrField.hidden = !l;
@@ -6618,7 +6620,10 @@ $("btnBgCheck").addEventListener("click", async () => {
 let vpInfo = null, vpMsg = "", vpFirstOffer = null, vpDlgShownFor = "";
 let exInfo = null, exBusy = "", exBusyAct = "", exTargetSel = null, exAutoOnce = false;
 const exFailed = {};
-const vpSize = (b) => `${Math.max(1, Math.round((Number(b) || 0) / 1e6))} MB`;
+const vpSize = (b) => {
+  const n = Number(b) || 0;
+  return n > 0 && n < 5e5 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${Math.max(1, Math.round(n / 1e6))} MB`;
+};
 const FIRST_PACK_PROMPT = "__first_pack_prompt__";
 
 function vpName(p, inLang) {
@@ -6668,8 +6673,12 @@ function offerPackOnPick(langCode, preferCountry) {
   const p = missingPackFor(langCode, preferCountry);
   if (!p) return;
   vpManualOffer = p;
+  vpDlgShownFor = "";
   vpRender();
 }
+$("f-notify_language").addEventListener("change", () => {
+  if ($("f-notify_language").value) offerPackOnPick($("f-notify_language").value, homeCountryNow());
+});
 async function markFirstPackPrompt(extraId) {
   const list = [...((S && S.dismissed_pack_prompts) || [])];
   if (!list.includes(FIRST_PACK_PROMPT)) list.push(FIRST_PACK_PROMPT);
@@ -6714,11 +6723,25 @@ function vpRender() {
   if (offer) {
     // On the phone the owner reads it: ask in the app's language, and say
     // nothing about "this computer".
-    $("vpCardAsk").textContent = t("vp_ask", { name: vpName(offer, lang), size: vpSize(offer.bytes) });
-    $("vpCardHelp").textContent = t("pk_h");
+    const askText = t("vp_ask", { name: vpName(offer, lang), size: vpSize(offer.bytes) });
+    const helpText = t("pk_h");
+    $("vpCardAsk").textContent = askText;
+    $("vpCardHelp").textContent = helpText;
     $("vpCardEn").hidden = true;
     $("vpCardEn").textContent = "";
     $("vpCard").dataset.id = offer.id;
+    const dlg = $("vpDlg");
+    if (dlg && typeof dlg.showModal === "function" && vpDlgShownFor !== offer.id && !($("pwSetupDlg") && $("pwSetupDlg").open)) {
+      vpDlgShownFor = offer.id;
+      $("vpDlgAsk").textContent = askText;
+      $("vpDlgHelp").textContent = helpText;
+      $("vpDlgEn").hidden = true;
+      $("vpDlgEn").textContent = "";
+      applyI18n(dlg);
+      if (!dlg.open) { try { dlg.showModal(); } catch (_) {} }
+    }
+  } else if ($("vpDlg") && $("vpDlg").open) {
+    $("vpDlg").close();
   }
   const pick = missingPackFor(pvLang() || lang, homeCountryNow());
   $("vpVoiceBox").hidden = $("tsVpBox").hidden = !pick;
@@ -6747,6 +6770,7 @@ async function vpDownloadOffer(offer) {
   const id = offer.id;
   if (vpManualOffer && vpManualOffer.id === id) vpManualOffer = null;
   if (vpFirstOffer && vpFirstOffer.id === id) vpFirstOffer = null;
+  if ($("vpDlg") && $("vpDlg").open) $("vpDlg").close();
   if (offer.kind === "ext_lang") {
     vpMsg = "vp_working"; vpRender();
     try {
@@ -6782,6 +6806,7 @@ $("vpCardLater").addEventListener("click", async () => {
   vpFirstOffer = null;
   vpManualOffer = null;
   $("vpCard").hidden = true;
+  if ($("vpDlg") && $("vpDlg").open) $("vpDlg").close();
   await markFirstPackPrompt(id);
   vpRender();
 });
