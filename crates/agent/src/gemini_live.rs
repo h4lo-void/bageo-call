@@ -3700,6 +3700,13 @@ struct StallFacts {
     owner_flagged: bool,
 }
 
+/// Whether the call is still watched for sales / scam (keywords, the second
+/// look, blind looks). A trusted caller (saved contact, whitelisted or marked
+/// safe: [`crate::stall_review::CallerContext::trusted`]) never is.
+fn sales_look_open(has_stall: bool, stall_on: bool, stall_detected: bool, own_matter: bool, in_ivr: bool, trusted: bool) -> bool {
+    has_stall && !stall_on && !stall_detected && !own_matter && !in_ivr && !trusted
+}
+
 impl StallFacts {
     /// Something besides the look says sales / scam: the keywords, words only
     /// scammers say, or the owner's own mark on the number.
@@ -6916,6 +6923,10 @@ pub async fn run_session(
             }
         }
     };
+    // A saved contact, a whitelisted number or one the owner marked safe is never
+    // looked at for sales / scam and never stalled (the Stall list still wins).
+    let trusted_caller =
+        || -> bool { review_ctx().trusted(stall.as_ref().is_some_and(|c| c.force_start)) };
     // What the caller has said so far: turns with something in them, and how much.
     let caller_said = || -> (u32, usize) {
         transcript_out
@@ -9110,7 +9121,7 @@ pub async fn run_session(
                                     // Sales / scam keywords: once they cross the line the call gets
                                     // a second look (stall_review) while the AI talks on; its verdict
                                     // decides whether the AI starts stalling.
-                                    if stall.is_some() && !stall_on && !stall_detected && !own_matter && ivr_since.is_none() {
+                                    if sales_look_open(stall.is_some(), stall_on, stall_detected, own_matter, ivr_since.is_some(), trusted_caller()) {
                                         stall_score += stall_score_add(&in_tx_window, &mut stall_hits);
                                         let flagged = stall_engages(stall_score, &stall_hits);
                                         let hard = stall_hits.iter().any(|h| crate::scam_db::is_hard(h));
@@ -9470,7 +9481,7 @@ pub async fn run_session(
                                         // them go.
                                         if carrier_only {
                                             // Not a caller's turn: nothing to look at.
-                                        } else if stall.is_some() && !stall_on && !stall_detected && !own_matter && ivr_since.is_none() {
+                                        } else if sales_look_open(stall.is_some(), stall_on, stall_detected, own_matter, ivr_since.is_some(), trusted_caller()) {
                                             stall_review.note_caller_turn_end();
                                             if stall_review.should_ask_after_turn() {
                                                 spawn_stall_review(
@@ -9491,7 +9502,7 @@ pub async fn run_session(
                                             } else if blind_looks {
                                                 let (turns, units) = caller_said();
                                                 let ctx = review_ctx();
-                                                if !ctx.protected() && stall_review.should_ask_blind(units, turns, ctx.flagged_before) {
+                                                if !trusted_caller() && stall_review.should_ask_blind(units, turns, ctx.flagged_before) {
                                                     spawn_stall_review(
                                                         &review_tx,
                                                         &review_key,
@@ -10464,7 +10475,7 @@ pub async fn run_session(
                     StallVerdictStep::Ivr => {}
                     // The caller finished that turn (or said more) meanwhile: what the
                     // look saw was only its start. Look again now, at all of it.
-                    StallVerdictStep::AskAgain if stall.is_some() && !stall_on && !stall_detected && !own_matter && ivr_since.is_none() => {
+                    StallVerdictStep::AskAgain if sales_look_open(stall.is_some(), stall_on, stall_detected, own_matter, ivr_since.is_some(), trusted_caller()) => {
                         spawn_stall_review(
                             &review_tx,
                             &review_key,
@@ -11087,6 +11098,88 @@ mod tests {
     use super::*;
     use std::pin::Pin;
     use std::task::{Context, Poll};
+
+    /// A contact, a whitelisted number and a number marked safe are never
+    /// watched for sales / scam, whatever they say; a stranger saying the same
+    /// is, and the Stall list still wins.
+    #[test]
+    fn trusted_callers_are_never_looked_at_for_sales_or_scam_in_any_language() {
+        use crate::stall_review::CallerContext;
+        let contact = CallerContext { saved_contact: Some("Amy".into()), ..CallerContext::default() };
+        let marked_safe = CallerContext { owner_safe: true, ..CallerContext::default() };
+        let stranger = CallerContext::default();
+        let lines = [
+            ("zh-TW", "請你告訴我簡訊驗證碼，然後把錢轉到安全帳戶"),
+            ("en", "Please read me the verification code we sent you and move your money to a safe account"),
+            ("ja", "認証コードを教えてください。安全な口座に移してください"),
+            ("es", "Dígame el código de verificación y transfiera el dinero a una cuenta segura"),
+            ("de", "Nennen Sie mir den Verifizierungscode und überweisen Sie das Geld auf ein sicheres Konto"),
+            ("pt", "Informe o código de verificação e transfira o dinheiro para uma conta segura"),
+            ("ko", "인증번호를 알려주세요. 안전계좌로 이체하세요"),
+        ];
+        let mut bad: Vec<String> = Vec::new();
+        for (lang, line) in lines {
+            let mut hits = Vec::new();
+            let score = stall_score_add(line, &mut hits);
+            if !stall_engages(score, &hits) {
+                bad.push(format!("{lang}: a stranger saying this must still be stalled: {line} {hits:?}"));
+            }
+            for (who, ctx, trusted_expected) in [
+                ("stranger", &stranger, false),
+                ("contact", &contact, true),
+                ("marked safe", &marked_safe, true),
+            ] {
+                let trusted = ctx.trusted(false);
+                let open = sales_look_open(true, false, false, false, false, trusted);
+                if trusted != trusted_expected || open == trusted_expected {
+                    bad.push(format!("{lang}: {who}: trusted={trusted} look_open={open}"));
+                }
+            }
+            // On the Stall list the list wins, contact or not.
+            if contact.trusted(true) || marked_safe.trusted(true) {
+                bad.push(format!("{lang}: the Stall list must win"));
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    /// Sales pitches in several languages: a stranger's would be looked at; a
+    /// trusted caller's never reaches the keyword scoring.
+    #[test]
+    fn a_trusted_callers_pitch_words_are_not_scored() {
+        let pitches = [
+            ("zh-TW", "我們有保險跟投資方案，保證獲利，免費試用，現在加 LINE"),
+            ("en", "We have a guaranteed return investment and life insurance, free trial, add me on WhatsApp"),
+            ("es", "Tenemos un seguro de vida y una inversión con rentabilidad garantizada, prueba gratis"),
+            ("de", "Wir haben eine Geldanlage mit garantierter Rendite und eine Lebensversicherung"),
+            ("pt", "Temos um seguro de vida e um investimento com retorno garantido, teste grátis"),
+        ];
+        let contact = crate::stall_review::CallerContext { saved_contact: Some("Ben".into()), ..Default::default() };
+        let mut flagged_for_strangers = 0;
+        for (lang, line) in pitches {
+            let mut hits = Vec::new();
+            let score = stall_score_add(line, &mut hits);
+            if stall_engages(score, &hits) {
+                flagged_for_strangers += 1;
+                assert!(sales_look_open(true, false, false, false, false, false), "{lang}");
+            }
+            assert!(!sales_look_open(true, false, false, false, false, contact.trusted(false)), "{lang}");
+        }
+        assert!(flagged_for_strangers >= 3, "the pitch lines must flag for a stranger: {flagged_for_strangers}");
+    }
+
+    /// The gate stays shut on every other reason too, and open only for an
+    /// untrusted call that nothing else has settled.
+    #[test]
+    fn the_sales_look_gate_needs_every_condition() {
+        assert!(sales_look_open(true, false, false, false, false, false));
+        assert!(!sales_look_open(false, false, false, false, false, false));
+        assert!(!sales_look_open(true, true, false, false, false, false));
+        assert!(!sales_look_open(true, false, true, false, false, false));
+        assert!(!sales_look_open(true, false, false, true, false, false));
+        assert!(!sales_look_open(true, false, false, false, true, false));
+        assert!(!sales_look_open(true, false, false, false, false, true));
+    }
 
     #[test]
     fn the_plan_knows_the_calls_region_before_pickup() {

@@ -189,7 +189,7 @@ Bageo never holds a calendar login or token.
 
 Contacts let Bageo know who is calling: they show up by name in the call list,
 the summary and the notification, the AI reads your note about them, and saved
-contacts are protected in the scam review. Import from:
+contacts are never put through the scam check. Import from:
 
 - vCard 2.1 / 3.0 / 4.0, Google and Outlook CSV, TSV and plain text, read on
   your computer with automatic encoding detection (UTF-8, UTF-16, Big5, GBK,

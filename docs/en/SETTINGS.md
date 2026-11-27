@@ -127,7 +127,7 @@ For example, a caller opens with a "pre-approved loan", or claims to be from you
 - The model names the kind of call and how sure it is; an unsure answer waits for the caller's next turn.
 - When the model does not answer in time, only requests that are a scam whoever makes them (a verification code, ATM steps, gift cards, remote access, a "safe account") start the stalling at once. Otherwise the next turn is looked at, and after two failures in a row the keywords decide alone.
 - Two caller turns into the stalling, one more look can let a wrongly judged caller go back to a normal conversation.
-- Saved contacts and numbers you marked *It was not* are left alone, unless they ask for those scam-only things.
+- Saved contacts, Whitelist numbers and numbers you marked *It was not* are never checked for sales or scam, whatever they say, and the AI never keeps them talking. The AI still never gives out codes or personal details and never agrees to a transfer. The Blacklist and the Stall list work as before.
 
 On a call's page, *Sales / scam check* shows what the call was judged and which kind. *It was a scam*, *It was sales* and *It was not* mark the number, and its next calls are judged with your mark (hidden numbers are not remembered).
 

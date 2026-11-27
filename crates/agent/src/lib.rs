@@ -10379,6 +10379,25 @@ fn remembers_scam_number(j: &calls::ScamJudgement, transcript: &str) -> bool {
     j.source != "review" || gemini_live::caller_words_back_a_scam(transcript)
 }
 
+/// Whether the number's calls are never judged sales / scam: a saved contact,
+/// a whitelisted number or one the owner marked safe, unless it is on the
+/// Stall list ([`stall_review::CallerContext::trusted`]).
+fn caller_is_trusted(caller: &str, sim: Option<&str>) -> bool {
+    let force_stall = contacts::is_force_stall(caller, sim).is_some();
+    stall_review::CallerContext {
+        saved_contact: contacts::review_label(caller, sim),
+        owner_safe: scam_db::caller_facts(caller, sim).owner_safe,
+        ..Default::default()
+    }
+    .trusted(force_stall)
+}
+
+/// The call's sales / scam judgement as the summary, the notification and the
+/// number's memory take it: none for a trusted caller.
+fn standing_scam(judged: Option<&calls::ScamJudgement>, trusted: bool) -> Option<calls::ScamJudgement> {
+    judged.filter(|j| j.stands() && !trusted).cloned()
+}
+
 /// Press-1 hangup: Gemini live STT (+ optional Whisper AI segment) → **summary** → notification.
 /// The notification body is the summary only (not raw fragment dump). Hangup already stopped Live.
 fn spawn_ai_talk_tg_summary(
@@ -10416,7 +10435,13 @@ fn spawn_ai_talk_tg_summary(
     let stalled = record.events.iter().any(|e| e == "persona_stall_spam")
         && !record.events.iter().any(|e| e == "persona_stall_released");
     // Judged sales / scam during the call (stalling on or off), not let go again.
-    let scam = record.scam.clone().filter(|j| j.stands());
+    // A saved contact, a whitelisted number or one marked safe is never marked
+    // sales / scam, remembered as one, or voided as one after the call.
+    let trusted = {
+        let sim = record.sim_country.clone().or_else(|| phone_region::last_sim(&canonical_device_serial(&serial)));
+        caller_is_trusted(&caller, sim.as_deref())
+    };
+    let scam = standing_scam(record.scam.as_ref(), trusted);
     let judged = scam.is_some();
     // Remembered for the number's next calls (hidden numbers are not): the owner's
     // own marks stand over this. Not when the look alone said so.
@@ -10668,6 +10693,7 @@ fn spawn_ai_talk_tg_summary(
         // call: no card, what it put in the calendar is deleted, and the
         // summary says so. Calls without an appointment are left as they were.
         let late_sales = !stalled
+            && !trusted
             && !judged
             && appointment.is_some()
             && !gemini_live::dialogue_own_matter(&live_full)
@@ -13101,6 +13127,39 @@ mod summary_fallback_tests {
         // Only the AI saying such words does not count.
         let ai_only = "接聽：I can't give you a verification code.\n對方：Okay, never mind, see you.";
         assert!(!remembers_scam_number(&by_look, ai_only));
+    }
+
+    /// A trusted caller's call is never marked sales / scam after it, whatever
+    /// the judgement and whatever was said; a stranger's stays as judged.
+    #[test]
+    fn a_trusted_callers_call_is_not_marked_or_remembered_as_scam() {
+        let judged = calls::ScamJudgement {
+            kind: "scam".into(),
+            typology: "bank_impersonation".into(),
+            confidence: "high".into(),
+            source: "hard_words".into(),
+            released: false,
+        };
+        assert!(standing_scam(Some(&judged), false).is_some());
+        assert!(standing_scam(Some(&judged), true).is_none());
+        assert!(standing_scam(None, true).is_none());
+        let said = |line: &str| format!("接聽：喂？\n對方：{line}\n接聽：好。");
+        for line in [
+            "請告訴我簡訊驗證碼。",
+            "Read me the verification code we just sent you.",
+            "認証コードを教えてください。",
+            "Dígame el código de verificación que le llegó.",
+            "Nennen Sie mir den Verifizierungscode.",
+            "Informe o código de verificação que você recebeu.",
+            "인증번호를 알려주세요.",
+        ] {
+            // What the number's memory would take for a stranger is dropped for a trusted one.
+            let stands = standing_scam(Some(&judged), true);
+            assert!(stands.as_ref().map_or(true, |j| !remembers_scam_number(j, &said(line))), "{line}");
+            assert!(standing_scam(Some(&judged), false).is_some_and(|j| remembers_scam_number(&j, &said(line))), "{line}");
+        }
+        // Without a contacts store or any mark nobody is trusted.
+        assert!(!caller_is_trusted("0912345678", Some("tw")));
     }
 
     #[test]
