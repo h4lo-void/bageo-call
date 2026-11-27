@@ -332,39 +332,76 @@ const SCAM_ASK_WORDS: &[&str] = &[
 
 /// What the scams that pose as an ordinary desk threaten or tell: a line or an
 /// account cut off, frozen or seized, an arrest, a stolen identity, money
-/// laundering, a debt collector, customs holding a parcel, a stranger asking to
-/// borrow money, and the ATM or a link in the words [SCAM_ASK_WORDS] lacks. Any
-/// of it and the call is no plain courier, notice or card check.
+/// laundering, drugs in a parcel, a debt collector, customs holding a parcel,
+/// secrecy, a stranger asking to borrow money, and the ATM, a link, an app or a
+/// payment the words [SCAM_ASK_WORDS] lack — mostly as police and regulators
+/// word them in their public warnings. Any of it and the call is no plain
+/// courier, notice or card check. Left out because real desks say them too: a
+/// card desk offering to stop the card (利用停止, 사용 정지, gesperrt alone), a
+/// frozen parcel (eingefroren), a planned power cut (cắt điện), "we got cut
+/// off", "lend me a hand", bail that also means a rent deposit (Kaution,
+/// cauzione), a bank reporting a suspicious charge (opérations suspectes,
+/// transaksi mencurigakan, movimientos fraudulentos), a courier (coursier),
+/// unloading (descargar), paying a courier by QR code (mã QR), a voucher
+/// delivered (상품권), a real jury summons, a clinic that cannot tell you
+/// something on the phone (不能告訴你).
 const THREAT_WORDS: &[&str] = &[
     "cajero automático", "cajero automatico", "caixa eletrônico", "caixa eletronico", "distributeur automatique",
     "distributeur de billets", "geldautomat*", "bancomat", "atm'*",
-    "enlace", "lien", "liên kết", "tautan", "ลิงก์",
-    "停話", "停话", "停機", "停机", "斷話", "断话", "凍結", "冻结", "查封", "扣押", "逮捕", "拘提", "通緝", "通缉", "盜用",
-    "盗用", "盜刷", "盗刷", "冒用", "洗錢", "洗钱", "涉案", "涉嫌", "刑案", "討債", "讨债", "催收", "借錢", "借钱", "借我錢",
-    "借我钱", "借點錢", "借点钱", "海關", "海关",
-    "差し押さえ", "差押", "不正利用", "マネーロンダリング", "利用停止", "お金を貸して", "税関",
-    "동결", "압류", "체포", "구속", "도용", "자금세탁", "사용 정지", "정지 처리", "돈 좀 빌려", "돈 빌려", "세관",
+    "enlace", "lien", "liên kết", "đường link", "tautan", "ลิงก์",
+    // zh-TW
+    "停話", "停機", "斷話", "即將停電", "被凍結", "遭凍結", "將凍結", "解除凍結", "查封", "扣押", "逮捕", "拘提", "通緝",
+    "盜用", "盜刷", "冒用", "洗錢", "涉案", "涉嫌", "刑案", "毒品", "緊急代管", "偵查不公開", "視訊筆錄", "交付存摺",
+    "交付提款卡", "提款卡交給", "存摺交給", "提款卡寄", "存摺寄", "指定帳戶", "不能告訴家人", "不要告訴家人",
+    "不可以告訴家人", "不得撥打其他電話", "討債", "催收", "借錢", "借我錢", "借點錢", "海關",
+    // zh-CN
+    "停话", "停机", "断话", "被冻结", "将冻结", "解除冻结", "通缉", "盗用", "盗刷", "洗钱", "贩毒", "販毒", "资金有风险",
+    "安全賬戶", "银行账号", "会员费", "保证金", "保證金", "解冻费", "解凍費", "讨债", "借钱", "借我钱", "借点钱", "海关",
+    // ja
+    "口座凍結", "差し押さえ", "差押", "犯罪に使われ", "共犯", "時間後に止まります", "指定口座", "全額移動", "口座を新設",
+    "口座の新設", "lineに招待", "令状", "不正利用", "マネーロンダリング", "お金を貸して", "税関",
+    // ko
+    "통화정지", "통화 정지", "범죄에 연루", "안전계좌", "동결", "압류", "체포", "구속", "도용", "자금세탁", "원격제어",
+    "팀뷰어", "앱 설치", "악성앱", "돈 좀 빌려", "돈 빌려", "세관",
+    // en
     "frozen account", "account frozen", "account will be frozen", "freeze your account", "suspend your account",
-    "account suspended", "account will be suspended", "cut off", "arrest", "arrest warrant", "seize", "lawsuit",
-    "identity theft", "stolen identity", "money laundering", "debt collector", "collection agency", "lend me",
-    "borrow money",
+    "account suspended", "account will be suspended", "arrest", "seize", "lawsuit", "illegal items", "diplomatic pouch",
+    "missed jury duty", "benefits will end", "keep your utilities on", "prepaid card", "cryptocurrency", "bitcoin", "payment app",
+    "identity theft", "stolen identity", "money laundering", "debt collector", "collection agency", "lend me money",
+    "lend me some money", "borrow money",
+    // es
     "cuenta bloqueada", "cuenta congelada", "bloquear su cuenta", "embargo", "embargar", "orden de arresto",
-    "orden de captura", "lavado de dinero", "blanqueo", "suplantación de identidad", "préstame", "agencia de cobro",
-    "aduana", "aduanas",
-    "compte bloqué", "compte gelé", "bloquer votre compte", "saisie", "mandat d'arrêt", "arrestation", "blanchiment",
-    "usurpation d'identité", "prête-moi", "recouvrement", "huissier", "douane",
-    "gesperrt", "eingefroren", "pfändung", "haftbefehl", "festnahme", "geldwäsche", "identitätsdiebstahl", "inkasso",
-    "leih mir", "abgeschaltet", "zoll",
-    "conta bloqueada", "conta congelada", "bloquear sua conta", "penhora", "mandado de prisão", "lavagem de dinheiro",
-    "me empresta", "alfândega", "alfandega",
-    "conto bloccato", "conto congelato", "bloccare il conto", "pignoramento", "mandato di arresto", "riciclaggio",
-    "furto d'identità", "prestami", "recupero crediti",
+    "orden de captura", "lavado de dinero", "blanqueo", "suplantación de identidad", "préstame dinero", "agencia de cobro",
+    "aduana", "aduanas", "paquete retenido", "paquete detenido", "datos de la tarjeta", "descargar una aplicación",
+    "descargar la aplicación", "descargue la aplicación", "descargue una aplicación", "paysafecard",
+    // fr
+    "compte bloqué", "compte gelé", "bloquer votre compte", "mandat d'arrêt", "arrestation", "blanchiment",
+    "usurpation d'identité", "prête-moi de l'argent", "recouvrement", "huissier", "douane", "fraude en cours",
+    "enquête en cours", "biens sont menacés", "récupère la carte", "récupérer la carte", "récupère votre carte",
+    "garder le secret", "gardez le secret", "mettre en sécurité", "affranchir",
+    // de
+    "konto gesperrt", "konto wird gesperrt", "kontosperrung", "konto eingefroren", "wird eingefroren", "pfändung",
+    "haftbefehl", "untersuchungshaft", "festnahme", "geldwäsche", "identitätsdiebstahl", "inkasso", "geheimhaltung",
+    "geld übergeben", "die tan", "tan nummer", "leih mir geld", "abgeschaltet", "zoll", "zollgebühr*",
+    // pt
+    "conta bloqueada", "conta congelada", "bloquear sua conta", "bloqueio do cpf", "bloqueio de contas", "negativado",
+    "serasa", "penhora", "mandado de prisão", "será preso", "vai ser preso", "lavagem de dinheiro", "conta segura",
+    "qr code", "depósito em conta", "instalar aplicativo", "termo de confidencialidade", "me empresta dinheiro",
+    "empresta dinheiro", "alfândega", "alfandega",
+    // it
+    "conto bloccato", "conto congelato", "bloccare il conto", "pignoramento", "mandato di arresto", "arresto",
+    "l'arresto", "riciclaggio", "furto d'identità", "mettere in sicurezza", "metta in sicurezza", "conti correnti sicuri",
+    "credenziali", "non comunicare", "prestami dei soldi", "prestami soldi", "recupero crediti",
+    // tr: the police's own warning words, plus estimates where none were found.
+    "terör*", "gizli operasyon", "operasyon için para", "hesap numara*", "verilen hesap*",
     // Not "bloke" alone: English says it for any man.
     "bloke ed*", "bloke oldu*", "dondurul*", "haciz*", "tutuklama*", "gözaltı*", "kara para*", "kimlik hırsızlığı", "borç ver*",
-    "khóa tài khoản", "phong tỏa", "đóng băng", "bắt giữ", "lệnh bắt", "rửa tiền", "cho mượn tiền", "cắt điện",
-    "hải quan",
-    "diblokir", "dibekukan", "pemblokiran", "penyitaan", "ditangkap", "pencucian uang", "pinjam uang", "pinjamkan",
-    "penagih utang", "bea cukai",
+    // vi
+    "khóa tài khoản", "phong tỏa", "đóng băng", "bắt giữ", "lệnh bắt", "rửa tiền", "cho mượn tiền", "nợ cước",
+    "xử lý vi phạm", "phạt nguội", "cài đặt ứng dụng", "điều khiển từ xa", "chuyển tiền", "hải quan",
+    // id
+    "diblokir", "dibekukan", "pemblokiran", "penyitaan", "ditangkap", "pencucian uang", "pinjam uang", "pinjamkan uang",
+    "penagih utang", "bea cukai", "tagihan pajak", "nomor rekening", "unduh", "apk",
 ];
 
 /// Paying the courier at the door: what a real courier asks for ("付款" alone
@@ -1027,6 +1064,79 @@ mod everyday_calls {
             for known in [None, Some(Scenario::Delivery), Some(Scenario::ImportantNotice), Some(Scenario::BankVerify)] {
                 assert_eq!(ordinary(known, t), None, "{t} {known:?}");
             }
+        }
+    }
+
+    /// The threats and asks police and regulators warn of, in thirteen
+    /// languages, said by someone posing as a courier, a bank or a clinic: no
+    /// everyday call.
+    #[test]
+    fn the_threats_and_asks_police_warn_of_are_no_everyday_call() {
+        for t in [
+            "我是快遞，你的包裹夾藏毒品，要幫你轉接做視訊筆錄",
+            "台電通知您電費逾期未繳，即將停電",
+            "銀行通知您帳戶即將遭凍結，財產須緊急代管，偵查不公開",
+            "快递客服，您的账户被冻结，资金有风险",
+            "退款理赔需要您先交会员费和解冻费",
+            "This is the courier: illegal items were shipped in your name and there is a warrant out for your arrest",
+            "To keep your utilities on, pay with a prepaid card or cryptocurrency",
+            "宅配便です。あなたのキャッシュカードが犯罪に使われています。口座凍結になります",
+            "この電話は2時間後に止まります",
+            "택배기사입니다. 고객님 계좌가 범죄에 연루되어 통화정지됩니다",
+            "카드사입니다. 팀뷰어 설치해 주세요",
+            "Correos: su paquete retenido en aduanas, pague las tasas",
+            "Para entregar el paquete necesito los datos de la tarjeta",
+            "Service anti-fraude de votre banque : fraude en cours, un agent récupère la carte, gardez le secret",
+            "La Poste : cliquez pour affranchir votre colis",
+            "Hier ist Ihre Bank, Ihr Konto gesperrt, bitte Geheimhaltung",
+            "Hier ist der Zusteller, die Zollgebühr zahlen Sie vorab",
+            "Hier ist Ihre Bank, bitte nennen Sie mir die TAN",
+            "Correios: mercadoria retida na alfândega",
+            "Aqui é do banco, bloqueio do CPF, assine o termo de confidencialidade",
+            "Sono il corriere, per la consegna mi dia le credenziali",
+            "Carabiniere: per evitare l'arresto metta in sicurezza i risparmi",
+            "Kargo şirketi: hattınız teröristlerce kullanıldı, çok gizli operasyon",
+            "Kargo için hesap numaranızı verin",
+            "Giao hàng: anh có khoản nợ cước, sẽ bị xử lý vi phạm",
+            "Bên giao hàng đây, anh cài đặt ứng dụng này giúp em",
+            "Kurir salah kirim paket, unduh apk ini",
+            "Petugas pajak: ada tagihan pajak, sebutkan nomor rekening anda",
+        ] {
+            assert!(scam_ask(t), "{t}");
+            assert_eq!(local_guess(t), Scenario::None, "{t}");
+            for known in [Some(Scenario::Delivery), Some(Scenario::ImportantNotice), Some(Scenario::BankVerify)] {
+                assert_eq!(ordinary(known, t), None, "{t} {known:?}");
+            }
+        }
+    }
+
+    /// What real couriers, banks and clinics say that sounds like those
+    /// warnings: cash on delivery, the number on the back of the card, a card
+    /// offered to be stopped, a call that dropped, frozen food. Still everyday
+    /// calls, in many languages.
+    #[test]
+    fn what_real_desks_say_stays_an_everyday_call() {
+        for (t, want) in [
+            ("黑貓宅急便，您的包裹貨到付款三百元，明天送到", Scenario::Delivery),
+            ("這邊是銀行信用卡中心，昨天一筆刷卡消費想跟您確認是不是本人，有疑問請撥卡片背面的電話", Scenario::BankVerify),
+            ("Sorry, we got cut off. Courier here, your parcel is downstairs", Scenario::Delivery),
+            ("Courier here, can you lend me a hand with the box? It's your parcel", Scenario::Delivery),
+            ("Hi, this is your bank verifying a purchase on your card; if it wasn't you, call the number on the back of your card", Scenario::BankVerify),
+            ("カード会社です。昨夜のご利用についてご本人様か確認させてください。利用停止もできます", Scenario::BankVerify),
+            ("카드사입니다. 어제 승인 건 본인 확인 부탁드립니다. 원하시면 사용 정지해 드릴게요", Scenario::BankVerify),
+            ("택배입니다. 본인이 신청한 카드 배송 왔습니다", Scenario::Delivery),
+            ("Hola, soy el repartidor de Correos, voy a descargar su paquete", Scenario::Delivery),
+            ("Bonjour, c'est le coursier, j'ai un colis pour vous", Scenario::Delivery),
+            ("Hier ist der Zusteller, ich bringe Ihr Paket mit den eingefrorenen Lebensmitteln", Scenario::Delivery),
+            ("Hier ist Ihre Bank, wir möchten eine Zahlung mit Ihrer Karte bestätigen, waren Sie das selbst?", Scenario::BankVerify),
+            ("Olá, aqui é do banco, vimos uma compra no seu cartão, reconhece? Se não, ligue para o número no verso do cartão", Scenario::BankVerify),
+            ("Sono il corriere, il pacco è in contrassegno", Scenario::Delivery),
+            ("Em là shipper giao hàng, anh quét mã QR thanh toán khi nhận hàng nhé", Scenario::Delivery),
+            ("Halo, saya kurir, paket anda sampai besok, bayar di tempat", Scenario::Delivery),
+            ("Merhaba, kurye geldi, kargonuz için kapınızdayım", Scenario::Delivery),
+        ] {
+            assert!(!scam_ask(t), "{t}");
+            assert_eq!(ordinary(None, t), Some(want), "{t}");
         }
     }
 
