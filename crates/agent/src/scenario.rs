@@ -10,10 +10,17 @@
 //! at once, and once the scenario is known one short cue for it (at most
 //! [`MAX_CUE_CHARS`] characters) goes in the pause after the AI's turn, once per
 //! scenario per call, never while a sales / scam caller is being stalled.
-//! When that look gets no answer in time, the caller's own words still name the
-//! scenarios plain words show ([local_guess]: a courier, a card desk checking
-//! a purchase, a clinic, school or office with a change, a deadline or a number
-//! to call back). Pure in-memory work.
+//! The caller's own words also name the scenarios plain words show
+//! ([local_guess]: a courier, a card desk checking a purchase, a clinic, school
+//! or office with a change, a deadline or a number to call back) after each of
+//! their turns, and when that look gets no answer in time. A caller whose call
+//! is never looked at for sales / scam (a saved contact, the owner's own matter)
+//! still gets its cue: one look a call only for what it is about.
+//!
+//! An ordinary call is harder to take for sales / scam ([ordinary]): keywords
+//! alone do not back the look's "scam" on a courier, a notice, setting a time
+//! or a card desk checking one purchase, as long as the caller asks for nothing
+//! a scammer asks for and threatens nothing a scammer threatens. Pure in-memory work.
 
 use crate::country_profile::Region;
 use crate::locale::Lang;
@@ -323,6 +330,69 @@ const SCAM_ASK_WORDS: &[&str] = &[
     "para yatır*", "hesaba para",
 ];
 
+/// What the scams that pose as an ordinary desk threaten or tell: a line or an
+/// account cut off, frozen or seized, an arrest, a stolen identity, money
+/// laundering, a debt collector, customs holding a parcel, a stranger asking to
+/// borrow money, and the ATM or a link in the words [SCAM_ASK_WORDS] lacks. Any
+/// of it and the call is no plain courier, notice or card check.
+const THREAT_WORDS: &[&str] = &[
+    "cajero automático", "cajero automatico", "caixa eletrônico", "caixa eletronico", "distributeur automatique",
+    "distributeur de billets", "geldautomat*", "bancomat", "atm'*",
+    "enlace", "lien", "liên kết", "tautan", "ลิงก์",
+    "停話", "停话", "停機", "停机", "斷話", "断话", "凍結", "冻结", "查封", "扣押", "逮捕", "拘提", "通緝", "通缉", "盜用",
+    "盗用", "盜刷", "盗刷", "冒用", "洗錢", "洗钱", "涉案", "涉嫌", "刑案", "討債", "讨债", "催收", "借錢", "借钱", "借我錢",
+    "借我钱", "借點錢", "借点钱", "海關", "海关",
+    "差し押さえ", "差押", "不正利用", "マネーロンダリング", "利用停止", "お金を貸して", "税関",
+    "동결", "압류", "체포", "구속", "도용", "자금세탁", "사용 정지", "정지 처리", "돈 좀 빌려", "돈 빌려", "세관",
+    "frozen account", "account frozen", "account will be frozen", "freeze your account", "suspend your account",
+    "account suspended", "account will be suspended", "cut off", "arrest", "arrest warrant", "seize", "lawsuit",
+    "identity theft", "stolen identity", "money laundering", "debt collector", "collection agency", "lend me",
+    "borrow money",
+    "cuenta bloqueada", "cuenta congelada", "bloquear su cuenta", "embargo", "embargar", "orden de arresto",
+    "orden de captura", "lavado de dinero", "blanqueo", "suplantación de identidad", "préstame", "agencia de cobro",
+    "aduana", "aduanas",
+    "compte bloqué", "compte gelé", "bloquer votre compte", "saisie", "mandat d'arrêt", "arrestation", "blanchiment",
+    "usurpation d'identité", "prête-moi", "recouvrement", "huissier", "douane",
+    "gesperrt", "eingefroren", "pfändung", "haftbefehl", "festnahme", "geldwäsche", "identitätsdiebstahl", "inkasso",
+    "leih mir", "abgeschaltet", "zoll",
+    "conta bloqueada", "conta congelada", "bloquear sua conta", "penhora", "mandado de prisão", "lavagem de dinheiro",
+    "me empresta", "alfândega", "alfandega",
+    "conto bloccato", "conto congelato", "bloccare il conto", "pignoramento", "mandato di arresto", "riciclaggio",
+    "furto d'identità", "prestami", "recupero crediti",
+    // Not "bloke" alone: English says it for any man.
+    "bloke ed*", "bloke oldu*", "dondurul*", "haciz*", "tutuklama*", "gözaltı*", "kara para*", "kimlik hırsızlığı", "borç ver*",
+    "khóa tài khoản", "phong tỏa", "đóng băng", "bắt giữ", "lệnh bắt", "rửa tiền", "cho mượn tiền", "cắt điện",
+    "hải quan",
+    "diblokir", "dibekukan", "pemblokiran", "penyitaan", "ditangkap", "pencucian uang", "pinjam uang", "pinjamkan",
+    "penagih utang", "bea cukai",
+];
+
+/// Paying the courier at the door: what a real courier asks for ("付款" alone
+/// is a scammer's ask).
+const COD_WORDS: &[&str] = &[
+    "貨到付款", "货到付款", "代金引換", "代引き", "착불", "cash on delivery", "contra reembolso", "pago contra entrega",
+    "paiement à la livraison", "nachnahme", "pagamento na entrega", "contrassegno", "thanh toán khi nhận hàng",
+    "เก็บเงินปลายทาง", "bayar di tempat", "kapıda ödeme",
+];
+
+/// The text's words without paying the courier at the door ([COD_WORDS]), for
+/// the scammer's asks.
+fn ask_words(text: &str) -> Words {
+    let mut lower = text.to_lowercase();
+    for c in COD_WORDS {
+        lower = lower.replace(c, " ");
+    }
+    Words::of(&lower)
+}
+
+/// The caller asks for anything a scammer asks for, or threatens or tells what
+/// a scammer posing as an ordinary desk does. Paying a courier at the door is
+/// no such ask.
+pub fn scam_ask(caller: &str) -> bool {
+    let w = ask_words(caller);
+    w.any(SCAM_ASK_WORDS) || w.any(THREAT_WORDS)
+}
+
 /// Letters of words in Latin script (the rest are compared as they are).
 fn latin_letter(c: char) -> bool {
     c.is_ascii_alphanumeric()
@@ -384,7 +454,7 @@ impl Words {
 /// your card… did you make it yourself?").
 pub fn card_check(caller: &str) -> bool {
     let w = Words::of(caller);
-    w.any(CARD_WORDS) && w.any(CHARGE_WORDS) && w.any(OWNER_CHECK_WORDS) && !w.any(SCAM_ASK_WORDS)
+    w.any(CARD_WORDS) && w.any(CHARGE_WORDS) && w.any(OWNER_CHECK_WORDS) && !w.any(SCAM_ASK_WORDS) && !w.any(THREAT_WORDS)
 }
 
 /// Who sends an important notice, or what it is about: a clinic, a hospital, a
@@ -408,22 +478,23 @@ const NOTICE_WHAT_WORDS: &[&str] = &[
     "zurückrufen", "durchwahl", "ergebnis", "remarcado", "alterado", "prazo", "ramal", "resultado",
 ];
 
-/// What an ordinary call is about, from the caller's own words alone, for when
-/// the second look did not answer in time ([crate::stall_review]): a card desk
-/// checking a purchase ([card_check]), a courier, or a clinic, school or office
-/// telling of a change, a deadline or a number to call back (the acceptance run's
-/// clinic notices went unrouted when every look timed out). None of them when
-/// the caller asks for anything a scammer asks for. Anything else is none — the
-/// model names the rest. Microseconds; string checks only.
+/// What an ordinary call is about, from the caller's own words alone, after each
+/// of their turns and for when the second look did not answer in time
+/// ([crate::stall_review]): a card desk checking a purchase ([card_check]), a
+/// courier, or a clinic, school or office telling of a change, a deadline or a
+/// number to call back (the acceptance run's clinic notices went unrouted when
+/// every look timed out). None of them when the caller asks for anything a
+/// scammer asks for or threatens what one threatens ([scam_ask]). Anything else
+/// is none — the model names the rest. Microseconds; string checks only.
 pub fn local_guess(caller: &str) -> Scenario {
     if card_check(caller) {
         return Scenario::BankVerify;
     }
     // A courier who asks for a code, an account, a link or a fee is no plain courier.
-    let w = Words::of(caller);
-    if w.any(SCAM_ASK_WORDS) {
+    if scam_ask(caller) {
         return Scenario::None;
     }
+    let w = Words::of(caller);
     if w.any(DELIVERY_WORDS) {
         return Scenario::Delivery;
     }
@@ -439,6 +510,34 @@ const BANK_WORDS: &[&str] = &[
     "銀行", "银行", "信用卡", "卡片中心", "カード会社", "은행", "카드사", "bank", "credit card", "banco", "banque", "sparkasse", "banca",
     "carta di credito",
 ];
+
+/// Kinds of ordinary call that make it harder to take for sales / scam. A
+/// family chat and a wrong number do not: "guess who this is" and "sorry, wrong
+/// number" open scams too.
+fn eases_the_check(s: Scenario) -> bool {
+    matches!(s, Scenario::Delivery | Scenario::BankVerify | Scenario::ImportantNotice | Scenario::ScheduleInvite)
+}
+
+/// What the call is about, when it is a kind that makes it harder to take for
+/// sales / scam ([eases_the_check]): the caller's words (`caller`: all of their
+/// side so far) as they read now ([local_guess]), else what an earlier look named
+/// (`known`). A card desk only while its words are still a plain purchase check
+/// ([card_check]): it is the desk scammers pose as most. None once the caller
+/// asks for anything a scammer asks for or threatens what one threatens
+/// ([scam_ask]), anywhere in the call.
+pub fn ordinary(known: Option<Scenario>, caller: &str) -> Option<Scenario> {
+    if scam_ask(caller) {
+        return None;
+    }
+    let s = match local_guess(caller) {
+        Scenario::None => known?,
+        s => s,
+    };
+    if !eases_the_check(s) || (s == Scenario::BankVerify && !card_check(caller)) {
+        return None;
+    }
+    Some(s)
+}
 
 /// What a review did to the call's routing (for the log).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -478,11 +577,13 @@ pub struct Router {
     booking: bool,
     sent: Vec<Scenario>,
     pending: Option<Scenario>,
+    /// The last scenario a look named for sure enough (see [ordinary]).
+    known: Option<Scenario>,
 }
 
 impl Router {
     pub fn new(lang: Lang, region: Option<Region>, booking: bool) -> Self {
-        Router { lang, region, booking, sent: Vec::new(), pending: None }
+        Router { lang, region, booking, sent: Vec::new(), pending: None, known: None }
     }
 
     /// A review came back. `stalling`: the call is being stalled (or is about to be).
@@ -500,11 +601,48 @@ impl Router {
         if confidence == Confidence::Low {
             return RouteAction::LowConfidence;
         }
+        self.known = Some(scenario);
         if self.sent.contains(&scenario) {
             return RouteAction::AlreadySent;
         }
         self.pending = Some(scenario);
         RouteAction::Queued
+    }
+
+    /// The caller's turn ended and their words name `scenario` ([local_guess]).
+    /// A cue already owed is kept (None: nothing new).
+    pub fn on_local(&mut self, scenario: Scenario, stalling: bool) -> RouteAction {
+        if scenario == Scenario::None {
+            return RouteAction::None;
+        }
+        if stalling {
+            self.pending = None;
+            return RouteAction::Stalling;
+        }
+        if self.sent.contains(&scenario) {
+            return RouteAction::AlreadySent;
+        }
+        if self.pending.is_some() {
+            return RouteAction::None;
+        }
+        self.pending = Some(scenario);
+        RouteAction::Queued
+    }
+
+    /// The answer to a look only for what the call is about (a caller whose
+    /// call is never looked at for sales / scam): its verdict is not used.
+    pub fn on_scenario(&mut self, scenario: Scenario, confidence: Confidence, stalling: bool) -> RouteAction {
+        self.on_review(scenario, Verdict::Normal, confidence, stalling)
+    }
+
+    /// The last scenario a look named for sure enough.
+    pub fn known(&self) -> Option<Scenario> {
+        self.known
+    }
+
+    /// Something named the call's scenario already (a cue owed or sent).
+    pub fn named(&self) -> bool {
+        self.known.is_some() || self.pending.is_some() || !self.sent.is_empty()
     }
 
     /// Stalling started: an owed ordinary cue is dropped.
@@ -854,5 +992,181 @@ mod notice_fallback_edges {
         ] {
             assert_eq!(local_guess(sample), want, "{sample}");
         }
+    }
+}
+
+#[cfg(test)]
+mod everyday_calls {
+    use super::*;
+
+    /// Couriers, clinics and card desks the way scammers pose as them: a
+    /// threat, a stolen identity, customs, an account frozen. No plain
+    /// scenario from the words, and nothing to make the call harder to judge.
+    /// Many languages.
+    #[test]
+    fn a_desk_that_threatens_or_asks_for_scam_things_is_no_everyday_call() {
+        for t in [
+            "這裡是仁愛診所，通知您健保卡被盜用，涉嫌洗錢，請回電",
+            "您好我是快遞，您的包裹被海關扣押了",
+            "Hi, this is the clinic, your identity was stolen in a money laundering case, call us back",
+            "Courier here, your parcel is with customs, otherwise your account will be frozen",
+            "Hello, this is the bank verifying a purchase on your card, did you make it? Otherwise an arrest warrant goes out",
+            "クリニックの受付です。保険証が不正利用されています。折り返しお電話ください",
+            "택배입니다. 고객님 계좌가 자금세탁에 도용되어 동결됩니다",
+            "Hola, soy el repartidor, su paquete está en la aduana y su cuenta bloqueada",
+            "Bonjour, ici la clinique, votre compte bloqué suite à une usurpation d'identité, rappelez-nous",
+            "Hallo, hier ist die Praxis, Ihr Konto wird gesperrt, rufen Sie zurück",
+            "Olá, sou o entregador, sua encomenda está na alfândega",
+            "Sono il corriere, il pacco è bloccato, c'è un pignoramento sul conto",
+            "Merhaba kurye, kargonuz gümrükte, hesabınız bloke edilecek",
+            "Xin chào, tôi là người giao hàng, bưu kiện của anh bị hải quan giữ lại",
+            "Halo, saya kurir, paket anda tertahan di bea cukai",
+        ] {
+            assert!(scam_ask(t), "{t}");
+            assert_eq!(local_guess(t), Scenario::None, "{t}");
+            for known in [None, Some(Scenario::Delivery), Some(Scenario::ImportantNotice), Some(Scenario::BankVerify)] {
+                assert_eq!(ordinary(known, t), None, "{t} {known:?}");
+            }
+        }
+    }
+
+    /// Plain couriers, notices and card checks in many languages are everyday calls.
+    #[test]
+    fn plain_couriers_notices_and_card_checks_are_everyday_calls() {
+        for (t, want) in [
+            ("您好，黑貓宅急便，您的包裹明天下午送到，家裡有人嗎", Scenario::Delivery),
+            ("Bonjour, c'est le livreur, j'ai un colis pour vous.", Scenario::Delivery),
+            ("ヤマト運輸です。お荷物のお届けについてお電話しました。", Scenario::Delivery),
+            ("Hola, soy el repartidor, tengo un paquete para usted", Scenario::Delivery),
+            ("Merhaba, kurye geldi, kargonuz için kapınızdayım", Scenario::Delivery),
+            ("Hi, this is the clinic calling. Your appointment has been rescheduled to next Wednesday, please call us back at extension 12.", Scenario::ImportantNotice),
+            ("안녕하세요, 서울병원입니다. 검진 일정이 변경되었습니다.", Scenario::ImportantNotice),
+            ("Bonjour, ici la clinique, votre rendez-vous est déplacé à mercredi.", Scenario::ImportantNotice),
+            ("Hi, this is your bank verifying a purchase on your card, did you make it yourself?", Scenario::BankVerify),
+            ("Buongiorno, sono della sua banca, vorrei verificare un addebito di ieri sulla sua carta, è stato lei?", Scenario::BankVerify),
+        ] {
+            assert!(!scam_ask(t), "{t}");
+            assert_eq!(ordinary(None, t), Some(want), "{t}");
+        }
+        // Setting a time: only a look names it.
+        assert_eq!(ordinary(None, "Are you free on Saturday for coffee?"), None);
+        assert_eq!(ordinary(Some(Scenario::ScheduleInvite), "Are you free on Saturday for coffee?"), Some(Scenario::ScheduleInvite));
+        assert_eq!(ordinary(Some(Scenario::ScheduleInvite), "¿Te viene bien el sábado para tomar un café?"), Some(Scenario::ScheduleInvite));
+    }
+
+    /// A family chat and a wrong number open scams too ("guess who this is",
+    /// "sorry, wrong number"), and a bank the look names without the words of a
+    /// purchase check is the desk scammers pose as most: none eases the check.
+    #[test]
+    fn chats_wrong_numbers_and_a_bank_by_name_only_do_not_ease_the_check() {
+        for t in [
+            "猜猜我是誰？好久不見",
+            "Hey, it's me, guess who!",
+            "やあ、久しぶり、誰だかわかる？",
+            "Oi, adivinha quem é!",
+            "Sorry, wrong number, but you sound nice. Where are you from?",
+            "Perdón, número equivocado. ¿De dónde eres?",
+        ] {
+            for known in [Some(Scenario::CasualChat), Some(Scenario::WrongNumber)] {
+                assert_eq!(ordinary(known, t), None, "{t} {known:?}");
+            }
+        }
+        for t in [
+            "這邊是銀行，想跟您聊一下您的帳務",
+            "Hello, this is your bank calling about your account.",
+            "Hallo, hier ist Ihre Bank, es geht um Ihr Konto.",
+            "Bonjour, c'est votre banque, au sujet de votre compte.",
+        ] {
+            assert_eq!(ordinary(Some(Scenario::BankVerify), t), None, "{t}");
+        }
+    }
+
+    /// Paying the courier at the door is what a real courier asks for; a fee by
+    /// link or transfer still is not. Many languages.
+    #[test]
+    fn cash_on_delivery_is_an_everyday_courier() {
+        for t in [
+            "我是黑貓宅急便，明天下午送包裹，貨到付款五百二十元",
+            "ヤマト運輸です。お荷物は代金引換で三千二百円です",
+            "택배입니다. 착불이라 오천 원 준비해 주세요",
+            "Courier here, your parcel is cash on delivery, 20 dollars",
+            "Soy el repartidor, el paquete es contra reembolso",
+            "Hallo, der Zusteller hier, das Paket kommt per Nachnahme",
+            "Sono il corriere, il pacco è in contrassegno",
+            "Em là shipper giao hàng, thanh toán khi nhận hàng 250 nghìn",
+        ] {
+            assert!(!scam_ask(t), "{t}");
+            assert_eq!(local_guess(t), Scenario::Delivery, "{t}");
+            assert_eq!(ordinary(None, t), Some(Scenario::Delivery), "{t}");
+        }
+        for t in [
+            "我是黑貓宅急便，貨到付款，請先轉帳到這個帳號",
+            "Courier here, cash on delivery, or click the link to pay the fee",
+            "Soy el repartidor, contra reembolso o pague por transferencia",
+        ] {
+            assert!(scam_ask(t), "{t}");
+            assert_eq!(ordinary(Some(Scenario::Delivery), t), None, "{t}");
+        }
+    }
+
+    /// A courier at first, then customs and a fee by link: the everyday call ends there.
+    #[test]
+    fn a_courier_who_turns_to_a_fee_or_a_threat_is_no_everyday_call_any_more() {
+        for (first, then) in [
+            ("我是順豐派件的，您有一個包裹。", "包裹卡在海關，要先付關稅，點擊連結繳費。"),
+            ("Courier here, I have a parcel for you.", "It's held at customs, click the link and pay the fee."),
+            ("Sono il corriere, ho un pacco per lei.", "È fermo in dogana, deve pagare le spese di spedizione."),
+            ("Soy el repartidor, tengo un paquete para usted.", "Está en la aduana, tiene que pagar la tarifa con el enlace."),
+            ("Bonjour, c'est le livreur, j'ai un colis pour vous.", "Il est bloqué à la douane, cliquez sur le lien."),
+            ("ヤマト運輸です。お荷物のお届けです。", "税関で止まっています。リンクからお支払いください。"),
+        ] {
+            assert_eq!(ordinary(None, first), Some(Scenario::Delivery), "{first}");
+            let both = format!("{first}\n{then}");
+            assert_eq!(ordinary(Some(Scenario::Delivery), &both), None, "{both}");
+        }
+    }
+
+    /// The caller's own words name the scenario after their turn: once, never
+    /// while stalling, and a cue a look queued first is kept.
+    #[test]
+    fn the_callers_words_queue_a_cue_once() {
+        let mut r = Router::new(Lang::En, None, false);
+        assert!(!r.named());
+        assert_eq!(r.on_local(Scenario::None, false), RouteAction::None);
+        assert_eq!(r.on_local(Scenario::Delivery, true), RouteAction::Stalling);
+        assert!(r.take_pending(false, None, false).is_none());
+        assert_eq!(r.on_local(Scenario::Delivery, false), RouteAction::Queued);
+        assert!(r.named());
+        assert_eq!(r.on_local(Scenario::Delivery, false), RouteAction::None, "already owed");
+        let (s, text) = r.take_pending(false, Some(Lang::Es), false).unwrap();
+        assert_eq!(s, Scenario::Delivery);
+        assert!(text.starts_with(note_mark(Lang::Es)), "{text}");
+        assert_eq!(r.on_local(Scenario::Delivery, false), RouteAction::AlreadySent);
+        // A look's cue owed first stays.
+        let mut r = Router::new(Lang::Ja, None, false);
+        assert_eq!(r.on_review(Scenario::ImportantNotice, Verdict::Normal, Confidence::High, false), RouteAction::Queued);
+        assert_eq!(r.known(), Some(Scenario::ImportantNotice));
+        assert_eq!(r.on_local(Scenario::Delivery, false), RouteAction::None);
+        assert_eq!(r.take_pending(false, None, false).unwrap().0, Scenario::ImportantNotice);
+        // A guess or a scam answer is not remembered.
+        let mut r = Router::new(Lang::De, None, false);
+        r.on_review(Scenario::Delivery, Verdict::Normal, Confidence::Low, false);
+        r.on_review(Scenario::Delivery, Verdict::ScamOrSales, Confidence::High, false);
+        assert_eq!(r.known(), None);
+    }
+
+    /// The look only for what a trusted call is about: its scenario is used
+    /// whatever its verdict, never a guess, and never while stalling.
+    #[test]
+    fn a_look_only_for_the_scenario_queues_its_cue() {
+        let mut r = Router::new(Lang::Ko, None, true);
+        assert_eq!(r.on_scenario(Scenario::None, Confidence::High, false), RouteAction::None);
+        assert_eq!(r.on_scenario(Scenario::CasualChat, Confidence::Low, false), RouteAction::LowConfidence);
+        assert_eq!(r.on_scenario(Scenario::CasualChat, Confidence::Medium, false), RouteAction::Queued);
+        assert_eq!(r.known(), Some(Scenario::CasualChat));
+        let (_, text) = r.take_pending(false, Some(Lang::Fr), false).unwrap();
+        assert!(text.starts_with(note_mark(Lang::Fr)), "{text}");
+        assert_eq!(r.on_scenario(Scenario::ScheduleInvite, Confidence::High, true), RouteAction::Stalling);
+        assert!(r.take_pending(false, None, false).is_none());
     }
 }

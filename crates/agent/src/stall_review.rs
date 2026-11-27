@@ -58,6 +58,8 @@ crate::prompt_book::prompt_texts! {
     DIALECT_STT_NOTE = "en/stall_review_dialect_stt_note";
     EN_STALL_REVIEW_PURPOSE_LINE_1 = "en/stall_review_purpose_line_1";
     EN_STALL_REVIEW_PURPOSE_LINE_2 = "en/stall_review_purpose_line_2";
+    /// A look only for what the call is about ([`Purpose::Scenario`]).
+    EN_STALL_REVIEW_PURPOSE_LINE_3 = "en/stall_review_purpose_line_3";
     /// Over the list of types in the full instruction.
     EN_STALL_REVIEW_TYPES_HEADER = "en/stall_review_types_header";
 }
@@ -165,6 +167,10 @@ pub enum Purpose {
     Content,
     /// The AI is already stalling: is this caller ordinary after all?
     Confirm,
+    /// A caller whose call is never looked at for sales / scam (a saved contact,
+    /// a whitelisted or safe-marked number, the owner's own matter): only what the
+    /// call is about ([crate::scenario]) is used, never the verdict.
+    Scenario,
 }
 
 /// What is known about the caller's number when asking for a review.
@@ -547,6 +553,7 @@ fn purpose_line(purpose: Purpose) -> &'static str {
         Purpose::Keywords => "",
         Purpose::Content => EN_STALL_REVIEW_PURPOSE_LINE_1.get(),
         Purpose::Confirm => EN_STALL_REVIEW_PURPOSE_LINE_2.get(),
+        Purpose::Scenario => EN_STALL_REVIEW_PURPOSE_LINE_3.get(),
     }
 }
 
@@ -1419,6 +1426,30 @@ mod tests {
         assert!(plain["generationConfig"].get("responseSchema").is_none());
         assert!(plain["generationConfig"].get("thinkingConfig").is_none());
         assert!(plain["contents"][0]["parts"][0]["text"].as_str().unwrap().contains("Number: hidden"));
+    }
+
+    /// The look only for what a trusted call is about says so in the request,
+    /// keeps the answer's scenario label and leaves the instruction as it was.
+    #[test]
+    fn a_look_only_for_the_scenario_says_so_in_the_request() {
+        let ctx = CallerContext {
+            number: "+12025550143".to_string(),
+            saved_contact: Some("Lee".to_string()),
+            ..CallerContext::default()
+        };
+        for dialogue in [
+            "對方：您好，黑貓宅急便，包裹明天送到",
+            "Caller: Hi, it's Lee, are you free on Saturday?",
+            "Caller: Hola, soy tu hermana, ¿cenamos el domingo?",
+            "Caller: もしもし、クリニックですが、予約が変更になりました",
+        ] {
+            let body = request_body_for(dialogue, &[], &ctx, Purpose::Scenario, true);
+            let user = body["contents"][0]["parts"][0]["text"].as_str().unwrap();
+            assert!(user.contains(EN_STALL_REVIEW_PURPOSE_LINE_3.get().trim()), "{user}");
+            assert!(!user.contains(EN_STALL_REVIEW_PURPOSE_LINE_1.get().trim()), "{user}");
+            assert!(body["generationConfig"]["responseSchema"]["properties"]["scenario"].is_object());
+        }
+        assert!(system_instruction().chars().count() < 9000);
     }
 
     #[test]
