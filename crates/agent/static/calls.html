@@ -8227,10 +8227,30 @@ async function erCreate(body, answers) {
     if (d.errand) { erPut(d.errand); renderErrands(); erReveal(d.errand.id); }
     loadErrands();
   } catch (e) {
-    if (e.status !== 401) erFormErr(erErrText(e));
+    if (e.status === 401) return;
+    if (erAbroadCodes(e)) {
+      // The SIM picked is of another country than the number: dial only once it is confirmed.
+      erSending(false);
+      if (await ask({ title: t("er_abroad_title"), body: t("er_abroad_body", erAbroadCodes(e)), ok: t("er_abroad_ok") })) {
+        body.abroad_ok = true;
+        return erCreate(body, null);
+      }
+      return;
+    }
+    erFormErr(erErrText(e));
   } finally {
     erSending(false);
   }
+}
+function erCountryName(code) {
+  const c = String(code || "").toUpperCase();
+  try { return new Intl.DisplayNames([lang], { type: "region" }).of(c) || c; } catch (_) { return c; }
+}
+// {sim, dest}: the country names for the warning, or null when the refusal is something else.
+function erAbroadCodes(e) {
+  const d = e && e.data;
+  if (!d || d.code !== "sim_other_country" || !d.sim_country || !d.number_country) return null;
+  return { sim: erCountryName(d.sim_country), dest: erCountryName(d.number_country) };
 }
 function erPreHide() {
   erPre = null;
