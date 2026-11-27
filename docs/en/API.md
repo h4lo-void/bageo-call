@@ -6,7 +6,7 @@ summaries, change settings, accept the appointments callers made with the AI,
 manage contacts, switch a phone between AI answering and a normal phone, and
 send the AI to make a phone call for you.
 
-This page covers every route the console and the phones use in Bageo 2.1,
+This page covers every route the console and the phones use in Bageo 2.2,
 including the WebSocket protocol the rooted Android phone speaks.
 
 | | |
@@ -242,7 +242,7 @@ Details for `GET /calls/api/settings`:
 - `console_url` is the console's address in use (the one you typed, or the automatic one; empty when only this computer can open it). `console_ip_url` is the same with the LAN IP instead of a `.local` name.
 - Secrets come back masked (`"abc…wxyz"`) with a `<name>_set` flag.
 - Notification channels come back with empty `url` / `token` plus `url_hint`, `token_hint`, `url_set`, `token_set`.
-- Read-only helpers: `default_prompt`, `voices`, `ambience_kinds`, `languages`, `countries` (ISO codes for *Main language for each SIM*), `seen_sim_countries` (SIM countries the phones reported since Bageo started), `notify_kinds`, `sample_lines`, `summary_ready`.
+- Read-only helpers: `default_prompt`, `voices`, `ambience_kinds`, `languages`, `countries` (ISO codes for *Languages for each SIM*), `seen_sim_countries` (SIM countries the phones reported since Bageo started), `notify_kinds`, `sample_lines`, `summary_ready`.
 - `languages` is a list of `{code, native, en, zh, dir, stage, reviewed, downloaded, help}`: the nine core languages (`stage` `console`, `downloaded` `true`), plus each extra Gemini Live language already downloaded on this computer or referenced in `language`, `notify_language` or `sim_languages`. `stage` `call`: the AI can answer and talk in it (`language`, `sim_languages`); `notify`: notifications, summaries and chat replies too (`notify_language`); `console`: the console can switch to it too. `reviewed` is false until a native speaker checked the translation. `dir` is `rtl` for languages written right to left.
 
 Fields worth knowing (all of them are in `RuntimeSettings` in

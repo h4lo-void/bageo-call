@@ -484,16 +484,22 @@ const NEGATION_BEFORE_NAME: &[&str] = &[
     "不會", "不会", "不懂", "不能", "不行", "不要", "不想", "不講", "不讲", "不說", "不说", "不用", "不必", "不需要",
     "不太", "沒辦法", "没办法", "別", "别", "怎麼", "怎么",
 ];
-/// Chinese "A or not A" questions (「你能不能講英文」): a request, not a "not".
+/// Chinese "A or not A" questions (「你能不能講英文」「你講不講英文」): a request, not a "not".
 const A_NOT_A: &[&str] = &[
     "能不能", "會不會", "会不会", "可不可以", "要不要", "行不行", "好不好", "可以不可以", "有沒有辦法", "有没有办法",
+    "講不講", "讲不讲", "說不說", "说不说", "用不用",
 ];
 /// The same right after a name: Japanese and Korean put their "not" there
-/// (「英語は話せません」, 「영어 못해요」), and 「這個用英文怎麼說」.
+/// (「英語は話せません」, 「영어 못해요」, 「영어로 말하지 마세요」), and 「這個用英文怎麼說」.
 const NEGATION_AFTER_NAME: &[&str] = &[
     "怎麼", "怎么", "什麼意思", "什么意思", "不太", "できない", "できません", "話せない", "話せません", "分からない",
-    "わからない", "分かりません", "わかりません", "どう言", "못", "모르", "몰라", "안 돼", "안돼", "뭐라고",
+    "わからない", "分かりません", "わかりません", "どう言", "못", "모르", "몰라", "안 돼", "안돼", "뭐라고", "말아", "마세",
+    "마십", "말고",
 ];
+/// Japanese 「〜ませんか」 after a name asks politely (「英語で話せませんか」), with
+/// one of these verbs of speaking or being able to.
+const JA_POLITE_ASK: &str = "ませんか";
+const JA_ASK_VERBS: &[&str] = &["話", "でき", "しゃべ"];
 
 /// Around a name in Chinese, Japanese, Korean or Thai letters, a request on
 /// its own: right before it (「請用中文」「พูดภาษาไทย」), right after it
@@ -555,10 +561,65 @@ const NEGATION_AFTER_CHARS: usize = 8;
 /// want to speak English"), else before the name.
 const NEGATION_BEFORE_WORDS: usize = 4;
 
-/// A language's name in Latin or Cyrillic letters.
-fn is_latin_name(w: &str) -> bool {
-    LANGUAGE_NAMES.iter().any(|(_, names)| names.contains(&w))
+/// A language's name of Latin or Cyrillic words ("english", "tiếng việt",
+/// "bahasa indonesia").
+fn is_latin_name_text(name: &str) -> bool {
+    name.chars().all(|c| (c.is_alphabetic() || c == ' ') && !is_cjk_or_thai(c))
 }
+
+/// A word that is a language's name in Latin or Cyrillic letters, or the last
+/// word of one of several words ("indonesia" of "bahasa indonesia").
+fn is_latin_name(w: &str) -> bool {
+    LANGUAGE_NAMES.iter().any(|(_, names)| {
+        names
+            .iter()
+            .any(|n| *n == w || (n.contains(' ') && is_latin_name_text(n) && n.rsplit(' ').next() == Some(w)))
+    })
+}
+
+/// Chinese 「能不能」「講不講」… (an "A or not A" question) in `s` as 「？」, so
+/// their 「不能」「不講」 count as no "not". One right after a 「不」 is a "not"
+/// said twice (「不用不用講英文」) and stays.
+fn mark_a_not_a(s: &str) -> String {
+    A_NOT_A.iter().fold(s.to_string(), |s, q| {
+        let mut out = String::with_capacity(s.len());
+        let mut rest = s.as_str();
+        while let Some(i) = rest.find(q) {
+            out.push_str(&rest[..i]);
+            if out.ends_with('不') {
+                out.push_str(q);
+            } else {
+                out.push('？');
+            }
+            rest = &rest[i + q.len()..];
+        }
+        out.push_str(rest);
+        out
+    })
+}
+
+/// A "not" in a question that asks rather than refuses, at `words[i]`: "Can't
+/// you speak English?", "¿No habla inglés?", "Você não fala inglês?", "Vous ne
+/// parlez pas français ?", "Können Sie nicht Deutsch sprechen?".
+fn asking_not(words: &[&str], i: usize) -> bool {
+    let next = |n: usize| words.get(i + n).copied().unwrap_or("");
+    let prev = |n: usize| i.checked_sub(n).map_or("", |k| words[k]);
+    match words[i] {
+        "can't" | "cant" | "cannot" | "don't" | "dont" | "couldn't" | "wouldn't" | "won't" => {
+            matches!(next(1), "you" | "u") && matches!(next(2), "speak" | "talk")
+        }
+        "no" => matches!(next(1), "habla" | "hablas" | "hablan" | "puede" | "puedes" | "pueden" | "sabe" | "sabes"),
+        "não" | "nao" => matches!(next(1), "fala" | "falas" | "falam" | "pode" | "podes" | "sabe"),
+        "ne" => matches!(prev(1), "vous" | "tu") && matches!(next(1), "parlez" | "parles"),
+        "pas" => matches!(prev(1), "parlez" | "parles") && prev(2) == "ne" && matches!(prev(3), "vous" | "tu"),
+        "nicht" => matches!(prev(1), "sie" | "du") && matches!(prev(2), "können" | "kannst" | "sprechen" | "sprichst"),
+        _ => false,
+    }
+}
+
+/// Words after a name that make the clause a request though it has no
+/// question mark ("Can't you speak English please").
+const ASK_AFTER_WORDS: &[&str] = &["please", "favor", "bitte", "plaît", "plait"];
 
 /// Where each language name in Chinese, Japanese, Korean or Thai letters
 /// stands in `clause` (byte ranges).
@@ -566,7 +627,7 @@ fn cjk_name_spans(clause: &str) -> Vec<(usize, usize)> {
     let mut spans: Vec<(usize, usize)> = LANGUAGE_NAMES
         .iter()
         .flat_map(|(_, names)| names.iter())
-        .filter(|n| !n.chars().all(|c| c.is_alphabetic() && !is_cjk_or_thai(c)))
+        .filter(|n| !is_latin_name_text(n))
         .flat_map(|n| clause.match_indices(*n).map(|(i, m)| (i, i + m.len())))
         .collect();
     spans.sort_unstable();
@@ -587,26 +648,30 @@ fn clause_asks(clause: &str, short_turn: bool) -> Option<&'static str> {
     let spans = cjk_name_spans(clause);
     for (code, names) in LANGUAGE_NAMES {
         for &name in names.iter() {
-            let asked = if name.chars().all(|c| c.is_alphabetic() && !is_cjk_or_thai(c)) {
-                // A word of Latin or Cyrillic letters.
-                let Some(at) = words.iter().position(|w| *w == name) else { continue };
+            let asked = if is_latin_name_text(name) {
+                // Words of Latin or Cyrillic letters ("english", "tiếng việt").
+                let name_words: Vec<&str> = name.split_whitespace().collect();
+                let Some(at) = words.windows(name_words.len()).position(|w| w == name_words.as_slice()) else { continue };
+                let extra = name_words.len() - 1;
                 // The "not" before this name: from a little before its verb, after
                 // the name before it ("Ich spreche kein Englisch, können wir Deutsch…").
                 let after_name = words[..at].iter().rposition(|w| is_latin_name(w)).map_or(0, |i| i + 1);
                 let anchor = words[..at].iter().rposition(|w| REQUEST_WORDS.contains(w)).unwrap_or(at);
                 let from = anchor.saturating_sub(NEGATION_BEFORE_WORDS).max(after_name);
                 let near = anchor.saturating_sub(NEGATION_NEAR_WORDS);
-                if words[from..at]
-                    .iter()
-                    .enumerate()
-                    .any(|(i, w)| NEGATION_WORDS.contains(w) && (from + i >= near || !NEGATION_NEAR_ONLY.contains(w)))
-                {
+                // "Can't you speak English?" asks: its "not" refuses nothing.
+                let asking = question || words[at + name_words.len()..].iter().any(|w| ASK_AFTER_WORDS.contains(w));
+                if words[from..at].iter().enumerate().any(|(i, w)| {
+                    NEGATION_WORDS.contains(w)
+                        && (from + i >= near || !NEGATION_NEAR_ONLY.contains(w))
+                        && !(asking && asking_not(&words, from + i))
+                }) {
                     continue;
                 }
                 request_word
                     || (at > 0 && REQUEST_BEFORE.contains(&words[at - 1]))
-                    || (question && words.len() <= 3)
-                    || (short_turn && words.len() <= 2)
+                    || (question && words.len() <= 3 + extra)
+                    || (short_turn && words.len() <= 2 + extra)
             } else {
                 let Some(at) = clause.find(name) else { continue };
                 let end = at + name.len();
@@ -615,19 +680,29 @@ fn clause_asks(clause: &str, short_turn: bool) -> Option<&'static str> {
                 // The "not" around this name, up to the names next to it.
                 let prev_end = spans.iter().filter(|s| s.1 <= at).map(|s| s.1).max().unwrap_or(0);
                 let next_start = spans.iter().filter(|s| s.0 >= end).map(|s| s.0).min().unwrap_or(clause.len());
+                // 「能不能」「會不會」「講不講」 ask; their 「不能」「不會」「不講」 are
+                // no "not" (marked before the characters are counted).
+                let marked_before = mark_a_not_a(&clause[prev_end..at]);
+                let a_not_a = marked_before.contains('？');
                 let near_before: String = {
-                    let b: Vec<char> = clause[prev_end..at].chars().collect();
+                    let b: Vec<char> = marked_before.chars().collect();
                     b[b.len().saturating_sub(NEGATION_BEFORE_CHARS)..].iter().collect()
                 };
-                let near_after: String = clause[end..next_start].chars().take(NEGATION_AFTER_CHARS).collect();
-                // 「能不能」「會不會」 ask; their 「不能」「不會」 are no "not".
-                let near_before = A_NOT_A.iter().fold(near_before, |s, q| s.replace(q, "？"));
+                let mut near_after: String = clause[end..next_start].chars().take(NEGATION_AFTER_CHARS).collect();
+                // 「〜ませんか」 asks politely; its 「ません」 is no "not".
+                let polite = near_after.contains(JA_POLITE_ASK);
+                if polite {
+                    near_after = near_after.replace(JA_POLITE_ASK, "？");
+                }
+                let polite_ask = polite && JA_ASK_VERBS.iter().any(|v| near_after.contains(v));
                 if NEGATION_BEFORE_NAME.iter().any(|m| near_before.contains(m))
                     || NEGATION_AFTER_NAME.iter().any(|m| near_after.contains(m))
                 {
                     continue;
                 }
+                let cue = cue || a_not_a || polite;
                 request_word
+                    || polite_ask
                     || STRONG_BEFORE.iter().any(|m| before.ends_with(*m))
                     || STRONG_AFTER.iter().any(|m| after.starts_with(*m))
                     || (cue
@@ -1657,6 +1732,76 @@ mod certain_switch {
         ] {
             assert_eq!(asks_for_language(said), None, "{said}");
         }
+    }
+
+    /// Names of two words, "not"s that ask, and "not"s said after the name, in
+    /// each language they come up in.
+    #[test]
+    fn requests_and_refusals_in_more_shapes_are_told_apart() {
+        crate::locales_store::testing::use_table();
+        for (said, to) in [
+            // Names of two words, asked for.
+            ("Bisa bahasa Indonesia?", ext("id")),
+            ("Can you speak bahasa Indonesia?", ext("id")),
+            ("Anh nói tiếng Việt được không?", ext("vi")),
+            ("Tiếng Việt?", ext("vi")),
+            // Chinese "A or not A", also further from the name.
+            ("能不能麻煩你講英文？", Lang::En),
+            ("你講不講英文？", Lang::En),
+            ("你讲不讲英文？", Lang::En),
+            ("你說不說中文？", Lang::ZhTw),
+            ("你说不说日文", Lang::Ja),
+            ("你用不用英文？", Lang::En),
+            // Japanese 「〜ませんか」 asks politely.
+            ("英語で話せませんか？", Lang::En),
+            ("中国語はできませんか", Lang::ZhTw),
+            ("韓国語は話せませんか？", Lang::Ko),
+            // A "not" in a question that asks.
+            ("Can't you speak English?", Lang::En),
+            ("Why don't you speak English?", Lang::En),
+            ("Couldn't you speak Spanish please", Lang::Es),
+            ("¿No habla inglés?", Lang::En),
+            ("¿No hablas español?", Lang::Es),
+            ("¿No puedes hablar inglés?", Lang::En),
+            ("Você não fala inglês?", Lang::En),
+            ("Vous ne parlez pas anglais ?", Lang::En),
+            ("Können Sie nicht Englisch sprechen?", Lang::En),
+        ] {
+            assert!(
+                asks_for_language(said).is_some_and(|l| l == to || (l.is_zh() && to.is_zh())),
+                "{said}: {:?}",
+                asks_for_language(said)
+            );
+        }
+        for said in [
+            // Names of two words, refused.
+            "I don't speak bahasa Indonesia",
+            "Sorry, I can't speak tiếng Việt",
+            "I can't speak tiếng Việt.",
+            // Korean "don't speak it".
+            "영어로 하지 말아 주세요",
+            "중국어로 말하지 마세요",
+            "영어로 말하지 말아 줄래요?",
+            "일본어로 말하지 마십시오.",
+            // Chinese: a "not" stays a "not".
+            "能不能不說日文？",
+            "可以不講英文嗎？",
+            "不用不用講英文",
+            // Japanese: a statement.
+            "英語は話せません。",
+            "中国語はできません。",
+            // A "not" that is no question, or not about the one asked.
+            "I wouldn't speak English",
+            "I don't speak English?",
+            "No hablo inglés?",
+            "Je ne parle pas anglais ?",
+            "Ich spreche kein Englisch?",
+            "Não falo inglês?",
+        ] {
+            assert_eq!(asks_for_language(said), None, "{said}");
+        }
+        // Korean: 「말고」 refuses the name before it only.
+        assert_eq!(asks_for_language("영어 말고 한국어로 해 주세요"), Some(Lang::Ko));
     }
 
     #[test]

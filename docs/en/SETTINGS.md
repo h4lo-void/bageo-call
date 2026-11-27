@@ -12,7 +12,7 @@ Settings live in two places:
 | I want to… | Go to |
 |---|---|
 | Have the AI answer as me instead of as my assistant | [Basics](#basics) → *Answer style* |
-| Answer calls on a US SIM in English while everything else stays in my language | [Basics](#basics) → *More options* → *Main language for each SIM* |
+| Answer calls on a US SIM in English while everything else stays in my language | [Basics](#basics) → *More options* → *Languages for each SIM* |
 | Keep a scammer busy instead of hanging up | [Sales & scam calls](#sales--scam-calls) |
 | Never hear from one number again | [Blacklist](#blocked-numbers-and-contact-lists) |
 | Have the AI call a restaurant and book a table | [AI errands](#ai-errands) |
@@ -43,7 +43,7 @@ The few things the AI needs before it can answer your phone.
 | Setting | Default | What it does |
 |---|---|---|
 | Language of notifications and summaries | Same as the AI's language | The language you read your notifications and summaries in. The AI keeps speaking the *Language* above with callers. |
-| Main language for each SIM | none | Only for a phone with SIMs from more than one region: pick a SIM's region and the language its calls start in. |
+| Languages for each SIM | none | Pick a main language and region for each SIM, plus up to two second languages with regions. |
 | AI calls: call as | Your assistant | Who the AI says it is on calls it makes for you: **Your assistant** or **You in person**. Each errand can pick its own. |
 | Live model | `gemini-3.8-live` | The Gemini Live model that talks on calls; you rarely need to change it. Models with "thinking" in the name (such as `gemini-3.8-live-extended-thinking`) answer more carefully and a little slower; see *Thinking level* under [Advanced](#advanced). |
 
@@ -101,7 +101,7 @@ Two limits apply to urgent calls. Once a call is judged sales or scam, you get n
 
 **The caller's language.** *Reply in the caller's language* is on by default: the AI switches only when it is sure the caller speaks another language. One clear, full sentence in one of the call's languages (the SIM's main and second languages, the number's country language) is enough; any other language needs two in a row, or the caller asking for it. A quick hello, a word or two or something unclear changes nothing. Turned off, the AI moves only between the call's languages, never to another one. It is saved as `reply_in_caller_language`.
 
-**Calls from abroad and the carrier's warning.** Taiwan's carriers play a recorded fraud warning at the start of every call from abroad. When a Taiwanese SIM takes a call from another country (a `+…` or `00…` number with another country code), the AI waits for that warning to end: it speaks once the line goes quiet, or after 7.5 seconds at most, and says its opening line only once.
+**Calls from abroad and the carrier's warning.** Carriers in Taiwan and South Korea play a recorded warning on calls from abroad (`+…` or `00…` with another country code; in Taiwan, hidden numbers too): the AI waits until the line goes quiet, or 7.5 seconds at most. On a Hong Kong SIM, calls shown with `+852` wait up to 13 seconds (until 1.5 seconds of quiet) for the three-language alert, and Bageo also recognizes Hong Kong's new pre-paid SIM warning. The AI then says its opening line once.
 
 Calls on any other SIM (say, the US SIM of a dual-SIM phone) carry no warning, so the AI answers at once. This is automatic.
 

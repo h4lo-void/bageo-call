@@ -7,7 +7,7 @@ Bageo 网页控制台做的每件事，都是通过你自己电脑上的一个�
 - 把手机在“AI 接听”和一般手机之间切换。
 - 让 AI 替你打电话。
 
-这一页涵盖 Bageo 2.1 控制台和手机会用到的每一条路由，也包括已 root 的 Android 手机使用的 WebSocket 协议。
+这一页涵盖 Bageo 2.2 控制台和手机会用到的每一条路由，也包括已 root 的 Android 手机使用的 WebSocket 协议。
 
 | | |
 |---|---|
@@ -217,7 +217,7 @@ curl -s -H "Authorization: Bearer $CALLS_UI_TOKEN" \
 - `console_ip_url`：把 `.local` 名称换成局域网 IP 的同一个地址。
 - 机密字段以掩码返回（`"abc…wxyz"`），附一个 `<name>_set` 标志。
 - 通知渠道返回时 `url`／`token` 是空的，另外附 `url_hint`、`token_hint`、`url_set`、`token_set`。
-- 只读的辅助字段：`default_prompt`、`voices`、`ambience_kinds`、`languages`、`countries`（“各 SIM 卡的主要语言”可选的国家代码）、`seen_sim_countries`（Bageo 启动后手机上报过的 SIM 卡国家）、`notify_kinds`、`sample_lines`、`summary_ready`。
+- 只读的辅助字段：`default_prompt`、`voices`、`ambience_kinds`、`languages`、`countries`（“各 SIM 卡的语言”可选的国家代码）、`seen_sim_countries`（Bageo 启动后手机上报过的 SIM 卡国家）、`notify_kinds`、`sample_lines`、`summary_ready`。
 - `languages` 是 `{code, native, en, zh, dir, stage, reviewed, downloaded, help}` 的列表：核心九种语言（`stage` 是 `console`、`downloaded` 是 `true`），加上这台电脑已下载或设置（`language`、`notify_language`、`sim_languages`）正在使用的其他 Gemini Live 语言。`stage` 是 `call`：AI 能用这个语言接听和回话；`notify`：通知、摘要和聊天室回复也能用；`console`：控制台也能切换成这个语言。当地人还没确认过翻译时 `reviewed` 是 false。从右到左书写的语言 `dir` 是 `rtl`。
 
 值得了解的字段（全部都在 [`settings_store.rs`](../../crates/agent/src/settings_store.rs) 的 `RuntimeSettings` 和[设置参考](SETTINGS.md)里）：

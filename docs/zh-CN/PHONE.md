@@ -12,18 +12,18 @@
 
 构建应用、它的权限和通信协议，写在 [`android/README.md`](../../android/README.md)（英文）里。
 
-这一页说明的是 **Bageo 2.1**：root 模块 `v2.1.0`（versionCode 31），里面的应用是 `2.1.0`（versionCode 39）。
+这一页说明的是 **Bageo 2.2**：root 模块 `v2.2.0`（versionCode 32），里面的应用是 `2.2.0`（versionCode 40）。
 
-安装包有两个：`bageo-phone-module-2.1.0.zip`（电脑联动版 **Bageo Uplink**，配合电脑或 NAS 使用）与 `bageo-phone-standalone-2.1.0.zip`（手机独立版 **Bageo AI Call Agent**，不需要电脑，把完整 Bageo 与控制台装在手机里）。应用的版本在“高级”页面能看到，控制台则在“系统 → 手机”里。
+安装包有两个：`bageo-phone-module-2.2.0.zip`（电脑联动版 **Bageo Uplink**，配合电脑或 NAS 使用）与 `bageo-phone-standalone-2.2.0.zip`（手机独立版 **Bageo AI Call Agent**，不需要电脑，把完整 Bageo 与控制台装在手机里）。应用的版本在“高级”页面能看到，控制台则在“系统 → 手机”里。
 
 | 安装包 | 用途 | 模块 ID |
 |---|---|---|
-| `bageo-phone-standalone-2.1.0.zip` | **Bageo AI Call Agent**（手机独立版）：不用电脑，整个 Bageo 在手机上。 | `bageo_ai_call_agent`（管理器显示 Bageo AI Call Agent） |
-| `bageo-phone-module-2.1.0.zip` | 配电脑用：搭配 Windows、macOS、Linux 安装包或 Docker。 | `pixelcallai_uplink`（管理器显示 **Bageo Uplink (for Bageo on a computer)**） |
+| `bageo-phone-standalone-2.2.0.zip` | **Bageo AI Call Agent**（手机独立版）：不用电脑，整个 Bageo 在手机上。 | `bageo_ai_call_agent`（管理器显示 Bageo AI Call Agent） |
+| `bageo-phone-module-2.2.0.zip` | 配电脑用：搭配 Windows、macOS、Linux 安装包或 Docker。 | `pixelcallai_uplink`（管理器显示 **Bageo Uplink (for Bageo on a computer)**） |
 
 两个只能装一个；装其中一个，另一个会在下次重启时自动移除。
 
-> **想完全不靠电脑？** 直接改刷 `bageo-phone-standalone-2.1.0.zip` 即可。用 Google AI Studio 的免费 Gemini 密钥就不用付 API 费用；我们实测免费额度每天 10 通以上够用（免费额度的上限由 Google 决定，可能会变）。两个版本的模块 ID 不同：手机独立版是 `bageo_ai_call_agent`（管理器里显示 Bageo AI Call Agent），电脑联动版是 `pixelcallai_uplink`（显示 Bageo Uplink (for Bageo on a computer)）。装其中一版时，另一版会在下次重启自动移除，应用与设置都会保留。手机独立版的控制台只能在手机上的 Bageo 应用里打开，其他手机或电脑都打不开。
+> **想完全不靠电脑？** 直接改刷 `bageo-phone-standalone-2.2.0.zip` 即可。用 Google AI Studio 的免费 Gemini 密钥就不用付 API 费用；我们实测免费额度每天 10 通以上够用（免费额度的上限由 Google 决定，可能会变）。两个版本的模块 ID 不同：手机独立版是 `bageo_ai_call_agent`（管理器里显示 Bageo AI Call Agent），电脑联动版是 `pixelcallai_uplink`（显示 Bageo Uplink (for Bageo on a computer)）。装其中一版时，另一版会在下次重启自动移除，应用与设置都会保留。手机独立版的控制台只能在手机上的 Bageo 应用里打开，其他手机或电脑都打不开。
 
 ## 手机会做哪些事
 
@@ -66,7 +66,7 @@
 
 1. 用 Magisk 或 KernelSU 给手机 **root**（这里不讲）。
 2. 如果你曾经把这个应用当作普通 APK 安装过，请先卸载。两种绝对不要同时存在。
-3. 把 `bageo-phone-module-<version>.zip` 复制到手机（这一版是 `bageo-phone-module-2.1.0.zip`）。在 Magisk 或 KernelSU 应用里：“模块”（Modules）→“从本地安装”（Install from storage）→ 选择那个 zip → 重启。
+3. 把 `bageo-phone-module-<version>.zip` 复制到手机（这一版是 `bageo-phone-module-2.2.0.zip`）。在 Magisk 或 KernelSU 应用里：“模块”（Modules）→“从本地安装”（Install from storage）→ 选择那个 zip → 重启。
 4. 打开 **Bageo**。最上面的卡片用一句话说明手机现在的状态。下面的“**设置步骤**”列出还没完成的事，每一步都有按钮：
 
    | 步骤 | 要做什么 |
@@ -161,7 +161,7 @@ USB 还能让手机一直充电，没有 Wi-Fi 也能用。一台电脑可以插
 - 服务运行时，应用会显示一条不打扰的常驻通知；重启后也会自动启动。
 - 想暂时自己用这部手机，把它切换成[普通手机](#普通手机模式)。
 - 想让所有手机的 AI 一起停，到控制台“基本设置”关掉“由 AI 接听来电”（电话会被接起来再挂断）。
-- 双卡手机会告诉 Bageo 每通电话打到哪一张 SIM。Bageo 按“各 SIM 卡的主要语言”（在“基本设置”的“更多选项”）决定开场语言，短信和回拨也从同一张卡发出。
+- 双卡手机会告诉 Bageo 每通电话打到哪一张 SIM。Bageo 按“各 SIM 卡的语言”（在“基本设置”的“更多选项”）决定开场语言，短信和回拨也从同一张卡发出。
 - AI 代打要先知道手机有哪些 SIM。1.4 以上版本的手机应用连接时会自动上报所有 SIM 卡（只有旧版应用才需要在首次代打前先打一通电话给它）。
 - Bageo 有控制台地址时，应用里会出现“**打开网页控制台**”按钮。地址取自“通知”页里的“通知里的地址”；没填而控制台对局域网开放时，自动用电脑的局域网地址。
 

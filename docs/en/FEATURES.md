@@ -113,7 +113,7 @@ default) or as **You in person**.
 - **Safe dialing.** Emergency numbers, short codes, premium-rate numbers and
   numbers written after an international call prefix are refused, so an errand
   never turns into an international call by mistake.
-- **The right SIM.** Phone app 1.4 and later reports its active SIMs automatically on connect and when SIMs change (`phone_sims.json`; older apps learn them from incoming calls), and errands dial only on a SIM of the number's own country. If the phone reports a different SIM as the call starts, Bageo hangs up before it connects (`wrong_sim`).
+- **The right SIM.** Phone app 1.4 and later reports its active SIMs automatically on connect and when SIMs change (`phone_sims.json`; older apps learn them from incoming calls). Errands pick a SIM of the number's own country first; if the call will go out from a SIM of another country, Bageo asks you to confirm first. If the phone reports a different SIM as the call starts, Bageo hangs up before it connects (`wrong_sim`).
 - **Sensible limits.** One call to a number at a time; at most 10 minutes per
   call, with a wrap-up at 9:30; no automatic redials unless you turn on
   **Redial until answered** (otherwise **Call again** is your button); voice
@@ -133,7 +133,7 @@ scamming:
    "errors", gift cards, "add me on LINE").
 3. **A second look at the meaning.** When the keywords cross the line,
    `gemini-flash-lite` reads the conversation so far while the AI keeps
-   talking (at most 1.5 seconds). Saved contacts, Whitelist numbers and
+   talking (at most 3 seconds). Saved contacts, Whitelist numbers and
    numbers you marked *It was not* skip all three steps.
 
 A caller who has only said who they are is `too_early` and is looked at again
@@ -226,15 +226,20 @@ Every contact can be assigned to one of four lists (from the Contacts page, via 
   for calls right away; the download adds the console in that language. On a
   call, Bageo speaks the languages Gemini supports. The built-in prompts and
   the notifications come in the nine.
-- **A main language per SIM.** On a dual-SIM phone each SIM opens calls in its
-  own language, and a caller from abroad hears their country's language when
-  the AI speaks it. Set it under **Settings → Basics → More options**, *Main
-  language for each SIM*.
-- **Abroad calls wait for the warning.** On a Taiwanese SIM, the AI waits out the
-  carrier's international-call warning before speaking.
-- **It follows the caller**, switching mid-call when they speak another
-  language or ask whether the AI speaks one. This is on by default; turn it
-  off with *Reply in the caller's language* under **Settings → How it answers**.
+- **Languages for each SIM.** On a dual-SIM phone, each SIM can have a main
+  language and region plus up to two second languages with regions: local calls
+  open in the main language with that region's habits, and calls from abroad use
+  the matching second language (or the caller's country language). Set it under
+  **Settings → Basics → More options**, *Languages for each SIM*.
+- **Abroad calls wait for the warning.** On a Taiwan or Korea SIM (up to
+  7.5 s), or a Hong Kong SIM showing `+852` (up to 13 s, or 1.5 s of quiet), the
+  AI waits out the carrier's warning before speaking, and also recognizes Hong
+  Kong's new pre-paid SIM alert.
+- **It follows the caller**, switching mid-call only when sure: one clear
+  full sentence in one of the call's languages, or two in a row (or an explicit
+  request) for another language; a short word changes nothing. This is on by
+  default; turn it off with *Reply in the caller's language* under **Settings →
+  How it answers**.
 - **Transcripts keep the original words**: lines said in another language stay
   as they were said. Tap **Translate** at the top right of the conversation to
   add a translation into your notification language under each line; nothing

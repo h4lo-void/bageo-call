@@ -15,11 +15,11 @@ The phone does no AI work itself. The package name and module id keep the projec
 earlier working name, so phones already running the computer edition of the module
 update in place. The phone-only edition has its own module id (see below).
 
-**Version 2.1.0:** app `versionName` `2.1.0`, `versionCode` 39; module `version`
-`v2.1.0`, `versionCode` 31 (`module.prop`); release files
-`bageo-phone-module-2.1.0.zip` (**Bageo Uplink**, the bridge edition paired with a
+**Version 2.2.0:** app `versionName` `2.2.0`, `versionCode` 40; module `version`
+`v2.2.0`, `versionCode` 32 (`module.prop`); release files
+`bageo-phone-module-2.2.0.zip` (**Bageo Uplink**, the bridge edition paired with a
 computer, module id `pixelcallai_uplink`) and
-`bageo-phone-standalone-2.1.0.zip` (**Bageo AI Call Agent**, the all-in-one
+`bageo-phone-standalone-2.2.0.zip` (**Bageo AI Call Agent**, the all-in-one
 phone-only edition running Bageo directly inside the Android app via
 `libbageo_agent.so`, bundled `bageo_assets`, and an embedded `WebView` console;
 module id `bageo_ai_call_agent`). A SIM is always picked by its subscription id

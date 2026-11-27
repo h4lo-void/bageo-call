@@ -974,7 +974,27 @@ fn read_overrides_from(path: Option<&Path>, text: &str) -> serde_json::Result<(O
         }
     }
     let had_plain = crate::secret_seal::unseal_overrides_json(path, &mut v, &CREDENTIAL_FIELDS);
-    Ok((serde_json::from_value(v)?, moved, path.is_some() && had_plain))
+    let overrides = match serde_json::from_value::<Overrides>(v.clone()) {
+        Ok(o) => o,
+        Err(e) => match v {
+            Value::Object(m) => {
+                let mut clean = serde_json::Map::new();
+                for (k, val) in m {
+                    let mut probe = serde_json::Map::new();
+                    probe.insert(k.clone(), val.clone());
+                    match serde_json::from_value::<Overrides>(Value::Object(probe)) {
+                        Ok(_) => {
+                            clean.insert(k, val);
+                        }
+                        Err(fe) => warn!("settings.json field {k} skipped ({fe})"),
+                    }
+                }
+                serde_json::from_value(Value::Object(clean))?
+            }
+            _ => return Err(e),
+        },
+    };
+    Ok((overrides, moved, path.is_some() && had_plain))
 }
 
 /// Write settings.json whole (with credential fields sealed at rest, mode 600 on Unix):
@@ -5277,6 +5297,20 @@ mod tests {
     /// A settings.json saved while test numbers had their own settings (demo
     /// calendar, phone and SIM for their texts) loads without an error: those
     /// keys are skipped (and gone once it is saved again), everything else is kept.
+    #[test]
+    fn one_bad_settings_field_does_not_drop_the_keys() {
+        let text = json!({
+            "gemini_api_key": "test-fake-key-here",
+            "ui_password": "test-fake-pw-here",
+            "answer_ring_ms": "not-a-number"
+        })
+        .to_string();
+        let (o, _) = read_overrides(&text).expect("bad field is skipped");
+        assert_eq!(o.gemini_api_key.as_deref(), Some("test-fake-key-here"));
+        assert_eq!(o.ui_password.as_deref(), Some("test-fake-pw-here"));
+        assert!(o.answer_ring_ms.is_none());
+    }
+
     #[test]
     fn settings_with_the_old_test_number_keys_still_load() {
         let dir = std::env::temp_dir().join(format!("bageo-call-old-test-numbers-{}", uuid::Uuid::new_v4()));
