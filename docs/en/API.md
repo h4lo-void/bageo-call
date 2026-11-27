@@ -776,7 +776,7 @@ The same check also downloads newer prompt texts (`bageo-prompts.json.gz`, at mo
 | `GET /calls/api/extras` | All 70 extra languages and whether each is downloaded: `{ok, version, running, langs}`. |
 | `POST /calls/api/extras/download` | Body `{"lang": "<code>"}`. Downloads and installs one extra language pack straight from GitHub, with the mascot art of the regions whose main language it is; returns `{..., result}`. |
 | `POST /calls/api/extras/delete` | Body `{"lang": "<code>"}`. Deletes a downloaded language pack and the region art it brought (`in_use` if the language is still set in settings, `removed`, `not_listed`, `restart`). |
-| `GET /calls/extras/art/{file}` | Public static route serving one region's mascot art as `art-<region>.json`: built in for regions whose main language is one of the nine built-in languages, otherwise brought by a downloaded language pack (never triggers a download; `no-cache`, `nosniff`). |
+| `GET /calls/extras/art/{file}` | Public static route serving one region's mascot art as `art-<region>.json`: built in for jp, kr, us, de, fr, tr, br, gulf and for regions whose main language is one of the nine built-in languages (tw is drawn into the page itself), otherwise brought by a downloaded language pack (never triggers a download; `no-cache`, `nosniff`). |
 | `GET /calls/i18n/desktop/{file}` | Public static route serving a downloaded extra language's desktop widget strings (`<code>.json`) with English fallback per missing key. |
 | `GET /calls/i18n/{code}.json` | Public static route serving one console language: one of the nine built-in ones, or a downloaded extra language. HTTP 404 when Bageo has neither. |
 

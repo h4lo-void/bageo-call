@@ -724,7 +724,7 @@ Content-Type: application/json
 | `GET /calls/api/extras` | 全部 70 種擴充語言與各自是否已下載：`{ok, version, running, langs}`。 |
 | `POST /calls/api/extras/download` | Body `{"lang": "<code>"}`。直接從 GitHub 下載並安裝一個語言擴充包，連同主要語言是這個語言的地區插圖，回 `{..., result}`。 |
 | `POST /calls/api/extras/delete` | Body `{"lang": "<code>"}`。刪除已下載的語言擴充包和它帶來的地區插圖（設定仍在使用時回 `in_use`，其餘為 `removed`、`not_listed`、`restart`）。 |
-| `GET /calls/extras/art/{file}` | 公開靜態路由，以 `art-<region>.json` 回傳一個地區的插圖：主要語言是內建九種之一的地區由 Bageo 內建，其他地區來自已下載的語言擴充包（不會觸發下載；附 `no-cache`、`nosniff`）。 |
+| `GET /calls/extras/art/{file}` | 公開靜態路由，以 `art-<region>.json` 回傳一個地區的插圖：jp、kr、us、de、fr、tr、br、gulf 和主要語言是內建九種之一的地區由 Bageo 內建（tw 直接畫在頁面裡），其他地區來自已下載的語言擴充包（不會觸發下載；附 `no-cache`、`nosniff`）。 |
 | `GET /calls/i18n/desktop/{file}` | 公開靜態路由，回傳已下載語言的桌面狀態小程式文字（`<code>.json`），缺少的鍵值自動退回英文。 |
 | `GET /calls/i18n/{code}.json` | 公開靜態路由，回傳一種控制台語言：內建九種之一，或已下載的擴充語言。兩者都沒有時回 HTTP 404。 |
 

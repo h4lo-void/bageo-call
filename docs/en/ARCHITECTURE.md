@@ -82,7 +82,7 @@ flowchart LR
 | `backup.rs`, `backup_crypt.rs` | Scheduled and manual backups, selective export/import, and `.bageo` encryption (Argon2id + XChaCha20-Poly1305). |
 | `settings_store.rs` | Settings from `.env` plus what the console saved, applied without a restart. |
 | `pack_update.rs`, `packs_store.rs` | *Check for updates*: downloads newer local data, translations and prompt texts from GitHub only when you press it, checks them and keeps the copy that calls read. |
-| `extras.rs`, `locales_store.rs` | The 70 extra languages: language packs (carrying the art of the regions that speak them) downloaded on demand, and the translations the console and notifications read; regions whose main language is one of the nine built-in ones have their art built in. |
+| `extras.rs`, `locales_store.rs` | The 70 extra languages: language packs (carrying the art of the regions that speak them) downloaded on demand, and the translations the console and notifications read; the nine original regions (tw, jp, kr, us, de, fr, tr, br, gulf) and regions whose main language is one of the nine built-in ones have their art built in. |
 | `lan.rs`, `phone_wifi.rs` | LAN access guard, `Host` check, password rate limiting, and the USB-to-Wi-Fi phone pairing key. |
 | `usb_bridge.rs` | Keeps `adb reverse` up for every USB phone and starts the app's call service. |
 | `mdns.rs` | Answers `bageo.local` on the local network (multicast DNS), so the console opens without knowing the computer's IP. |

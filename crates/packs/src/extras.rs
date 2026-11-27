@@ -27,8 +27,8 @@
 //!
 //! Where a drawing ships follows its region's main language (lang in
 //! regions/<code>.json, [art_home]): an extra language's file carries it; a
-//! region of a core language has its drawing built into Bageo
-//! ([ART_BUNDLE_FILE], made by [build_art_bundle]).
+//! region of a core language, and each of [BUILTIN_ART_REGIONS], has its
+//! drawing built into Bageo ([ART_BUNDLE_FILE], made by [build_art_bundle]).
 //!
 //! art in a language file needs no new format number: a Bageo that does not
 //! know the field ignores it (unknown fields are ignored), and one that does
@@ -439,11 +439,17 @@ fn checked_art_map(file: &str, raw: Option<Value>, max: usize, issues: &mut Vec<
 
 // ---- where a drawing ships ---------------------------------------------------------------------
 
+/// The regions Bageo has always shown without a download. Their drawings are
+/// built in whatever the region's main language (tr speaks Turkish, gulf
+/// Arabic, both extra languages).
+pub const BUILTIN_ART_REGIONS: [&str; 9] = ["tw", "jp", "kr", "us", "de", "fr", "tr", "br", "gulf"];
+
 /// Where a region's drawing ships.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ArtHome {
-    /// The region's main language is one of the nine core languages, which
-    /// have no language file: the drawing is built into Bageo ([ART_BUNDLE_FILE]).
+    /// One of [BUILTIN_ART_REGIONS], or the region's main language is one of
+    /// the nine core languages, which have no language file: the drawing is
+    /// built into Bageo ([ART_BUNDLE_FILE]).
     Builtin,
     /// The extra language (primary code: ar, nb …) whose file carries it.
     Lang(String),
@@ -484,9 +490,9 @@ pub fn load_region_langs(dir: &Path) -> (BTreeMap<String, String>, Vec<Issue>) {
     (langs, out)
 }
 
-/// Where each drawing of art ships ([art_home]). A drawing without a
-/// regions/<code>.json, or whose region's main language is not on the
-/// official list, is an issue.
+/// Where each drawing of art ships: built in for [BUILTIN_ART_REGIONS],
+/// else [art_home]. A drawing without a regions/<code>.json, or whose
+/// region's main language is not on the official list, is an issue.
 pub fn art_homes(art: &BTreeMap<String, Vec<u8>>, region_langs: &BTreeMap<String, String>) -> (BTreeMap<String, ArtHome>, Vec<Issue>) {
     let mut homes = BTreeMap::new();
     let mut out = Vec::new();
@@ -496,6 +502,9 @@ pub fn art_homes(art: &BTreeMap<String, Vec<u8>>, region_langs: &BTreeMap<String
             None => push(&mut out, &file, "region", arule::HOME, format!("there is no regions/{region}.json; every drawing belongs to a region")),
             Some(lang) => match art_home(lang) {
                 None => push(&mut out, &file, "region", arule::HOME, format!("regions/{region}.json: main language \"{}\" is not on the official list", short(lang))),
+                Some(_) if BUILTIN_ART_REGIONS.contains(&region.as_str()) => {
+                    homes.insert(region.clone(), ArtHome::Builtin);
+                }
                 Some(h) => {
                     homes.insert(region.clone(), h);
                 }
@@ -1038,9 +1047,9 @@ pub fn build_extras(
 
 // ---- the drawings built into Bageo -----------------------------------------------------------
 
-/// bageo-art.json.gz: the drawings of the regions whose main language is a
-/// core language ([ArtHome::Builtin]); no language file carries them, so
-/// Bageo ships them.
+/// bageo-art.json.gz: the drawings of [BUILTIN_ART_REGIONS] and of the
+/// regions whose main language is a core language ([ArtHome::Builtin]); no
+/// language file carries them, so Bageo ships them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ArtBundle {
     pub format: u32,
@@ -1053,8 +1062,8 @@ pub struct ArtBundle {
     pub art: BTreeMap<String, Value>,
 }
 
-/// Builds the built-in drawings from the sources: every drawing of art whose
-/// region's main language is a core language. Returns the gzipped file and
+/// Builds the built-in drawings from the sources: every drawing of art that
+/// ships built in ([art_homes]). Returns the gzipped file and
 /// the regions in it. Every drawing must pass and belong to a region, and
 /// the file reads back through [parse_art_bundle].
 pub fn build_art_bundle(
@@ -1091,7 +1100,7 @@ pub fn build_art_bundle(
         }
     }
     if out.is_empty() && bundle.art.is_empty() {
-        out.push(head("art", "nothing to build: no drawing of a region whose main language is a core language"));
+        out.push(head("art", "nothing to build: no drawing of a built-in region or of a region whose main language is a core language"));
     }
     if bundle.art.len() > MAX_BUNDLE_ART {
         out.push(Issue::new(ART_BUNDLE_FILE, "art", arule::SIZE, format!("{} drawings, the limit is {MAX_BUNDLE_ART}", bundle.art.len())));

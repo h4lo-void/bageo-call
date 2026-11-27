@@ -331,17 +331,28 @@ fn a_language_file_without_art_still_reads() {
 // ---- the drawings built into Bageo --------------------------------------------------------------
 
 #[test]
-fn the_bundle_holds_only_core_language_regions_and_reads_back() {
-    let (art, langs) = more_art(&[("eg", "ar-EG"), ("mx", "es-US"), ("hk-mo", "cmn"), ("in", "en-IN")]);
+fn the_bundle_holds_core_language_and_built_in_regions_and_reads_back() {
+    // gulf speaks Arabic and tr Turkish, both extra languages, yet they are built-in regions.
+    let (art, langs) = more_art(&[("eg", "ar-EG"), ("mx", "es-US"), ("hk-mo", "cmn"), ("in", "en-IN"), ("gulf", "ar-EG"), ("tr", "tr-TR")]);
     let (gz, regions) = build_art_bundle(&art, &langs, VERSION, COMMIT, BUILT).unwrap_or_else(|e| panic!("{}", show(&e)));
-    assert_eq!(regions, ["hk-mo", "in", "mx"]);
+    assert_eq!(regions, ["gulf", "hk-mo", "in", "mx", "tr"]);
     let (bundle, issues) = parse_art_bundle(&gz).unwrap();
     assert!(issues.is_empty(), "{}", show(&issues));
-    assert_eq!(bundle.art.keys().collect::<Vec<_>>(), ["hk-mo", "in", "mx"]);
+    assert_eq!(bundle.art.keys().collect::<Vec<_>>(), ["gulf", "hk-mo", "in", "mx", "tr"]);
     assert_eq!(bundle.version, VERSION);
-    let b = build_extras(&sources(), &art, &langs, VERSION, COMMIT, BUILT, "1.6.9").unwrap();
+    let b = build_extras(&sources(), &art, &langs, VERSION, COMMIT, BUILT, "1.6.9").unwrap_or_else(|e| panic!("{}", show(&e)));
     let file: Value = serde_json::from_slice(&b.files["art-mx.json"]).unwrap();
     assert_eq!(bundle.art["mx"], file);
+    // The Arabic file carries eg but not gulf; tr needs no Turkish file.
+    let (ar, issues) = parse_lang_file(&b.files["lang-ar.json.gz"], "ar", &sources().english).unwrap();
+    assert!(issues.is_empty(), "{}", show(&issues));
+    assert!(ar.art.contains_key("eg") && !ar.art.contains_key("gulf"));
+    assert!(!b.files.contains_key("lang-tr.json.gz"));
+    for region in BUILTIN_ART_REGIONS {
+        let (homes, issues) = art_homes(&BTreeMap::from([(region.to_string(), Vec::new())]), &BTreeMap::from([(region.to_string(), "th-TH".to_string())]));
+        assert!(issues.is_empty(), "{}", show(&issues));
+        assert_eq!(homes[region], ArtHome::Builtin, "{region}");
+    }
     // Building twice gives the same bytes.
     assert_eq!(build_art_bundle(&art, &langs, VERSION, COMMIT, BUILT).unwrap().0, gz);
     // Only extra-language regions: nothing to build.
@@ -351,7 +362,7 @@ fn the_bundle_holds_only_core_language_regions_and_reads_back() {
     let mut v = unpacked(&gz);
     v["art"]["mx"]["draw"]["print"] = json!([["image", {}]]);
     let (bundle, issues) = parse_art_bundle(&gzip(&serde_json::to_vec(&v).unwrap())).unwrap();
-    assert_eq!(bundle.art.keys().collect::<Vec<_>>(), ["hk-mo", "in"]);
+    assert_eq!(bundle.art.keys().collect::<Vec<_>>(), ["gulf", "hk-mo", "in", "tr"]);
     expect(&issues, arule::ELEMENT, "art.mx.draw.print[0]");
     v["format"] = json!(2);
     let err = parse_art_bundle(&gzip(&serde_json::to_vec(&v).unwrap())).unwrap_err();
