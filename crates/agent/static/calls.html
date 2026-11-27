@@ -390,11 +390,18 @@ audio{width:100%;height:40px;margin-top:10px;display:block}
 .pv-status.err{color:var(--bad)}
 .rows{display:flex;flex-direction:column;gap:8px;margin:12px 0}
 .brow{display:grid;grid-template-columns:minmax(9rem,14rem) minmax(0,1fr) auto;gap:8px;align-items:center}
-.slrow{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:flex-end;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.slrow{display:flex;flex-direction:column;gap:8px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.slrow .sl-top,.slrow .sl-more-row{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:flex-end}
+.slrow .sl-more-row{padding-inline-start:12px;border-inline-start:2px solid var(--line)}
+.slrow .sl-mores{display:flex;flex-direction:column;gap:8px}
+.slrow .sl-mores:empty{display:none}
 .slrow .sl-f{display:flex;flex-direction:column;gap:3px;flex:1 1 11rem;min-width:0}
+.slrow .sl-f[hidden]{display:none}
 .slrow .sl-cap{font-size:.8rem;color:var(--muted)}
-.slrow .sl-br{flex-basis:100%;height:0}
+.slrow .sl-acts{display:flex;gap:6px;align-items:center;flex:0 0 auto}
 .slrow .sl-del{flex:0 0 auto}
+.slrow .sl-pack{margin-top:2px;padding:8px 10px;border-radius:var(--radius-sm);background:color-mix(in srgb,var(--accent) 8%,var(--surface2));border:1px solid color-mix(in srgb,var(--accent) 25%,var(--line))}
+.slrow .sl-pack[hidden]{display:none}
 .chan{border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px 16px;background:var(--surface)}
 .chan.offc{opacity:.75}
 .chan-head{display:flex;gap:10px;align-items:center}
@@ -4536,35 +4543,108 @@ function countryName(cc) {
 // with their regions. Saved as {country: "lang"} when there is nothing more (what
 // older versions read), else {country: {lang, region, more: [{lang, region}]}}.
 const SIM_MORE_MAX = 2;
+function simPickRegion(langCode, simCountry, region) {
+  const l = String(langCode || "").trim();
+  if (!l) return "";
+  const r = String(region || "").toLowerCase();
+  const allowed = typeof countriesForLang === "function" ? countriesForLang(l) : [];
+  if (r && (!allowed.length || allowed.includes(r))) return r;
+  const cc = String(simCountry || "").toLowerCase();
+  if (cc && (!allowed.length || allowed.includes(cc))) return cc;
+  return allowed[0] || "";
+}
 const simLangNorm = (v) => Object.entries(v && typeof v === "object" && !Array.isArray(v) ? v : {}).map(([country, l]) => {
+  const cc = String(country).toLowerCase();
   const o = l && typeof l === "object" ? l : { lang: l };
+  const mainLang = String(o.lang || "");
   const more = (Array.isArray(o.more) ? o.more : []).slice(0, SIM_MORE_MAX)
-    .map((m) => ({ lang: String((m && m.lang) || ""), region: String((m && m.region) || "").toLowerCase() }));
-  return { country: String(country).toLowerCase(), lang: String(o.lang || ""), region: String(o.region || "").toLowerCase(), more };
+    .map((m) => {
+      const ml = String((m && m.lang) || "");
+      return { lang: ml, region: simPickRegion(ml, cc, m && m.region) };
+    })
+    .filter((m) => m.lang);
+  return { country: cc, lang: mainLang, region: simPickRegion(mainLang, cc, o.region), more };
 });
 function simLangObj(rows) {
   const out = {};
   for (const e of rows) {
     if (!e.country) continue;
-    const more = (e.more || []).filter((m) => m.lang).map((m) => (m.region ? { lang: m.lang, region: m.region } : { lang: m.lang }));
-    const region = e.region || "";
-    if (!e.lang && !region && !more.length) continue;
-    out[e.country] = !region && !more.length ? e.lang
-      : Object.assign({ lang: e.lang || "" }, region ? { region } : {}, more.length ? { more } : {});
+    const more = (e.more || []).filter((m) => m.lang).map((m) => {
+      const mr = simPickRegion(m.lang, e.country, m.region);
+      return mr ? { lang: m.lang, region: mr } : { lang: m.lang };
+    });
+    const region = simPickRegion(e.lang, e.country, e.region);
+    if (!e.lang && !more.length) continue;
+    const keepReg = region && region !== e.country ? region : "";
+    out[e.country] = !keepReg && !more.length ? e.lang
+      : Object.assign({ lang: e.lang || "" }, keepReg ? { region: keepReg } : {}, more.length ? { more } : {});
   }
   return Object.fromEntries(Object.keys(out).sort().map((k) => [k, out[k]]));
 }
-// A menu of countries (the SIM's, or a language's region), the empty choice first.
-function simCountrySel(cls, label, value, emptyKey) {
-  const sel = h("select", { class: cls, "aria-label": label });
+function simCountryOptionRows(list, preferCountries) {
+  const byCountry = new Map();
+  for (const r of packRegions || []) for (const c of r.countries || []) if (/^[a-z]{2}$/.test(c) && !byCountry.has(c)) byCountry.set(c, r);
+  const sims = [...(preferCountries || []), ...connectedCountries()];
+  return list.map((cc, idx) => {
+    const r = byCountry.get(cc) || null;
+    const intlEn = typeof countryNameIn === "function" ? countryNameIn("en", cc) : "";
+    const en = neutralRegionName("en", cc) || (r && r.countries.length === 1 && r.name && r.name.en) || intlEn || cc.toUpperCase();
+    const own = (typeof nativeCountryName === "function" && nativeCountryName(cc, r)) || en;
+    const here = countryName(cc) || own;
+    const label = here === own ? here : `${here} · ${own}`;
+    const simRank = sims.indexOf(cc);
+    return { value: cc, en, rank: simRank >= 0 ? simRank : 100 + idx, label, searchLabel: label,
+      search: [here, own, en, intlEn, cc, (typeof DIAL === "object" && DIAL[cc]) ? "+" + DIAL[cc] : "",
+        ...(r && r.name ? [r.name.en, r.name.zh, r.name.native] : []), ...((typeof COUNTRY_ALIASES === "object" && COUNTRY_ALIASES[cc]) || "").split("|")] };
+  });
+}
+function simAllCountryOptions(cur) {
   const list = Array.isArray(S && S.countries) ? S.countries.slice() : [];
-  if (value && !list.includes(value)) list.push(value);
-  sel.append(h("option", { value: "", text: t(emptyKey) }));
-  list.map((c) => ({ c, name: countryName(c) }))
-    .sort((a, b) => a.name.localeCompare(b.name, loc()))
-    .forEach(({ c, name }) => sel.append(h("option", { value: c, text: `${name} (${c.toUpperCase()})` })));
-  sel.value = value || "";
-  return sel;
+  if (cur && !list.includes(cur)) list.push(cur);
+  const rows = simCountryOptionRows(list, []).sort((a, b) => a.label.localeCompare(b.label, loc()));
+  return [{ value: "", label: t("sl_pick"), search: [] }, ...rows];
+}
+function simRegionOptions(callLang, cur, simCountry) {
+  const l = String(callLang || "").trim();
+  if (!l) return [{ value: "", label: t("sl_region_sim"), search: [] }];
+  const allowed = countriesForLang(l);
+  const list = allowed.length ? allowed.slice() : (Array.isArray(S && S.countries) ? S.countries.slice() : []);
+  if (cur && !list.includes(cur)) list.push(cur);
+  return simCountryOptionRows(list, simCountry ? [simCountry] : []).sort((a, b) => a.rank - b.rank);
+}
+const simCombos = [];
+function simComboSync(c) {
+  const opts = c.getOptions();
+  const sig = lang + "|" + (packRegions ? packRegions.length : 0) + "|" + opts.map((o) => o.value + "=" + o.label).join("|");
+  if (sig !== c.sig) {
+    c.sig = sig;
+    c.sel.textContent = "";
+    for (const o of opts) c.sel.append(h("option", { value: o.value, text: o.label }));
+    c.combo.setOptions(opts);
+  }
+  if (c.want != null) { c.sel.value = c.want; delete c.want; }
+  c.combo.setValue(c.sel.value);
+  const al = c.sel.getAttribute("aria-label");
+  if (al) c.combo.input.setAttribute("aria-label", al);
+}
+function simCombo(sel, getOptions, initVal) {
+  const box = h("div", { class: "cb cb-sl", id: "cb" + (++cbSeq) });
+  sel.style.display = "none";
+  sel.after(box);
+  const combo = makeCombo(box, { onPick: (v) => {
+    sel.value = v;
+    sel.dispatchEvent(new Event("input", { bubbles: true }));
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  } });
+  const c = { sel, combo, getOptions, sig: "", want: initVal || "" };
+  simCombos.push(c);
+  simComboSync(c);
+  return c;
+}
+function refreshSimCombos() {
+  for (let i = simCombos.length - 1; i >= 0; i--) {
+    if (simCombos[i].sel.isConnected) simComboSync(simCombos[i]); else simCombos.splice(i, 1);
+  }
 }
 // A menu of the languages the AI speaks on calls, the empty choice first.
 function simLangSel(cls, label, value, emptyKey) {
@@ -4578,25 +4658,133 @@ function simLangSel(cls, label, value, emptyKey) {
   return lg;
 }
 const simField = (label, el) => h("div", { class: "sl-f" }, h("span", { class: "sl-cap", text: label }), el);
-function simLangRow(e) {
-  const cc = simCountrySel("sl-cc", t("sl_country"), e.country, "sl_pick");
-  const lg = simLangSel("sl-main", t("sl_lang"), e.lang, "sl_lang_sim");
-  const rg = simCountrySel("sl-region", t("sl_region"), e.region, "sl_region_sim");
-  const fields = [simField(t("sl_country"), cc), simField(t("sl_lang"), lg), simField(t("sl_region"), rg)];
-  const langs = [lg];
-  const seconds = [];
-  for (let i = 0; i < SIM_MORE_MAX; i++) {
-    const m = (e.more || [])[i] || {};
-    const name = t(i ? "sl_second2" : "sl_second1");
-    const ml = simLangSel("sl-more-lang", name, m.lang, "sl_second_none");
-    const mr = simCountrySel("sl-more-region", name + " · " + t("sl_region"), m.region, "sl_region_none");
-    langs.push(ml);
-    seconds.push(simField(name, ml), simField(t("sl_region"), mr));
+function simSyncRowPacks(row) {
+  const box = row && row.querySelector(".sl-pack");
+  if (!box || typeof missingPackFor !== "function") return;
+  const cc = (row.querySelector(".sl-cc") && row.querySelector(".sl-cc").value) || "";
+  const pairs = [[simLangPicked(row.querySelector(".sl-main")), (row.querySelector(".sl-region") && row.querySelector(".sl-region").value) || cc]];
+  const ml = row.querySelectorAll(".sl-more-lang"), mr = row.querySelectorAll(".sl-more-region");
+  ml.forEach((s, i) => pairs.push([simLangPicked(s), (mr[i] && mr[i].value) || cc]));
+  const seen = new Set();
+  const offers = [];
+  for (const [l, r] of pairs) {
+    if (!l) continue;
+    const p = missingPackFor(l, r);
+    if (p && !seen.has(p.id)) { seen.add(p.id); offers.push(p); }
   }
-  const row = h("div", { class: "slrow" }, ...fields,
-    h("button", { type: "button", class: "btn sm ghost sl-del", title: t("sl_remove"), "aria-label": t("sl_remove"), text: t("ct_delete") }),
-    h("div", { class: "sl-br" }), ...seconds);
-  for (const s of langs) langCombo(s, false, "cb-sl");
+  clear(box);
+  box.hidden = !offers.length;
+  for (const p of offers) {
+    const ask = t("vp_ask", { name: vpName(p, lang), size: vpSize(p.bytes) });
+    const btn = h("button", { type: "button", class: "btn sm primary", text: t("vp_get"), onclick: () => vpDownloadOffer(p, btn) });
+    box.append(h("span", { class: "pv-status", text: ask }), btn);
+  }
+}
+function simSyncAllRows() {
+  refreshSimCombos();
+  document.querySelectorAll("#simLangRows .slrow").forEach(simSyncRowPacks);
+}
+function simLangRow(e) {
+  const cc = h("select", { class: "sl-cc", "aria-label": t("sl_country") });
+  const lg = simLangSel("sl-main", t("sl_lang"), e.lang, "sl_lang_sim");
+  const initReg = simPickRegion(e.lang, e.country, e.region);
+  const rg = h("select", { class: "sl-region", "aria-label": t("sl_region") });
+  const ccField = simField(t("sl_country"), cc);
+  const lgField = simField(t("sl_lang"), lg);
+  const rgField = simField(t("sl_region"), rg);
+  rgField.hidden = !e.lang;
+  const moresBox = h("div", { class: "sl-mores" });
+  const addMoreBtn = h("button", { type: "button", class: "btn sm ghost sl-add-more" });
+  const delBtn = h("button", { type: "button", class: "btn sm ghost sl-del", title: t("sl_remove"), "aria-label": t("sl_remove"), text: t("ct_delete") });
+  const packBox = h("div", { class: "pv sl-pack", hidden: true });
+  const top = h("div", { class: "sl-top" }, ccField, lgField, rgField, h("div", { class: "sl-acts" }, addMoreBtn, delBtn));
+  const row = h("div", { class: "slrow" }, top, moresBox, packBox);
+  simCombo(cc, () => simAllCountryOptions(cc.value), e.country);
+  langCombo(lg, false, "cb-sl");
+  const rgCombo = simCombo(rg, () => simRegionOptions(simLangPicked(lg), rg.value, cc.value), initReg);
+  function syncMoreLabels() {
+    const items = Array.from(moresBox.querySelectorAll(".sl-more-row"));
+    items.forEach((mrRow, idx) => {
+      const name = t(idx ? "sl_second2" : "sl_second1");
+      const cap = mrRow.querySelector(".sl-more-cap");
+      if (cap) cap.textContent = name;
+      const sel = mrRow.querySelector(".sl-more-lang");
+      if (sel) sel.setAttribute("aria-label", name);
+    });
+    addMoreBtn.hidden = items.length >= SIM_MORE_MAX;
+    addMoreBtn.textContent = "+ " + t(items.length ? "sl_second2" : "sl_second1");
+  }
+  function addMoreRow(m, autoFocus) {
+    if (moresBox.querySelectorAll(".sl-more-row").length >= SIM_MORE_MAX) return;
+    const idx = moresBox.querySelectorAll(".sl-more-row").length;
+    const name = t(idx ? "sl_second2" : "sl_second1");
+    const ml = simLangSel("sl-more-lang", name, m.lang, "sl_second_none");
+    const initMr = simPickRegion(m.lang, cc.value, m.region);
+    const mr = h("select", { class: "sl-more-region", "aria-label": name + " · " + t("sl_region") });
+    const mlCap = h("span", { class: "sl-cap sl-more-cap", text: name });
+    const mlField = h("div", { class: "sl-f" }, mlCap, ml);
+    const mrField = simField(t("sl_region"), mr);
+    mrField.hidden = !m.lang;
+    const rmBtn = h("button", { type: "button", class: "btn sm ghost sl-more-del", text: t("ct_delete") });
+    const mRow = h("div", { class: "sl-more-row" }, mlField, mrField, rmBtn);
+    moresBox.append(mRow);
+    langCombo(ml, false, "cb-sl");
+    const mrCombo = simCombo(mr, () => simRegionOptions(simLangPicked(ml), mr.value, cc.value), initMr);
+    ml.addEventListener("change", () => {
+      const l = simLangPicked(ml);
+      mrField.hidden = !l;
+      mrCombo.want = l ? simPickRegion(l, cc.value, mr.value) : "";
+      simComboSync(mrCombo);
+      simSyncRowPacks(row);
+      if (l && typeof offerPackOnPick === "function") offerPackOnPick(l, mr.value || cc.value);
+      updateDirty();
+    });
+    mr.addEventListener("change", () => {
+      const l = simLangPicked(ml);
+      simSyncRowPacks(row);
+      if (l && typeof offerPackOnPick === "function") offerPackOnPick(l, mr.value || cc.value);
+      updateDirty();
+    });
+    rmBtn.addEventListener("click", () => {
+      mRow.remove();
+      syncMoreLabels();
+      simSyncRowPacks(row);
+      updateDirty();
+    });
+    syncMoreLabels();
+    if (autoFocus) {
+      const inp = mlField.querySelector(".cb-input");
+      if (inp) inp.focus();
+    }
+  }
+  for (const m of (e.more || []).slice(0, SIM_MORE_MAX)) if (m && m.lang) addMoreRow(m, false);
+  syncMoreLabels();
+  addMoreBtn.addEventListener("click", () => addMoreRow({ lang: "", region: "" }, true));
+  lg.addEventListener("change", () => {
+    const l = simLangPicked(lg);
+    rgField.hidden = !l;
+    rgCombo.want = l ? simPickRegion(l, cc.value, rg.value) : "";
+    simComboSync(rgCombo);
+    simSyncRowPacks(row);
+    if (l && typeof offerPackOnPick === "function") offerPackOnPick(l, rg.value || cc.value);
+    updateDirty();
+  });
+  rg.addEventListener("change", () => {
+    const l = simLangPicked(lg);
+    simSyncRowPacks(row);
+    if (l && typeof offerPackOnPick === "function") offerPackOnPick(l, rg.value || cc.value);
+    updateDirty();
+  });
+  cc.addEventListener("change", () => {
+    const l = simLangPicked(lg);
+    if (l) {
+      rgCombo.want = simPickRegion(l, cc.value, rg.value);
+      simComboSync(rgCombo);
+    }
+    simSyncRowPacks(row);
+    updateDirty();
+  });
+  simSyncRowPacks(row);
   return row;
 }
 function renderSimLangRows(list) {
@@ -4613,11 +4801,16 @@ function renderSimLangRows(list) {
 const simLangPicked = (sel) => (sel && sel.value !== "__more__" ? sel.value : "");
 const simLangRowsNow = () => Array.from(document.querySelectorAll("#simLangRows .slrow")).map((r) => {
   const ml = r.querySelectorAll(".sl-more-lang"), mr = r.querySelectorAll(".sl-more-region");
+  const cc = r.querySelector(".sl-cc").value;
+  const mainLang = simLangPicked(r.querySelector(".sl-main"));
   return {
-    country: r.querySelector(".sl-cc").value,
-    lang: simLangPicked(r.querySelector(".sl-main")),
-    region: r.querySelector(".sl-region").value,
-    more: Array.from(ml).map((s, i) => ({ lang: simLangPicked(s), region: mr[i] ? mr[i].value : "" })),
+    country: cc,
+    lang: mainLang,
+    region: mainLang ? simPickRegion(mainLang, cc, r.querySelector(".sl-region").value) : "",
+    more: Array.from(ml).map((s, i) => {
+      const l = simLangPicked(s);
+      return { lang: l, region: l ? simPickRegion(l, cc, mr[i] ? mr[i].value : "") : "" };
+    }).filter((m) => m.lang),
   };
 });
 const simLangValue = () => simLangObj(simLangRowsNow());
@@ -4627,7 +4820,8 @@ $("btnSimLangAdd").addEventListener("click", () => {
   if (empty) empty.remove();
   const row = simLangRow({ country: "", lang: "", region: "", more: [] });
   box.append(row);
-  row.querySelector(".sl-cc").focus();
+  const inp = row.querySelector(".cb-input");
+  if (inp) inp.focus();
 });
 $("simLangRows").addEventListener("click", (e) => {
   const del = e.target.closest(".sl-del");
@@ -5803,7 +5997,10 @@ if ($("btnExManage")) $("btnExManage").addEventListener("click", () => exOpen(nu
 // ----- voice packs: downloaded when needed, the card that offers one, "Voice downloads"
 let vpInfo = null; // GET voices
 let vpMsg = ""; // the key of the work going on
-const vpSize = (b) => `${Math.max(1, Math.round((Number(b) || 0) / 1e6))} MB`;
+const vpSize = (b) => {
+  const n = Number(b) || 0;
+  return n > 0 && n < 5e5 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${Math.max(1, Math.round(n / 1e6))} MB`;
+};
 // A text in one language (English when that language has none).
 function tIn(l, key, vars) {
   let s = (I18N[l] && I18N[l][key]) ?? I18N.en[key] ?? key;
@@ -5814,7 +6011,7 @@ function vpName(p, inLang) {
   const loc = LANG_INTL[inLang] || inLang;
   let ln = "";
   try { ln = new Intl.DisplayNames([loc], { type: "language" }).of(LANG_INTL[p.lang] || p.lang) || ""; } catch (_) { ln = ""; }
-  if (!ln || ln === p.lang) ln = (inLang === "en" ? LANG_EN[p.lang] : LANG_NAMES[p.lang]) || p.lang;
+  if (!ln || ln === p.lang) ln = (inLang === "en" ? LANG_EN[p.lang] : LANG_NAMES[p.lang]) || p.native || p.en || p.lang;
   if (!p.region) return ln;
   const reg = (packRegions || []).find((r) => r.code === p.region);
   let rn = reg && Array.isArray(reg.countries) && reg.countries.length === 1 ? countryNameIn(loc, reg.countries[0]) : "";
@@ -5824,7 +6021,8 @@ function vpName(p, inLang) {
 // Regions this console is used in: the home country, the phones' SIMs, the browser's languages.
 function vpRegions() {
   const out = [];
-  for (const c of [$("f-home_country").value, ...connectedCountries(), ...browserCountries()]) {
+  const simRegs = Array.from(document.querySelectorAll("#simLangRows .sl-region, #simLangRows .sl-more-region")).map((el) => el.value).filter(Boolean);
+  for (const c of [$("f-home_country").value, ...simRegs, ...connectedCountries(), ...browserCountries()]) {
     const r = regionOfCountry(String(c || "").toLowerCase());
     if (r && !out.includes(r.code)) out.push(r.code);
   }
@@ -5832,11 +6030,19 @@ function vpRegions() {
 }
 // The pack worth getting for a language here (the region's, else the language's own);
 // null when none is listed or one is here already.
-function vpPackFor(l) {
-  const packs = ((vpInfo && vpInfo.packs) || []).filter((p) => p.lang === l);
+function vpPackFor(l, preferCountry) {
+  const raw = String(l || "").trim();
+  if (!raw) return null;
+  const code = matchLang(raw) || raw;
+  const low = code.toLowerCase();
+  const base = low.split(/[-_]/)[0];
+  const norm = base === "iw" ? "he" : base === "in" ? "id" : base === "ji" ? "yi" : base === "no" ? "nb" : base === "tl" ? "fil" : base;
+  const packs = ((vpInfo && vpInfo.packs) || []).filter((p) => p.lang === code || p.lang === low || p.lang === norm);
   if (!packs.length) return null;
-  const regions = vpRegions();
-  const def = l === "en" ? packs.find((p) => p.region === "us") : l === "es" ? packs.find((p) => p.region === "es") : null;
+  const prefReg = preferCountry ? regionOfCountry(String(preferCountry).toLowerCase()) : null;
+  const prefCode = prefReg ? prefReg.code : String(preferCountry || "").toLowerCase();
+  const regions = [...(prefCode ? [prefCode] : []), ...vpRegions()];
+  const def = code === "en" ? packs.find((p) => p.region === "us") : code === "es" ? packs.find((p) => p.region === "es") : null;
   const match = regions.map((r) => packs.find((p) => p.region === r)).find(Boolean)
     || packs.find((p) => !p.region)
     || def
@@ -5848,6 +6054,7 @@ function vpPackFor(l) {
 // clicks Download).
 const FIRST_PACK_PROMPT = "__first_pack_prompt__";
 let vpFirstOffer = null;
+let vpManualOffer = null;
 let vpDlgShownFor = "";
 async function markFirstPackPrompt(extraId) {
   const list = [...((S && S.dismissed_pack_prompts) || [])];
@@ -5863,35 +6070,69 @@ function exFirstPackFor(raw) {
   if (!exInfo || !Array.isArray(exInfo.langs)) return null;
   const low = String(raw || "").trim().toLowerCase();
   const base = low.split(/[-_]/)[0];
-  const norm = base === "iw" ? "he" : base === "in" ? "id" : base === "ji" ? "yi" : base === "no" ? "nb" : base;
+  const norm = base === "iw" ? "he" : base === "in" ? "id" : base === "ji" ? "yi" : base === "no" ? "nb" : base === "tl" ? "fil" : base;
   const row = exInfo.langs.find((r) => r.code === low || r.code === norm);
   if (!row || row.downloaded) return null;
   return { kind: "ext_lang", id: "lang-" + row.code, lang: row.code, region: null, bytes: row.bytes || 40000, native: row.native, en: row.en };
 }
+function missingPackFor(langCode, preferCountry) {
+  if (!langCode) return null;
+  const ext = exFirstPackFor(langCode);
+  const vp = vpPackFor(langCode, preferCountry);
+  if (ext) {
+    ext.preferCountry = preferCountry || "";
+    if (vp) ext.bytes = (ext.bytes || 40000) + (vp.bytes || 0);
+    return ext;
+  }
+  return vp;
+}
+function offerPackOnPick(langCode, preferCountry) {
+  const p = missingPackFor(langCode, preferCountry);
+  if (!p) return;
+  vpManualOffer = p;
+  vpDlgShownFor = "";
+  vpRender();
+}
 function vpOffer() {
   if (!S || !vpInfo || !exInfo) return null;
+  if (vpManualOffer) {
+    const stillMissing = missingPackFor(vpManualOffer.lang, vpManualOffer.preferCountry || vpManualOffer.region);
+    if (stillMissing) {
+      vpFirstOffer = stillMissing;
+      return vpFirstOffer;
+    }
+    vpManualOffer = null;
+  }
   const dismissed = S.dismissed_pack_prompts || [];
   const pickedLang = ($("f-language") && $("f-language").value) || S.language || lang;
-  const pickedVoice = vpPackFor(matchLang(pickedLang) || pickedLang);
-  if (pickedVoice && !dismissed.includes(pickedVoice.id)) {
-    vpFirstOffer = pickedVoice;
+  const pickedMain = missingPackFor(pickedLang, homeCountryNow());
+  if (pickedMain && !dismissed.includes(pickedMain.id)) {
+    vpFirstOffer = pickedMain;
     return vpFirstOffer;
+  }
+  const simPairs = simLangRowsNow().flatMap((e) => [[e.lang, e.region || e.country], ...e.more.map((m) => [m.lang, m.region || e.country])]).filter(([l]) => l);
+  for (const [sl, sr] of simPairs) {
+    const sp = missingPackFor(sl, sr);
+    if (sp && !dismissed.includes(sp.id)) {
+      vpFirstOffer = sp;
+      return vpFirstOffer;
+    }
   }
   if (dismissed.includes(FIRST_PACK_PROMPT)) {
     vpFirstOffer = null;
     return null;
   }
-  const simCodes = simLangNorm(S.sim_languages).flatMap((e) => [e.lang, ...e.more.map((m) => m.lang)]).filter(Boolean);
+  const simCodes = simPairs.map(([l]) => l);
   const rawLangs = [pickedLang, S.language, S.notify_language, ...simCodes, ...(navigator.languages || [navigator.language])].filter(Boolean);
   const extOffer = rawLangs.map(exFirstPackFor).find((p) => p && !dismissed.includes(p.id));
   const langs = [];
-  const add = (l) => { const m = matchLang(l); if (m && !langs.includes(m)) langs.push(m); };
+  const add = (l) => { const m = matchLang(l) || l; if (m && !langs.includes(m)) langs.push(m); };
   add(pickedLang);
   add(lang);
   add(S.language);
   simCodes.forEach(add);
   add(browserLang());
-  const voiceOffer = langs.map(vpPackFor).find((p) => p && !dismissed.includes(p.id));
+  const voiceOffer = langs.map((l) => vpPackFor(l)).find((p) => p && !dismissed.includes(p.id));
   vpFirstOffer = extOffer || voiceOffer || null;
   return vpFirstOffer;
 }
@@ -5946,24 +6187,27 @@ function vpRender() {
   } else if ($("vpDlg") && $("vpDlg").open) {
     $("vpDlg").close();
   }
-  const pick = vpPackFor(pvLang() || lang);
+  const pick = missingPackFor(pvLang() || lang, homeCountryNow());
   $("vpVoiceBox").hidden = !pick;
   if ($("tsVpBox")) $("tsVpBox").hidden = !pick;
   if (pick) {
     const btnLabel = t("vp_get_voice", { name: vpName(pick, lang), size: vpSize(pick.bytes) });
     $("btnVpVoice").textContent = btnLabel;
     $("btnVpVoice").dataset.id = pick.id;
+    $("btnVpVoice")._offer = pick;
     if ($("btnTsVpVoice")) {
       $("btnTsVpVoice").textContent = btnLabel;
       $("btnTsVpVoice").dataset.id = pick.id;
+      $("btnTsVpVoice")._offer = pick;
     }
   }
+  if (typeof simSyncAllRows === "function") simSyncAllRows();
 }
 async function vpLoad() {
   try { vpInfo = await api("/voices"); } catch (_) { vpInfo = null; }
   vpRender();
 }
-const vpButtons = () => [$("vpCardGet"), $("vpCardLater"), $("vpDlgGet"), $("vpDlgLater"), $("btnVpVoice"), $("btnTsVpVoice"), $("btnVpImport"), ...$("vpRows").querySelectorAll("button")].filter(Boolean);
+const vpButtons = () => [$("vpCardGet"), $("vpCardLater"), $("vpDlgGet"), $("vpDlgLater"), $("btnVpVoice"), $("btnTsVpVoice"), $("btnVpImport"), ...$("vpRows").querySelectorAll("button"), ...document.querySelectorAll("#simLangRows .sl-pack button")].filter(Boolean);
 async function vpRun(path, opts, working, btn) {
   vpButtons().forEach((b) => { b.disabled = true; });
   vpMsg = working;
@@ -5984,13 +6228,16 @@ async function vpRun(path, opts, working, btn) {
   }
 }
 const vpDownload = (id, btn) => vpRun("/voices/download", jsonBody("POST", { id }), "vp_working", btn);
-async function vpAcceptOffer() {
-  const offer = vpFirstOffer;
-  const id = (offer && offer.id) || $("vpCard").dataset.id;
-  vpFirstOffer = null;
+async function vpDownloadOffer(offer, btn) {
+  if (!offer) return;
+  const id = offer.id;
+  if (vpManualOffer && vpManualOffer.id === id) vpManualOffer = null;
+  if (vpFirstOffer && vpFirstOffer.id === id) vpFirstOffer = null;
   if ($("vpDlg") && $("vpDlg").open) $("vpDlg").close();
-  if (offer && offer.kind === "ext_lang") {
+  if (offer.kind === "ext_lang") {
     vpButtons().forEach((b) => { b.disabled = true; });
+    vpMsg = "vp_working";
+    vpRender();
     try {
       const d = await api("/extras/download", jsonBody("POST", { lang: offer.lang }));
       exInfo = d;
@@ -5998,6 +6245,12 @@ async function vpAcceptOffer() {
         await markFirstPackPrompt(offer.id);
         await exSyncMenus();
         tsArtReset();
+        const vp = vpPackFor(offer.lang, offer.preferCountry);
+        if (vp) {
+          const vd = await api("/voices/download", jsonBody("POST", { id: vp.id }));
+          vpInfo = vd;
+          await markFirstPackPrompt(vp.id);
+        }
         toast(t("vp_r_installed"));
         if (offeredLangs("console").some((x) => x.code === offer.lang)) {
           await chooseLang(offer.lang, true);
@@ -6008,17 +6261,24 @@ async function vpAcceptOffer() {
     } catch (e) {
       if (e.status !== 401) toast(e.message || t("err_network"), true);
     } finally {
+      vpMsg = "";
       vpRender();
       vpButtons().forEach((b) => { b.disabled = false; });
+      if (btn && btn.isConnected) btn.focus();
     }
     return;
   }
-  await vpDownload(id, null);
+  await vpDownload(id, btn);
   await markFirstPackPrompt(id);
 }
+async function vpAcceptOffer() {
+  const offer = vpFirstOffer || vpManualOffer || { id: $("vpCard").dataset.id };
+  await vpDownloadOffer(offer, null);
+}
 async function vpDismissOffer() {
-  const id = (vpFirstOffer && vpFirstOffer.id) || $("vpCard").dataset.id;
+  const id = (vpFirstOffer && vpFirstOffer.id) || (vpManualOffer && vpManualOffer.id) || $("vpCard").dataset.id;
   vpFirstOffer = null;
+  vpManualOffer = null;
   $("vpCard").hidden = true;
   if ($("vpDlg") && $("vpDlg").open) $("vpDlg").close();
   await markFirstPackPrompt(id);
@@ -6026,8 +6286,8 @@ async function vpDismissOffer() {
 }
 $("vpCardGet").addEventListener("click", vpAcceptOffer);
 $("vpDlgGet").addEventListener("click", vpAcceptOffer);
-$("btnVpVoice").addEventListener("click", () => vpDownload($("btnVpVoice").dataset.id, $("btnVpVoice")));
-if ($("btnTsVpVoice")) $("btnTsVpVoice").addEventListener("click", () => vpDownload($("btnTsVpVoice").dataset.id, $("btnTsVpVoice")));
+$("btnVpVoice").addEventListener("click", () => vpDownloadOffer($("btnVpVoice")._offer || { id: $("btnVpVoice").dataset.id }, $("btnVpVoice")));
+if ($("btnTsVpVoice")) $("btnTsVpVoice").addEventListener("click", () => vpDownloadOffer($("btnTsVpVoice")._offer || { id: $("btnTsVpVoice").dataset.id }, $("btnTsVpVoice")));
 // "Not now": that pack is not offered again (saved in the settings).
 $("vpCardLater").addEventListener("click", vpDismissOffer);
 $("vpDlgLater").addEventListener("click", vpDismissOffer);
@@ -6044,8 +6304,12 @@ $("f-language").addEventListener("change", () => {
   renderHomeCountry();
   renderAboutHints();
   tsRender(true);
+  offerPackOnPick($("f-language").value, homeCountryNow());
   vpRender();
   updateDirty();
+});
+$("f-notify_language").addEventListener("change", () => {
+  if ($("f-notify_language").value) offerPackOnPick($("f-notify_language").value, homeCountryNow());
 });
 
 // ----- extra languages modal & auto-download on login
@@ -6373,6 +6637,7 @@ function renderHomeCountry() {
       updateDirty();
       renderAboutHints();
       tsRender(true);
+      offerPackOnPick(curCallLang(), homeCountryNow());
       vpRender();
     } });
   }
