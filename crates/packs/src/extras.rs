@@ -10,16 +10,29 @@
 //! - lang-<code>.json.gz ([ExtraLang]): one language's names, status, notify,
 //!   console and desktop text. No call speech: calls take that from
 //!   bageo-locales.json.gz. The rules are the translation rules L01 to L12.
+//!   It also carries the drawings of the regions whose main language it is
+//!   (art: region -> the same object as that region's art file).
 //! - art-<region>.json: one region's drawing for the myna mascot. The page
 //!   builds SVG elements from it one by one, so [check_art] accepts only a
 //!   short list of elements, attributes and colours and refuses the whole
-//!   file on the first thing outside it.
+//!   file on the first thing outside it. Still built and listed for Bageo
+//!   versions that download drawings one by one; newer ones take them from
+//!   the language files.
 //!
 //! An art file is {"format":1,"region","version","look","draw"}.
 //! look is {"bow":bool,"print":name,"pal":{o1…:colour},"scenes":[[sky,[prop names]]]}.
 //! draw is {"print":[node],"item":[node],"props":{name:[node]},"acc":[{"l":[levels],"nodes":[node]}]}.
 //! A node is ["tag", {attributes}, [children]]; the children are optional.
 //! The same checks run when the files are built and when Bageo reads them.
+//!
+//! Where a drawing ships follows its region's main language (lang in
+//! regions/<code>.json, [art_home]): an extra language's file carries it; a
+//! region of a core language has its drawing built into Bageo
+//! ([ART_BUNDLE_FILE], made by [build_art_bundle]).
+//!
+//! art in a language file needs no new format number: a Bageo that does not
+//! know the field ignores it (unknown fields are ignored), and one that does
+//! checks each drawing on its own and leaves out only the ones that fail.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -32,6 +45,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::check::{push, valid_code, valid_commit, valid_min_bageo};
+use crate::data::official_ext_index;
+use crate::guard::Writing;
 use crate::locales::{
     check_loc_file, check_names, ext_lang, lrule, pipeline_full, unpack_locales, Ctx, English, Kind, LocFile, LocaleSources, Names,
     MAX_LANG_BYTES, READY_PERCENT, REVIEW_STATES,
@@ -53,6 +68,14 @@ pub const MAX_EXTRA_LANG_BYTES: usize = MAX_LANG_BYTES;
 pub const MAX_ART_BYTES: usize = 64 * 1024;
 pub const MAX_ART_NODES: usize = 800;
 pub const MAX_ART_DEPTH: usize = 6;
+/// A language file carries at most this many region drawings.
+pub const MAX_LANG_ART: usize = 16;
+/// The drawings built into Bageo (crates/agent/data/packs/ in bageo-call).
+pub const ART_BUNDLE_FILE: &str = "bageo-art.json.gz";
+/// The built-in drawings, packed and unpacked, may not be larger than this
+/// or hold more than [MAX_BUNDLE_ART] regions.
+pub const MAX_ART_BUNDLE_BYTES: usize = 512 * 1024;
+pub const MAX_BUNDLE_ART: usize = 64;
 /// How far a language file's text goes, lowest first. basic: names and
 /// whatever text there is; notify: at least [READY_PERCENT] percent of the
 /// notification keys; console: notify plus console text. Only for the menu;
@@ -90,6 +113,9 @@ pub mod arule {
     pub const VALUE: &str = "A05-value";
     /// A look.pal entry with an unknown key or a colour outside #hex and var(--bts-xx).
     pub const PALETTE: &str = "A06-palette";
+    /// A drawing with no regions/<code>.json, whose region's main language is
+    /// not on the official list, or whose language has no text to carry it.
+    pub const HOME: &str = "A07-home";
 }
 
 const ELEMENTS: &[&str] = &["g", "path", "ellipse", "circle", "rect", "line", "polyline", "polygon"];
@@ -289,13 +315,19 @@ pub struct ExtraLang {
     pub console: Option<LocFile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub desktop: Option<LocFile>,
+    /// The drawings of the regions whose main language this is: region -> the
+    /// same object as art-<region>.json.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub art: BTreeMap<String, Value>,
 }
 
 /// Reads a downloaded language file for code: unpacks it counting as it goes
 /// (600 KiB packed and unpacked), then runs the translation rules the way
 /// Bageo does. A wrong or newer format, a wrong code, header or names refuse
 /// the file (Err); a key that breaks a rule is dropped on its own and
-/// reported, so one bad sentence never costs a language.
+/// reported, so one bad sentence never costs a language. Each region drawing
+/// goes through [check_art] on its own: one that fails is left out and
+/// reported, the language and the other drawings stay.
 pub fn parse_lang_file(gz: &[u8], code: &str, english: &English) -> Result<(ExtraLang, Vec<Issue>), Vec<Issue>> {
     let file = lang_file_name(code);
     let rename = |v: Vec<Issue>| -> Vec<Issue> {
@@ -309,7 +341,7 @@ pub fn parse_lang_file(gz: &[u8], code: &str, english: &English) -> Result<(Extr
     let one = |field: &str, rule: &'static str, d: String| vec![Issue::new(&file, field, rule, d)];
     let Some(info) = ext_lang(code).ok() else { return Err(one("", lrule::CODE, format!("\"{}\" is not an extra language code", short(code)))) };
     let json = unpack_locales(gz, MAX_EXTRA_LANG_BYTES).map_err(rename)?;
-    let v: Value = serde_json::from_slice(&json).map_err(|e| one("", lrule::FORMAT, e.to_string()))?;
+    let mut v: Value = serde_json::from_slice(&json).map_err(|e| one("", lrule::FORMAT, e.to_string()))?;
     match v.get("format").and_then(Value::as_u64) {
         None => return Err(one("format", lrule::FORMAT, "missing".to_string())),
         Some(n) if n > EXTRAS_FORMAT as u64 => {
@@ -318,6 +350,8 @@ pub fn parse_lang_file(gz: &[u8], code: &str, english: &English) -> Result<(Extr
         Some(n) if n != EXTRAS_FORMAT as u64 => return Err(one("format", lrule::FORMAT, format!("format {n} is not {EXTRAS_FORMAT}"))),
         Some(_) => {}
     }
+    // Taken out before the rest is read, so a broken drawing never costs the language.
+    let raw_art = v.as_object_mut().and_then(|o| o.remove("art"));
     let mut lang: ExtraLang = serde_json::from_value(v).map_err(|e| one("", lrule::FORMAT, e.to_string()))?;
     let mut bad = Vec::new();
     if lang.code != code {
@@ -359,7 +393,146 @@ pub fn parse_lang_file(gz: &[u8], code: &str, english: &English) -> Result<(Extr
             *slot = Some(kept);
         }
     }
+    lang.art = checked_art_map(&file, raw_art, MAX_LANG_ART, &mut issues);
     Ok((lang, issues))
+}
+
+/// Region drawings inside a language file or the built-in bundle (region ->
+/// an art file's object). Each goes through [check_art] on its own: one that
+/// fails is left out and reported, the others are kept.
+fn checked_art_map(file: &str, raw: Option<Value>, max: usize, issues: &mut Vec<Issue>) -> BTreeMap<String, Value> {
+    let mut out = BTreeMap::new();
+    let Some(raw) = raw else { return out };
+    let Value::Object(m) = raw else {
+        issues.push(Issue::new(file, "art", arule::FORMAT, "must be an object of region drawings; left out"));
+        return out;
+    };
+    for (region, art) in m {
+        let at = format!("art.{}", short(&region));
+        if !valid_code(&region) {
+            issues.push(Issue::new(file, &at, arule::FORMAT, "not a region code; left out"));
+            continue;
+        }
+        if out.len() >= max {
+            issues.push(Issue::new(file, &at, arule::SIZE, format!("more than {max} region drawings; left out")));
+            continue;
+        }
+        let bytes = match serde_json::to_vec(&art) {
+            Ok(b) => b,
+            Err(e) => {
+                issues.push(Issue::new(file, &at, arule::FORMAT, format!("left out: {e}")));
+                continue;
+            }
+        };
+        match check_art(&art_file_name(&region), &bytes, &region).first() {
+            None => {
+                out.insert(region, art);
+            }
+            Some(bad) => {
+                let field = if bad.field.is_empty() { at } else { format!("{at}.{}", bad.field) };
+                issues.push(Issue::new(file, &field, bad.rule, format!("left out: {}", bad.detail)));
+            }
+        }
+    }
+    out
+}
+
+// ---- where a drawing ships ---------------------------------------------------------------------
+
+/// Where a region's drawing ships.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArtHome {
+    /// The region's main language is one of the nine core languages, which
+    /// have no language file: the drawing is built into Bageo ([ART_BUNDLE_FILE]).
+    Builtin,
+    /// The extra language (primary code: ar, nb …) whose file carries it.
+    Lang(String),
+}
+
+/// Where the drawing of a region whose main language is region_lang (lang in
+/// regions/<code>.json: ar-EG, nb, cmn, en-IN …) ships; the code is read the
+/// way the language checks read it ([Writing::of]). None when the code is
+/// not on the official list.
+pub fn art_home(region_lang: &str) -> Option<ArtHome> {
+    let code = Writing::of(region_lang).code;
+    if code.is_empty() {
+        return None;
+    }
+    Some(if official_ext_index(code).is_some() { ArtHome::Lang(code.to_string()) } else { ArtHome::Builtin })
+}
+
+/// Each region's main language (lang of regions/<code>.json), by region, and
+/// the files whose lang cannot be read. No regions folder is no regions. Only
+/// that field is read here: the region rules are check_sources'.
+pub fn load_region_langs(dir: &Path) -> (BTreeMap<String, String>, Vec<Issue>) {
+    let mut langs = BTreeMap::new();
+    let mut out = Vec::new();
+    let Ok(paths) = sorted_paths(&dir.join("regions")) else { return (langs, out) };
+    for p in paths.iter().filter(|p| p.extension().and_then(|e| e.to_str()) == Some("json")) {
+        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+        let lang = fs::read(p)
+            .ok()
+            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+            .and_then(|v| v.get("lang").and_then(Value::as_str).map(str::to_string));
+        match lang {
+            Some(l) => {
+                langs.insert(name.trim_end_matches(".json").to_string(), l);
+            }
+            None => push(&mut out, &format!("regions/{name}"), "lang", arule::HOME, "cannot read the region's main language"),
+        }
+    }
+    (langs, out)
+}
+
+/// Where each drawing of art ships ([art_home]). A drawing without a
+/// regions/<code>.json, or whose region's main language is not on the
+/// official list, is an issue.
+pub fn art_homes(art: &BTreeMap<String, Vec<u8>>, region_langs: &BTreeMap<String, String>) -> (BTreeMap<String, ArtHome>, Vec<Issue>) {
+    let mut homes = BTreeMap::new();
+    let mut out = Vec::new();
+    for region in art.keys() {
+        let file = format!("art/{region}.json");
+        match region_langs.get(region) {
+            None => push(&mut out, &file, "region", arule::HOME, format!("there is no regions/{region}.json; every drawing belongs to a region")),
+            Some(lang) => match art_home(lang) {
+                None => push(&mut out, &file, "region", arule::HOME, format!("regions/{region}.json: main language \"{}\" is not on the official list", short(lang))),
+                Some(h) => {
+                    homes.insert(region.clone(), h);
+                }
+            },
+        }
+    }
+    (homes, out)
+}
+
+/// What packs check runs on art/: every drawing passes the art rules and
+/// belongs to a region, and a region of an extra language has that
+/// language's notify or console text to ride in (a language file is built
+/// only then). Returns the number of drawings and the issues.
+pub fn check_art_sources(dir: &Path, locales: &LocaleSources) -> (usize, Vec<Issue>) {
+    let art = match load_art(dir) {
+        Ok(a) => a,
+        Err(issues) => return (0, issues),
+    };
+    if art.is_empty() {
+        return (0, Vec::new());
+    }
+    let (region_langs, mut out) = load_region_langs(dir);
+    for (region, src) in &art {
+        if let Err(issues) = read_art_source(&format!("art/{region}.json"), src, region) {
+            out.extend(issues);
+        }
+    }
+    let (homes, issues) = art_homes(&art, &region_langs);
+    out.extend(issues);
+    for (region, home) in &homes {
+        let ArtHome::Lang(code) = home else { continue };
+        let has_text = locales.langs.iter().any(|l| l.code == *code && (l.files.contains_key(&Kind::Notify) || l.files.contains_key(&Kind::Console)));
+        if !has_text {
+            push(&mut out, &format!("art/{region}.json"), "region", arule::HOME, format!("its region speaks {code}, which has no notify or console text to carry the drawing"));
+        }
+    }
+    (art.len(), out)
 }
 
 fn level_of(english: &English, notify: Option<&LocFile>, console: Option<&LocFile>) -> &'static str {
@@ -665,14 +838,35 @@ pub struct ExtrasBuild {
     pub index_json: String,
 }
 
+/// A source drawing as it ships, with the release version: the object and its bytes.
+fn ship_art(region: &str, src: &[u8], version: u64) -> Result<(Value, Vec<u8>), Vec<Issue>> {
+    let (look, draw) = read_art_source(&format!("art/{region}.json"), src, region)?;
+    let file = art_file_name(region);
+    let art = ArtOut { format: EXTRAS_FORMAT, region: region.to_string(), version, look, draw };
+    let (value, body) = match (serde_json::to_value(&art), serde_json::to_vec(&art)) {
+        (Ok(v), Ok(b)) => (v, b),
+        (Err(e), _) | (_, Err(e)) => return Err(vec![Issue::new(&file, "", arule::FORMAT, e.to_string())]),
+    };
+    let bad = check_art(&file, &body, region);
+    if bad.is_empty() {
+        Ok((value, body))
+    } else {
+        Err(bad)
+    }
+}
+
 /// Checks the sources and builds the extra packs: one language file for
 /// every language outside the nine core ones that has notify or console text,
-/// one art file for every entry of art (region to source bytes), and the
-/// index. Nothing is returned unless every rule passed, and every file reads
-/// back through the same door Bageo uses.
+/// carrying the drawings of the regions whose main language it is
+/// (region_langs: region to lang of regions/<code>.json); one art file for
+/// every entry of art (region to source bytes), for Bageo versions that
+/// download drawings one by one; and the index. Nothing is returned unless
+/// every rule passed, every drawing of an extra language found its language
+/// file, and every file reads back through the same door Bageo uses.
 pub fn build_extras(
     ls: &LocaleSources,
     art: &BTreeMap<String, Vec<u8>>,
+    region_langs: &BTreeMap<String, String>,
     version: u64,
     commit: &str,
     built_at: &str,
@@ -703,12 +897,35 @@ pub fn build_extras(
     let mut files = BTreeMap::new();
     let mut index = ExtrasIndex { format: EXTRAS_FORMAT, version, langs: Vec::new(), art: Vec::new() };
 
+    let (homes, home_issues) = art_homes(art, region_langs);
+    out.extend(home_issues);
+    let mut drawings: BTreeMap<String, (Value, Vec<u8>)> = BTreeMap::new();
+    for (region, src) in art {
+        match ship_art(region, src, version) {
+            Ok(d) => {
+                drawings.insert(region.clone(), d);
+            }
+            Err(issues) => out.extend(issues),
+        }
+    }
+    let mut carried = std::collections::BTreeSet::new();
+
     for (code, c) in checked {
         if !langs_ok || (c.lang.notify.is_none() && c.lang.console.is_none()) {
             continue;
         }
         let file = lang_file_name(&code);
         let level = level_of(&ls.english, c.lang.notify.as_ref(), c.lang.console.as_ref());
+        let lang_art: BTreeMap<String, Value> = drawings
+            .iter()
+            .filter(|(r, _)| matches!(homes.get(*r), Some(ArtHome::Lang(l)) if *l == code))
+            .map(|(r, (v, _))| (r.clone(), v.clone()))
+            .collect();
+        if lang_art.len() > MAX_LANG_ART {
+            push(&mut out, &file, "art", arule::SIZE, format!("{} region drawings, the limit is {MAX_LANG_ART}", lang_art.len()));
+            continue;
+        }
+        carried.extend(lang_art.keys().cloned());
         let lang = ExtraLang {
             format: EXTRAS_FORMAT,
             code: code.clone(),
@@ -720,6 +937,7 @@ pub fn build_extras(
             notify: c.lang.notify,
             console: c.lang.console,
             desktop: c.desktop,
+            art: lang_art,
         };
         let json = match serde_json::to_vec(&lang) {
             Ok(j) => j,
@@ -768,30 +986,26 @@ pub fn build_extras(
         files.insert(file, gz);
     }
 
-    for (region, src) in art {
-        let source = format!("art/{region}.json");
-        let (look, draw) = match read_art_source(&source, src, region) {
-            Ok(x) => x,
-            Err(issues) => {
-                out.extend(issues);
-                continue;
+    if langs_ok {
+        for (region, home) in &homes {
+            if let ArtHome::Lang(code) = home {
+                if drawings.contains_key(region) && !carried.contains(region) {
+                    push(
+                        &mut out,
+                        &format!("art/{region}.json"),
+                        "region",
+                        arule::HOME,
+                        format!("its region speaks {code}, which has no language file (no notify or console text) to carry the drawing"),
+                    );
+                }
             }
-        };
-        let file = art_file_name(region);
-        let body = match serde_json::to_vec(&ArtOut { format: EXTRAS_FORMAT, region: region.clone(), version, look, draw }) {
-            Ok(b) => b,
-            Err(e) => {
-                push(&mut out, &file, "", arule::FORMAT, e.to_string());
-                continue;
-            }
-        };
-        let bad = check_art(&file, &body, region);
-        if !bad.is_empty() {
-            out.extend(bad);
-            continue;
         }
+    }
+
+    for (region, (_, body)) in drawings {
+        let file = art_file_name(&region);
         index.art.push(ExtrasArtRef {
-            region: region.clone(),
+            region,
             file: file.clone(),
             bytes: body.len() as u64,
             sha256: sha256_hex(&body),
@@ -820,4 +1034,123 @@ pub fn build_extras(
     } else {
         Err(out)
     }
+}
+
+// ---- the drawings built into Bageo -----------------------------------------------------------
+
+/// bageo-art.json.gz: the drawings of the regions whose main language is a
+/// core language ([ArtHome::Builtin]); no language file carries them, so
+/// Bageo ships them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArtBundle {
+    pub format: u32,
+    /// YYYYMMDDNN.
+    pub version: u64,
+    pub built_at: String,
+    pub source_commit: String,
+    /// Region -> the same object as art-<region>.json.
+    #[serde(default)]
+    pub art: BTreeMap<String, Value>,
+}
+
+/// Builds the built-in drawings from the sources: every drawing of art whose
+/// region's main language is a core language. Returns the gzipped file and
+/// the regions in it. Every drawing must pass and belong to a region, and
+/// the file reads back through [parse_art_bundle].
+pub fn build_art_bundle(
+    art: &BTreeMap<String, Vec<u8>>,
+    region_langs: &BTreeMap<String, String>,
+    version: u64,
+    commit: &str,
+    built_at: &str,
+) -> Result<(Vec<u8>, Vec<String>), Vec<Issue>> {
+    let mut out = Vec::new();
+    let head = |field: &str, d: &str| Issue::new(ART_BUNDLE_FILE, field, arule::FORMAT, d.to_string());
+    if !valid_version(version) {
+        out.push(head("version", "must be YYYYMMDDNN"));
+    }
+    if !valid_commit(commit) {
+        out.push(head("source_commit", "must be 1 to 64 letters, digits, '.', '_' or '-'"));
+    }
+    if !valid_rfc3339_utc(built_at) {
+        out.push(head("built_at", "must look like 2026-11-20T08:00:00Z"));
+    }
+    if !out.is_empty() {
+        return Err(out);
+    }
+    let (homes, issues) = art_homes(art, region_langs);
+    out.extend(issues);
+    let mut bundle = ArtBundle { format: EXTRAS_FORMAT, version, built_at: built_at.to_string(), source_commit: commit.to_string(), art: BTreeMap::new() };
+    for (region, src) in art {
+        match ship_art(region, src, version) {
+            Ok((value, _)) if homes.get(region) == Some(&ArtHome::Builtin) => {
+                bundle.art.insert(region.clone(), value);
+            }
+            Ok(_) => {}
+            Err(issues) => out.extend(issues),
+        }
+    }
+    if out.is_empty() && bundle.art.is_empty() {
+        out.push(head("art", "nothing to build: no drawing of a region whose main language is a core language"));
+    }
+    if bundle.art.len() > MAX_BUNDLE_ART {
+        out.push(Issue::new(ART_BUNDLE_FILE, "art", arule::SIZE, format!("{} drawings, the limit is {MAX_BUNDLE_ART}", bundle.art.len())));
+    }
+    if !out.is_empty() {
+        return Err(out);
+    }
+    let json = serde_json::to_vec(&bundle).map_err(|e| vec![head("", &e.to_string())])?;
+    if json.len() > MAX_ART_BUNDLE_BYTES {
+        return Err(vec![Issue::new(ART_BUNDLE_FILE, "", arule::SIZE, format!("{} bytes unpacked, the limit is {MAX_ART_BUNDLE_BYTES}", json.len()))]);
+    }
+    let gz = gzip_best(&json).map_err(|e| vec![head("", &e)])?;
+    match parse_art_bundle(&gz) {
+        Ok((back, issues)) if issues.is_empty() && back == bundle => Ok((gz, bundle.art.into_keys().collect())),
+        Ok((_, mut issues)) => {
+            issues.push(head("", "the built file does not read back the same"));
+            Err(issues)
+        }
+        Err(issues) => Err(issues),
+    }
+}
+
+/// Reads the built-in drawings: unpacks counting as it goes
+/// ([MAX_ART_BUNDLE_BYTES]); a wrong or newer format or header refuses the
+/// file; each drawing goes through [check_art] on its own and one that
+/// fails is left out and reported.
+pub fn parse_art_bundle(gz: &[u8]) -> Result<(ArtBundle, Vec<Issue>), Vec<Issue>> {
+    let one = |field: &str, d: String| vec![Issue::new(ART_BUNDLE_FILE, field, arule::FORMAT, d)];
+    let json = unpack_locales(gz, MAX_ART_BUNDLE_BYTES).map_err(|v| {
+        v.into_iter()
+            .map(|mut i| {
+                i.file = ART_BUNDLE_FILE.to_string();
+                i
+            })
+            .collect::<Vec<_>>()
+    })?;
+    let mut v: Value = serde_json::from_slice(&json).map_err(|e| one("", e.to_string()))?;
+    match v.get("format").and_then(Value::as_u64) {
+        None => return Err(one("format", "missing".to_string())),
+        Some(n) if n > EXTRAS_FORMAT as u64 => return Err(one("format", format!("format {n} is newer than this Bageo reads ({EXTRAS_FORMAT}); update Bageo first"))),
+        Some(n) if n != EXTRAS_FORMAT as u64 => return Err(one("format", format!("format {n} is not {EXTRAS_FORMAT}"))),
+        Some(_) => {}
+    }
+    let raw_art = v.as_object_mut().and_then(|o| o.remove("art"));
+    let mut bundle: ArtBundle = serde_json::from_value(v).map_err(|e| one("", e.to_string()))?;
+    let mut bad = Vec::new();
+    if !valid_version(bundle.version) {
+        bad.push(Issue::new(ART_BUNDLE_FILE, "version", arule::FORMAT, "must be YYYYMMDDNN"));
+    }
+    if !valid_rfc3339_utc(&bundle.built_at) {
+        bad.push(Issue::new(ART_BUNDLE_FILE, "built_at", arule::FORMAT, "must look like 2026-11-20T08:00:00Z"));
+    }
+    if !valid_commit(&bundle.source_commit) {
+        bad.push(Issue::new(ART_BUNDLE_FILE, "source_commit", arule::FORMAT, "must be 1 to 64 letters, digits, '.', '_' or '-'"));
+    }
+    if !bad.is_empty() {
+        return Err(bad);
+    }
+    let mut issues = Vec::new();
+    bundle.art = checked_art_map(ART_BUNDLE_FILE, raw_art, MAX_BUNDLE_ART, &mut issues);
+    Ok((bundle, issues))
 }

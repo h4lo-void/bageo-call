@@ -147,6 +147,9 @@ pub struct ExtLocale {
     console: Option<BTreeMap<String, String>>,
     /// Desktop widget texts that passed. Missing keys read English.
     desktop: Option<BTreeMap<String, String>>,
+    /// The region drawings its downloaded pack carries that passed, as JSON
+    /// text by region (served at /calls/extras/art/).
+    art: BTreeMap<String, String>,
     /// The call prompts, built for the first call in this language and kept
     /// with this translation: a changed translation builds its own.
     prompt: OnceLock<Pack>,
@@ -304,18 +307,21 @@ fn ext_locale(e: Ext, lang: LocaleLang, extra: Option<(ExtraLang, usize)>, dropp
     let mut downloaded = false;
     let mut extra_version = 0;
     let mut desktop_file: Option<LocFile> = None;
+    let mut art = BTreeMap::new();
     if let Some((ex, ex_dropped)) = extra {
         names = ex.names;
         status = ex.status;
         notify = ex.notify;
         console = ex.console;
         desktop_file = ex.desktop;
+        art = ex.art.into_iter().map(|(region, v)| (region, v.to_string())).collect::<BTreeMap<String, String>>();
         dropped += ex_dropped;
         downloaded = true;
         extra_version = ex.version;
     }
     let input =
-        serde_json::to_vec(&(e.code(), &names, &status, &speech, &notify, &console, &desktop_file, dropped, downloaded, extra_version)).ok();
+        serde_json::to_vec(&(e.code(), &names, &status, &speech, &notify, &console, &desktop_file, &art, dropped, downloaded, extra_version))
+            .ok();
     let key = input.as_deref().map(digest);
     if let Some(l) = key.and_then(|k| built().langs.get(&k).copied()) {
         return l;
@@ -369,6 +375,7 @@ fn ext_locale(e: Ext, lang: LocaleLang, extra: Option<(ExtraLang, usize)>, dropp
         words,
         console: console_text,
         desktop: desktop_text,
+        art,
         prompt: OnceLock::new(),
         ai_farewells,
         verified,
@@ -1026,6 +1033,13 @@ pub fn desktop_file(code: &str) -> Option<String> {
         strings.insert(k.clone(), tr.get(k).unwrap_or(ev).clone());
     }
     Some(json!({ "schema": 1, "lang": e.code(), "strings": strings }).to_string())
+}
+
+/// A region's drawing from the downloaded language packs of table (JSON text,
+/// already checked when the pack was read). None when no downloaded pack
+/// carries it; deleting a pack takes its drawings with it.
+pub(crate) fn region_art_in(table: &LocaleTable, region: &str) -> Option<String> {
+    table.langs().filter(|(_, l)| l.downloaded).find_map(|(_, l)| l.art.get(region).cloned())
 }
 
 /// Test translations (it, th, ar, fa, ru), only ever built in tests: the

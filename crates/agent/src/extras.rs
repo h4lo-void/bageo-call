@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Bageo-Commercial
 // SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
 
-//! On-demand extra packs: full language packs (`lang-<code>.json.gz`, carrying
+//! On-demand extra language packs (`lang-<code>.json.gz`, carrying
 //! notification, console and desktop widget text outside the 9 built-in core
-//! languages) and region mascot art (`art-<region>.json`, loaded on demand for
-//! the 64 non-built-in regions).
+//! languages, plus the mascot drawings of the regions whose main language it
+//! is) and the region drawings the console shows.
 //!
 //! Listed in `bageo-extras-index.json` inside the public `bageo-packs`
 //! releases on GitHub, downloaded through [crate::pack_update] with the same
@@ -14,14 +14,19 @@
 //!   and unpacked ([crate::locales_store::install_extra_lang]); installs and
 //!   deletions share the translations' per-run memory cap
 //!   ([crate::locales_store::MAX_NEW_BYTES]).
-//! - Mascot art: at most [MAX_ART_BYTES] (64 KiB), 800 SVG nodes, depth 6
-//!   ([bageo_packs::extras::check_art]), served public only from already-verified
-//!   files with `X-Content-Type-Options: nosniff` (never triggers a download).
+//! - Region drawings: each at most 64 KiB, 800 SVG nodes, depth 6
+//!   ([bageo_packs::extras::check_art]), checked one by one when a pack is
+//!   read; a bad one is left out and the language still installs. Deleting a
+//!   language takes its drawings with it. Regions whose main language is a
+//!   core language have no pack: their drawings are built in
+//!   ([bageo_packs::extras::ART_BUNDLE_FILE]). Both are served public at
+//!   `/calls/extras/art/` with `X-Content-Type-Options: nosniff`; serving
+//!   never triggers a download. Bageo no longer downloads drawings one by one.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use axum::body::Bytes;
@@ -30,10 +35,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use bageo_packs::extras::{
-    art_file_name, check_art, parse_extras_index, ExtrasArtRef, ExtrasIndex, EXTRAS_INDEX_FILE, MAX_ART_BYTES,
-    MAX_INDEX_BYTES,
-};
+use bageo_packs::extras::{parse_art_bundle, parse_extras_index, ExtrasIndex, EXTRAS_INDEX_FILE, MAX_INDEX_BYTES};
 use bageo_packs::locales::lrule;
 use bageo_packs::Issue;
 use serde::Deserialize;
@@ -42,39 +44,44 @@ use serde_json::{json, Value};
 use crate::calls_http::{api_error, asset_response, token_ok_parts, unauthorized, CallsState, TokenQuery};
 use crate::console_i18n;
 use crate::locale::Ext;
-use crate::locales_store;
+use crate::locales_store::{self, LocaleTable};
 use crate::pack_update::{self, Fail, Source, Staged};
 use crate::settings_store::RuntimeSettings;
 
 pub(crate) const INDEX_NAME: &str = EXTRAS_INDEX_FILE;
 const TOTAL_TIMEOUT: Duration = Duration::from_secs(60);
 const INCOMING_PREFIX: &str = ".incoming-";
-const ART_INCOMING_PREFIX: &str = ".incoming-art-";
 const GONE_PREFIX: &str = ".gone-";
 const ART_FILE_PREFIX: &str = "art-";
 const ART_FILE_SUFFIX: &str = ".json";
+const BAD_REQUEST: &str = "expected {\"lang\": \"<code>\"}";
 
 fn valid_code(s: &str) -> bool {
     !s.is_empty() && s.len() <= 24 && s.split('-').all(|p| p.len() >= 2 && p.bytes().all(|b| b.is_ascii_lowercase()))
 }
 
-/// Regions whose mascot art is shipped built into `calls.html`.
+/// Regions whose mascot art is drawn into `calls.html` itself.
 pub(crate) const BUILTIN_ART_REGIONS: [&str; 9] = ["tw", "jp", "kr", "us", "de", "fr", "tr", "br", "gulf"];
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) enum Target {
-    Lang(Ext),
-    Art(String),
-}
+/// The drawings of the regions whose main language is a core language (no
+/// language pack carries them), built by `packs build-art` from bageo-packs.
+const BUILTIN_ART: &[u8] = include_bytes!("../data/packs/bageo-art.json.gz");
 
-impl Target {
-
-    fn label(&self) -> String {
-        match self {
-            Target::Lang(e) => format!("lang:{}", e.code()),
-            Target::Art(r) => format!("art:{r}"),
+/// The built-in drawings that passed, as JSON text by region; read once.
+fn builtin_art() -> &'static std::collections::BTreeMap<String, String> {
+    static ART: OnceLock<std::collections::BTreeMap<String, String>> = OnceLock::new();
+    ART.get_or_init(|| match parse_art_bundle(BUILTIN_ART) {
+        Ok((bundle, issues)) => {
+            if let Some(first) = issues.first() {
+                tracing::warn!("built-in region drawings: {} left out (first: {first})", issues.len());
+            }
+            bundle.art.into_iter().map(|(region, v)| (region, v.to_string())).collect()
         }
-    }
+        Err(issues) => {
+            tracing::warn!("built-in region drawings refused ({})", issues.first().map(|i| i.to_string()).unwrap_or_default());
+            std::collections::BTreeMap::new()
+        }
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,19 +149,21 @@ fn temp_name(prefix: &str, suffix: &str) -> String {
     format!("{prefix}{}-{}{suffix}", std::process::id(), uuid::Uuid::new_v4().simple())
 }
 
-/// Where downloaded extra language packs, art files and index live (`<data>/packs/extras`).
+/// Where downloaded extra language packs and the index live (`<data>/packs/extras`).
 pub(crate) fn extras_root() -> PathBuf {
     locales_store::extras_root()
 }
 
-/// Removes unfinished downloads or pending deletions in `root` left by an earlier crash.
+/// Removes unfinished downloads or pending deletions in `root` left by an
+/// earlier crash, and the `art-<region>.json` files earlier versions
+/// downloaded one by one (drawings now come with the language packs).
 pub(crate) fn clear_unfinished(root: &Path) {
     locales_store::clear_unfinished_extras(root);
     let Ok(entries) = std::fs::read_dir(root) else { return };
     for e in entries.flatten() {
         let name = e.file_name();
         let s = name.to_string_lossy();
-        if s.starts_with(INCOMING_PREFIX) {
+        if s.starts_with(INCOMING_PREFIX) || (s.starts_with(ART_FILE_PREFIX) && s.ends_with(ART_FILE_SUFFIX)) {
             let _ = std::fs::remove_file(e.path());
         } else if s.starts_with(GONE_PREFIX) {
             let p = e.path();
@@ -196,49 +205,6 @@ fn save_index(root: &Path, text: &str, ix: &ExtrasIndex) {
     }
 }
 
-/// Validates and reads an installed `art-<region>.json` from `root`.
-/// Returns `(size_bytes, version, json_text)` when valid.
-fn read_installed_art(root: &Path, region: &str) -> Option<(u64, u64, String)> {
-    if !valid_code(region) || region == "default" || BUILTIN_ART_REGIONS.contains(&region) {
-        return None;
-    }
-    let file = art_file_name(region);
-    let path = root.join(&file);
-    let meta = std::fs::symlink_metadata(&path).ok()?;
-    if !meta.file_type().is_file() || meta.len() == 0 || meta.len() > MAX_ART_BYTES as u64 {
-        return None;
-    }
-    let bytes = std::fs::read(&path).ok()?;
-    if bytes.len() > MAX_ART_BYTES || !check_art(&file, &bytes, region).is_empty() {
-        return None;
-    }
-    let text = String::from_utf8(bytes).ok()?;
-    let ver = serde_json::from_str::<Value>(&text)
-        .ok()
-        .and_then(|v| v.get("version").and_then(Value::as_u64))
-        .unwrap_or(0);
-    Some((meta.len(), ver, text))
-}
-
-fn art_version(root: &Path, region: &str) -> u64 {
-    read_installed_art(root, region).map_or(0, |(_, ver, _)| ver)
-}
-
-/// Installed valid art files in `root`: region -> (bytes, version).
-fn installed_art_map(root: &Path) -> BTreeMap<String, (u64, u64)> {
-    let mut out = BTreeMap::new();
-    let Ok(rd) = std::fs::read_dir(root) else { return out };
-    for e in rd.flatten() {
-        let name = e.file_name();
-        let Some(s) = name.to_str() else { continue };
-        let Some(region) = s.strip_prefix("art-").and_then(|rest| rest.strip_suffix(".json")) else { continue };
-        if let Some((bytes, ver, _)) = read_installed_art(root, region) {
-            out.insert(region.to_string(), (bytes, ver));
-        }
-    }
-    out
-}
-
 /// Canonical extra languages referenced anywhere in settings (`language`, `notify_language`, `sim_languages`).
 fn in_use_langs(rt: &RuntimeSettings) -> BTreeSet<Ext> {
     let mut set = BTreeSet::new();
@@ -253,17 +219,11 @@ fn in_use_langs(rt: &RuntimeSettings) -> BTreeSet<Ext> {
     set
 }
 
-fn target_from_req(lang: Option<&str>, art: Option<&str>) -> Result<Option<Target>, &'static str> {
-    let l = lang.map(str::trim).filter(|s| !s.is_empty());
-    let a = art.map(str::trim).filter(|s| !s.is_empty());
-    match (l, a) {
-        (Some(code), None) => Ok(Ext::from_code(&code.to_ascii_lowercase()).map(Target::Lang)),
-        (None, Some(region)) => {
-            let r = region.to_ascii_lowercase();
-            let valid = r != "default" && !BUILTIN_ART_REGIONS.contains(&r.as_str()) && valid_code(&r);
-            Ok(valid.then_some(Target::Art(r)))
-        }
-        _ => Err("expected {\"lang\": \"<code>\"} or {\"art\": \"<region>\"}"),
+/// The extra language a request names; None for a core or unknown code.
+fn lang_from_req(lang: Option<&str>) -> Result<Option<Ext>, &'static str> {
+    match lang.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(code) => Ok(Ext::from_code(&code.to_ascii_lowercase())),
+        None => Err(BAD_REQUEST),
     }
 }
 
@@ -298,33 +258,6 @@ fn parse_index_for_download(text: &str) -> Result<ExtrasIndex, Stop> {
     }
 }
 
-fn install_art_file(root: &Path, staged: &Path, region: &str, want_version: u64) -> Result<u64, Fail> {
-    let file = art_file_name(region);
-    let len = std::fs::metadata(staged).map_err(|e| io_fail("cannot read the art file", e))?.len();
-    if len == 0 || len > MAX_ART_BYTES as u64 {
-        return Err(pack_update::bad(format!("{file}: {len} bytes (limit {MAX_ART_BYTES})")));
-    }
-    let bytes = std::fs::read(staged).map_err(|e| io_fail("cannot read the art file", e))?;
-    let issues = check_art(&file, &bytes, region);
-    if !issues.is_empty() {
-        if issues.iter().any(|i| i.field == "format" && i.detail.contains("newer")) {
-            return Err(Fail::UpdateBageo(issues[0].detail.clone()));
-        }
-        return Err(pack_update::bad(issues[0].to_string()));
-    }
-    let val: Value = serde_json::from_slice(&bytes).map_err(|e| pack_update::bad(format!("{file}: {e}")))?;
-    if val.get("version").and_then(Value::as_u64) != Some(want_version) {
-        return Err(pack_update::bad(format!("{file}: version does not match index ({want_version})")));
-    }
-    let cur = art_version(root, region);
-    if cur > 0 && want_version <= cur {
-        return Err(Fail::UpToDate);
-    }
-    std::fs::create_dir_all(root).map_err(|e| io_fail("cannot create extras folder", e))?;
-    std::fs::rename(staged, root.join(&file)).map_err(|e| io_fail("cannot install the art file", e))?;
-    Ok(bytes.len() as u64)
-}
-
 fn map_lang_issues(issues: &[Issue]) -> Fail {
     if issues.iter().any(|i| i.field == "format" && i.detail.contains("newer")) {
         return Fail::UpdateBageo(issues.first().map(|i| i.detail.clone()).unwrap_or_default());
@@ -335,83 +268,43 @@ fn map_lang_issues(issues: &[Issue]) -> Fail {
     Fail::Bad(issues.first().map(|i| i.to_string()).unwrap_or_else(|| "bad language pack".into()))
 }
 
-enum StagedTarget {
-    Lang { ext: Ext, version: u64, bytes: u64 },
-    Art { region: String, version: u64, bytes: u64 },
-}
-
 async fn fetch_index_step(client: &reqwest::Client, src: &Source) -> Result<(String, ExtrasIndex, Vec<url::Url>), Stop> {
     let (text, hops) = pack_update::fetch_index(client, src, INDEX_NAME, MAX_INDEX_BYTES as u64).await?;
     let ix = parse_index_for_download(&text)?;
     Ok((text, ix, hops))
 }
 
+/// Downloads one language pack the index lists into a staged file: (file, version, bytes).
 async fn download_entry(
     client: &reqwest::Client,
     src: &Source,
     hops: &[url::Url],
     ix: &ExtrasIndex,
     root: &Path,
-    target: &Target,
-) -> Result<(Staged, StagedTarget), Stop> {
-    match target {
-        Target::Lang(ext) => {
-            let entry = ix.langs.iter().find(|r| r.code == ext.code()).ok_or(Stop::NotListed)?;
-            if !pack_update::bageo_at_least(&entry.min_bageo) {
-                return Err(Fail::UpdateBageo(format!("needs Bageo {} or newer", entry.min_bageo)).into());
-            }
-            let cur = locales_store::single_extra_version(root, *ext);
-            if cur >= entry.version {
-                return Err(Fail::UpToDate.into());
-            }
-            let url = src
-                .release_file_url(hops, INDEX_NAME, &entry.file)
-                .ok_or_else(|| pack_update::bad("the index names a path, not a file"))?;
-            std::fs::create_dir_all(root).map_err(|e| io_fail("cannot make extras folder", e))?;
-            let mut staged = Staged::create(locales_store::extra_incoming_path(root))?;
-            pack_update::download_checked(client, src, url, entry.bytes, &entry.sha256, &mut staged).await?;
-            Ok((staged, StagedTarget::Lang { ext: *ext, version: entry.version, bytes: entry.bytes }))
-        }
-        Target::Art(region) => {
-            let entry: &ExtrasArtRef = ix.art.iter().find(|r| r.region == *region).ok_or(Stop::NotListed)?;
-            if !pack_update::bageo_at_least(&entry.min_bageo) {
-                return Err(Fail::UpdateBageo(format!("needs Bageo {} or newer", entry.min_bageo)).into());
-            }
-            let cur = art_version(root, region);
-            if cur >= entry.version && cur > 0 {
-                return Err(Fail::UpToDate.into());
-            }
-            let url = src
-                .release_file_url(hops, INDEX_NAME, &entry.file)
-                .ok_or_else(|| pack_update::bad("the index names a path, not a file"))?;
-            std::fs::create_dir_all(root).map_err(|e| io_fail("cannot make extras folder", e))?;
-            let mut staged = Staged::create(root.join(temp_name(ART_INCOMING_PREFIX, ".json")))?;
-            pack_update::download_checked(client, src, url, entry.bytes, &entry.sha256, &mut staged).await?;
-            Ok((
-                staged,
-                StagedTarget::Art { region: region.clone(), version: entry.version, bytes: entry.bytes },
-            ))
-        }
+    ext: Ext,
+) -> Result<(Staged, u64, u64), Stop> {
+    let entry = ix.langs.iter().find(|r| r.code == ext.code()).ok_or(Stop::NotListed)?;
+    if !pack_update::bageo_at_least(&entry.min_bageo) {
+        return Err(Fail::UpdateBageo(format!("needs Bageo {} or newer", entry.min_bageo)).into());
     }
-}
-
-fn install_staged<F>(dir: &Path, staged: Staged, meta: StagedTarget, apply_lang: F) -> Result<u64, Fail>
-where
-    F: FnOnce(&Path, Ext, u64) -> Result<(), Vec<Issue>>,
-{
-    let res = match meta {
-        StagedTarget::Lang { ext, version, bytes } => apply_lang(staged.path(), ext, version).map(|_| bytes).map_err(|i| map_lang_issues(&i)),
-        StagedTarget::Art { region, version, .. } => install_art_file(dir, staged.path(), &region, version),
-    };
-    drop(staged);
-    res
+    let cur = locales_store::single_extra_version(root, ext);
+    if cur >= entry.version {
+        return Err(Fail::UpToDate.into());
+    }
+    let url = src
+        .release_file_url(hops, INDEX_NAME, &entry.file)
+        .ok_or_else(|| pack_update::bad("the index names a path, not a file"))?;
+    std::fs::create_dir_all(root).map_err(|e| io_fail("cannot make extras folder", e))?;
+    let mut staged = Staged::create(locales_store::extra_incoming_path(root))?;
+    pack_update::download_checked(client, src, url, entry.bytes, &entry.sha256, &mut staged).await?;
+    Ok((staged, entry.version, entry.bytes))
 }
 
 async fn download_with<H, F>(
     client: &reqwest::Client,
     src: &Source,
     root: &Path,
-    target: &Target,
+    ext: Ext,
     limit: Duration,
     hold: H,
     apply_lang: F,
@@ -422,18 +315,19 @@ where
 {
     let res = match tokio::time::timeout(limit, async {
         let (text, ix, hops) = fetch_index_step(client, src).await?;
-        let (staged, meta) = download_entry(client, src, &hops, &ix, root, target).await?;
-        Ok::<_, Stop>((staged, meta, text, ix))
+        let (staged, version, bytes) = download_entry(client, src, &hops, &ix, root, ext).await?;
+        Ok::<_, Stop>((staged, version, bytes, text, ix))
     })
     .await
     {
         Err(_) => Err(Fail::Offline(format!("no answer within {} ms", limit.as_millis())).into()),
         Ok(Err(stop)) => Err(stop),
-        Ok(Ok((staged, meta, text, ix))) => {
+        Ok(Ok((staged, version, bytes, text, ix))) => {
             let dir = root.to_path_buf();
             let done = tokio::task::spawn_blocking(move || {
                 let _hold = hold;
-                let r = install_staged(&dir, staged, meta, apply_lang);
+                let r = apply_lang(staged.path(), ext, version).map(|_| bytes).map_err(|i| map_lang_issues(&i));
+                drop(staged);
                 if r.is_ok() {
                     save_index(&dir, &text, &ix);
                 }
@@ -448,33 +342,14 @@ where
         }
     };
     let out = outcome_of(&res);
-    let label = target.label();
+    let label = ext.code();
     match res {
-        Ok(n) => tracing::info!("extra pack {label} installed ({n} bytes)"),
-        Err(Stop::Fail(Fail::UpToDate)) => tracing::info!("extra pack {label}: already up to date"),
-        Err(Stop::Fail(f)) => tracing::warn!("extra pack {label}: {} ({})", out.code(), f.detail()),
-        Err(Stop::NotListed) => tracing::warn!("extra pack {label}: not listed in extras index"),
+        Ok(n) => tracing::info!("extra pack lang:{label} installed ({n} bytes)"),
+        Err(Stop::Fail(Fail::UpToDate)) => tracing::info!("extra pack lang:{label}: already up to date"),
+        Err(Stop::Fail(f)) => tracing::warn!("extra pack lang:{label}: {} ({})", out.code(), f.detail()),
+        Err(Stop::NotListed) => tracing::warn!("extra pack lang:{label}: not listed in extras index"),
     }
     out
-}
-
-pub(crate) fn remove_art(root: &Path, region: &str) -> Outcome {
-    if !valid_code(region) || region == "default" || BUILTIN_ART_REGIONS.contains(&region) {
-        return Outcome::NotListed;
-    }
-    let path = root.join(art_file_name(region));
-    let Ok(meta) = std::fs::symlink_metadata(&path) else { return Outcome::NotListed };
-    if !meta.file_type().is_file() {
-        return Outcome::NotListed;
-    }
-    let gone = root.join(temp_name(GONE_PREFIX, ".json"));
-    if let Err(e) = std::fs::rename(&path, &gone) {
-        tracing::warn!("extra art {region}: cannot delete ({e})");
-        return Outcome::Io;
-    }
-    let _ = std::fs::remove_file(&gone);
-    tracing::info!("extra art {region} deleted");
-    Outcome::Removed
 }
 
 fn remove_lang_with<F>(remove_fn: F) -> Outcome
@@ -496,7 +371,6 @@ pub(crate) fn list_json_with(root: &Path, rt: &RuntimeSettings, out: Option<Outc
     let ix = known_index(root);
     let table = locales_store::current();
     let active = in_use_langs(rt);
-    let installed_art = installed_art_map(root);
 
     let langs: Vec<Value> = table
         .langs()
@@ -521,40 +395,11 @@ pub(crate) fn list_json_with(root: &Path, rt: &RuntimeSettings, out: Option<Outc
         })
         .collect();
 
-    let mut seen_art = BTreeSet::new();
-    let mut art = Vec::new();
-    if let Some(ix) = &ix {
-        for r in &ix.art {
-            seen_art.insert(r.region.clone());
-            let have = installed_art.get(&r.region);
-            art.push(json!({
-                "region": r.region,
-                "bytes": r.bytes,
-                "version": r.version,
-                "downloaded": have.is_some(),
-                "installed_version": have.map_or(0, |(_, v)| *v),
-            }));
-        }
-    }
-    for (region, (bytes, ver)) in installed_art {
-        if seen_art.contains(&region) {
-            continue;
-        }
-        art.push(json!({
-            "region": region,
-            "bytes": bytes,
-            "version": ver,
-            "downloaded": true,
-            "installed_version": ver,
-        }));
-    }
-
     let mut body = json!({
         "ok": true,
         "version": ix.as_ref().map_or(0, |x| x.version),
         "running": RUNNING.load(Ordering::SeqCst),
         "langs": langs,
-        "art": art,
     });
     if let Some(o) = out {
         body["result"] = json!(o.code());
@@ -568,14 +413,12 @@ fn with_result(state: &CallsState, out: Outcome) -> Response {
 }
 
 #[derive(Deserialize)]
-struct TargetRequest {
+struct LangRequest {
     #[serde(default)]
     lang: Option<String>,
-    #[serde(default)]
-    art: Option<String>,
 }
 
-/// `GET /api/extras`: all 70 extra languages + known region art and install status.
+/// `GET /api/extras`: all 70 extra languages and their install status.
 async fn list(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>) -> Response {
     if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
         return unauthorized();
@@ -584,7 +427,7 @@ async fn list(State(state): State<CallsState>, headers: HeaderMap, Query(q): Que
     Json(list_json_with(&extras_root(), &rt, None)).into_response()
 }
 
-/// `POST /api/extras/download {"lang": "..."}` or `{"art": "..."}`.
+/// `POST /api/extras/download {"lang": "..."}`: the language pack, with the drawings of its regions.
 async fn download(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, body: Bytes) -> Response {
     if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
         return unauthorized();
@@ -592,11 +435,11 @@ async fn download(State(state): State<CallsState>, headers: HeaderMap, Query(q):
     if !pack_update::json_request(&headers) {
         return pack_update::json_required();
     }
-    let Ok(req) = serde_json::from_slice::<TargetRequest>(&body) else {
-        return api_error(StatusCode::BAD_REQUEST, "bad_request", "expected {\"lang\": \"<code>\"} or {\"art\": \"<region>\"}");
+    let Ok(req) = serde_json::from_slice::<LangRequest>(&body) else {
+        return api_error(StatusCode::BAD_REQUEST, "bad_request", BAD_REQUEST);
     };
-    let target = match target_from_req(req.lang.as_deref(), req.art.as_deref()) {
-        Ok(Some(t)) => t,
+    let ext = match lang_from_req(req.lang.as_deref()) {
+        Ok(Some(e)) => e,
         Ok(None) => return with_result(&state, Outcome::NotListed),
         Err(msg) => return api_error(StatusCode::BAD_REQUEST, "bad_request", msg),
     };
@@ -612,7 +455,7 @@ async fn download(State(state): State<CallsState>, headers: HeaderMap, Query(q):
                 return Outcome::Offline;
             }
         };
-        download_with(&client, &Source::official(), &root, &target, TOTAL_TIMEOUT, running, |staged, ext, ver| {
+        download_with(&client, &Source::official(), &root, ext, TOTAL_TIMEOUT, running, |staged, ext, ver| {
             locales_store::install_extra_lang(staged, ext, Some(ver)).map(|_| ())
         })
         .await
@@ -624,7 +467,7 @@ async fn download(State(state): State<CallsState>, headers: HeaderMap, Query(q):
     with_result(&state, out)
 }
 
-/// `POST /api/extras/delete {"lang": "..."}` or `{"art": "..."}`.
+/// `POST /api/extras/delete {"lang": "..."}`: the language pack and the drawings it brought.
 async fn delete(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<TokenQuery>, body: Bytes) -> Response {
     if !token_ok_parts(&state.settings, &headers, q.token.as_deref()) {
         return unauthorized();
@@ -632,28 +475,22 @@ async fn delete(State(state): State<CallsState>, headers: HeaderMap, Query(q): Q
     if !pack_update::json_request(&headers) {
         return pack_update::json_required();
     }
-    let Ok(req) = serde_json::from_slice::<TargetRequest>(&body) else {
-        return api_error(StatusCode::BAD_REQUEST, "bad_request", "expected {\"lang\": \"<code>\"} or {\"art\": \"<region>\"}");
+    let Ok(req) = serde_json::from_slice::<LangRequest>(&body) else {
+        return api_error(StatusCode::BAD_REQUEST, "bad_request", BAD_REQUEST);
     };
-    let target = match target_from_req(req.lang.as_deref(), req.art.as_deref()) {
-        Ok(Some(t)) => t,
+    let ext = match lang_from_req(req.lang.as_deref()) {
+        Ok(Some(e)) => e,
         Ok(None) => return with_result(&state, Outcome::NotListed),
         Err(msg) => return api_error(StatusCode::BAD_REQUEST, "bad_request", msg),
     };
     let rt = state.settings_store.snapshot();
-    if let Target::Lang(ext) = &target {
-        if in_use_langs(&rt).contains(ext) {
-            return with_result(&state, Outcome::InUse);
-        }
+    if in_use_langs(&rt).contains(&ext) {
+        return with_result(&state, Outcome::InUse);
     }
     let Some(_running) = Running::take() else {
         return with_result(&state, Outcome::Busy);
     };
-    let root = extras_root();
-    let out = match target {
-        Target::Lang(ext) => remove_lang_with(|| locales_store::remove_extra_lang(ext)),
-        Target::Art(region) => remove_art(&root, &region),
-    };
+    let out = remove_lang_with(|| locales_store::remove_extra_lang(ext));
     if out == Outcome::Removed {
         state.settings_store.snapshot().apply_globals();
     }
@@ -665,7 +502,7 @@ async fn delete(State(state): State<CallsState>, headers: HeaderMap, Query(q): Q
 #[derive(Default)]
 struct AutoCooldowns {
     last_index_fetch: Option<Instant>,
-    items: HashMap<Target, Instant>,
+    items: HashMap<Ext, Instant>,
 }
 
 static COOLDOWNS: LazyLock<Mutex<AutoCooldowns>> = LazyLock::new(|| Mutex::new(AutoCooldowns::default()));
@@ -677,21 +514,31 @@ pub(crate) fn clear_index_cooldown() {
 
 // ---- public read-only static endpoints --------------------------------------------------------
 
-fn serve_art_from(root: &Path, file: &str, headers: &HeaderMap) -> Response {
+/// A region's drawing: built in, else from a downloaded language pack of
+/// table. The regions drawn into the page itself and `default` have none here.
+fn art_text_in(table: &LocaleTable, region: &str) -> Option<String> {
+    if !valid_code(region) || region == "default" || BUILTIN_ART_REGIONS.contains(&region) {
+        return None;
+    }
+    builtin_art().get(region).cloned().or_else(|| locales_store::region_art_in(table, region))
+}
+
+fn serve_art_in(table: &LocaleTable, file: &str, headers: &HeaderMap) -> Response {
     let Some(region) = file.strip_prefix(ART_FILE_PREFIX).and_then(|s| s.strip_suffix(ART_FILE_SUFFIX)) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let Some((_, _, text)) = read_installed_art(root, region) else {
+    let Some(text) = art_text_in(table, region) else {
         return StatusCode::NOT_FOUND.into_response();
     };
     let asset = console_i18n::asset_of(text);
     asset_response(headers, &asset, "application/json; charset=utf-8", "Accept-Encoding")
 }
 
-/// `GET /calls/extras/art/<art-<region>.json>`: serves an already-downloaded and
-/// verified mascot art file (public like `/calls/i18n/`, never triggers download).
+/// `GET /calls/extras/art/<art-<region>.json>`: a built-in drawing or one a
+/// downloaded language pack brought (public like `/calls/i18n/`, never
+/// triggers a download).
 async fn serve_art(UrlPath(file): UrlPath<String>, headers: HeaderMap) -> Response {
-    serve_art_from(&extras_root(), &file, &headers)
+    serve_art_in(locales_store::current(), &file, &headers)
 }
 
 /// `GET /calls/i18n/desktop/<code>.json`: one extra language's desktop strings
@@ -719,7 +566,7 @@ pub fn router() -> Router<CallsState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bageo_packs::extras::lang_file_name;
+    use bageo_packs::extras::{check_art, lang_file_name};
     use crate::pack_update::tests::{tmp, Reply, Server};
     use flate2::write::GzEncoder;
     use flate2::Compression;
@@ -731,6 +578,12 @@ mod tests {
     const LATEST: &str = "/h4lo-void/bageo-packs/releases/latest/download/bageo-extras-index.json";
     const TAGGED: &str = "/h4lo-void/bageo-packs/releases/download/v9/";
 
+    /// The regions whose main language is a core language (bageo-packs regions/*.json).
+    const CORE_LANG_REGIONS: [&str; 19] = [
+        "ar-uy", "at", "au-nz", "be", "ca", "ch", "cn", "es", "gb-ie", "hk-mo", "in", "ke-tz-et-mg-ht", "latam", "lu", "mx", "ph", "pt",
+        "sg", "za",
+    ];
+
     fn sha256(bytes: &[u8]) -> String {
         format!("{:x}", Sha256::digest(bytes))
     }
@@ -741,7 +594,7 @@ mod tests {
         enc.finish().unwrap()
     }
 
-    fn sample_lang_gz(code: &str, version: u64, with_console: bool, with_desktop: bool) -> Vec<u8> {
+    fn sample_lang(code: &str, version: u64, with_console: bool, with_desktop: bool) -> Value {
         let info = Ext::from_code(code).unwrap();
         let (native, en_name, zh_name, sample) = match code {
             "th" => ("ไทย", "Thai", "泰文", "ข้อความ"),
@@ -775,11 +628,15 @@ mod tests {
             }
             root["desktop"] = json!({ "strings": strings });
         }
-        gz(&root)
+        root
     }
 
-    fn sample_art_json(region: &str, version: u64) -> Vec<u8> {
-        serde_json::to_vec(&json!({
+    fn sample_lang_gz(code: &str, version: u64, with_console: bool, with_desktop: bool) -> Vec<u8> {
+        gz(&sample_lang(code, version, with_console, with_desktop))
+    }
+
+    fn sample_art(region: &str, version: u64) -> Value {
+        json!({
             "format": 1,
             "region": region,
             "version": version,
@@ -801,11 +658,10 @@ mod tests {
                 },
                 "acc": [{ "l": [1, 2], "nodes": [["path", { "d": "M 0 0 L 5 5", "stroke": "#2a5d4a" }]] }]
             }
-        }))
-        .unwrap()
+        })
     }
 
-    fn index_for(version: u64, langs: &[(&str, u64, &[u8], &str)], art: &[(&str, u64, &[u8])]) -> String {
+    fn index_for(version: u64, langs: &[(&str, u64, &[u8], &str)]) -> String {
         let lang_entries: Vec<Value> = langs
             .iter()
             .map(|(code, ver, bytes, level)| {
@@ -821,24 +677,11 @@ mod tests {
                 })
             })
             .collect();
-        let art_entries: Vec<Value> = art
-            .iter()
-            .map(|(region, ver, bytes)| {
-                json!({
-                    "region": region,
-                    "file": art_file_name(region),
-                    "bytes": bytes.len(),
-                    "sha256": sha256(bytes),
-                    "version": ver,
-                    "min_bageo": "1.0.0",
-                })
-            })
-            .collect();
         json!({
             "format": bageo_packs::extras::EXTRAS_FORMAT,
             "version": version,
             "langs": lang_entries,
-            "art": art_entries,
+            "art": [],
         })
         .to_string()
     }
@@ -857,76 +700,127 @@ mod tests {
         })
     }
 
+    type Slot = Arc<Mutex<Option<&'static LocaleTable>>>;
+
+    /// Downloads and installs one language the way the route does, keeping the table it built.
+    async fn get_lang(srv: &Server, packs_dir: &Path, count: &Arc<AtomicUsize>, code: &str) -> (Outcome, Option<&'static LocaleTable>) {
+        let root = locales_store::extras_dir(packs_dir);
+        let slot: Slot = Arc::new(Mutex::new(None));
+        let (c, pd, s) = (count.clone(), packs_dir.to_path_buf(), slot.clone());
+        let client = pack_update::client_with(TOTAL_TIMEOUT).unwrap();
+        let out = download_with(&client, &srv.source(), &root, Ext::from_code(code).unwrap(), TOTAL_TIMEOUT, (), move |staged, ext, ver| {
+            let t = locales_store::install_extra_lang_counted(&c, &pd, staged, ext, Some(ver))?;
+            *s.lock().unwrap() = Some(t);
+            Ok(())
+        })
+        .await;
+        let t = *slot.lock().unwrap();
+        (out, t)
+    }
+
     #[tokio::test]
-    async fn lang_and_art_download_install_serve_and_remove_cleanly() {
+    async fn a_language_brings_its_drawings_and_takes_them_when_deleted() {
         let d = tmp();
         let count = Arc::new(AtomicUsize::new(0));
         let packs_dir = d.0.join("packs");
         let root = locales_store::extras_dir(&packs_dir);
-        let th_gz = sample_lang_gz("th", 2026112101, true, true);
-        let vn_art = sample_art_json("vn", 2026112101);
-        let ix = index_for(
-            2026112101,
-            &[("th", 2026112101, &th_gz, "console")],
-            &[("vn", 2026112101, &vn_art)],
-        );
-        let srv = release(
-            ix,
-            vec![
-                (lang_file_name("th"), th_gz.clone()),
-                (art_file_name("vn"), vn_art.clone()),
-            ],
-        );
+        let mut bad = sample_art("kh", 2026112101);
+        bad["draw"]["print"] = json!([["script", {}]]);
+        let mut th = sample_lang("th", 2026112101, true, true);
+        th["art"] = json!({ "th": sample_art("th", 2026112101), "la": sample_art("la", 2026112101), "kh": bad });
+        let th_gz = gz(&th);
+        let srv = release(index_for(2026112101, &[("th", 2026112101, &th_gz, "console")]), vec![(lang_file_name("th"), th_gz.clone())]);
 
-        let c = count.clone();
-        let pd = packs_dir.clone();
-        let client = pack_update::client_with(TOTAL_TIMEOUT).unwrap();
-        let out = download_with(&client, &srv.source(), &root, &Target::Lang(Ext::from_code("th").unwrap()), TOTAL_TIMEOUT, (), move |staged, ext, ver| {
-            locales_store::install_extra_lang_counted(&c, &pd, staged, ext, Some(ver)).map(|_| ())
-        })
-        .await;
+        let (out, table) = get_lang(&srv, &packs_dir, &count, "th").await;
         assert_eq!(out, Outcome::Installed);
-        assert_eq!(locales_store::single_extra_version(&root, Ext::from_code("th").unwrap()), 2026112101);
+        let table = table.unwrap();
+        let thai = Ext::from_code("th").unwrap();
+        assert_eq!(table.stage(thai), locales_store::Stage::Console, "the language installs even with a broken drawing");
+        assert_eq!(locales_store::single_extra_version(&root, thai), 2026112101);
         assert!(kept_index(&root));
 
-        // Same version again -> UpToDate, index not refetched excessively.
-        let c = count.clone();
-        let pd = packs_dir.clone();
-        let out2 = download_with(&client, &srv.source(), &root, &Target::Lang(Ext::from_code("th").unwrap()), TOTAL_TIMEOUT, (), move |staged, ext, ver| {
-            locales_store::install_extra_lang_counted(&c, &pd, staged, ext, Some(ver)).map(|_| ())
-        })
-        .await;
-        assert_eq!(out2, Outcome::UpToDate);
-
-        // Download & serve art-vn.json.
-        let out_art = download_with(&client, &srv.source(), &root, &Target::Art("vn".into()), TOTAL_TIMEOUT, (), |_, _, _| Ok(())).await;
-        assert_eq!(out_art, Outcome::Installed);
-        let resp = serve_art_from(&root, "art-vn.json", &HeaderMap::new());
+        // Its drawings are served; the broken one was left out alone.
+        let resp = serve_art_in(table, "art-th.json", &HeaderMap::new());
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(resp.headers()["x-content-type-options"], "nosniff");
         assert_eq!(resp.headers()[axum::http::header::CACHE_CONTROL], "no-cache");
         let etag = resp.headers()[axum::http::header::ETAG].clone();
         let mut inm = HeaderMap::new();
         inm.insert(axum::http::header::IF_NONE_MATCH, etag);
-        assert_eq!(serve_art_from(&root, "art-vn.json", &inm).status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(serve_art_in(table, "art-th.json", &inm).status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(serve_art_in(table, "art-la.json", &HeaderMap::new()).status(), StatusCode::OK);
+        assert_eq!(serve_art_in(table, "art-kh.json", &HeaderMap::new()).status(), StatusCode::NOT_FOUND);
+        let body: Value = serde_json::from_str(&art_text_in(table, "la").unwrap()).unwrap();
+        assert_eq!(body["region"], "la");
+        // Regions drawn into the page, default and odd names are never served here.
+        for file in ["art-tw.json", "art-default.json", "art-TH.json", "th.json", "art-../x.json"] {
+            assert_eq!(serve_art_in(table, file, &HeaderMap::new()).status(), StatusCode::NOT_FOUND, "{file}");
+        }
 
-        // Built-in or missing art is never served.
-        assert_eq!(serve_art_from(&root, "art-tw.json", &HeaderMap::new()).status(), StatusCode::NOT_FOUND);
-        assert_eq!(serve_art_from(&root, "art-th.json", &HeaderMap::new()).status(), StatusCode::NOT_FOUND);
+        // Same version again -> UpToDate.
+        let (out2, _) = get_lang(&srv, &packs_dir, &count, "th").await;
+        assert_eq!(out2, Outcome::UpToDate);
 
-        // Restore clears the kept index; remove_art & remove_lang clean up files.
+        // Restore clears the kept index.
         restore_builtin_index(&root).unwrap();
         assert!(!kept_index(&root));
-        assert_eq!(remove_art(&root, "vn"), Outcome::Removed);
-        assert_eq!(remove_art(&root, "vn"), Outcome::NotListed);
-        assert_eq!(serve_art_from(&root, "art-vn.json", &HeaderMap::new()).status(), StatusCode::NOT_FOUND);
-        // Removing the only pack goes back to the built-in table: nothing new kept.
-        let before = count.load(Ordering::SeqCst);
-        let removed = remove_lang_with(|| {
-            locales_store::remove_extra_lang_counted(&count, &packs_dir, Ext::from_code("th").unwrap()).map(|(_, r)| r)
-        });
-        assert_eq!(removed, Outcome::Removed);
-        assert_eq!(count.load(Ordering::SeqCst), before);
+
+        // Deleting the language deletes its drawings; the built-in ones stay.
+        let (after, removed) = locales_store::remove_extra_lang_counted(&count, &packs_dir, thai).unwrap();
+        assert!(removed);
+        assert_eq!(serve_art_in(after, "art-th.json", &HeaderMap::new()).status(), StatusCode::NOT_FOUND);
+        assert_eq!(serve_art_in(after, "art-la.json", &HeaderMap::new()).status(), StatusCode::NOT_FOUND);
+        assert_eq!(serve_art_in(after, "art-mx.json", &HeaderMap::new()).status(), StatusCode::OK);
+        assert!(!root.join(lang_file_name("th")).exists());
+    }
+
+    #[tokio::test]
+    async fn a_pack_without_drawings_still_installs() {
+        let d = tmp();
+        let count = Arc::new(AtomicUsize::new(0));
+        let packs_dir = d.0.join("packs");
+        let th_gz = sample_lang_gz("th", 2026112101, true, true);
+        assert!(sample_lang("th", 2026112101, true, true).get("art").is_none());
+        let srv = release(index_for(2026112101, &[("th", 2026112101, &th_gz, "console")]), vec![(lang_file_name("th"), th_gz)]);
+        let (out, table) = get_lang(&srv, &packs_dir, &count, "th").await;
+        assert_eq!(out, Outcome::Installed);
+        let table = table.unwrap();
+        assert_eq!(table.stage(Ext::from_code("th").unwrap()), locales_store::Stage::Console);
+        assert_eq!(serve_art_in(table, "art-th.json", &HeaderMap::new()).status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn builtin_drawings_cover_the_core_language_regions() {
+        let have: Vec<&str> = builtin_art().keys().map(String::as_str).collect();
+        assert_eq!(have, CORE_LANG_REGIONS);
+        let table = locales_store::builtin();
+        for region in CORE_LANG_REGIONS {
+            let resp = serve_art_in(table, &format!("art-{region}.json"), &HeaderMap::new());
+            assert_eq!(resp.status(), StatusCode::OK, "{region}");
+            let text = art_text_in(table, region).unwrap();
+            let v: Value = serde_json::from_str(&text).unwrap();
+            assert_eq!(v["region"], region);
+            assert!(check_art(&format!("art-{region}.json"), text.as_bytes(), region).is_empty(), "{region}");
+        }
+        for region in BUILTIN_ART_REGIONS {
+            assert!(!builtin_art().contains_key(region), "{region} is drawn into the page");
+        }
+        // A region of an extra language comes only with its language pack.
+        assert!(art_text_in(table, "pl").is_none());
+    }
+
+    #[test]
+    fn start_up_clears_drawings_downloaded_one_by_one() {
+        let d = tmp();
+        let root = d.0.join("extras");
+        std::fs::create_dir_all(&root).unwrap();
+        for name in ["art-vn.json", ".incoming-art-1-x.json", ".incoming-extra-lang-1-x.json.gz", "lang-th.json.gz", INDEX_NAME] {
+            std::fs::write(root.join(name), b"x").unwrap();
+        }
+        clear_unfinished(&root);
+        let mut left: Vec<String> = std::fs::read_dir(&root).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        left.sort();
+        assert_eq!(left, [INDEX_NAME, "lang-th.json.gz"]);
     }
 
     #[tokio::test]
@@ -934,20 +828,14 @@ mod tests {
         let d = tmp();
         let packs_dir = d.0.join("packs");
         let root = locales_store::extras_dir(&packs_dir);
-        let client = pack_update::client_with(TOTAL_TIMEOUT).unwrap();
+        let count = Arc::new(AtomicUsize::new(0));
         let th_gz = sample_lang_gz("th", 2026112101, false, false);
 
         // SHA mismatch -> BadPack, nothing left behind.
         let mut tampered = th_gz.clone();
         tampered[10] ^= 0x55;
-        let ix = index_for(2026112101, &[("th", 2026112101, &th_gz, "notify")], &[]);
-        let srv = release(ix, vec![(lang_file_name("th"), tampered)]);
-        let c = Arc::new(AtomicUsize::new(0));
-        let pd = packs_dir.clone();
-        let out = download_with(&client, &srv.source(), &root, &Target::Lang(Ext::from_code("th").unwrap()), TOTAL_TIMEOUT, (), move |staged, ext, ver| {
-            locales_store::install_extra_lang_counted(&c, &pd, staged, ext, Some(ver)).map(|_| ())
-        })
-        .await;
+        let srv = release(index_for(2026112101, &[("th", 2026112101, &th_gz, "notify")]), vec![(lang_file_name("th"), tampered)]);
+        let (out, _) = get_lang(&srv, &packs_dir, &count, "th").await;
         assert_eq!(out, Outcome::BadPack);
         assert!(!kept_index(&root), "index must not be saved when install fails");
         assert_eq!(locales_store::single_extra_version(&root, Ext::from_code("th").unwrap()), 0);
@@ -955,12 +843,7 @@ mod tests {
         // Format newer -> UpdateBageo.
         let newer_ix = json!({ "format": 99, "version": 2026112101u64, "langs": [], "art": [] }).to_string();
         let srv2 = release(newer_ix, Vec::new());
-        let c2 = Arc::new(AtomicUsize::new(0));
-        let pd2 = packs_dir.clone();
-        let out2 = download_with(&client, &srv2.source(), &root, &Target::Lang(Ext::from_code("th").unwrap()), TOTAL_TIMEOUT, (), move |staged, ext, ver| {
-            locales_store::install_extra_lang_counted(&c2, &pd2, staged, ext, Some(ver)).map(|_| ())
-        })
-        .await;
+        let (out2, _) = get_lang(&srv2, &packs_dir, &count, "th").await;
         assert_eq!(out2, Outcome::UpdateBageo);
 
         // Uncompressed > 600 KiB zip bomb -> BadPack.
@@ -975,32 +858,12 @@ mod tests {
             "status": "ai_checked",
             "notify": { "strings": { "n_test_title": big_str }, "lists": {}, "formats": {} },
         }));
-        let bomb_ix = index_for(2026112102, &[("th", 2026112102, &bomb_gz, "notify")], &[]);
-        let srv3 = release(bomb_ix, vec![(lang_file_name("th"), bomb_gz)]);
-        let c3 = Arc::new(AtomicUsize::new(0));
-        let pd3 = packs_dir.clone();
-        let out3 = download_with(&client, &srv3.source(), &root, &Target::Lang(Ext::from_code("th").unwrap()), TOTAL_TIMEOUT, (), move |staged, ext, ver| {
-            locales_store::install_extra_lang_counted(&c3, &pd3, staged, ext, Some(ver)).map(|_| ())
-        })
-        .await;
+        let srv3 = release(index_for(2026112102, &[("th", 2026112102, &bomb_gz, "notify")]), vec![(lang_file_name("th"), bomb_gz)]);
+        let (out3, _) = get_lang(&srv3, &packs_dir, &count, "th").await;
         assert_eq!(out3, Outcome::BadPack);
 
-        // Script injection inside art SVG -> rejected by check_art and never served.
-        let bad_art = serde_json::to_vec(&json!({
-            "format": 1,
-            "region": "vn",
-            "version": 2026112101u64,
-            "look": { "bow": false, "print": "lotus", "pal": { "o1": "#2a5d4a" }, "scenes": [["day", []]] },
-            "draw": { "print": [["script", {}, []]] }
-        }))
-        .unwrap();
-        let bad_ix = index_for(2026112101, &[], &[("vn", 2026112101, &bad_art)]);
-        let srv4 = release(bad_ix, vec![(art_file_name("vn"), bad_art)]);
-        let out4 = download_with(&client, &srv4.source(), &root, &Target::Art("vn".into()), TOTAL_TIMEOUT, (), |_, _, _| Ok(())).await;
-        assert_eq!(out4, Outcome::BadPack);
-
         // Redirect to an unapproved host -> BadPack.
-        let evil_ix = index_for(2026112101, &[("th", 2026112101, &th_gz, "notify")], &[]);
+        let evil_ix = index_for(2026112101, &[("th", 2026112101, &th_gz, "notify")]);
         let srv5 = Server::start(move |path| {
             if path == LATEST {
                 Reply::Body(evil_ix.clone().into_bytes())
@@ -1010,12 +873,7 @@ mod tests {
                 Reply::NotFound
             }
         });
-        let c5 = Arc::new(AtomicUsize::new(0));
-        let pd5 = packs_dir.clone();
-        let out5 = download_with(&client, &srv5.source(), &root, &Target::Lang(Ext::from_code("th").unwrap()), TOTAL_TIMEOUT, (), move |staged, ext, ver| {
-            locales_store::install_extra_lang_counted(&c5, &pd5, staged, ext, Some(ver)).map(|_| ())
-        })
-        .await;
+        let (out5, _) = get_lang(&srv5, &packs_dir, &count, "th").await;
         assert_eq!(out5, Outcome::BadPack);
     }
 
@@ -1073,11 +931,12 @@ mod tests {
         assert_eq!(r.status(), StatusCode::OK);
         let body: Value = serde_json::from_str(&crate::calls_http::tests::body_text(r).await).unwrap();
         assert_eq!(body["result"], "in_use");
+        assert!(body.get("art").is_none());
 
         // Core language or bad code returns not_listed.
         let r2 = download(
             State(state.clone()),
-            h,
+            h.clone(),
             Query(TokenQuery { token: Some("extras-secret".into()) }),
             Bytes::from_static(br#"{"lang":"en"}"#),
         )
@@ -1085,6 +944,14 @@ mod tests {
         assert_eq!(r2.status(), StatusCode::OK);
         let body2: Value = serde_json::from_str(&crate::calls_http::tests::body_text(r2).await).unwrap();
         assert_eq!(body2["result"], "not_listed");
+
+        // Drawings are no longer downloaded or deleted one by one.
+        for route in ["download", "delete"] {
+            let body = Bytes::from_static(br#"{"art":"vn"}"#);
+            let q = Query(TokenQuery { token: Some("extras-secret".into()) });
+            let r = if route == "download" { download(State(state.clone()), h.clone(), q, body).await } else { delete(State(state.clone()), h.clone(), q, body).await };
+            assert_eq!(r.status(), StatusCode::BAD_REQUEST, "{route}");
+        }
     }
 
     #[test]

@@ -1319,7 +1319,6 @@
     "ex_r_in_use": "Can't delete while selected in settings.",
     "ex_empty": "No matching languages",
     "ph_app_ver_diff": "Differs from Bageo {v}",
-    "ts_get_art": "Download local scene",
     "m_ai_title": "AI answering",
     "m_ai_on_tag": "Active",
     "m_ai_off_tag": "Normal phone",

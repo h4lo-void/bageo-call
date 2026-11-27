@@ -1319,7 +1319,6 @@
     "ex_r_in_use": "No se puede eliminar mientras siga en uso.",
     "ex_empty": "Sin idiomas que coincidan",
     "ph_app_ver_diff": "Difiere de Bageo {v}",
-    "ts_get_art": "Descargar escena local",
     "m_ai_title": "Contestador con IA",
     "m_ai_on_tag": "Activo",
     "m_ai_off_tag": "Teléfono normal",
