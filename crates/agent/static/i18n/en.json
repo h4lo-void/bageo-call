@@ -336,8 +336,8 @@
     "f_notify_lang": "Language of notifications and summaries",
     "f_notify_lang_h": "The language of the notifications and summaries you read. It does not change the language the AI speaks to callers.",
     "nl_same": "Same as the AI's language",
-    "f_simlang": "Main language for each SIM",
-    "f_simlang_h": "Only needed when a phone has a SIM from another region: calls to that SIM open in the language you pick here. Needs the phone app 1.0 or newer.",
+    "f_simlang": "Languages for each SIM",
+    "f_simlang_h": "Calls to this SIM start in the main language; a call from abroad uses the second language set for its region, else its country's language. Needs the phone app 1.0 or newer.",
     "sl_country": "SIM region",
     "sl_lang": "Main language",
     "sl_pick": "Choose a region",
@@ -410,7 +410,7 @@
     "f_vad": "Let Gemini decide when the caller has finished",
     "f_vad_h": "Recommended. Off: loudness alone decides instead.",
     "f_reply_lang": "Reply in the caller's language",
-    "f_reply_lang_h": "When the caller speaks another language, the AI switches to it.",
+    "f_reply_lang_h": "The AI switches only when the caller clearly speaks another language in full sentences. A quick “hello” or unclear words don't count.",
     "f_status": "Status note",
     "f_status_h": "A note about right now, such as where a courier should leave a parcel. The AI mentions it only when it fits the call.",
     "f_status_ph": "e.g. Deliveries: please leave the parcel at the front desk.",
@@ -1403,6 +1403,13 @@
     "ph_fit_yes": "Yes",
     "ph_fit_no": "No",
     "ph_fit_retest": "Other call audio settings are ready. Call this phone again to test them.",
-    "ph_fit_noted": "Noted: this phone's call audio has a problem"
+    "ph_fit_noted": "Noted: this phone's call audio has a problem",
+    "sl_lang_sim": "The SIM region's language",
+    "sl_region": "Region",
+    "sl_region_sim": "Same as the SIM",
+    "sl_region_none": "Not set",
+    "sl_second1": "Second language 1",
+    "sl_second2": "Second language 2",
+    "sl_second_none": "None"
   }
 }

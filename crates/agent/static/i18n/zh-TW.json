@@ -367,8 +367,8 @@
     "f_notify_lang": "通知和摘要的語言",
     "f_notify_lang_h": "你收到的通知和摘要用這個語言。AI 跟來電者講話的語言不受影響。",
     "nl_same": "跟 AI 講話的語言相同",
-    "f_simlang": "各 SIM 卡的主要語言",
-    "f_simlang_h": "手機有其他地區的 SIM 卡才需要設：打到那張卡的電話，AI 會用這裡選的語言開場。手機 App 要 1.0 以上。",
+    "f_simlang": "各 SIM 卡的語言",
+    "f_simlang_h": "打到這張卡的電話先用主要語言；國外號碼依國碼判斷，剛好是副語言的地區就用副語言。手機 App 要 1.0 以上。",
     "sl_country": "SIM 卡地區",
     "sl_lang": "主要語言",
     "sl_pick": "選擇地區",
@@ -441,7 +441,7 @@
     "f_vad": "讓 Gemini 判斷對方什麼時候講完",
     "f_vad_h": "建議開啟。關閉的話，改用音量大小來判斷。",
     "f_reply_lang": "用對方的語言回答",
-    "f_reply_lang_h": "對方講別的語言時，AI 會跟著切換。",
+    "f_reply_lang_h": "確定對方改講別的語言（講了完整的句子）才跟著換；只說一聲「喂」或聽不清楚不會換。",
     "f_status": "狀態留言",
     "f_status_h": "寫下你現在的狀況，例如包裹要放哪裡。跟來電有關時 AI 才會提到。",
     "f_status_ph": "例如：如果是送貨，請把包裹放在管理室。",
@@ -1403,6 +1403,13 @@
     "ph_fit_yes": "有",
     "ph_fit_no": "沒有",
     "ph_fit_retest": "已換一組通話聲音設定，請再打一通電話測試。",
-    "ph_fit_noted": "已記下這支手機的通話聲音有問題"
+    "ph_fit_noted": "已記下這支手機的通話聲音有問題",
+    "sl_lang_sim": "SIM 卡地區的語言",
+    "sl_region": "地區",
+    "sl_region_sim": "跟 SIM 卡一樣",
+    "sl_region_none": "不指定",
+    "sl_second1": "副語言 1",
+    "sl_second2": "副語言 2",
+    "sl_second_none": "不用"
   }
 }

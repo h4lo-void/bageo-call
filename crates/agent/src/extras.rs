@@ -210,7 +210,7 @@ fn in_use_langs(rt: &RuntimeSettings) -> BTreeSet<Ext> {
     let mut set = BTreeSet::new();
     for code in std::iter::once(rt.language.as_str())
         .chain(std::iter::once(rt.notify_language.as_str()))
-        .chain(rt.sim_languages.values().map(String::as_str))
+        .chain(rt.sim_languages.values().flat_map(crate::settings_store::SimLang::codes))
     {
         if let Some(ext) = Ext::from_code(&code.trim().to_ascii_lowercase()) {
             set.insert(ext);
