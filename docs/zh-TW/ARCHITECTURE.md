@@ -73,7 +73,7 @@ flowchart LR
 | `backup.rs`、`backup_crypt.rs` | 自動與手動備份、勾選匯出／匯入，以及 `.bageo` 加密（Argon2id + XChaCha20-Poly1305）。 |
 | `settings_store.rs` | `.env` 加上控制台存的設定，改了不用重新啟動。 |
 | `pack_update.rs`、`packs_store.rs` | 「檢查更新」：只在你按下時才從 GitHub 下載新版當地資料、翻譯與提示詞，檢查後存起來，通話從這份讀取。 |
-| `extras.rs`、`locales_store.rs` | 另外 70 種語言：語言包與地區插圖用到才下載，以及控制台和通知讀的翻譯。 |
+| `extras.rs`、`locales_store.rs` | 另外 70 種語言：語言包（帶著說這個語言的地區插圖）用到才下載，以及控制台和通知讀的翻譯；主要語言是內建九種的地區，插圖內建。 |
 | `lan.rs`、`phone_wifi.rs` | 區網存取把關、`Host` 標頭檢查、猜密碼限速，以及 USB 轉 Wi-Fi 的手機配對金鑰。 |
 | `usb_bridge.rs` | 為每支 USB 手機維持 `adb reverse`，並啟動 App 的通話服務。 |
 | `mdns.rs` | 在區網回應 `bageo.local`（multicast DNS），不知道電腦 IP 也能打開控制台。 |

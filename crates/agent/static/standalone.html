@@ -1326,10 +1326,6 @@ input[type=text],input[type=search],input[type=password],input[type=url],input[t
                 <button type="button" class="btn sm primary" id="btnTsVpVoice"></button>
                 <span class="pv-status" id="tsVpStatus" aria-live="polite"></span>
               </div>
-              <div class="pv" id="tsArtBox" hidden>
-                <button type="button" class="btn sm" id="btnTsArt" data-i18n="ts_get_art"></button>
-                <span class="pv-status" id="tsArtStatus" aria-live="polite"></span>
-              </div>
             </div>
           </div>
         </div>
@@ -5302,7 +5298,7 @@ const TS_EXT_SLOTS = ["outfit3", "outfit4", "outfit5", "neck", "head"];
 const TS_EXT_GROUPS = ["bts-ext-prop0", "bts-ext-prop1", "bts-ext-prop2", "bts-ext-print", "bts-ext-outfit3", "bts-ext-outfit4", "bts-ext-outfit5", "bts-ext-neck", "bts-ext-head", "bts-ext-item"];
 const TS_EXT_ART = {}, TS_EXT_LOADING = {}, TS_EXT_MISS = {};
 const TS_LINES = { "default": { p: ["Hey there! What's up? Sure thing!", "Hi there! Yeah go ahead—got it, thanks!", "Hello, speaking. Understood, thanks.", "Good day, thank you for calling.", "Hello, thank you for calling. Noted."], a: ["Hi there! Busy right now—what's up?", "Hello! Taking calls—what message can I note?", "Hello, thanks for calling. Let me take a message.", "Good day, please leave a message with me.", "Hello, thank you for calling. I will relay your message."] } };
-let tsExtMounted = "", tsScene = -1, tsSceneShown = 0, tsRegionShown = "", tsArtDownloading = false;
+let tsExtMounted = "", tsScene = -1, tsSceneShown = 0, tsRegionShown = "";
 const tsReduced = matchMedia("(prefers-reduced-motion: reduce)");
 const tsListed = (attr, v) => !attr || ("," + attr + ",").includes("," + v + ",");
 function tsReplay(el, cls) { el.classList.remove(cls); el.getBoundingClientRect(); el.classList.add(cls); }
@@ -5405,10 +5401,6 @@ function tsRender(animate) {
   const rObj = regionOfCountry(homeCountryNow());
   const sample = tsSampleLine((rObj && rObj.code) || code, level, pickedStyle() === "persona", curCallLang());
   $("tsBubbleDesc").textContent = sample || t("ts_" + level + "_d");
-  if ($("tsArtBox")) {
-    const wantArt = rObj && rObj.code && rObj.code !== "default" && !TS_REGIONS[rObj.code] && !TS_EXT_ART[rObj.code] && !!TS_EXT_MISS[rObj.code];
-    $("tsArtBox").hidden = !wantArt && !tsArtDownloading;
-  }
   svg.setAttribute("data-level", String(level));
   for (const key of Object.keys(TS_BASE)) svg.style.setProperty("--bts-" + key, r.pal[key] || TS_BASE[key]);
   box.querySelectorAll(".bts-outfit").forEach((el) => el.classList.toggle("bts-on", el.getAttribute("data-l") === String(level)));
@@ -5441,23 +5433,12 @@ $("bts-scene-btn").addEventListener("click", () => {
   tsScene = (tsSceneShown + 1) % (r.scenes.length || 1);
   tsRender(false);
 });
-$("btnTsArt").addEventListener("click", async () => {
-  const rObj = regionOfCountry(homeCountryNow());
-  const wantCode = rObj && rObj.code;
-  if (!wantCode || TS_REGIONS[wantCode] || tsArtDownloading) return;
-  tsArtDownloading = true;
-  $("btnTsArt").disabled = true;
-  $("tsArtStatus").textContent = t("ex_downloading");
-  try {
-    const d = await api("/extras/download", jsonBody("POST", { art: wantCode }));
-    if (d && (d.result === "installed" || d.result === "up_to_date")) {
-      delete TS_EXT_MISS[wantCode];
-      $("tsArtStatus").textContent = "";
-      tsLoadArt(wantCode);
-    } else $("tsArtStatus").textContent = exErrText(d && d.result);
-  } catch (e) { $("tsArtStatus").textContent = e.message || t("pk_r_offline"); }
-  finally { tsArtDownloading = false; $("btnTsArt").disabled = false; tsRender(false); }
-});
+// A language pack brings or takes the drawings of its regions: look again.
+function tsArtReset() {
+  for (const k of Object.keys(TS_EXT_MISS)) delete TS_EXT_MISS[k];
+  for (const k of Object.keys(TS_EXT_ART)) delete TS_EXT_ART[k];
+  tsRender(false);
+}
 
 async function loadPackRegions() {
   if (packAsked) return;
@@ -6568,6 +6549,7 @@ async function exRun(code, act) {
     if (d.result === "installed" || d.result === "removed") {
       delete exFailed[code];
       await exSyncMenus();
+      tsArtReset();
       toast(t(d.result === "installed" ? "vp_r_installed" : "vp_r_removed"));
     } else {
       if (act === "get") exFailed[code] = true;
