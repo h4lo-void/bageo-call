@@ -175,6 +175,27 @@ const INTL_OPENING_HOLD: Duration = Duration::from_millis(2_500);
 /// hints (en first, or none) can turn the Chinese prompt into other words, and the
 /// prompt must never count as the caller (no hang-up on it).
 const CARRIER_PROMPT_SPAN: Duration = Duration::from_millis(7_500);
+/// Hong Kong's "+852" alert is said three times, in Cantonese, Putonghua and
+/// English (about 10 s), with a pause between the languages: the line counts as
+/// the carrier's this long, and its end needs a longer quiet
+/// ([`carrier_prompt_timing`]).
+const HK_CARRIER_PROMPT_SPAN: Duration = Duration::from_millis(13_000);
+const HK_CARRIER_PROMPT_QUIET: Duration = Duration::from_millis(1_500);
+
+/// How long the carrier's warning on a SIM of country `sim` may last, and the
+/// quiet that ends it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CarrierTiming {
+    span: Duration,
+    quiet: Duration,
+}
+
+fn carrier_prompt_timing(sim: Option<&str>) -> CarrierTiming {
+    match sim.map(|s| s.trim().to_ascii_lowercase()).as_deref() {
+        Some("hk") => CarrierTiming { span: HK_CARRIER_PROMPT_SPAN, quiet: HK_CARRIER_PROMPT_QUIET },
+        _ => CarrierTiming { span: CARRIER_PROMPT_SPAN, quiet: CARRIER_PROMPT_QUIET },
+    }
+}
 
 /// The caller has only played the carrier's prompt so far: its words are in the
 /// transcript, or all line voice so far came within the prompt's span.
@@ -1598,6 +1619,53 @@ mod carrier_filter_tests {
         assert_eq!(call.turn_end(), (false, words.to_string()));
     }
 
+    /// A Hong Kong SIM taking a number shown with "+852": the AI waits for the
+    /// carrier's alert, in Cantonese, Putonghua and English (about 10 s, pauses
+    /// between the languages), which is not taken for the caller, and lets no
+    /// language be read from it.
+    #[test]
+    fn hong_kongs_plus_852_alert_is_waited_for_and_never_the_caller() {
+        use super::{
+            carrier_prompt_timing, expects_carrier_intl_prompt, intl_gate_at_unmute, intl_gate_step_quiet, turn_tells_language,
+            IntlGate, IntlGateStep, CARRIER_PROMPT_SPAN, INTL_OPENING_HOLD,
+        };
+        use crate::lang_lock::{CallLanguage, Spoken};
+        use crate::locale::Lang;
+        use std::time::Duration;
+        let ms = Duration::from_millis;
+        assert!(expects_carrier_intl_prompt(false, "+852 9123 4567", Some("hk")));
+        assert!(!expects_carrier_intl_prompt(false, "9123 4567", Some("hk")));
+        // Long enough for the three languages, and a pause between two of them is not its end.
+        let hk = carrier_prompt_timing(Some("hk"));
+        assert!(hk.span >= ms(12_000) && hk.span > CARRIER_PROMPT_SPAN, "{hk:?}");
+        assert!(hk.quiet >= ms(1_200), "{hk:?}");
+        assert_eq!(carrier_prompt_timing(Some("tw")).span, CARRIER_PROMPT_SPAN);
+        let t0 = tokio::time::Instant::now();
+        let waiting = intl_gate_at_unmute(true, true, t0);
+        assert_eq!(intl_gate_step_quiet(waiting, t0 + ms(800), true, None, hk.quiet), IntlGateStep::PromptStarted);
+        let prompt = IntlGate::Prompt { until: t0 + ms(800) + hk.span };
+        assert_eq!(intl_gate_step_quiet(prompt, t0 + ms(4_000), true, Some(ms(900)), hk.quiet), IntlGateStep::Wait);
+        assert_eq!(intl_gate_step_quiet(prompt, t0 + ms(11_500), true, Some(hk.quiet), hk.quiet), IntlGateStep::PromptOver);
+        assert_eq!(intl_gate_step_quiet(prompt, t0 + ms(800) + hk.span, true, None, hk.quiet), IntlGateStep::PromptOver);
+        // A carrier that sends the alert as a text: the line stays quiet, the opening plays.
+        assert_eq!(intl_gate_step_quiet(waiting, t0 + INTL_OPENING_HOLD, false, Some(Duration::MAX), hk.quiet), IntlGateStep::Play);
+        // The alert, said three times, in pieces: swallowed, nobody's turn.
+        let mut call = Call::default();
+        for p in ["來電源自香港境外，慎防詐騙。", "来电源自香港境外，慎防诈骗。", "Call is from outside Hong Kong. ", "Beware of deception."] {
+            call.hear(p);
+        }
+        let (carrier_only, turn) = call.turn_end();
+        assert_eq!((carrier_only, turn.as_str()), (true, ""));
+        // Its voice, heard as another language, within the span: no language.
+        let until = t0 + ms(800) + hk.span;
+        assert!(!turn_tells_language(false, Some(until), Some(t0 + ms(10_500))));
+        let mut lang = CallLanguage::new(Lang::En, Lang::ZhTw);
+        for heard in ["Sí.", "Oi.", "Hallo", "喂？"] {
+            assert_eq!(lang.caller_turn(heard), None, "{heard}");
+        }
+        assert_eq!(lang.spoken(), Spoken::Lang(Lang::En));
+    }
+
     /// Calls the filter is off for (not persona, a call-back): nothing swallowed,
     /// every turn the caller's.
     #[test]
@@ -1732,6 +1800,9 @@ pub struct CallLangPlan {
     /// The call's other base languages ([`call_lang_plan_for`]): the SIM's main
     /// and second languages and the number's country's. Not compared between plans.
     pub base_langs: Vec<crate::locale::Lang>,
+    /// A Hong Kong SIM and a number shown with "+852": its carrier plays its
+    /// warning ([`carrier_warns`]), so the prompt keeps the note on it.
+    pub hk_alert: bool,
     /// Speech-to-text code of the language of the caller's country when the AI has
     /// no setting for it (Thai, Russian, Arabic, Hindi: [`other_lang_stt_of_country`]):
     /// added to the hints for the AI's own voice, which answers the caller in it.
@@ -1763,6 +1834,7 @@ impl PartialEq for CallLangPlan {
             && self.caller_other_stt == other.caller_other_stt
             && self.region == other.region
             && self.local_hello == other.local_hello
+            && self.hk_alert == other.hk_alert
             && ((self.opening.is_none() && self.local_hello.is_none()) || self.sim_local == other.sim_local)
     }
 }
@@ -1939,6 +2011,7 @@ pub fn call_lang_plan_for(
         prompt_lang,
         sim_lang,
         base_langs,
+        hk_alert: sim == Some("hk") && shown_with_plus_852(caller_id),
         caller_other_stt,
         sim_country: sim.map(str::to_string),
         region,
@@ -2049,22 +2122,32 @@ fn stt_codes(langs: &[crate::locale::Lang]) -> Vec<&'static str> {
 
 /// SIM countries (ISO 3166 alpha-2, lowercase) whose carriers play a recorded
 /// warning to us right after pickup, each on its own calls ([`carrier_warns`]):
-/// Taiwan's and Korea's.
+/// Taiwan's, Korea's and Hong Kong's.
+///
+/// Hong Kong's (since 2023-05-01, every mobile carrier): an incoming call whose
+/// number is shown with "+852" comes from outside Hong Kong (a real local call
+/// shows its 8 digits without "+"), and gets "Call is from outside Hong Kong.
+/// Beware of deception." / 「來電源自香港境外，慎防詐騙」 in Cantonese, Putonghua and
+/// English, about 10 s ([`paired_carrier_prompt`]; its timing:
+/// [`carrier_prompt_timing`]). A carrier may send it as a text instead: the
+/// hold then ends quiet after [`INTL_OPENING_HOLD`]. Not yet tried on a real
+/// Hong Kong SIM.
+/// https://www.ofca.gov.hk/en/news_info/press_releases/index_id_2316.html
 ///
 /// Not waited for:
-/// - Hong Kong: its "+852" alert ([`paired_carrier_prompt`]) is Cantonese,
-///   Putonghua and English, about 10 s — longer than [`CARRIER_PROMPT_SPAN`], so
-///   the AI would talk over its end — and a carrier may send it as text instead;
-///   nor is it known how the phone gets a local number (`9123 4567` or
-///   `+852 9123 4567`). Its words, and the new pre-paid SIM ones
-///   ([`hk_new_sim_prompt`]), are still not taken for the caller. To be turned on
-///   only once tried on a real Hong Kong SIM.
 /// - The mainland: the carriers' alert is a notice on the screen.
 ///   https://news.cctv.cn/2025/06/20/ARTIIKy6K4h6Gdvfk1nrn7yG250620.shtml
 /// - Thailand: only the number prefix (+697 / +698) is on record; no notice of a
 ///   recording played on the line was found.
 ///   https://www.nationthailand.com/thailand/general/40021975
-const CARRIER_INTL_PROMPT_SIMS: &[&str] = &["tw", "kr"];
+const CARRIER_INTL_PROMPT_SIMS: &[&str] = &["tw", "kr", "hk"];
+
+/// The number is shown with Hong Kong's "+852" (or "00852"), as Hong Kong's
+/// carriers show a call from outside Hong Kong ([`CARRIER_INTL_PROMPT_SIMS`]).
+fn shown_with_plus_852(caller_id: &str) -> bool {
+    let shown: String = caller_id.chars().filter(|c| c.is_ascii_digit() || *c == '+').collect();
+    shown.starts_with("+852") || shown.starts_with("00852")
+}
 
 /// Whether the carrier of a SIM of country `sim` plays its warning on a call from
 /// `caller_id` (`hidden`: it has no digit at all). A number is read the way the
@@ -2074,11 +2157,14 @@ const CARRIER_INTL_PROMPT_SIMS: &[&str] = &["tw", "kr"];
 ///   [`tw_hidden_number_prompt`]).
 /// - kr: a number of another country ([`kr_carrier_prompt`]); nothing is on record
 ///   for hidden numbers.
+/// - hk: a number shown with "+852" ([`shown_with_plus_852`], [`paired_carrier_prompt`]);
+///   nothing is on record for other numbers from abroad or hidden ones.
 fn carrier_warns(sim: &str, caller_id: &str, hidden: bool) -> bool {
     let foreign = || crate::phone_region::normalize(caller_id, Some(sim)).is_some_and(|n| n.country != sim);
     match sim {
         "tw" => hidden || foreign(),
         "kr" => !hidden && foreign(),
+        "hk" => !hidden && shown_with_plus_852(caller_id),
         _ => false,
     }
 }
@@ -3414,13 +3500,15 @@ fn turn_tells_language(
 
 /// The call can hear a carrier's recorded warning, so its prompt keeps the note
 /// on it ([`carrier_warns`]): on a Taiwan SIM a number from abroad or a hidden
-/// one, on a Korean SIM a number from abroad. SIM not known (older app): as
+/// one, on a Korean SIM a number from abroad, on a Hong Kong SIM a number shown
+/// with "+852". SIM not known (older app): as
 /// before, only when the setting's language is Traditional Chinese (`zh_tw`, a
 /// Taiwan SIM assumed).
 fn carrier_note_due(plan: &CallLangPlan, zh_tw: bool) -> bool {
     match plan.sim_country.as_deref() {
         Some("tw") => plan.sim_local != Some(true),
         Some("kr") => plan.sim_local == Some(false),
+        Some("hk") => plan.hk_alert,
         Some(_) => false,
         None => zh_tw,
     }
@@ -5103,11 +5191,24 @@ const CARRIER_PROMPT_QUIET: Duration = Duration::from_millis(LOCAL_EOU_SILENCE_M
 
 /// `line_voice`: the line has carried voice since pickup; `line_quiet_for`:
 /// how long since it last did, `None` while it talks.
+#[cfg(test)]
 fn intl_gate_step(
     gate: IntlGate,
     now: tokio::time::Instant,
     line_voice: bool,
     line_quiet_for: Option<Duration>,
+) -> IntlGateStep {
+    intl_gate_step_quiet(gate, now, line_voice, line_quiet_for, CARRIER_PROMPT_QUIET)
+}
+
+/// [`intl_gate_step`] where the warning is over after `quiet` of silence
+/// ([`carrier_prompt_timing`]).
+fn intl_gate_step_quiet(
+    gate: IntlGate,
+    now: tokio::time::Instant,
+    line_voice: bool,
+    line_quiet_for: Option<Duration>,
+    quiet: Duration,
 ) -> IntlGateStep {
     match gate {
         IntlGate::Open => IntlGateStep::Wait,
@@ -5115,7 +5216,7 @@ fn intl_gate_step(
         IntlGate::Waiting { until } if now >= until => IntlGateStep::Play,
         IntlGate::Waiting { .. } => IntlGateStep::Wait,
         IntlGate::Prompt { until }
-            if now >= until || line_quiet_for.is_some_and(|q| q >= CARRIER_PROMPT_QUIET) =>
+            if now >= until || line_quiet_for.is_some_and(|q| q >= quiet) =>
         {
             IntlGateStep::PromptOver
         }
@@ -6633,6 +6734,8 @@ pub async fn run_session(
     let mut opening_mark: Option<usize> = None;
     // Set when an international hold ends on line voice (the carrier's prompt).
     let mut carrier_prompt_until: Option<tokio::time::Instant> = None;
+    // How long the warning of the SIM's carrier lasts and the quiet that ends it.
+    let carrier_timing = carrier_prompt_timing(lang_plan.sim_country.as_deref());
 
     // ConnectAtAnswer warmhold: generate first AI turn *silently* while period WAV plays.
     // Buffer model audio here; flush to telephony only when audio_open (UnmuteAfterGreet).
@@ -7799,7 +7902,7 @@ pub async fn run_session(
                 prompt_reply_until = None;
                 prompt_tail_since = None;
                 let line_talking = activity_open
-                    || last_caller_voice_at.is_some_and(|t| now.saturating_duration_since(t) < CARRIER_PROMPT_QUIET);
+                    || last_caller_voice_at.is_some_and(|t| now.saturating_duration_since(t) < carrier_timing.quiet);
                 let kick = kick_after_carrier_prompt(
                     false,
                     intl_kick_owed,
@@ -7832,14 +7935,14 @@ pub async fn run_session(
             let now = tokio::time::Instant::now();
             let quiet_for = (!activity_open)
                 .then(|| last_caller_voice_at.map_or(Duration::MAX, |t| now.saturating_duration_since(t)));
-            let step = intl_gate_step(intl_gate, now, caller_had_voice, quiet_for);
+            let step = intl_gate_step_quiet(intl_gate, now, caller_had_voice, quiet_for, carrier_timing.quiet);
             match step {
                 IntlGateStep::Wait => {
                     first_delivery_deadline = first_delivery_deadline.max(now + FIRST_DELIVERY_TIMEOUT);
                 }
                 IntlGateStep::PromptStarted => {
-                    carrier_prompt_until = Some(now + CARRIER_PROMPT_SPAN);
-                    intl_gate = IntlGate::Prompt { until: now + CARRIER_PROMPT_SPAN };
+                    carrier_prompt_until = Some(now + carrier_timing.span);
+                    intl_gate = IntlGate::Prompt { until: now + carrier_timing.span };
                     let dropped_ms = pcm16_ms(prebuf.len() as u64, phone_sr);
                     prebuf.clear();
                     prebuf_chunks = 0;
@@ -7874,7 +7977,7 @@ pub async fn run_session(
                     } else {
                         info!(
                             "Gemini Live intl caller serial={serial} — carrier prompt over (quiet={}ms): the model's audio plays",
-                            quiet_for.map_or(0, |q| q.min(CARRIER_PROMPT_SPAN).as_millis())
+                            quiet_for.map_or(0, |q| q.min(carrier_timing.span).as_millis())
                         );
                     }
                     // The first-audio watchdog starts now, not at pickup.
@@ -7888,7 +7991,7 @@ pub async fn run_session(
                         // The span often runs out while the prompt's tail is still on the
                         // line: the model answers that tail when it ends, so the window
                         // opens anyway and lasts until the tail is over.
-                        let line_talking = !quiet_for.is_some_and(|q| q >= CARRIER_PROMPT_QUIET);
+                        let line_talking = !quiet_for.is_some_and(|q| q >= carrier_timing.quiet);
                         let kick = kick_after_carrier_prompt(
                             true,
                             false,
@@ -9991,7 +10094,7 @@ pub async fn run_session(
                                     if prompt_reply_until.is_none() {
                                         // The prompt ended meanwhile and nothing was heard: the opening is asked for now.
                                         let line_talking = activity_open
-                                            || last_caller_voice_at.is_some_and(|t| t.elapsed() < CARRIER_PROMPT_QUIET);
+                                            || last_caller_voice_at.is_some_and(|t| t.elapsed() < carrier_timing.quiet);
                                         let kick = kick_after_carrier_prompt(
                                             false,
                                             intl_kick_owed,
@@ -11568,11 +11671,14 @@ mod tests {
         assert!(!carrier_note_due(&local, true));
         let abroad = call_lang_plan("+12025550143", Some("tw"), Lang::ZhTw, "886", &none);
         assert!(carrier_note_due(&abroad, true));
-        // Hong Kong is not waited for (not tried on a real Hong Kong SIM): no note.
+        // Hong Kong: a number shown with "+852" gets the carrier's alert, so its
+        // note stays; a local one does not.
         let hk = call_lang_plan("+85291234567", Some("hk"), Lang::ZhTw, "886", &none);
         assert_eq!(hk.region, Some(r("hk-mo")));
-        assert!(!carrier_note_due(&hk, true));
+        assert!(carrier_note_due(&hk, true));
+        assert!(carrier_note_due(&call_lang_plan("+852 2123 4567", Some("hk"), Lang::En, "852", &none), false));
         assert!(!carrier_note_due(&call_lang_plan("91234567", Some("hk"), Lang::En, "852", &none), false));
+        assert!(!carrier_note_due(&call_lang_plan("+12025550143", Some("hk"), Lang::En, "852", &none), false));
         let kr_abroad = call_lang_plan("+12025550143", Some("kr"), Lang::Ko, "82", &none);
         assert!(carrier_note_due(&kr_abroad, false));
         assert!(!carrier_note_due(&call_lang_plan("01012345678", Some("kr"), Lang::Ko, "82", &none), false));
@@ -14873,10 +14979,19 @@ mod tests {
             assert!(!expects_carrier_intl_prompt(true, n, Some("kr")), "{n:?}");
             assert!(!expects_carrier_intl_prompt(false, n, Some("kr")), "{n:?}");
         }
-        // No wait: Hong Kong (not tried on a real Hong Kong SIM, its "+852" alert
-        // too long for the span), the mainland and Thailand (nothing played on the
-        // line on record), and carriers with no such warning.
-        for sim in ["hk", "us", "jp", "de", "gb", "sg", "cn", "th"] {
+        // Hong Kong: a number shown with "+852" is from outside Hong Kong and gets
+        // the alert; a local one (8 digits), another country's or a hidden one does not.
+        for n in ["+85291234567", "+852 9123 4567", "+852-2123-4567", "0085291234567"] {
+            assert!(expects_carrier_intl_prompt(false, n, Some("hk")), "{n}");
+            assert!(expects_carrier_intl_prompt(true, n, Some("HK")), "{n}");
+        }
+        for n in ["91234567", "2123 4567", "+12025550143", "+886912345678", "", "unknown"] {
+            assert!(!expects_carrier_intl_prompt(true, n, Some("hk")), "{n:?}");
+            assert!(!expects_carrier_intl_prompt(false, n, Some("hk")), "{n:?}");
+        }
+        // No wait: the mainland and Thailand (nothing played on the line on
+        // record), and carriers with no such warning.
+        for sim in ["us", "jp", "de", "gb", "sg", "cn", "th"] {
             for n in ["+12025550143", "+886912345678", "+69712345678", "+85291234567", "91234567", "", "unknown"] {
                 assert!(!expects_carrier_intl_prompt(true, n, Some(sim)), "{sim} {n:?}");
                 assert!(!expects_carrier_intl_prompt(false, n, Some(sim)), "{sim} {n:?}");
