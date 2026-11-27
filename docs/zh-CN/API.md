@@ -539,6 +539,7 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 - 响应里的状态是 `dialing`，手机或号码忙线时是 `queued`。
 - `answers` 可以不带：你回答补问后的内容，格式 `{key: 文字}`。key 就是 `preflight` 在 `missing` 和 `optional` 返回的那些，另有 `note` 放自由文字；每项最多 80 字（`note` 120 字），不认识的 key 会被丢掉。它们会以一小段文字放进这通电话的脚本交给 AI。
 - `place_type` 可以不带：`preflight` 返回的 `type`。没带就由 Bageo 从交办内容判断是哪一类电话。
+- `sub_id` 可以不带：用 `serial` 那台手机的哪张 SIM 拨（也可以把 `serial` 写成 `<serial>:<sub_id>`）。那张 SIM 与 `+` 开头号码的国家不同时，会返回 `sim_other_country`，要带 `"abroad_ok": true` 把同一份内容再发一次（主人同意打国际电话）才会拨。这条代打会记住它，“再打一次”和拨到通重拨都沿用。
 
 `POST /calls/api/errands/preflight` 的内容：
 
@@ -573,6 +574,7 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 | `no_phone` | 新建、再打 | 没有已连接、处于 AI 模式的手机（或指定的 `serial` 不是这样的手机）。 |
 | `sim_unknown` | 新建、再打 | 没有合适的手机，而且至少有一部的 SIM Bageo 还不知道：先给它打一通。 |
 | `no_sim_for_country` | 新建、再打 | 没有手机有该号码所属国家的 SIM。 |
+| `sim_other_country` | 新建、再打 | 指定的 SIM（`sub_id`）与号码不是同一个国家。响应另带 `sim_country`、`number_country`（两位国家代码）。带 `"abroad_ok": true` 再发一次就照样拨。 |
 | `not_found` | 新建 | `contact_id` 或 `follow_up_of` 不存在（这里返回 400）。 |
 | `busy` | 再打、删除 | 这条还在拨号或通话中。 |
 | `not_on_call` | say | 电话不在通话中（或已经结束）。 |
