@@ -1105,8 +1105,10 @@ const KR_PROMPTS: &[&str] = &["해외에서걸려온전화입니다", "국제전
 
 /// Hong Kong's carriers, before putting through a call from a newly activated
 /// local pre-paid SIM (from 2024-12-31), in Cantonese and Putonghua:
-/// 「來電由新儲值卡打出」 ("Call made from a new pre-paid SIM card").
+/// 「來電由新儲值卡打出」 ("Call made from a new pre-paid SIM card"; OFCA's
+/// English page words it "This call is made from a new pre-paid SIM card").
 /// https://www.ofca.gov.hk/tc/consumer_focus/guide/hot_topics/fraudulent_calls/index.html
+/// https://www.ofca.gov.hk/en/consumer_focus/guide/hot_topics/fraudulent_calls/
 fn hk_new_sim_prompt(caller_text: &str) -> bool {
     let t = prompt_norm(caller_text);
     if !HK_NEW_SIM_MARKS.iter().any(|m| t.contains(m)) || t.chars().count() > 160 || t.chars().filter(is_han).count() > 40 {
@@ -1116,7 +1118,8 @@ fn hk_new_sim_prompt(caller_text: &str) -> bool {
     prompt_rest_is_noise(t, &words, 2)
 }
 
-const HK_NEW_SIM_MARKS: &[&str] = &["來電由新儲值卡打出", "來電由新儲值咭打出", "callmadefromanewprepaidsimcard"];
+const HK_NEW_SIM_MARKS: &[&str] =
+    &["來電由新儲值卡打出", "來電由新儲值咭打出", "thiscallismadefromanewprepaidsimcard", "callmadefromanewprepaidsimcard"];
 
 /// How many letters of `text` are not the warnings' own words, not counting the
 /// start of one of them at its very end (a word the transcript has not finished).
@@ -1562,6 +1565,37 @@ mod carrier_filter_tests {
         assert!(turn_tells_language(false, Some(until), Some(until + Duration::from_millis(1))));
         assert!(turn_tells_language(false, None, Some(t0)));
         assert!(turn_tells_language(false, Some(until), None));
+    }
+
+    /// Hong Kong's new pre-paid SIM warning as OFCA's English page words it
+    /// ("This call is made from…"), whole or cut in two, is the carrier's; a
+    /// caller saying it in a sentence of their own, or right after it, is not.
+    #[test]
+    fn hong_kongs_new_sim_warning_in_ofcas_english_wording() {
+        use super::looks_like_carrier_intl_prompt as prompt;
+        for t in [
+            "This call is made from a new pre-paid SIM card.",
+            "This call is made from a new prepaid SIM card",
+            "來電由新儲值卡打出。This call is made from a new pre-paid SIM card.",
+            "Call made from a new pre-paid SIM card.",
+        ] {
+            assert!(prompt(t), "{t}");
+        }
+        for t in [
+            "This call is made from a new pre-paid SIM card, I'm from the bank about your account",
+            "I'm calling from a new prepaid SIM card about your parcel",
+        ] {
+            assert!(!prompt(t), "{t}");
+        }
+        let mut call = Call::default();
+        assert!(!call.hear("This call is made "));
+        assert!(call.hear("from a new pre-paid SIM card."));
+        assert_eq!(call.turn_end(), (true, String::new()));
+        let mut call = Call::default();
+        assert!(call.hear("This call is made from a new pre-paid SIM card."));
+        let words = "Hello? This is Kevin from the dental clinic about your appointment";
+        assert!(!call.hear(words));
+        assert_eq!(call.turn_end(), (false, words.to_string()));
     }
 
     /// Calls the filter is off for (not persona, a call-back): nothing swallowed,
@@ -16730,6 +16764,7 @@ mod review_probe_tests {
             "這通是隱藏號碼電話，請注意。",
             "来电由新储值卡打出。",
             "Call made from a new pre-paid SIM card.",
+            "This call is made from a new pre-paid SIM card.",
         ] {
             // "This is an international call." alone names no fraud warning: a caller may say it.
             assert!(prompt(t), "{t}");
