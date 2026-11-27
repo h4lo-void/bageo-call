@@ -133,8 +133,8 @@ Two settings outside the prompt change what the AI knows:
 - **Contacts.** When the caller's number is in *Contacts*, the prompt names
   the caller and adds your note. Write notes the way you would brief a friend
   answering your phone: "my sister, call her Mei", "the landlord, usually
-  about repairs". Saved contacts are also protected in the scam check: a
-  relative talking about a transfer is not mistaken for a scammer.
+  about repairs". Saved contacts are never put through the scam check:
+  a relative talking about a transfer is not mistaken for a scammer.
 - **Other names callers use for you** (*Settings → About you*): up
   to ten, one per line. People who know you as "Lex" or by your English name are
   understood as asking for you, in both answer styles and with your own prompt

@@ -92,9 +92,11 @@ the table:
 | A real call was treated as sales or scam | The check starts from keywords, which honest callers sometimes use too, and a low-cost model takes a second look. The terminal names the words: `stall engaged … hits=[…]`. | On the call's page press *It was not* under *Sales / scam check*: the number is treated like a saved contact from then on. You can also switch off *Keep them talking*. |
 | A friend or family member was kept talking | They are not saved as a contact. | Save them under *Contacts*. |
 
-Before it starts keeping a contact talking, Bageo takes a second look: a
-contact talking about money, transfers or bills is left alone. Requests like a
-verification code or ATM steps still get kept talking (caller ID can be faked).
+Calls from a saved contact, a Whitelist number or a number you marked *It was
+not* are never checked for sales or scam and never kept talking, whatever they
+say. The price: if a scammer fakes a contact's number, the AI will not play
+along, but it still gives out no codes or personal details and agrees to no
+transfer.
 
 ## Appointments and texts
 

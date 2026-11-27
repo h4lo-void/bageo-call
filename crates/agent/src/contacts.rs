@@ -1080,6 +1080,42 @@ impl ContactStore {
         })
     }
 
+    /// Whether `number` is on the Stall list (`kind == "stall"`) even when
+    /// another entry (a contact, the Whitelist) holds the same number: the
+    /// Stall list wins.
+    pub fn is_force_stall(&self, number: &str, region: Option<&str>) -> Option<Contact> {
+        if is_prefix(number) {
+            return self.lookup(number, region).filter(|c| c.kind == "stall");
+        }
+        let call_region = region
+            .map(str::trim)
+            .filter(|r| !r.is_empty())
+            .map(|r| r.to_ascii_lowercase());
+        let effective_region = call_region.clone().or_else(|| (self.region)());
+        let key = num_key(number, effective_region.as_deref())?;
+        self.with_book(|b| {
+            b.find_all_matches(&key, call_region.as_deref())
+                .into_iter()
+                .find(|&i| b.contacts[i].kind == "stall")
+                .map(|i| b.contacts[i].clone())
+        })
+    }
+
+    /// [`review_label`] for this store: the label of the saved contact (or
+    /// Whitelist entry) the number belongs to; None when it is unknown, on the
+    /// Blacklist or the Stall list (any entry for the number on the Stall list
+    /// is enough).
+    pub fn review_label(&self, number: &str, region: Option<&str>) -> Option<String> {
+        if self.is_force_stall(number, region).is_some() || self.blacklisted(number, region).is_some() {
+            return None;
+        }
+        let c = self.lookup(number, region)?;
+        if c.kind == "blacklist" || c.kind == "stall" {
+            return None;
+        }
+        review_text(&c.name, &c.note)
+    }
+
     /// How many contacts are on the Blacklist.
     pub fn blacklist_len(&self) -> usize {
         self.with_book(|b| b.contacts.iter().filter(|c| c.kind == "blacklist").count())
@@ -1494,7 +1530,7 @@ pub async fn absorb_reject_numbers(settings: &crate::settings_store::SettingsSto
 
 /// Whether `number` is on the Force-Stall list (`kind == "stall"`).
 pub fn is_force_stall(number: &str, region: Option<&str>) -> Option<Contact> {
-    lookup(number, region).filter(|c| c.kind == "stall")
+    STORE.get()?.is_force_stall(number, region)
 }
 
 /// Caller ID → `{id, name, kind}` for the calls whose number is a contact's (the
@@ -1741,11 +1777,7 @@ pub fn urgent_block(lang: Lang, assistant: bool, owner: &str, who: TransferWho, 
 /// owner's contacts (e.g. `"媽媽 (note: 家裡)"`). `None` when unknown or on the
 /// blacklist / stall list.
 pub fn review_label(caller_id: &str, sim_country: Option<&str>) -> Option<String> {
-    let c = lookup(caller_id, sim_country)?;
-    if c.kind == "blacklist" || c.kind == "stall" {
-        return None;
-    }
-    review_text(&c.name, &c.note)
+    STORE.get()?.review_label(caller_id, sim_country)
 }
 
 /// [`review_label`]'s text for a contact's name and note.
@@ -3821,6 +3853,80 @@ mod tests {
         assert_eq!(again.list("0912 000").len(), 1);
         assert_eq!(again.list("sis").len(), 1);
         let _ = std::fs::remove_dir_all(s.path.parent().unwrap());
+    }
+
+    /// Who is never looked at for sales / scam: a saved contact, a Whitelist
+    /// number, a number the owner marked safe; the Stall list wins over all of
+    /// them, also when the same number is held by two entries.
+    #[test]
+    fn trust_follows_contacts_whitelist_and_safe_marks_and_the_stall_list_wins() {
+        use crate::stall_review::CallerContext;
+        let dir = temp_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("contacts.json");
+        let list = vec![
+            json!({"id": "c1", "name": "María", "phones": ["0912-000-001"], "kind": ""}),
+            json!({"id": "w1", "name": "山田", "phones": ["0912-000-002"], "kind": "whitelist"}),
+            json!({"id": "c3", "name": "Amy", "phones": ["0912-000-005"], "kind": ""}),
+            json!({"id": "s3", "name": "Pest", "phones": ["+886912000005"], "kind": "stall"}),
+            json!({"id": "s4", "name": "Pest2", "phones": ["+886912000006"], "kind": "stall"}),
+            json!({"id": "w4", "name": "Ana", "phones": ["0912-000-006"], "kind": "whitelist"}),
+            json!({"id": "w5", "name": "Müller", "phones": ["0912-000-010"], "kind": "whitelist"}),
+            json!({"id": "s5", "name": "Pest3", "phones": ["0912-000-007"], "kind": "stall"}),
+            json!({"id": "b1", "name": "Blocked", "phones": ["0912-000-009"], "kind": "blacklist"}),
+        ];
+        std::fs::write(&path, json!({ "contacts": list }).to_string()).unwrap();
+        let store = ContactStore::open_with(path, Box::new(|| Some("tw".to_string())));
+        let book = crate::scam_db::NumberBook::open(None);
+        for n in ["0912000004", "0912000007", "0912000008"] {
+            book.mark_owner(&crate::scam_db::number_key(n, TW).unwrap(), "safe", "");
+        }
+        let trusted = |n: &str| -> bool {
+            let facts = crate::scam_db::caller_facts_in(&book, &[], n, TW);
+            CallerContext { saved_contact: store.review_label(n, TW), owner_safe: facts.owner_safe, ..CallerContext::default() }
+                .trusted(store.is_force_stall(n, TW).is_some())
+        };
+        // A contact, a Whitelist number, a safe mark alone: trusted, in the forms a caller ID comes in.
+        for n in ["0912000001", "+886 912 000 001", "0912000002", "+886912000002", "0912000004", "0912000010"] {
+            assert!(trusted(n), "{n}");
+        }
+        assert_eq!(store.review_label("0912000001", TW).as_deref(), Some("María"));
+        assert_eq!(store.review_label("0912000002", TW).as_deref(), Some("山田"));
+        // A stranger, a Blacklist number: not.
+        assert!(!trusted("0912000099"));
+        assert!(!trusted("0912000009"));
+        // The same number on the Stall list as a contact / Whitelist entry: the Stall list wins,
+        // whatever the order or the form, also with the owner's safe mark.
+        for n in ["0912000005", "+886912000005", "0912000006", "+886 912 000 006"] {
+            assert!(store.is_force_stall(n, TW).is_some(), "{n}");
+            assert!(store.review_label(n, TW).is_none(), "{n}");
+            assert!(!trusted(n), "{n}");
+        }
+        assert!(store.is_force_stall("0912000007", TW).is_some());
+        assert!(!trusted("0912000007"), "stall + owner safe: the Stall list wins");
+        assert!(store.is_force_stall("0912000001", TW).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Two entries for one number (hand-edited file): a Whitelist / contact one
+    /// and a Stall one, in either order, the Stall list is found.
+    #[test]
+    fn a_stall_entry_is_found_whatever_its_place_among_entries_for_the_number() {
+        for stall_first in [true, false] {
+            let dir = temp_dir();
+            std::fs::create_dir_all(&dir).unwrap();
+            let path = dir.join("contacts.json");
+            let stall = json!({"id": "s1", "name": "Pest", "phones": ["0912-000-888"], "kind": "stall"});
+            let white = json!({"id": "w1", "name": "VIP", "phones": ["+886912000888"], "kind": "whitelist"});
+            let list = if stall_first { vec![stall, white] } else { vec![white, stall] };
+            std::fs::write(&path, json!({ "contacts": list }).to_string()).unwrap();
+            let store = ContactStore::open_with(path, Box::new(|| Some("tw".to_string())));
+            for caller in ["0912000888", "+886 912 000 888"] {
+                assert_eq!(store.is_force_stall(caller, TW).map(|c| c.id).as_deref(), Some("s1"), "stall_first={stall_first} {caller}");
+                assert!(store.review_label(caller, TW).is_none(), "stall_first={stall_first} {caller}");
+            }
+            let _ = std::fs::remove_dir_all(&dir);
+        }
     }
 
     #[tokio::test]
