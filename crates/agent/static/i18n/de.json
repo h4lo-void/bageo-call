@@ -336,8 +336,8 @@
     "f_notify_lang": "Sprache der Benachrichtigungen und Zusammenfassungen",
     "f_notify_lang_h": "Die Sprache der Benachrichtigungen und Zusammenfassungen, die du liest. Sie ändert nicht, in welcher Sprache die KI mit Anrufern spricht.",
     "nl_same": "Wie die Sprache der KI",
-    "f_simlang": "Hauptsprache je SIM",
-    "f_simlang_h": "Nur nötig, wenn ein Telefon eine SIM aus einer anderen Region hat: Anrufe auf dieser SIM beginnen in der hier gewählten Sprache. App 1.0 oder neuer.",
+    "f_simlang": "Sprachen je SIM",
+    "f_simlang_h": "Anrufe auf dieser SIM beginnen in der Hauptsprache; Anrufe aus dem Ausland nehmen die Zweitsprache ihrer Region, sonst die Sprache ihres Landes. App 1.0 oder neuer.",
     "sl_country": "Region der SIM",
     "sl_lang": "Hauptsprache",
     "sl_pick": "Region auswählen",
@@ -1403,6 +1403,13 @@
     "ph_fit_yes": "Ja",
     "ph_fit_no": "Nein",
     "ph_fit_retest": "Eine andere Toneinstellung ist bereit. Ruf dieses Telefon noch einmal an, um sie zu testen.",
-    "ph_fit_noted": "Notiert: Der Anrufton dieses Telefons hat ein Problem"
+    "ph_fit_noted": "Notiert: Der Anrufton dieses Telefons hat ein Problem",
+    "sl_lang_sim": "Sprache der SIM-Region",
+    "sl_region": "Region",
+    "sl_region_sim": "Wie die SIM",
+    "sl_region_none": "Keine",
+    "sl_second1": "Zweitsprache 1",
+    "sl_second2": "Zweitsprache 2",
+    "sl_second_none": "Keine"
   }
 }

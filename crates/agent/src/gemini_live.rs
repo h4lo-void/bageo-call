@@ -1695,6 +1695,9 @@ pub struct CallLangPlan {
     /// `sim_languages`), whatever the number: one of the call's base languages
     /// ([`crate::lang_lock::CallLanguage::with_base`]). Not compared between plans.
     pub sim_lang: Option<crate::locale::Lang>,
+    /// The call's other base languages ([`call_lang_plan_for`]): the SIM's main
+    /// and second languages and the number's country's. Not compared between plans.
+    pub base_langs: Vec<crate::locale::Lang>,
     /// Speech-to-text code of the language of the caller's country when the AI has
     /// no setting for it (Thai, Russian, Arabic, Hindi: [`other_lang_stt_of_country`]):
     /// added to the hints for the AI's own voice, which answers the caller in it.
@@ -1761,26 +1764,60 @@ pub fn call_lang_plan(
     home_code: &str,
     sim_langs: &std::collections::BTreeMap<String, String>,
 ) -> CallLangPlan {
+    let sims: std::collections::BTreeMap<String, crate::settings_store::SimLang> =
+        sim_langs.iter().map(|(k, v)| (k.clone(), crate::settings_store::SimLang::main(v))).collect();
+    call_lang_plan_for(caller_id, sim, lang, home_code, &sims)
+}
+
+/// [`call_lang_plan`] with each SIM's languages as the setting `sim_languages`
+/// keeps them ([`crate::settings_store::SimLang`]): the main language and its
+/// region, and second languages with theirs. A number from abroad whose country
+/// is the region of one of the SIM's languages opens in that language, before
+/// its country's; the main language's region sets the call's local ways. The
+/// main and second languages, with the number's country's, are the call's base
+/// languages ([`CallLangPlan::base_langs`]).
+pub fn call_lang_plan_for(
+    caller_id: &str,
+    sim: Option<&str>,
+    lang: crate::locale::Lang,
+    home_code: &str,
+    sim_langs: &std::collections::BTreeMap<String, crate::settings_store::SimLang>,
+) -> CallLangPlan {
     use crate::locale::{country_lang, Lang};
+    let at_call = |code: &str| crate::locales_store::lang_at(code, crate::locales_store::Stage::Call);
     let sim = sim
         .map(|s| s.trim().to_ascii_lowercase())
         .filter(|s| !s.is_empty());
     let sim = sim.as_deref();
     let home = crate::phone_region::country_of_code(home_code);
     let number = crate::phone_region::normalize(caller_id, sim.or(home));
+    let sim_set = sim.and_then(|s| sim_langs.get(s));
     // The main language the owner set for this SIM's country.
-    let sim_lang = sim
-        .and_then(|s| sim_langs.get(s))
-        .map(|code| crate::locales_store::lang_at(code, crate::locales_store::Stage::Call));
+    let sim_lang = sim_set.and_then(|s| s.lang()).map(at_call);
+    // The country whose local ways the owner set for it.
+    let sim_region = sim_set.and_then(|s| s.region());
+    // Its second languages, with the country whose numbers open in each.
+    let sim_more: Vec<(Lang, &str)> =
+        sim_set.map(|s| s.more.iter().map(|m| (at_call(&m.lang), m.region.as_str())).collect()).unwrap_or_default();
     // For the opening only: with no language set for the SIM, its country's.
     // The prompt stays in the setting's language (`prompt_lang` below).
     let sim_main = sim_lang.or_else(|| sim.and_then(country_lang));
+    // A number from abroad whose country is the region of one of the SIM's
+    // languages (a second language's, or the main one's): that language.
+    let set_for_number = match (sim, number.as_ref()) {
+        (Some(sim), Some(n)) if n.country != sim => sim_more
+            .iter()
+            .find(|(_, r)| *r == n.country)
+            .map(|(l, _)| *l)
+            .or_else(|| sim_main.filter(|_| sim_region == Some(n.country))),
+        _ => None,
+    };
     // A number from another country than the SIM's that answers its own way (a
     // Vietnamese number on a French SIM): it opens that way, as a Japanese number
     // opens in Japanese on any SIM. The SIM's language would be neither the
     // caller's nor, often, the owner's.
     let caller_hello = match (sim, number.as_ref()) {
-        (Some(sim), Some(n)) if n.country != sim && country_lang(n.country).is_none() => {
+        (Some(sim), Some(n)) if n.country != sim && set_for_number.is_none() && country_lang(n.country).is_none() => {
             crate::prompts::local_hello(n.country)
         }
         _ => None,
@@ -1789,15 +1826,18 @@ pub fn call_lang_plan(
         Some(_) if caller_hello.is_some() => None,
         Some(sim) => {
             let main = sim_main.filter(|l| !(l.is_zh() && lang.is_zh())).unwrap_or(lang);
-            let caller = number
-                .as_ref()
-                .filter(|n| n.country != sim)
-                .and_then(|n| country_lang(n.country))
+            let caller = set_for_number
+                .or_else(|| number.as_ref().filter(|n| n.country != sim).and_then(|n| country_lang(n.country)))
                 .filter(|l| !(l.is_zh() && main.is_zh()));
             Some(caller.unwrap_or(main)).filter(|l| *l != lang)
         }
         None => opening_lang_for(caller_id, home_code, lang),
     };
+    // The languages the call moves between on one clear sentence of the
+    // caller's, besides its opening's and its prompt's: the SIM's main and
+    // second languages and the number's country's.
+    let mut base_langs: Vec<Lang> = sim_lang.into_iter().chain(sim_more.iter().map(|(l, _)| *l)).collect();
+    base_langs.extend(number.as_ref().and_then(|n| country_lang(n.country)));
     // A country whose language the AI has no setting for (Italy, Thailand…): its
     // way of answering, not the setting's language. A number from another country
     // than the SIM's counts first, as for an opening language; a local or hidden
@@ -1818,7 +1858,7 @@ pub fn call_lang_plan(
     // the SIM's own country, else the language of the number's country.
     let caller_lang = number.as_ref().and_then(|n| match sim_lang {
         Some(l) if sim == Some(n.country) => Some(l),
-        _ => country_lang(n.country),
+        _ => set_for_number.or_else(|| country_lang(n.country)),
     });
     let abroad = match (number.as_ref(), home.or(sim)) {
         (Some(n), Some(own)) => n.country != own,
@@ -1843,7 +1883,9 @@ pub fn call_lang_plan(
     // not belong to that SIM's country (e.g. a US roaming/eSIM card set to
     // `zh-TW`), use that language's region instead of the SIM's country so the
     // call's speaking style and local habits match the language configured for it.
+    // A region the owner set for the SIM's main language wins.
     let region_sim = match (sim, sim_lang) {
+        _ if sim_region.is_some() => sim_region,
         (Some(s), Some(sl))
             if (sl.is_zh() && !bageo_packs::data::DIALECT_COUNTRIES.contains(&s))
                 || (!sl.is_zh()
@@ -1862,6 +1904,7 @@ pub fn call_lang_plan(
         sim_local,
         prompt_lang,
         sim_lang,
+        base_langs,
         caller_other_stt,
         sim_country: sim.map(str::to_string),
         region,
@@ -3287,7 +3330,8 @@ fn session_prompt(prompt: &str, outbound: Outbound) -> String {
 /// The language a call starts held in and its base languages
 /// ([`crate::lang_lock::CallLanguage`]): the opening's (`opening`, else the
 /// prompt's), the prompt's (`prompt`), the SIM's main language (setting
-/// `sim_languages`, else `language`), and a local way of answering's when the
+/// `sim_languages`, else `language`), its second languages and the number's
+/// country's ([`CallLangPlan::base_langs`]), and a local way of answering's when the
 /// call opened that way (persona mode, [`CallLangPlan::local_hello`]). The call
 /// leaves them only when it follows the caller into their language: a call that
 /// came in whose prompt has the note (setting `reply_in_caller_language`), and
@@ -3313,7 +3357,9 @@ fn call_language_for(
     let follows = outbound != Outbound::Incoming || crate::prompts::has_caller_language_note(system_prompt);
     crate::lang_lock::CallLanguage::new(opening.unwrap_or(prompt), prompt)
         .with_base(
-            std::iter::once(plan.sim_lang.unwrap_or_else(crate::locale::current)).chain(local_lang),
+            std::iter::once(plan.sim_lang.unwrap_or_else(crate::locale::current))
+                .chain(plan.base_langs.iter().copied())
+                .chain(local_lang),
             local.is_some() && local_lang.is_none(),
         )
         .following_others(follows)
@@ -16776,6 +16822,69 @@ mod call_language_tests {
             }
             assert!(c.lang().is_some_and(|l| l == want || (l.is_zh() && want.is_zh())), "{why}: {:?}", c.lang());
         }
+    }
+
+    /// A SIM with a main language and region and second languages with
+    /// regions: a number from a second language's region opens in it, any other
+    /// number from abroad in its country's language, a local or hidden one in
+    /// the main language with the main region's local ways. All of them are
+    /// base languages: one clear sentence moves the call between them.
+    #[test]
+    fn second_languages_open_calls_from_their_regions() {
+        use crate::settings_store::{SimLang, SimLangMore};
+        crate::locales_store::testing::use_builtin();
+        let ext = |c: &str| Lang::Ext(crate::locale::Ext::from_code(c).unwrap());
+        let sim_of = |sim: &str, lang: &str, region: &str, more: &[(&str, &str)]| -> BTreeMap<String, SimLang> {
+            let more = more.iter().map(|(l, r)| SimLangMore { lang: l.to_string(), region: r.to_string() }).collect();
+            [(sim.to_string(), SimLang { lang: lang.into(), region: region.into(), more })].into_iter().collect()
+        };
+        let tw = sim_of("tw", "zh-TW", "tw", &[("es", "us")]);
+        let jp = sim_of("jp", "ja", "jp", &[("ko", "us"), ("zh-CN", "sg")]);
+        let de = sim_of("de", "de", "de", &[("it", "ch"), ("fr", "be")]);
+        let br = sim_of("br", "pt", "br", &[("th", "th"), ("vi", "vn")]);
+        let us = sim_of("us", "zh-TW", "tw", &[("en", "")]);
+        // (number, SIM, the setting `language`, the SIM's languages, the opening, why)
+        let cases: Vec<(&str, &str, Lang, &BTreeMap<String, SimLang>, Lang, &str)> = vec![
+            ("+12025550143", "tw", Lang::ZhTw, &tw, Lang::Es, "+1 is a second language's region"),
+            ("+81312345678", "tw", Lang::ZhTw, &tw, Lang::Ja, "+81 is no one's: its country's"),
+            ("0912345678", "tw", Lang::ZhTw, &tw, Lang::ZhTw, "local: the main language"),
+            ("+12025550143", "jp", Lang::Ja, &jp, Lang::Ko, "+1 on jp: Korean"),
+            ("+6561234567", "jp", Lang::Ja, &jp, Lang::ZhCn, "+65 on jp: Simplified Chinese"),
+            ("+33123456789", "jp", Lang::Ja, &jp, Lang::Fr, "+33 on jp: French"),
+            ("", "jp", Lang::Ja, &jp, Lang::Ja, "hidden on jp: Japanese"),
+            ("+41441234567", "de", Lang::De, &de, ext("it"), "+41 on de: Italian"),
+            ("+3221234567", "de", Lang::De, &de, Lang::Fr, "+32 on de: French"),
+            ("+6621234567", "br", Lang::Pt, &br, ext("th"), "+66 on br: Thai"),
+            ("+84912345678", "br", Lang::Pt, &br, ext("vi"), "+84 on br: Vietnamese"),
+            ("+34912345678", "br", Lang::Pt, &br, Lang::Es, "+34 on br: Spanish"),
+            ("2025550143", "us", Lang::En, &us, Lang::ZhTw, "local on us: the main language"),
+            ("", "us", Lang::En, &us, Lang::ZhTw, "hidden on us: the main language"),
+        ];
+        for (number, sim, lang, sims, want, why) in cases {
+            let plan = super::call_lang_plan_for(number, Some(sim), lang, "886", sims);
+            let prompt = plan.prompt_lang.unwrap_or(lang);
+            let opening = plan.opening.unwrap_or(prompt);
+            assert_eq!(opening, want, "{why}: {plan:?}");
+            for l in sims[sim].codes() {
+                let l = crate::locales_store::lang_at(l, crate::locales_store::Stage::Call);
+                assert!(plan.base_langs.contains(&l), "{why}: {l:?} in {:?}", plan.base_langs);
+            }
+        }
+        // The main language's region sets the local ways: a US SIM held in Taiwan's.
+        let plan = super::call_lang_plan_for("2025550143", Some("us"), Lang::En, "1", &us);
+        assert_eq!(plan.region, crate::country_profile::Region::of_country("tw"));
+        // +1 on the Taiwan SIM: Spanish, Chinese and English are base languages.
+        let plan = super::call_lang_plan_for("+12025550143", Some("tw"), Lang::ZhTw, "886", &tw);
+        let mut c = call_language_for(&plan, plan.opening, Lang::ZhTw, true, Outbound::Incoming, &follow_note());
+        assert_eq!(c.lang(), Some(Lang::Es));
+        for said in ["Hola.", "Oi.", "Hallo", "喂？", "Hello?"] {
+            assert_eq!(c.caller_turn(said), None, "{said}");
+        }
+        assert_eq!(c.caller_turn("你好，我是快遞，你的包裹要放哪裡？"), Some(Spoken::Lang(Lang::ZhTw)));
+        assert_eq!(c.caller_turn("I need to know if you are at home right now."), Some(Spoken::Lang(Lang::En)));
+        // Japanese is no base language: one sentence is not enough.
+        assert_eq!(c.caller_turn("では、管理人室に預けておきますので、後で受け取ってください。"), None);
+        assert_eq!(c.lang(), Some(Lang::En));
     }
 
     /// A prompt with the note on following the caller (the setting's default).

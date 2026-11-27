@@ -336,8 +336,8 @@
     "f_notify_lang": "Langue des notifications et des résumés",
     "f_notify_lang_h": "La langue des notifications et des résumés que vous lisez. Elle ne change pas la langue dans laquelle l'IA parle aux correspondants.",
     "nl_same": "Comme la langue de l'IA",
-    "f_simlang": "Langue principale de chaque SIM",
-    "f_simlang_h": "Utile seulement si un téléphone a une SIM d'une autre région : les appels sur cette SIM commencent dans la langue choisie ici. Application 1.0 ou plus récente.",
+    "f_simlang": "Langues de chaque SIM",
+    "f_simlang_h": "Les appels sur cette SIM commencent dans la langue principale ; un appel de l'étranger prend la langue secondaire de sa région, sinon celle de son pays. Application 1.0 ou plus récente.",
     "sl_country": "Région de la SIM",
     "sl_lang": "Langue principale",
     "sl_pick": "Choisir une région",
@@ -1403,6 +1403,13 @@
     "ph_fit_yes": "Oui",
     "ph_fit_no": "Non",
     "ph_fit_retest": "Un autre réglage du son est prêt. Appelez de nouveau ce téléphone pour le tester.",
-    "ph_fit_noted": "Noté : le son des appels de ce téléphone pose problème"
+    "ph_fit_noted": "Noté : le son des appels de ce téléphone pose problème",
+    "sl_lang_sim": "La langue de la région de la SIM",
+    "sl_region": "Région",
+    "sl_region_sim": "Comme la SIM",
+    "sl_region_none": "Aucune",
+    "sl_second1": "Langue secondaire 1",
+    "sl_second2": "Langue secondaire 2",
+    "sl_second_none": "Aucune"
   }
 }

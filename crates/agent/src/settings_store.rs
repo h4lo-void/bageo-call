@@ -233,13 +233,15 @@ pub struct RuntimeSettings {
     /// otherwise one of its codes.
     #[serde(default)]
     pub notify_language: String,
-    /// The main language of each SIM's country: SIM country (ISO 3166 alpha-2,
-    /// lowercase, as the phone reports it) → language code (`{"us": "en"}`). A call
-    /// that comes in on that SIM opens in it, unless the caller's number is from
-    /// another country whose language the AI speaks
-    /// ([`crate::gemini_live::call_lang_plan`]). Empty = `language` for every SIM.
+    /// The languages of each SIM: SIM country (ISO 3166 alpha-2, lowercase, as
+    /// the phone reports it) → [`SimLang`] (`{"us": "en"}`, or `{"us": {"lang":
+    /// "zh-TW", "region": "tw", "more": [{"lang": "en", "region": "us"}]}}`). A
+    /// local or hidden number on that SIM opens in its main language; a number
+    /// from abroad in the second language set for its country, else in its
+    /// country's language ([`crate::gemini_live::call_lang_plan_for`]). Empty =
+    /// the SIM country's language.
     #[serde(default)]
-    pub sim_languages: std::collections::BTreeMap<String, String>,
+    pub sim_languages: std::collections::BTreeMap<String, SimLang>,
     /// The owner's name as callers say it (`{owner}` in prompts).
     #[serde(default)]
     pub owner_name: String,
@@ -768,18 +770,148 @@ fn sanitize_notify_language(s: &str) -> String {
 /// Most SIM countries kept in `sim_languages`.
 const SIM_LANGUAGES_MAX: usize = 50;
 
-/// `sim_languages` as stored: keys two letters (lowercased), values one of the
-/// language codes ([`sanitize_notify_language`]); anything else is dropped.
-fn sanitize_sim_languages<'a>(
-    entries: impl IntoIterator<Item = (&'a str, &'a str)>,
-) -> std::collections::BTreeMap<String, String> {
+/// Most second languages a SIM keeps (setting `sim_languages`).
+pub const SIM_MORE_MAX: usize = 2;
+
+/// One SIM's languages (setting `sim_languages`): the main language a local or
+/// hidden number on it opens in and the country whose local ways the call
+/// follows, and up to [`SIM_MORE_MAX`] second languages, each with the country
+/// whose numbers open in it. Stored as the language code alone when there is
+/// nothing more (`"zh-TW"`, the only form older versions know), else as
+/// `{"lang": "zh-TW", "region": "tw", "more": [{"lang": "en", "region": "us"}]}`;
+/// both forms are read (a settings file, a backup, a change from the console).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SimLang {
+    /// Language code; empty = the SIM country's language.
+    pub lang: String,
+    /// Country (ISO 3166 alpha-2, lowercase) whose local ways a call follows;
+    /// empty = the SIM's own.
+    pub region: String,
+    pub more: Vec<SimLangMore>,
+}
+
+/// A second language of a SIM ([`SimLang`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct SimLangMore {
+    /// Language code.
+    pub lang: String,
+    /// Country (ISO 3166 alpha-2, lowercase) whose numbers open in it; empty = none.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub region: String,
+}
+
+impl SimLang {
+    /// A main language and nothing more (what older versions stored).
+    pub fn main(lang: &str) -> Self {
+        Self { lang: lang.to_string(), ..Default::default() }
+    }
+
+    /// The main language, when one is set.
+    pub fn lang(&self) -> Option<&str> {
+        (!self.lang.is_empty()).then_some(self.lang.as_str())
+    }
+
+    /// The country whose local ways a call follows, when one is set.
+    pub fn region(&self) -> Option<&str> {
+        (!self.region.is_empty()).then_some(self.region.as_str())
+    }
+
+    /// Every language it names: the main one (when set), then the second ones.
+    pub fn codes(&self) -> impl Iterator<Item = &str> {
+        self.lang().into_iter().chain(self.more.iter().map(|m| m.lang.as_str()))
+    }
+
+    /// Read from a stored or sent value: a language code, or the object form;
+    /// anything else is empty (and then dropped by [`sanitize_sim_languages`]).
+    pub fn from_value(v: &Value) -> Self {
+        let text = |o: &Map<String, Value>, k: &str| o.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+        match v {
+            Value::String(s) => Self::main(s),
+            Value::Object(o) => Self {
+                lang: text(o, "lang"),
+                region: text(o, "region"),
+                more: o
+                    .get("more")
+                    .and_then(Value::as_array)
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(Value::as_object)
+                            .map(|m| SimLangMore { lang: text(m, "lang"), region: text(m, "region") })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            },
+            _ => Self::default(),
+        }
+    }
+
+    /// Known language codes and countries only: a second language without a
+    /// language, or seen before, is dropped. `None` when nothing is left.
+    fn sanitized(&self) -> Option<Self> {
+        let mut more: Vec<SimLangMore> = Vec::new();
+        for m in &self.more {
+            let lang = sanitize_notify_language(&m.lang);
+            let region = sanitize_sim_region(&m.region);
+            if lang.is_empty() || more.iter().any(|x| x.lang == lang && x.region == region) {
+                continue;
+            }
+            more.push(SimLangMore { lang, region });
+            if more.len() == SIM_MORE_MAX {
+                break;
+            }
+        }
+        let s = Self { lang: sanitize_notify_language(&self.lang), region: sanitize_sim_region(&self.region), more };
+        (!s.lang.is_empty() || !s.region.is_empty() || !s.more.is_empty()).then_some(s)
+    }
+}
+
+impl Serialize for SimLang {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        if self.region.is_empty() && self.more.is_empty() {
+            return s.serialize_str(&self.lang);
+        }
+        let mut m = s.serialize_map(None)?;
+        m.serialize_entry("lang", &self.lang)?;
+        if !self.region.is_empty() {
+            m.serialize_entry("region", &self.region)?;
+        }
+        if !self.more.is_empty() {
+            m.serialize_entry("more", &self.more)?;
+        }
+        m.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for SimLang {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
+        Ok(Self::from_value(&Value::deserialize(d)?))
+    }
+}
+
+/// A country code a SIM's languages may name (ISO 3166 alpha-2, lowercased);
+/// anything else is empty.
+fn sanitize_sim_region(r: &str) -> String {
+    let r = r.trim().to_ascii_lowercase();
+    if bageo_packs::data::is_country(&r) {
+        r
+    } else {
+        String::new()
+    }
+}
+
+/// `sim_languages` as stored: keys two letters (lowercased), values a
+/// [`SimLang`] with known language codes ([`sanitize_notify_language`]) and
+/// countries; anything else is dropped.
+fn sanitize_sim_languages(
+    entries: impl IntoIterator<Item = (String, SimLang)>,
+) -> std::collections::BTreeMap<String, SimLang> {
     entries
         .into_iter()
-        .filter_map(|(country, lang)| {
+        .filter_map(|(country, langs)| {
             let country = country.trim().to_ascii_lowercase();
-            let lang = sanitize_notify_language(lang);
-            (country.len() == 2 && country.bytes().all(|b| b.is_ascii_lowercase()) && !lang.is_empty())
-                .then_some((country, lang))
+            let langs = langs.sanitized()?;
+            (country.len() == 2 && country.bytes().all(|b| b.is_ascii_lowercase())).then_some((country, langs))
         })
         .take(SIM_LANGUAGES_MAX)
         .collect()
@@ -1839,11 +1971,7 @@ impl RuntimeSettings {
         self.gemini_thinking_level = sanitize_thinking_level(&self.gemini_thinking_level);
         self.language = sanitize_language(&self.language);
         self.notify_language = sanitize_notify_language(&self.notify_language);
-        self.sim_languages = sanitize_sim_languages(
-            self.sim_languages
-                .iter()
-                .map(|(k, v)| (k.as_str(), v.as_str())),
-        );
+        self.sim_languages = sanitize_sim_languages(std::mem::take(&mut self.sim_languages));
         self.settle_summary_provider();
         self.answer_style = sanitize_answer_style(&self.answer_style);
         self.reject_mode = sanitize_reject_mode(&self.reject_mode);
@@ -2274,7 +2402,7 @@ struct Overrides {
     #[serde(skip_serializing_if = "Option::is_none")]
     notify_language: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    sim_languages: Option<std::collections::BTreeMap<String, String>>,
+    sim_languages: Option<std::collections::BTreeMap<String, SimLang>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     owner_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2882,7 +3010,7 @@ fn masked(rt: &RuntimeSettings) -> Value {
     if !rt.notify_language.is_empty() {
         used.push(&rt.notify_language);
     }
-    used.extend(rt.sim_languages.values().map(String::as_str));
+    used.extend(rt.sim_languages.values().flat_map(SimLang::codes));
     m.insert(
         "languages".into(),
         json!(crate::locales_store::menu_for(&used)),
@@ -3241,10 +3369,7 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
         ov.notify_language = Some(sanitize_notify_language(&v));
     }
     if let Some(map) = patch.get("sim_languages").and_then(|v| v.as_object()) {
-        ov.sim_languages = Some(sanitize_sim_languages(
-            map.iter()
-                .filter_map(|(k, v)| Some((k.as_str(), v.as_str()?))),
-        ));
+        ov.sim_languages = Some(sanitize_sim_languages(map.iter().map(|(k, v)| (k.clone(), SimLang::from_value(v)))));
     }
     p_string(patch, "owner_name", &mut ov.owner_name);
     if let Some(v) = ov.owner_name.take() {
@@ -4551,8 +4676,8 @@ mod tests {
         assert_eq!((rt.language.as_str(), rt.notify_language.as_str()), ("th", "it"));
         assert_eq!(rt.lang(), ext("th"));
         assert_eq!(rt.notify_lang(), ext("it"));
-        assert_eq!(rt.sim_languages.get("ir").map(String::as_str), Some("fa"));
-        assert_eq!(rt.sim_languages.get("ru").map(String::as_str), Some("ru"), "the format only: an official code is kept");
+        assert_eq!(rt.sim_languages.get("ir").and_then(SimLang::lang), Some("fa"));
+        assert_eq!(rt.sim_languages.get("ru").and_then(SimLang::lang), Some("ru"), "the format only: an official code is kept");
         assert!(!rt.sim_languages.contains_key("fr"));
         // Thai reaches the call only: what the owner reads follows the AI's
         // language, so it reads English.
@@ -4578,7 +4703,7 @@ mod tests {
         assert_eq!((rt.language.as_str(), rt.notify_language.as_str()), ("ar", "ar"));
         let again = SettingsStore::load(base).snapshot();
         assert_eq!((again.language.as_str(), again.notify_language.as_str()), ("ar", "ar"));
-        assert_eq!(again.sim_languages.get("eg").map(String::as_str), Some("ar"));
+        assert_eq!(again.sim_languages.get("eg").and_then(SimLang::lang), Some("ar"));
         assert_eq!(store.masked_json()["languages"].as_array().unwrap().len(), 9);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -4602,9 +4727,9 @@ mod tests {
                 "usa": "en", "x1": "en", "": "en", "fr": "klingon", "de": "", "ca": 7
             } }))
             .unwrap();
-        let want: std::collections::BTreeMap<String, String> = [("jp", "ja"), ("tw", "zh-TW"), ("us", "en")]
+        let want: std::collections::BTreeMap<String, SimLang> = [("jp", "ja"), ("tw", "zh-TW"), ("us", "en")]
             .into_iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .map(|(k, v)| (k.to_string(), SimLang::main(v)))
             .collect();
         assert_eq!(rt.sim_languages, want);
         assert_eq!(store.masked_json()["sim_languages"], json!({"jp": "ja", "tw": "zh-TW", "us": "en"}));
@@ -4623,6 +4748,72 @@ mod tests {
         let countries = shown["countries"].as_array().expect("countries");
         assert!(countries.iter().any(|c| c == "tw") && countries.iter().any(|c| c == "us"));
         assert!(shown["seen_sim_countries"].is_array());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A SIM's main language and region and up to two second languages with
+    /// their regions: stored as a plain code when there is nothing more (what
+    /// older versions read), as an object otherwise; both forms read from a
+    /// settings file, a change from the console and a backup.
+    #[test]
+    fn sim_languages_keep_a_main_and_two_second_languages_with_regions() {
+        let dir = std::env::temp_dir().join(format!("bageo-call-sim-more-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(dir.join("config")).expect("temp settings dir");
+        // A settings file of an older version: codes only.
+        std::fs::write(dir.join("config").join("settings.json"), r#"{"sim_languages": {"tw": "zh-TW", "us": "en"}}"#).unwrap();
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        let rt = store.snapshot();
+        assert_eq!(rt.sim_languages.get("tw"), Some(&SimLang::main("zh-TW")));
+        assert_eq!(rt.sim_languages.get("us"), Some(&SimLang::main("en")));
+        assert_eq!(store.masked_json()["sim_languages"], json!({"tw": "zh-TW", "us": "en"}));
+        // The new form, in many languages and regions; a third second language,
+        // an unknown one and a repeat are dropped; a SIM with only seconds keeps them.
+        let sent = json!({ "sim_languages": {
+            "tw": {"lang": "zh-TW", "region": "tw", "more": [{"lang": "en", "region": "US"}, {"lang": "ja", "region": "jp"}, {"lang": "ko", "region": "kr"}]},
+            "us": {"lang": "es", "region": "mx", "more": [{"lang": "zh-CN", "region": "cn"}, {"lang": "pt", "region": "br"}]},
+            "jp": {"lang": "ja", "more": [{"lang": "fr", "region": "fr"}, {"lang": "fr", "region": "fr"}, {"lang": "de", "region": "de"}]},
+            "kr": {"lang": "ko", "region": "zz", "more": [{"lang": "klingon", "region": "kr"}, {"lang": "it", "region": "it"}]},
+            "de": {"lang": "", "more": [{"lang": "th", "region": "th"}, {"lang": "vi"}]},
+            "fr": "fr",
+            "it": {"lang": "", "region": "", "more": []}
+        } });
+        let rt = store.apply_patch(&sent).unwrap();
+        let more = |pairs: &[(&str, &str)]| -> Vec<SimLangMore> {
+            pairs.iter().map(|(l, r)| SimLangMore { lang: l.to_string(), region: r.to_string() }).collect()
+        };
+        let sim = |lang: &str, region: &str, m: &[(&str, &str)]| SimLang { lang: lang.into(), region: region.into(), more: more(m) };
+        let want: std::collections::BTreeMap<String, SimLang> = [
+            ("de", sim("", "", &[("th", "th"), ("vi", "")])),
+            ("fr", SimLang::main("fr")),
+            ("jp", sim("ja", "", &[("fr", "fr"), ("de", "de")])),
+            ("kr", sim("ko", "", &[("it", "it")])),
+            ("tw", sim("zh-TW", "tw", &[("en", "us"), ("ja", "jp")])),
+            ("us", sim("es", "mx", &[("zh-CN", "cn"), ("pt", "br")])),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+        assert_eq!(rt.sim_languages, want);
+        let shown = store.masked_json()["sim_languages"].clone();
+        assert_eq!(shown["fr"], json!("fr"));
+        assert_eq!(
+            shown["tw"],
+            json!({"lang": "zh-TW", "region": "tw", "more": [{"lang": "en", "region": "us"}, {"lang": "ja", "region": "jp"}]})
+        );
+        assert_eq!(shown["de"], json!({"lang": "", "more": [{"lang": "th", "region": "th"}, {"lang": "vi"}]}));
+        // Sending back what was shown changes nothing; it survives a restart.
+        assert_eq!(store.apply_patch(&json!({ "sim_languages": shown })).unwrap().sim_languages, want);
+        assert_eq!(SettingsStore::load(base.clone()).snapshot().sim_languages, want);
+        // A backup in the new form and one in the old form are both read.
+        let backup = String::from_utf8(store.overrides_json()).unwrap();
+        assert!(backup.contains("\"more\""), "{backup}");
+        store.apply_patch(&json!({ "sim_languages": {} })).unwrap();
+        assert_eq!(store.replace_from_backup(&backup, true, false, false).unwrap().sim_languages, want);
+        let old = store.replace_from_backup(r#"{"sim_languages": {"kr": "ko", "br": "pt"}}"#, true, false, false).unwrap();
+        assert_eq!(old.sim_languages.get("kr"), Some(&SimLang::main("ko")));
+        assert_eq!(old.sim_languages.get("br"), Some(&SimLang::main("pt")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

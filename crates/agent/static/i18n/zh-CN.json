@@ -336,8 +336,8 @@
     "f_notify_lang": "通知和摘要的语言",
     "f_notify_lang_h": "你收到的通知和摘要用这个语言。AI 跟来电者说话的语言不受影响。",
     "nl_same": "与 AI 说话的语言相同",
-    "f_simlang": "各 SIM 卡的主要语言",
-    "f_simlang_h": "手机有其他地区的 SIM 卡才需要设：打到那张卡的电话，AI 会用这里选的语言开场。手机 App 要 1.0 以上。",
+    "f_simlang": "各 SIM 卡的语言",
+    "f_simlang_h": "打到这张卡的电话先用主要语言；国外号码按国家代码判断，正好是副语言的地区就用副语言。手机 App 要 1.0 以上。",
     "sl_country": "SIM 卡地区",
     "sl_lang": "主要语言",
     "sl_pick": "选择地区",
@@ -1403,6 +1403,13 @@
     "ph_fit_yes": "有",
     "ph_fit_no": "没有",
     "ph_fit_retest": "已换一组通话声音设置，请再打一通电话测试。",
-    "ph_fit_noted": "已记下这部手机的通话声音有问题"
+    "ph_fit_noted": "已记下这部手机的通话声音有问题",
+    "sl_lang_sim": "SIM 卡地区的语言",
+    "sl_region": "地区",
+    "sl_region_sim": "和 SIM 卡一样",
+    "sl_region_none": "不指定",
+    "sl_second1": "副语言 1",
+    "sl_second2": "副语言 2",
+    "sl_second_none": "不用"
   }
 }

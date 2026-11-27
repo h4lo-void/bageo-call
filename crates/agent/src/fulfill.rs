@@ -477,7 +477,7 @@ fn infer_voicemail_callback_lang(
         }
     }
     let sim = crate::phone_region::last_sim(serial.trim());
-    let plan = crate::gemini_live::call_lang_plan(
+    let plan = crate::gemini_live::call_lang_plan_for(
         number,
         sim.as_deref(),
         rt.lang(),
