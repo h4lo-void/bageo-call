@@ -58,15 +58,17 @@ of USB: see [Phone setup](PHONE.md#wi-fi).
 | The AI hangs up before the caller is done | Its prompt lets it say goodbye too early. | See the ending rule in [Writing the prompt](PROMPTS.md#writing-or-editing-it-yourself). |
 | The call never ends | The caller stays on the line without a goodbye Bageo recognises. | It ends at *Longest normal call*; shorten that if it happens often. |
 | A silent call ends after about half a minute | Intended: a pocket dial or a robot that only listens should not hold the line. | Nothing to fix; the timings are in the table below. |
-| On a call from abroad the AI starts late, or talks over a recorded warning | Carriers in Taiwan play a fraud warning on calls from abroad. When a Taiwanese SIM takes the call, the AI waits until the line goes quiet (7.5 seconds at most) and then says its opening line once. | There is no setting for the wait. Keep the phone app [up to date](PHONE.md#updating). |
+| On a call from abroad the AI starts late, or talks over a recorded warning | Carriers in Taiwan and South Korea play a warning on calls from abroad (7.5 s at most). A Hong Kong SIM showing `+852` waits up to 13 s (until 1.5 s of quiet) and also recognizes the new pre-paid SIM alert. | There is no setting for the wait. Keep the phone app [up to date](PHONE.md#updating). |
 | A second caller says your line was busy | One call at a time, by design. A call that rings during a call is declined at once. | It is listed in the calls, and you get a "Missed while on another call" notification. |
 | The first words come late | The AI only connects after pick-up. | Switch on *Get the AI ready while the phone rings* and keep *Ring before answering* at 3 s or more. |
-| It answers in the wrong language | *Language* sets the opening line, and *Main language for each SIM* the opening on another country's SIM. | Check both, and make sure your prompt does not tie the AI to one language (for example "always answer in English"). |
+| It answers in the wrong language | *Language* sets the opening line, and *Languages for each SIM* the opening on another country's SIM. | Check both, and make sure your prompt does not tie the AI to one language (for example "always answer in English"). |
 
-Opened in the right language, then switched? That is intended: when the caller
-clearly speaks another language, the AI follows. A short "hello?" alone does
-not switch it. This is on by default; turn it off with *Reply in the caller's
-language* under *Settings → How it answers*.
+Opened in the right language, then switched? That is intended: when the AI is
+sure the caller switched languages—one clear full sentence in the call's own
+languages, or two in a row (or an explicit request) for another language—it
+follows. A quick hello or a few short words do not switch it. This is on by
+default; turn it off with *Reply in the caller's language* under *Settings → How
+it answers* (it still switches among the call's own languages).
 
 When the line goes quiet, Bageo follows fixed timings (no setting):
 
@@ -120,8 +122,8 @@ one does not go out, or comes back undecided, the page tells you why:
 | The console says | Why | Fix |
 |---|---|---|
 | "This phone hasn't taken a call yet…" (`sim_unknown`) | Current phone apps report active SIMs automatically when connecting, so this happens with older apps or if Android has not reported the SIM yet. That way an errand never dials from another country's SIM. | Update the phone module, or call that phone once from any phone and try again. |
-| "No phone has a SIM that can call this country's numbers." (`no_sim_for_country`) | Errands dial only from a SIM of the number's country. A number without `+` counts as one of your country. | Write numbers abroad with `+` and the country code. |
-| "This is an international call" window (`sim_other_country`; if the window does not open: "This SIM is from a different country than the number.") | You picked a SIM and the number (written with `+`) is of another country. Bageo asks first because your carrier may charge for an international call. | "Call anyway" dials it on that SIM; Cancel does not call. Without a picked SIM Bageo still uses only a SIM of the number's country. |
+| "No phone has a SIM that can call this country's numbers." (`no_sim_for_country`) | Errands prefer a SIM of the number's country, and without a picked SIM will not dial across countries. A number without `+` counts as one of your country. | Write numbers abroad with `+` and the country code, or pick the SIM you want to dial from. |
+| "This is an international call" window (`sim_other_country`; if the window does not open: "This SIM is from a different country than the number.") | Errands pick a same-country SIM first; if the call will go out from a SIM of another country (for a `+` number), Bageo asks first because your carrier may charge for an international call. | "Call anyway" dials it on that SIM; Cancel does not call. |
 | "The AI can't call this number" (`not_allowed`) | Emergency numbers, short codes (7 digits or fewer) and premium-rate numbers are never dialed. Neither are numbers written with an international prefix (`00…`, `011…`) instead of `+`. | Use the `+` form, or call it yourself. |
 | "No AI phone is available right now" (`no_phone`) | No phone is connected, or every phone is in normal phone mode. | Switch one back on *System → Phones*. |
 | The errand stays *Queued* | The phone is on a call, or an earlier call to the same number (an errand or an appointment call-back) is still running. | Wait: it dials by itself when free. It gives up after 10 minutes (`phone_busy`), or after 25 minutes behind the same number (`number_busy`). |

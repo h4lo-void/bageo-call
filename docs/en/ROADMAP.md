@@ -1,6 +1,6 @@
 # Roadmap
 
-What Bageo 2.1 already does as an open-source AI phone assistant, what it does
+What Bageo 2.2 already does as an open-source AI phone assistant, what it does
 only in part, and what would be worth building next. Nothing here is a promise
 or a date; pull requests are welcome.
 
@@ -40,7 +40,7 @@ missing, with no date.
 |---|---|---|
 | Many languages, localised prompts | Done | The phone app has 79 languages built in; the console has nine and can download 70 more (six written right to left). Calls follow the languages Gemini supports, and the built-in prompts come in nine. Traditional Chinese is proven on real calls, the others in simulated calls. |
 | Language detection, switching mid-call | Done | The opening follows the caller's number and the SIM; mid-call the AI follows the caller. Simulated with callers speaking 28 languages. |
-| Dual SIM with a language per SIM | Done | *Main language for each SIM*. |
+| Dual SIM with a language per SIM | Done | *Languages for each SIM*. |
 | Translated transcripts | Done | Lines in another language keep their wording, with a translation into your notification language. |
 | Dialects and accents | Partly | Whatever the model understands; no tuning of our own. |
 | Live translation between a caller and a person | Not yet | |

@@ -146,7 +146,7 @@ fn exported_strings_keep_the_english_names_and_arguments() {
     let en = strings(&read(&res().join("values/strings.xml")));
     for (suffix, text) in generated() {
         let tr = strings(&text);
-        for key in en.keys().filter(|k| !tr.contains_key(*k)) {
+        if let Some(key) = en.keys().find(|k| !tr.contains_key(*k)) {
             panic!("values-{suffix} lacks {key}: add its translation");
         }
         for (name, (literal, value)) in &tr {

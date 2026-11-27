@@ -8058,7 +8058,9 @@ async function erCreate(body, answers) {
 }
 function erCountryName(code) {
   const c = String(code || "").toUpperCase();
-  try { return new Intl.DisplayNames([lang], { type: "region" }).of(c) || c; } catch (_) { return c; }
+  const neutral = neutralRegionName(loc(), c);
+  if (neutral) return neutral;
+  try { return new Intl.DisplayNames([loc()], { type: "region" }).of(c) || c; } catch (_) { return c; }
 }
 // {sim, dest}: the country names for the warning, or null when the refusal is something else.
 function erAbroadCodes(e) {
@@ -8515,17 +8517,25 @@ function erActions(e, busy) {
   return row;
 }
 // Cancel (queued), hang up (dialing / on the call) or call again (it ended).
-async function erAct(e, tail, okKey) {
+async function erAct(e, tail, okKey, abroadOk) {
   if (er.busy.has(e.id)) return;
   er.busy.add(e.id);
   renderErrands();
   try {
-    const d = await erApi(erPath(e.id, tail), jsonBody("POST", {}));
+    const d = await erApi(erPath(e.id, tail), jsonBody("POST", abroadOk ? { abroad_ok: true } : {}));
     if (tail === "/retry") erLive.delete(e.id);
     if (d.errand) erPut(d.errand);
     toast(t(okKey));
   } catch (err) {
-    if (err.status !== 401) toast(erErrText(err), true);
+    if (err.status === 401) return;
+    const codes = tail === "/retry" ? erAbroadCodes(err) : null;
+    if (codes) {
+      er.busy.delete(e.id);
+      renderErrands();
+      if (await ask({ title: t("er_abroad_title"), body: t("er_abroad_body", codes), ok: t("er_abroad_ok") })) return await erAct(e, tail, okKey, true);
+      return;
+    }
+    toast(erErrText(err), true);
   } finally {
     er.busy.delete(e.id);
     renderErrands();

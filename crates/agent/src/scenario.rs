@@ -311,7 +311,9 @@ const SCAM_ASK_WORDS: &[&str] = &[
     "wire", "gift card", "remote", "screen", "download", "install", "app", "whatsapp", "telegram", "police",
     // Not "이체" alone: a courier is paid for the goods by transfer, a bill by 자동이체.
     "暗証番号", "認証", "振込", "振り込", "비밀번호", "인증", "먼저 이체", "바로 이체", "지금 이체", "즉시 이체", "선입금",
-    "이체하세요", "이체하셔야", "계좌로 이체하세요", "contraseña", "código", "codigo",
+    "이체하세요", "이체하셔야", "계좌로 이체하세요",
+    // Customs fees a fake courier asks for (Korea Customs Service warnings); a real courier's 택배비 is no such fee.
+    "통관수수료", "통관 수수료", "통관비", "관부가세", "contraseña", "código", "codigo",
     "transferencia", "mot de passe", "virement", "passwort", "überweisung", "senha", "transferência", "pix",
     "codice", "bonifico", "polizia", "conto sicuro", "пароль", "перевод", "полиция", "безопасный счет", "безопасный счёт",
     // Not "chuyển khoản" alone: a real courier asks for the goods' price by transfer.
@@ -1207,6 +1209,27 @@ mod everyday_calls {
         ] {
             assert!(scam_ask(t), "{t}");
             assert_eq!(ordinary(Some(Scenario::Delivery), t), None, "{t}");
+        }
+    }
+
+    /// A fake courier's customs fee (통관수수료, 통관비, 관부가세 — what the Korea
+    /// Customs Service warns of) paid by transfer is no plain courier; the
+    /// courier's own 택배비 by transfer still is.
+    #[test]
+    fn a_korean_customs_fee_by_transfer_is_no_plain_courier() {
+        for t in [
+            "택배입니다. 통관수수료는 계좌이체로 입금해 주세요",
+            "택배입니다. 통관 수수료 3천 원 입금해 주셔야 배송됩니다",
+            "택배기사입니다. 해외 직구 물품 통관비를 계좌로 보내 주세요",
+            "택배입니다. 관부가세 미납으로 보류 중이니 입금 부탁드립니다",
+        ] {
+            assert!(scam_ask(t), "{t}");
+            assert_eq!(ordinary(None, t), None, "{t}");
+            assert_eq!(ordinary(Some(Scenario::Delivery), t), None, "{t}");
+        }
+        for t in ["택배비 계좌이체 되나요", "택배입니다. 택배비는 계좌이체로 보내 주셔도 됩니다"] {
+            assert!(!scam_ask(t), "{t}");
+            assert_eq!(ordinary(None, t), Some(Scenario::Delivery), "{t}");
         }
     }
 

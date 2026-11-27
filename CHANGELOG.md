@@ -1,3 +1,24 @@
+# Bageo v2.2.0
+
+- **A main language, region, and up to two second languages per SIM.** Under *Languages for each SIM*, each SIM can now have a main language and region plus up to two second languages with regions. Local and hidden numbers open in the main language with that region's local habits, while a call from abroad opens in the matching second language (or the caller's country language). See [Settings](docs/en/SETTINGS.md#basics).
+- **每張 SIM 卡可設主要語言、說話地區與最多兩個副語言。** 在「各 SIM 卡的語言」中，每張 SIM 卡都可以設定主要語言和地區，再加上最多兩個附帶地區的副語言。本國與未顯示號碼會用主要語言與當地習慣開場；國外來電則優先用該地區對應的副語言（否則用對方國家的語言）。見[設定參考](docs/zh-TW/SETTINGS.md#基本設定)。
+- **每张 SIM 卡可设主要语言、说话地区与最多两个副语言。** 在“各 SIM 卡的语言”中，每张 SIM 卡都可以设置主要语言和地区，再加上最多两个附带地区的副语言。本国与未显示号码会用主要语言和当地习惯开场；境外来电则优先用该地区对应的副语言（否则用对方国家的语言）。见[设置参考](docs/zh-CN/SETTINGS.md#基本设置)。
+- **Mid-call language switching waits until it is sure, and understands polite refusals and requests.** A short hello or misheard word no longer flips languages. One clear sentence moves between the call's own languages, while any other language needs two clear sentences in a row or an explicit request. Saying "can you not speak…" is not taken as a switch request, while asking "can you speak…?" switches at once.
+- **確定才切換通話語言，也聽得懂禮貌否定與反問。** 一句簡短應答或聽錯的字不會再讓 AI 亂換語言。講一句清楚的這通電話的語言才會切換，其他語言則要連續兩句或對方明確要求才換；對方說「不要講某種語言」或反問時不會誤切，問「能不能講某種語言」則立刻切換。
+- **确定才切换通话语言，也听得懂礼貌否定与反问。** 一句简短应答或听错的字不会再让 AI 乱换语言。说一句清楚的这通电话的语言才会切换，其他语言则要连续两句或对方明确要求才换；对方说“不要讲某种语言”或反问时不会误切，问“能不能讲某种语言”则立刻切换。
+- **Better everyday call recognition and scam checks.** Bageo recognizes couriers, food deliveries, bank charge checks, notices, appointment scheduling, family or friend chat, and wrong numbers, giving a short hint and never flagging them on keywords alone. The second-look review waits up to 3 seconds and retries once if the server is busy.
+- **日常來電情境識別與防詐複查更準確。** 能辨識快遞、外送、銀行核對、正事通知、約時間、親友閒聊與打錯電話，不再只靠關鍵字就判成推銷或詐騙；防詐複查改為最多等 3 秒，遇到服務忙碌時會自動重試一次。
+- **日常来电场景识别与防诈复审更准确。** 能识别快递、外卖、银行核对、正事通知、约时间、亲友闲聊与打错电话，不再只靠关键词就判成推销或诈骗；防诈复审改为最多等 3 秒，遇到服务忙碌时会自动重试一次。
+- **Trusted numbers are never stalled or marked as spam or scam.** Saved contacts, Whitelist callers, and numbers marked *It was not* skip the sales and scam check and are never labelled as such in summaries (if a number is also on the Stall list, the Stall list wins). During an urgent Whitelist call, asking for a verification code still blocks dialing you and sends an urgent alert instead.
+- **聯絡人、白名單與標記安全的號碼不再被陪聊或標成詐騙。** 通訊錄聯絡人、白名單與你標成「不是」的號碼不會做防詐檢查、摘要也不會標成推銷或詐騙（同一號碼若也在陪聊名單，則以陪聊名單為準）。白名單急事通話中若對方索取驗證碼，仍會攔截撥給你並改發急事通知。
+- **联系人、白名单与标记安全的号码不再被陪聊或标成诈骗。** 通讯录联系人、白名单与你标成“不是”的号码不做防诈检查、摘要也不会标成推销或诈骗（同一号码若也在陪聊名单，则以陪聊名单为准）。白名单紧急通话中若对方索取验证码，仍会拦截拨给你并改为发送紧急通知。
+- **AI errands ask before dialing internationally.** When the SIM you picked is from a different country than the number you want the AI to call, Bageo warns you about possible international charges and waits for your confirmation before dialing. See [Features](docs/en/FEATURES.md#ai-errands-it-makes-calls-for-you) and [API](docs/en/API.md#ai-errands).
+- **AI 代打跨國撥號前先確認。** 選用的 SIM 卡與要撥的號碼屬於不同國家時，Bageo 會先提醒可能產生國際通話費，等你確認後才撥出。見[功能總覽](docs/zh-TW/FEATURES.md#ai-代打替你打電話)與 [API](docs/zh-TW/API.md#ai-代打)。
+- **AI 代打跨国拨号前先确认。** 选用的 SIM 卡与要拨的号码属于不同国家时，Bageo 会先提醒可能产生国际通话费，等你确认后才拨出。见[功能总览](docs/zh-CN/FEATURES.md#ai-代打替你打电话)与 [API](docs/zh-CN/API.md#ai-代打)。
+- **Hong Kong `+852` and pre-paid SIM alerts, plus regional illustrations.** On a Hong Kong SIM, calls showing `+852` wait up to 13 seconds (until 1.5 seconds of quiet) for the carrier's three-language alert before opening, and Bageo also recognizes Hong Kong's new pre-paid SIM warning in Chinese and English. Illustrations for 90 regions were redrawn with local landmarks and scenes and are carried directly inside language packs (core regions are built in).
+- **支援香港 `+852` 與新儲值卡電信提示音，以及各地區特色插圖。** 香港 SIM 卡接到顯示 `+852` 的來電時，會等電信三語提示音播完（最多 13 秒、安靜 1.5 秒）才開口，也認得香港新儲值卡的中文與英文提示。90 個地區的八哥插圖已重繪當地地標與生活場景，直接隨語言包一起下載（常用地區已內建）。
+- **支持香港 `+852` 与新储值卡运营商提示音，以及各地区特色插图。** 香港 SIM 卡接到显示 `+852` 的来电时，会等运营商三语提示音播完（最多 13 秒、安静 1.5 秒）才开口，也认得香港新储值卡的中文与英文提示。90 个地区的八哥插图已重绘当地地标与生活场景，直接随语言包一起下载（常用地区已内置）。
+
 # Bageo v2.1.0
 
 - **Other rooted Android phones are supported too, but test yours.** Tested: Google Pixel and the MediaTek Redmi K60 Ultra. On any other rooted phone, call it from another phone after installing and talk to the AI for about 20 seconds: Bageo adjusts by itself and shows you the result in the console and the app. Samsung phones with Exynos chips mostly do not work, because they have no system path that carries sound into a call. See [Which phones](docs/en/PHONE.md#which-phones).

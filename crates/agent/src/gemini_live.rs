@@ -1184,7 +1184,8 @@ fn carrier_words() -> &'static [&'static str] {
 /// Short first words of a caller, in the languages the AI answers in, normalized
 /// as [prompt_norm] reads them (Simplified forms too: the transcript may be in either).
 const CALLER_OPENERS: &[&str] = &[
-    "喂你好", "喂您好", "你好", "您好", "哈囉", "嗯", "好的", "對", "对", "hello", "hi", "hey", "hola", "diga",
+    "喂你好", "喂您好", "你好", "您好", "哈囉", "唔該", "唔该", "多謝", "多谢", "係", "嗯", "好的", "對", "对", "hello",
+    "hi", "hey", "hola", "diga",
     "bueno", "allô", "allo", "oui", "hallo", "ja", "olá", "alô", "sim", "pronto", "yes", "okay", "ok", "もしもし",
     "はい", "여보세요", "네", "예",
 ];
@@ -1736,6 +1737,30 @@ mod carrier_filter_tests {
         ] {
             assert_eq!(caller_opener_at_end(text).map(|i| &text[i..]), at, "{text}");
         }
+    }
+
+    /// Hong Kong's new pre-paid SIM warning, then the caller's two-character
+    /// Cantonese first words in the same piece: theirs, not left-over noise of
+    /// the warning.
+    #[test]
+    fn cantonese_short_first_words_after_the_hong_kong_warning_are_kept() {
+        for words in ["唔該。", "多謝！", "係？", "哈囉？", "多谢。", "唔该"] {
+            for warning in ["來電由新儲值卡打出，", "來電由新儲值卡打出。來電由新儲值卡打出。"] {
+                let mut call = Call::default();
+                let piece = format!("{warning}{words}");
+                assert!(call.hear(&piece), "{piece}");
+                assert_eq!(call.turn_end(), (false, words.to_string()), "{piece}");
+            }
+            // In a piece of their own after the warning, too.
+            let mut call = Call::default();
+            assert!(call.hear("來電由新儲值卡打出。"));
+            assert!(!call.hear(words), "{words}");
+            assert_eq!(call.turn_end(), (false, words.to_string()), "{words}");
+        }
+        assert_eq!(
+            caller_opener_at_end("來電由新儲值卡打出，唔該。").map(|i| &"來電由新儲值卡打出，唔該。"[i..]),
+            Some("唔該。")
+        );
     }
 }
 
@@ -5473,14 +5498,16 @@ enum PromptTail {
 }
 
 /// The window `until`, opened at `since` with the prompt's tail on the line;
-/// `quiet_for`: how long the line has been quiet (None while it talks).
+/// `quiet_for`: how long the line has been quiet (None while it talks); `quiet`:
+/// the pause that ends the prompt in the SIM's region ([carrier_prompt_timing]).
 fn prompt_tail_step(
     until: tokio::time::Instant,
     since: tokio::time::Instant,
     now: tokio::time::Instant,
     quiet_for: Option<Duration>,
+    quiet: Duration,
 ) -> PromptTail {
-    let over = quiet_for.is_some_and(|q| q >= CARRIER_PROMPT_QUIET) || now.saturating_duration_since(since) >= PROMPT_TAIL_MAX;
+    let over = quiet_for.is_some_and(|q| q >= quiet) || now.saturating_duration_since(since) >= PROMPT_TAIL_MAX;
     let end = until.max(now + PROMPT_REPLY_WAIT);
     if over {
         PromptTail::Over(end)
@@ -8047,7 +8074,7 @@ pub async fn run_session(
             let now = tokio::time::Instant::now();
             let quiet_for = (!activity_open)
                 .then(|| last_caller_voice_at.map_or(Duration::MAX, |t| now.saturating_duration_since(t)));
-            match prompt_tail_step(until, since, now, quiet_for) {
+            match prompt_tail_step(until, since, now, quiet_for, carrier_timing.quiet) {
                 PromptTail::Talking(until) => prompt_reply_until = Some(until),
                 PromptTail::Over(until) => {
                     prompt_reply_until = Some(until);
@@ -8127,6 +8154,8 @@ pub async fn run_session(
                         first_downlink_at = Some(now);
                         audio_chunks_out = audio_chunks_out.saturating_add(prebuf_chunks);
                         last_activity_at = now;
+                        // It was heard: its end is a turn like any other, its words stay.
+                        intl_gated_turn = false;
                     }
                     prebuf_chunks = 0;
                     if step == IntlGateStep::Play {
@@ -10661,7 +10690,7 @@ pub async fn run_session(
                                             crate::lang_lock::Spoken::Lang(l) => Some(l),
                                             crate::lang_lock::Spoken::Other => None,
                                         };
-                                        let note = crate::prompts::language_switch_note(crate::locale::current(), to_lang);
+                                        let note = crate::prompts::language_switch_note(prompt_lang, to_lang);
                                         match send_text_before_deadline(
                                             &mut sink,
                                             crate::stall_script::client_note(&note),
@@ -10688,7 +10717,7 @@ pub async fn run_session(
                                         // The caller's words that came in after this turn began
                                         // (their speech-to-text lags) count as what it answers.
                                         if let Some(d) = call_language.ai_turn_after(&turn_out_text, &caller_recent, can_tell) {
-                                            let note = crate::prompts::language_drift_note(crate::locale::current(), d.call);
+                                            let note = crate::prompts::language_drift_note(prompt_lang, d.call);
                                             match send_text_before_deadline(
                                                 &mut sink,
                                                 crate::stall_script::client_note(&note),
@@ -10730,7 +10759,7 @@ pub async fn run_session(
                                         wait_notes += 1;
                                         match send_text_before_deadline(
                                             &mut sink,
-                                            crate::stall_script::client_note(&crate::prompts::no_wait_note(crate::locale::current())),
+                                            crate::stall_script::client_note(&crate::prompts::no_wait_note(prompt_lang)),
                                             tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
                                             "gemini persona no-wait note send",
                                         )
@@ -12607,18 +12636,20 @@ mod tests {
         assert!(!caller_spoke_in_reply_window(true, true, 6_120));
         // While it talks the window keeps moving on, so the model's answer to it
         // (the server ends that turn as the tail stops) is still dropped.
-        let PromptTail::Talking(until) = prompt_tail_step(window, t0, t0 + ms(1_000), None) else {
+        let PromptTail::Talking(until) = prompt_tail_step(window, t0, t0 + ms(1_000), None, CARRIER_PROMPT_QUIET) else {
             panic!("tail still on the line");
         };
         assert!(until >= t0 + ms(1_000) + PROMPT_REPLY_WAIT);
         assert_eq!(prompt_reply_step(until, t0 + ms(1_500), false), PromptReplyStep::Hold);
         // A short pause is not its end.
         assert!(matches!(
-            prompt_tail_step(until, t0, t0 + ms(1_200), Some(CARRIER_PROMPT_QUIET - ms(1))),
+            prompt_tail_step(until, t0, t0 + ms(1_200), Some(CARRIER_PROMPT_QUIET - ms(1)), CARRIER_PROMPT_QUIET),
             PromptTail::Talking(_)
         ));
         // Quiet long enough: over; the window lasts a little longer for that answer…
-        let PromptTail::Over(after) = prompt_tail_step(until, t0, t0 + ms(1_800), Some(CARRIER_PROMPT_QUIET)) else {
+        let PromptTail::Over(after) =
+            prompt_tail_step(until, t0, t0 + ms(1_800), Some(CARRIER_PROMPT_QUIET), CARRIER_PROMPT_QUIET)
+        else {
             panic!("tail over");
         };
         assert!(after >= t0 + ms(1_800) + PROMPT_REPLY_WAIT);
@@ -12628,7 +12659,29 @@ mod tests {
         // Only voice after the tail is the caller's, and it ends the window.
         assert!(caller_spoke_in_reply_window(true, false, LOCAL_MIN_VOICE_MS));
         // A line that never pauses is not held off for long.
-        assert!(matches!(prompt_tail_step(window, t0, t0 + PROMPT_TAIL_MAX, None), PromptTail::Over(_)));
+        assert!(matches!(
+            prompt_tail_step(window, t0, t0 + PROMPT_TAIL_MAX, None, CARRIER_PROMPT_QUIET),
+            PromptTail::Over(_)
+        ));
+    }
+
+    /// Hong Kong's prompts pause longer between their Cantonese, Putonghua and
+    /// English parts: a pause the default region takes for the tail's end is
+    /// still the prompt there.
+    #[test]
+    fn hong_kong_prompt_tail_ends_only_after_its_own_longer_pause() {
+        let t0 = tokio::time::Instant::now();
+        let ms = Duration::from_millis;
+        let window = prompt_reply_window(IntlGateStep::PromptOver, t0).expect("window");
+        let hk = carrier_prompt_timing(Some("hk")).quiet;
+        assert_eq!(hk, HK_CARRIER_PROMPT_QUIET);
+        assert!(matches!(
+            prompt_tail_step(window, t0, t0 + ms(1_000), Some(ms(800)), CARRIER_PROMPT_QUIET),
+            PromptTail::Over(_)
+        ));
+        assert!(matches!(prompt_tail_step(window, t0, t0 + ms(1_000), Some(ms(800)), hk), PromptTail::Talking(_)));
+        assert!(matches!(prompt_tail_step(window, t0, t0 + ms(1_000), Some(hk - ms(1)), hk), PromptTail::Talking(_)));
+        assert!(matches!(prompt_tail_step(window, t0, t0 + ms(1_700), Some(ms(1_500)), hk), PromptTail::Over(_)));
     }
 
     #[test]

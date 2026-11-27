@@ -346,10 +346,8 @@ const TRUSTED_CALLER_NOTE: &str = "\nNote: this caller is a saved contact of the
 async fn summarize_inner(http: &Client, settings: &Settings, caller_id: &str, transcript: &str, trusted: bool) -> String {
     let active = locale::active();
     let lang = active.notify_lang;
-    let mut trimmed = transcript.trim().to_string();
-    if trusted && !trimmed.is_empty() {
-        trimmed.push_str(TRUSTED_CALLER_NOTE);
-    }
+    let trimmed = transcript.trim().to_string();
+    let prompt = if trusted && !trimmed.is_empty() { format!("{trimmed}{TRUSTED_CALLER_NOTE}") } else { trimmed.clone() };
     let caller = caller_id.trim();
     if trimmed.is_empty() {
         return empty_transcript_summary(lang);
@@ -365,7 +363,7 @@ async fn summarize_inner(http: &Client, settings: &Settings, caller_id: &str, tr
             info!("call summary retry caller={}", crate::urgent_call::masked(caller));
         }
         for model in &endpoint.models {
-            match chat_at(http, &endpoint, model, &system, &trimmed, summary_max_tokens(&endpoint)).await {
+            match chat_at(http, &endpoint, model, &system, &prompt, summary_max_tokens(&endpoint)).await {
                 Ok(text) if !text.trim().is_empty() => {
                     let text = locale::fix_names(&polish_summary(lang, &text, &trimmed));
                     info!(
@@ -464,27 +462,56 @@ pub(crate) fn sales_labels(lang: Lang) -> (&'static str, &'static str) {
     }
 }
 
-/// Every way the summary marks a sales call or a likely scam, lower-cased
-/// (ASCII only, so byte positions stay): the labels of all nine languages and
-/// the other phrasings [`summary_says_sales`] knows.
+/// Every way the summary marks a sales call, a likely scam or abusive
+/// collection, lower-cased (full Unicode; find them with [`find_ci`]): the
+/// labels of all nine languages and the other phrasings [`summary_says_sales`]
+/// knows.
 fn sales_markers() -> Vec<String> {
     let mut v: Vec<String> = Vec::new();
     for l in [Lang::ZhTw, Lang::ZhCn, Lang::En, Lang::Ja, Lang::Ko, Lang::Es, Lang::Fr, Lang::De, Lang::Pt] {
         let (sales, scam) = sales_labels(l);
-        v.push(sales.to_ascii_lowercase());
-        v.push(scam.to_ascii_lowercase());
+        v.push(sales.to_lowercase());
+        v.push(scam.to_lowercase());
     }
     for m in [
         "sales pitch", "likely scam", "probable scam", "語音廣告", "语音广告", "セールス電話", "詐欺電話",
         "판매 전화", "광고 전화", "llamada de ventas", "presunta estafa", "intento de estafa", "appel commercial",
         "arnaque probable", "tentative d'arnaque", "verkaufsanruf", "betrugsversuch", "ligação comercial",
         "tentativa de golpe",
+        "催收騷擾", "催收骚扰", "討債騷擾", "讨债骚扰", "惡意騷擾", "恶意骚扰",
+        "debt-collection harassment", "debt collection harassment", "abusive harassment", "malicious harassment",
+        "悪質な取り立て", "嫌がらせ電話", "脅迫電話",
+        "채권추심 괴롭힘", "악성 추심", "악성 괴롭힘", "협박 전화",
+        "cobro agresivo", "llamada de acoso", "recouvrement agressif", "appel de harcèlement",
+        "aggressives inkasso", "belästigungsanruf", "drohanruf", "cobrança abusiva", "ligação de assédio",
     ] {
-        v.push(m.to_ascii_lowercase());
+        v.push(m.to_lowercase());
     }
     v.sort_by_key(|m| std::cmp::Reverse(m.len()));
     v.dedup();
     v
+}
+
+/// The first place in `hay` that reads as `needle_lc` (already lower-cased)
+/// when `hay` is lower-cased char by char: its byte range in `hay` itself
+/// (`DÉMARCHAGE` finds `démarchage`).
+fn find_ci(hay: &str, needle_lc: &str) -> Option<(usize, usize)> {
+    if needle_lc.is_empty() {
+        return None;
+    }
+    for (start, _) in hay.char_indices() {
+        let mut acc = String::new();
+        for (off, ch) in hay[start..].char_indices() {
+            acc.extend(ch.to_lowercase());
+            if acc == needle_lc {
+                return Some((start, start + off + ch.len_utf8()));
+            }
+            if acc.len() >= needle_lc.len() || !needle_lc.starts_with(acc.as_str()) {
+                break;
+            }
+        }
+    }
+    None
 }
 
 /// A trusted caller's summary without any sales / scam label: on the "what they
@@ -508,16 +535,11 @@ pub fn without_sales_labels(lang: Lang, summary: &str) -> String {
             let sep = &after[..after.len() - content.len()];
             let mut rest = content.to_string();
             loop {
-                let lower = rest.to_ascii_lowercase();
-                let Some((at, len)) = markers
-                    .iter()
-                    .filter(|m| !m.is_empty())
-                    .find_map(|m| lower.find(m.as_str()).map(|i| (i, m.len())))
-                else {
+                let Some((at, end)) = markers.iter().find_map(|m| find_ci(&rest, m)) else {
                     break;
                 };
                 let before = rest[..at].trim_end_matches(is_sep);
-                let after = rest[at + len..].trim_start_matches(is_sep);
+                let after = rest[end..].trim_start_matches(is_sep);
                 rest = match (before.is_empty(), after.is_empty()) {
                     (true, _) => after.to_string(),
                     (false, true) => before.to_string(),
@@ -1338,6 +1360,31 @@ mod tests {
         assert_eq!(without_sales_labels(Lang::ZhTw, "事情：疑似詐騙，問下週吃飯"), "事情：問下週吃飯");
         assert_eq!(without_sales_labels(Lang::ZhTw, "事情：推銷電話：保險方案"), "事情：保險方案");
         assert_eq!(without_sales_labels(Lang::Ja, "用件：営業電話：光回線の案内").contains("営業電話"), false);
+    }
+
+    #[test]
+    fn accented_capitals_and_collection_labels_are_taken_out() {
+        let line = |l: Lang, body: &str| {
+            let w = locale::words(l);
+            format!("{}{}{}", w.s_matter, w.sep, body)
+        };
+        let fr = without_sales_labels(Lang::Fr, &line(Lang::Fr, "DÉMARCHAGE — renouvellement du bail"));
+        assert!(!fr.to_lowercase().contains("démarchage") && fr.contains("renouvellement du bail"), "{fr}");
+        let scam = without_sales_labels(Lang::Fr, &line(Lang::Fr, "ARNAQUE PRÉSUMÉE, colis"));
+        assert!(!scam.to_lowercase().contains("arnaque") && scam.contains("colis"), "{scam}");
+        let pt = without_sales_labels(Lang::Pt, &line(Lang::Pt, "LIGAÇÃO DE VENDAS - almoço"));
+        assert!(!pt.to_lowercase().contains("ligação") && pt.contains("almoço"), "{pt}");
+        let zh = without_sales_labels(Lang::ZhTw, "事情：催收騷擾 — 問下週吃飯");
+        assert_eq!(zh, "事情：問下週吃飯");
+        let en = without_sales_labels(Lang::En, &line(Lang::En, "Debt-Collection Harassment: lunch"));
+        assert!(!en.contains("arassment") && en.contains("lunch"), "{en}");
+        assert_eq!(find_ci("xx DÉMARCHAGE yy", "démarchage"), Some((3, 14)));
+    }
+
+    #[tokio::test]
+    async fn a_trusted_callers_fallback_summary_has_no_english_note() {
+        let out = summarize_inner(&Client::new(), &settings(), "+12025550100", "對方：週末要不要吃飯", true).await;
+        assert!(!out.contains("Note: this caller"), "{out}");
     }
 
     fn settings() -> Settings {

@@ -62,7 +62,7 @@ flowchart LR
 | `closing.rs` | Local closing state machine across 26 language word sets: detects pre-closings, farewells, resumptions and greetings that also mean goodbye. |
 | `scenario.rs`, `preflight.rs` | Call-situation hints (courier, bank charge check, wrong number, …) and errand preflight question/ladder extraction. |
 | `place_habits.rs` | What each kind of shop usually asks on the phone in each region (from the local data), for AI errands. |
-| `stall_review.rs` | The second look before Stall Mode: `gemini-flash-lite-latest` labels the call `scam_or_sales`, `normal`, `ivr_recording` or `too_early` within 1.5 s, naming the kind of call from the scam database and how sure it is. |
+| `stall_review.rs` | The second look before Stall Mode: `gemini-flash-lite-latest` labels the call `scam_or_sales`, `normal`, `ivr_recording` or `too_early` within 3 s, naming the kind of call from the scam database and how sure it is. |
 | `scam_db.rs` | The sales and scam database (built in as `data/packs/bageo-scams.json.gz`: kinds of call, keywords, number hints), your additions in `config/scam_db.local.json`, and the marks per number. |
 | `appointments.rs` | The appointment tools on normal calls, the to-do items they create, Accept / Decline, the text or AI call-back that tells the caller, and the shared outbound queue. |
 | `urgent_call.rs`, `urgency.rs` | Urgent caller detection across languages and the trial 3-way conference merge (`add_call`) for forwarded calls. |
@@ -148,8 +148,7 @@ sequenceDiagram
      a short "mm" does not count) and how the background sound is mixed;
    - streams the caller to Gemini, which detects the end of each turn itself by
      default, and sends Gemini's audio back mixed with the background sound;
-   - on a Taiwanese SIM taking a call from abroad, keeps the AI quiet until the
-     carrier's recorded warning has finished;
+   - on a Taiwan or Korea SIM taking a call from abroad (up to 7.5 s), or a Hong Kong SIM showing `+852` (up to 13 s, or 1.5 s of quiet), keeps the AI quiet until the carrier's recorded warning (including Hong Kong's new pre-paid SIM alert) has finished;
    - reads Gemini's transcripts of both sides to run the few rules that are
      not left to the model:
      - whether the caller is leaving (their last words are a goodbye);
@@ -309,8 +308,8 @@ numbers may be dialed and from which SIM.
   Traditional Chinese, a converted Simplified Chinese copy, or a shared set of
   English instructions filled with that language's phrases.
 
-The opening language follows the caller's number and the SIM's main language,
-and every prompt tells the AI to follow the caller into another language.
+The opening language follows the caller's number and *Languages for each SIM*,
+and every prompt tells the AI to follow the caller into another language when sure.
 
 To add a language, add one `Phrases` block, a `short_text` default prompt and
 its entry in the web console's dictionary.

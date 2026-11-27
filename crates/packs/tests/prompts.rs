@@ -223,7 +223,7 @@ fn characters_nobody_sees_are_refused_unless_the_built_in_text_has_them() {
 fn the_hard_lines_of_every_language_are_locked() {
     let mut seen = 0;
     for (lang, file) in &builtin_book().langs {
-        for (key, _) in &file.texts {
+        for key in file.texts.keys() {
             if key.contains("guard")
                 || key.contains("hold_off")
                 || key.contains("ai_disclosure")
