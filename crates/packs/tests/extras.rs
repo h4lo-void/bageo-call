@@ -2,9 +2,10 @@
 // SPDX-FileCopyrightText: h4lo-void <https://github.com/h4lo-void/bageo-call>
 
 //! Extra packs: the index, the language files and the art files. The good
-//! fixture (tests/fixtures/extras: it, th, ar, ru, hi and the regions it, th)
-//! builds and reads back; every bad sample in tests/fixtures/extras_bad is
-//! refused with its rule code. All sample text is invented.
+//! fixture (tests/fixtures/extras: it, th, ar, ru, hi and the regions it, th,
+//! whose regions/*.json hold only the main language) builds and reads back;
+//! every bad sample in tests/fixtures/extras_bad is refused with its rule
+//! code. All sample text is invented.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -12,7 +13,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 
-use bageo_packs::extras::{arule, art_file_name, lang_file_name, xrule, MAX_ART_BYTES, MAX_INDEX_BYTES};
+use bageo_packs::extras::{arule, art_file_name, lang_file_name, xrule, MAX_ART_BYTES, MAX_INDEX_BYTES, MAX_LANG_ART};
 use bageo_packs::locales::lrule;
 use bageo_packs::*;
 use flate2::write::GzEncoder;
@@ -36,8 +37,27 @@ fn art_sources() -> BTreeMap<String, Vec<u8>> {
     load_art(&fixture("extras")).expect("the art fixture loads")
 }
 
+fn region_langs() -> BTreeMap<String, String> {
+    let (langs, issues) = load_region_langs(&fixture("extras"));
+    assert!(issues.is_empty(), "{}", show(&issues));
+    langs
+}
+
 fn built() -> ExtrasBuild {
-    build_extras(&sources(), &art_sources(), VERSION, COMMIT, BUILT, "1.6.9").expect("the extras fixture builds")
+    build_extras(&sources(), &art_sources(), &region_langs(), VERSION, COMMIT, BUILT, "1.6.9").expect("the extras fixture builds")
+}
+
+/// The fixture's drawings plus the Italian one again under other regions,
+/// each with its region's main language.
+fn more_art(extra: &[(&str, &str)]) -> (BTreeMap<String, Vec<u8>>, BTreeMap<String, String>) {
+    let (mut art, mut langs) = (art_sources(), region_langs());
+    for (region, lang) in extra {
+        let mut v: Value = serde_json::from_slice(&art_sources()["it"]).unwrap();
+        v["region"] = json!(region);
+        art.insert(region.to_string(), serde_json::to_vec(&v).unwrap());
+        langs.insert(region.to_string(), lang.to_string());
+    }
+    (art, langs)
 }
 
 fn gzip(bytes: &[u8]) -> Vec<u8> {
@@ -157,14 +177,185 @@ fn a_source_that_breaks_a_rule_builds_nothing() {
     let mut s = sources();
     let ru = s.langs.iter_mut().find(|l| l.code == "ru").unwrap();
     ru.files.get_mut(&Kind::Notify).unwrap().data.strings.insert("n_incoming".into(), json!("Visit https://example.invalid"));
-    let err = build_extras(&s, &art_sources(), VERSION, COMMIT, BUILT, "1.6.9").unwrap_err();
+    let err = build_extras(&s, &art_sources(), &region_langs(), VERSION, COMMIT, BUILT, "1.6.9").unwrap_err();
     expect(&err, lrule::PATTERN, "strings.n_incoming");
     // Nothing to build at all is also an error.
-    let none = build_extras(&LocaleSources::default(), &BTreeMap::new(), VERSION, COMMIT, BUILT, "1.6.9").unwrap_err();
+    let none = build_extras(&LocaleSources::default(), &BTreeMap::new(), &BTreeMap::new(), VERSION, COMMIT, BUILT, "1.6.9").unwrap_err();
     expect(&none, xrule::INDEX, "");
     // A bad header value is refused before anything else.
-    assert!(build_extras(&sources(), &art_sources(), 12, COMMIT, BUILT, "1.6.9").is_err());
-    assert!(build_extras(&sources(), &art_sources(), VERSION, "a b", BUILT, "1.6.9").is_err());
+    assert!(build_extras(&sources(), &art_sources(), &region_langs(), 12, COMMIT, BUILT, "1.6.9").is_err());
+    assert!(build_extras(&sources(), &art_sources(), &region_langs(), VERSION, "a b", BUILT, "1.6.9").is_err());
+}
+
+// ---- drawings inside the language files ---------------------------------------------------------
+
+fn lang_art(b: &ExtrasBuild, code: &str) -> Vec<String> {
+    unpacked(&b.files[&lang_file_name(code)]).get("art").and_then(Value::as_object).map_or_else(Vec::new, |m| m.keys().cloned().collect())
+}
+
+#[test]
+fn each_language_file_carries_the_drawings_of_its_regions() {
+    let b = built();
+    assert_eq!(lang_art(&b, "it"), ["it"]);
+    assert_eq!(lang_art(&b, "th"), ["th"]);
+    for code in ["ar", "hi", "ru"] {
+        assert!(lang_art(&b, code).is_empty(), "{code}");
+    }
+    // The drawing in the language file is the art file's object.
+    let it = unpacked(&b.files["lang-it.json.gz"]);
+    let file: Value = serde_json::from_slice(&b.files["art-it.json"]).unwrap();
+    assert_eq!(it["art"]["it"], file);
+    let (lang, issues) = parse_lang_file(&b.files["lang-it.json.gz"], "it", &sources().english).unwrap();
+    assert!(issues.is_empty(), "{}", show(&issues));
+    assert_eq!(lang.art.keys().collect::<Vec<_>>(), ["it"]);
+}
+
+#[test]
+fn lang_ar_carries_eg_levant_maghreb_and_core_regions_stay_out() {
+    let (art, langs) = more_art(&[("eg", "ar-EG"), ("levant", "ar-EG"), ("maghreb", "ar-EG"), ("mx", "es-US"), ("hk-mo", "cmn"), ("by", "ru-RU")]);
+    let b = build_extras(&sources(), &art, &langs, VERSION, COMMIT, BUILT, "1.6.9").unwrap_or_else(|e| panic!("{}", show(&e)));
+    assert_eq!(lang_art(&b, "ar"), ["eg", "levant", "maghreb"]);
+    assert_eq!(lang_art(&b, "ru"), ["by"]);
+    for code in LANGS {
+        let carried = lang_art(&b, code);
+        assert!(!carried.iter().any(|r| r == "mx" || r == "hk-mo"), "{code}: {carried:?}");
+    }
+    // Every drawing still gets its own file and index entry, for Bageo versions that download them one by one.
+    let regions: Vec<&str> = b.index.art.iter().map(|a| a.region.as_str()).collect();
+    assert_eq!(regions, ["by", "eg", "hk-mo", "it", "levant", "maghreb", "mx", "th"]);
+    assert!(b.files.contains_key("art-mx.json") && b.files.contains_key("art-eg.json"));
+    let (ar, issues) = parse_lang_file(&b.files["lang-ar.json.gz"], "ar", &sources().english).unwrap();
+    assert!(issues.is_empty(), "{}", show(&issues));
+    assert_eq!(ar.art.len(), 3);
+}
+
+#[test]
+fn art_home_reads_region_languages_like_the_language_checks() {
+    for (lang, code) in [("ar-EG", "ar"), ("nl-NL", "nl"), ("ru-RU", "ru"), ("bn-BD", "bn"), ("nb", "nb"), ("pl-PL", "pl"), ("th-TH", "th"), ("sq", "sq")] {
+        assert_eq!(art_home(lang), Some(ArtHome::Lang(code.into())), "{lang}");
+    }
+    for lang in ["cmn", "en-US", "en-IN", "es-US", "pt-BR", "de-DE", "fr-FR", "ja-JP", "ko-KR", "zh-TW"] {
+        assert_eq!(art_home(lang), Some(ArtHome::Builtin), "{lang}");
+    }
+    for lang in ["xx", "", "klingon"] {
+        assert_eq!(art_home(lang), None, "{lang}");
+    }
+}
+
+#[test]
+fn a_drawing_needs_a_region_and_a_language_file_to_ride_in() {
+    // No regions/<code>.json.
+    let mut langs = region_langs();
+    langs.remove("th");
+    let err = build_extras(&sources(), &art_sources(), &langs, VERSION, COMMIT, BUILT, "1.6.9").unwrap_err();
+    expect(&err, arule::HOME, "region");
+    assert!(err.iter().any(|i| i.file == "art/th.json"), "{}", show(&err));
+    // A main language not on the official list.
+    let (art, langs) = more_art(&[("zz", "xx-YY")]);
+    let err = build_extras(&sources(), &art, &langs, VERSION, COMMIT, BUILT, "1.6.9").unwrap_err();
+    assert!(err.iter().any(|i| i.file == "art/zz.json" && i.rule == arule::HOME), "{}", show(&err));
+    // An extra language with no notify or console text: no file to carry it.
+    let (art, langs) = more_art(&[("vn", "vi-VN")]);
+    let err = build_extras(&sources(), &art, &langs, VERSION, COMMIT, BUILT, "1.6.9").unwrap_err();
+    assert!(err.iter().any(|i| i.file == "art/vn.json" && i.rule == arule::HOME && i.detail.contains("vi")), "{}", show(&err));
+    // packs check finds the same.
+    let d = tmp("check-art");
+    copy_tree(&fixture("extras"), &d);
+    let (n, issues) = check_art_sources(&d, &sources());
+    assert_eq!(n, 2);
+    assert!(issues.is_empty(), "{}", show(&issues));
+    fs::copy(fixture("extras/art/it.json"), d.join("art/vn.json")).unwrap();
+    let (_, issues) = check_art_sources(&d, &sources());
+    expect(&issues, arule::FORMAT, "region"); // the copy still says "it"
+    expect(&issues, arule::HOME, "region"); // and has no regions/vn.json
+    fs::write(d.join("regions/vn.json"), r#"{"code": "vn", "lang": "vi-VN"}"#).unwrap();
+    let (_, issues) = check_art_sources(&d, &sources());
+    assert!(issues.iter().any(|i| i.file == "art/vn.json" && i.rule == arule::HOME && i.detail.contains("vi")), "{}", show(&issues));
+    let _ = fs::remove_dir_all(&d);
+}
+
+/// The built Italian file with its art replaced, gzipped again.
+fn it_with_art(art: Value) -> Vec<u8> {
+    let mut v = unpacked(&built().files["lang-it.json.gz"]);
+    v["art"] = art;
+    gzip(&serde_json::to_vec(&v).unwrap())
+}
+
+#[test]
+fn a_broken_drawing_in_a_language_file_is_left_out_alone() {
+    let good: Value = serde_json::from_slice(&built().files["art-it.json"]).unwrap();
+    let mut script = good.clone();
+    script["region"] = json!("vn");
+    script["draw"]["print"] = json!([["script", {}]]);
+    let mut wrong_region = good.clone();
+    wrong_region["region"] = json!("pl");
+    let english = sources().english;
+    let (lang, issues) = parse_lang_file(&it_with_art(json!({"it": good, "vn": script, "kr": wrong_region, "Bad": {}})), "it", &english).unwrap();
+    assert_eq!(lang.art.keys().collect::<Vec<_>>(), ["it"]);
+    expect(&issues, arule::ELEMENT, "art.vn.draw.print[0]");
+    expect(&issues, arule::FORMAT, "art.kr.region");
+    expect(&issues, arule::FORMAT, "art.Bad");
+    assert_eq!(issues.len(), 3, "{}", show(&issues));
+    // The language itself is untouched.
+    assert_eq!(lang.notify.unwrap().strings["n_incoming"], "Chiamata in arrivo");
+    // art that is not an object is left out, the language stays.
+    let (lang, issues) = parse_lang_file(&it_with_art(json!(["it"])), "it", &english).unwrap();
+    assert!(lang.art.is_empty() && lang.console.is_some());
+    expect(&issues, arule::FORMAT, "art");
+    // More drawings than a language file may carry: the rest is left out.
+    let many: serde_json::Map<String, Value> = (0..MAX_LANG_ART + 2)
+        .map(|i| {
+            let region = format!("r{}", (b'a' + i as u8) as char);
+            let mut d = good.clone();
+            d["region"] = json!(region);
+            (region, d)
+        })
+        .collect();
+    let (lang, issues) = parse_lang_file(&it_with_art(Value::Object(many)), "it", &english).unwrap();
+    assert_eq!(lang.art.len(), MAX_LANG_ART);
+    expect(&issues, arule::SIZE, "art.");
+}
+
+#[test]
+fn a_language_file_without_art_still_reads() {
+    let mut v = unpacked(&built().files["lang-it.json.gz"]);
+    assert!(v.as_object_mut().unwrap().remove("art").is_some());
+    let (lang, issues) = parse_lang_file(&gzip(&serde_json::to_vec(&v).unwrap()), "it", &sources().english).unwrap();
+    assert!(issues.is_empty(), "{}", show(&issues));
+    assert!(lang.art.is_empty());
+    // And a file written without art has no art field at all.
+    let back = serde_json::to_value(&lang).unwrap();
+    assert!(back.get("art").is_none());
+}
+
+// ---- the drawings built into Bageo --------------------------------------------------------------
+
+#[test]
+fn the_bundle_holds_only_core_language_regions_and_reads_back() {
+    let (art, langs) = more_art(&[("eg", "ar-EG"), ("mx", "es-US"), ("hk-mo", "cmn"), ("in", "en-IN")]);
+    let (gz, regions) = build_art_bundle(&art, &langs, VERSION, COMMIT, BUILT).unwrap_or_else(|e| panic!("{}", show(&e)));
+    assert_eq!(regions, ["hk-mo", "in", "mx"]);
+    let (bundle, issues) = parse_art_bundle(&gz).unwrap();
+    assert!(issues.is_empty(), "{}", show(&issues));
+    assert_eq!(bundle.art.keys().collect::<Vec<_>>(), ["hk-mo", "in", "mx"]);
+    assert_eq!(bundle.version, VERSION);
+    let b = build_extras(&sources(), &art, &langs, VERSION, COMMIT, BUILT, "1.6.9").unwrap();
+    let file: Value = serde_json::from_slice(&b.files["art-mx.json"]).unwrap();
+    assert_eq!(bundle.art["mx"], file);
+    // Building twice gives the same bytes.
+    assert_eq!(build_art_bundle(&art, &langs, VERSION, COMMIT, BUILT).unwrap().0, gz);
+    // Only extra-language regions: nothing to build.
+    let err = build_art_bundle(&art_sources(), &region_langs(), VERSION, COMMIT, BUILT).unwrap_err();
+    expect(&err, arule::FORMAT, "art");
+    // A broken drawing in the bundle is left out alone; a newer format refuses it.
+    let mut v = unpacked(&gz);
+    v["art"]["mx"]["draw"]["print"] = json!([["image", {}]]);
+    let (bundle, issues) = parse_art_bundle(&gzip(&serde_json::to_vec(&v).unwrap())).unwrap();
+    assert_eq!(bundle.art.keys().collect::<Vec<_>>(), ["hk-mo", "in"]);
+    expect(&issues, arule::ELEMENT, "art.mx.draw.print[0]");
+    v["format"] = json!(2);
+    let err = parse_art_bundle(&gzip(&serde_json::to_vec(&v).unwrap())).unwrap_err();
+    assert!(err[0].detail.contains("update Bageo first"), "{}", show(&err));
 }
 
 // ---- reading a language file -------------------------------------------------------------------
@@ -572,6 +763,37 @@ fn build_extras_writes_the_files_and_an_index_that_matches_them() {
     let said = String::from_utf8_lossy(&r.stdout);
     assert!(said.contains("[A01-format]") || said.contains("[A03-element]"), "{said}");
     assert!(!out2.exists());
+    let _ = fs::remove_dir_all(&d);
+}
+
+#[test]
+fn build_art_writes_the_core_language_drawings() {
+    let d = tmp("cli-art");
+    let src = d.join("src");
+    copy_tree(&fixture("extras"), &src);
+    let out = d.join("bageo-art.json.gz");
+    let run = |src: &PathBuf| {
+        packs()
+            .arg("build-art")
+            .arg(src)
+            .args(["--version", "2026010101", "--commit", COMMIT, "--built-at", BUILT, "--out"])
+            .arg(&out)
+            .output()
+            .unwrap()
+    };
+    // Only extra-language regions: nothing to build, nothing written.
+    let r = run(&src);
+    assert_eq!(r.status.code(), Some(1), "{}", String::from_utf8_lossy(&r.stdout));
+    assert!(!out.exists());
+    let mut mx: Value = serde_json::from_slice(&art_sources()["it"]).unwrap();
+    mx["region"] = json!("mx");
+    fs::write(src.join("art/mx.json"), serde_json::to_vec(&mx).unwrap()).unwrap();
+    fs::write(src.join("regions/mx.json"), r#"{"code": "mx", "lang": "es-US"}"#).unwrap();
+    let r = run(&src);
+    assert!(r.status.success(), "{}", String::from_utf8_lossy(&r.stdout));
+    let (bundle, issues) = parse_art_bundle(&fs::read(&out).unwrap()).unwrap();
+    assert!(issues.is_empty());
+    assert_eq!(bundle.art.keys().collect::<Vec<_>>(), ["mx"]);
     let _ = fs::remove_dir_all(&d);
 }
 

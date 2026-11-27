@@ -9,6 +9,8 @@
 //!             [--call-only]
 //! packs build-extras <source folder> --version <YYYYMMDDNN> --commit <text> --out <folder>
 //!             [--built-at <time>] [--min-bageo <x.y.z>]
+//! packs build-art <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-art.json.gz>
+//!             [--built-at <time>]
 //! packs build-prompts <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-prompts.json.gz>
 //!             [--index <bageo-pack-index.json>] [--built-at <time>] [--min-bageo <x.y.z>]
 //! packs sync-source --bageo-call <checkout> --out <packs folder> [--commit <text>]
@@ -25,8 +27,9 @@ use bageo_packs::extras::EXTRAS_INDEX_FILE;
 use bageo_packs::sync::{keep_same_ok, sync_source};
 use bageo_packs::util::{now_rfc3339, valid_rfc3339_utc};
 use bageo_packs::{
-    build, build_extras, build_locales_at, build_locales_call_at, build_prompts_at, build_scams_at, check_index, check_locales,
-    check_locales_ref, check_prompts_ref, check_scams_ref, check_sources, load_art, load_locales, load_prompt_changes, load_sources,
+    build, build_art_bundle, build_extras, build_locales_at, build_locales_call_at, build_prompts_at, build_scams_at, check_art_sources,
+    check_index, check_locales, check_locales_ref, check_prompts_ref, check_scams_ref, check_sources, load_art, load_locales,
+    load_prompt_changes, load_region_langs, load_sources,
     pack_bundle, pack_locales, pack_prompts, pack_scams, parse_bundle_bytes, parse_index, parse_locales, parse_prompts, parse_scams,
     sanitize_locales, scam_counts, sha256_hex, sound_locales, sound_prompts, sound_scams, unpack_locales, Index, Issue, LocalesRef,
     FORMAT, LOCALES_FORMAT, MAX_LOCALES_BYTES, PROMPTS_FORMAT, SCAMS_FORMAT,
@@ -38,6 +41,7 @@ const USAGE: &str = "usage:
   packs build-locales <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-locales.json.gz> [--index <bageo-pack-index.json>] [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>] [--check] [--call-only]
   packs build-scams <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-scams.json.gz> [--index <bageo-pack-index.json>] [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>]
   packs build-extras <source folder> --version <YYYYMMDDNN> --commit <text> --out <folder> [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>]
+  packs build-art <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-art.json.gz> [--built-at <YYYY-MM-DDTHH:MM:SSZ>]
   packs build-prompts <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-prompts.json.gz> [--index <bageo-pack-index.json>] [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>]
   packs sync-source --bageo-call <checkout> --out <packs folder> [--commit <text>]
   packs export-app --packs <packs folder> --android <res folder> --desktop <i18n.ext.json> [--commit <text>] [--check]";
@@ -71,6 +75,7 @@ fn main() -> ExitCode {
         Some("build-locales") => cmd_build_locales(&args[1..]),
         Some("build-scams") => cmd_build_scams(&args[1..]),
         Some("build-extras") => cmd_build_extras(&args[1..]),
+        Some("build-art") => cmd_build_art(&args[1..]),
         Some("build-prompts") => cmd_build_prompts(&args[1..]),
         Some("sync-source") => cmd_sync_source(&args[1..]),
         Some("export-app") => cmd_export_app(&args[1..]),
@@ -131,6 +136,8 @@ fn cmd_check(args: &[String]) -> ExitCode {
     if !locales.is_empty() {
         issues.extend(check_locales(&locales, None));
     }
+    let (drawings, art_issues) = check_art_sources(Path::new(dir), &locales);
+    issues.extend(art_issues);
     let mut scams_info = None;
     if Path::new(dir).join("scams/base.json").is_file() {
         match build_scams_at(Path::new(dir), bageo_packs::util::today_version(), "0000000000000000000000000000000000000000", &now_rfc3339()) {
@@ -156,6 +163,9 @@ fn cmd_check(args: &[String]) -> ExitCode {
         }
         if !locales.is_empty() {
             println!("ok: {} translated language(s)", locales.langs.len());
+        }
+        if drawings > 0 {
+            println!("ok: {drawings} region drawing(s)");
         }
         if let Some((typ, kw, cc)) = scams_info {
             println!("ok: {typ} scam typologies, {kw} keyword group(s), {cc} country scam file(s)");
@@ -440,8 +450,13 @@ fn cmd_build_extras(args: &[String]) -> ExitCode {
             return ExitCode::from(1);
         }
     };
+    let (region_langs, issues) = load_region_langs(Path::new(dir));
+    if !issues.is_empty() {
+        report(&issues);
+        return ExitCode::from(1);
+    }
     // Everything is built and checked in memory before any file is written.
-    let built = match build_extras(&sources, &art, version, commit, &built_at, &min_bageo) {
+    let built = match build_extras(&sources, &art, &region_langs, version, commit, &built_at, &min_bageo) {
         Ok(b) => b,
         Err(issues) => {
             report(&issues);
@@ -462,6 +477,44 @@ fn cmd_build_extras(args: &[String]) -> ExitCode {
     }
     println!("wrote {EXTRAS_INDEX_FILE}: {} bytes", built.index_json.len());
     println!("built {} language file(s) and {} art file(s), version {version}", built.index.langs.len(), built.index.art.len());
+    ExitCode::SUCCESS
+}
+
+/// build-art: the drawings built into Bageo (regions whose main language is a core language), one file.
+fn cmd_build_art(args: &[String]) -> ExitCode {
+    let Some(a) = parse_args(args, &["--version", "--commit", "--out", "--built-at"], &[]) else { return usage() };
+    let ([dir], Some(version), Some(commit), Some(out)) = (a.pos.as_slice(), a.opts.get("--version"), a.opts.get("--commit"), a.opts.get("--out"))
+    else {
+        return usage();
+    };
+    let Ok(version) = version.parse::<u64>() else { return usage() };
+    let built_at = a.opts.get("--built-at").cloned().unwrap_or_else(now_rfc3339);
+    if !valid_rfc3339_utc(&built_at) || !valid_commit_arg(commit) {
+        return usage();
+    }
+    let art = match load_art(Path::new(dir)) {
+        Ok(a) => a,
+        Err(issues) => {
+            report(&issues);
+            return ExitCode::from(1);
+        }
+    };
+    let (region_langs, issues) = load_region_langs(Path::new(dir));
+    if !issues.is_empty() {
+        report(&issues);
+        return ExitCode::from(1);
+    }
+    let (gz, regions) = match build_art_bundle(&art, &region_langs, version, commit, &built_at) {
+        Ok(b) => b,
+        Err(issues) => {
+            report(&issues);
+            return ExitCode::from(1);
+        }
+    };
+    if let Err(e) = fs::write(out, &gz) {
+        return fail(format!("cannot write {out}: {e}"));
+    }
+    println!("wrote {out}: {} bytes, sha256 {}, {} drawing(s): {}", gz.len(), &sha256_hex(&gz)[..8], regions.len(), regions.join(" "));
     ExitCode::SUCCESS
 }
 

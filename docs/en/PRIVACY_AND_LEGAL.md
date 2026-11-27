@@ -44,12 +44,13 @@ Details for some rows:
 - **Extra languages and regional artwork**: the Android app has all 79
   languages built in. The console has nine built in and can download 70 more.
   The installers carry only the English voices; other voices download when you
-  pick them. Extra console/notification language packs, regional artwork, local
-  data updates (the prompt texts file `bageo-prompts.json.gz` comes down with
-  them), voice packs and Bageo release checks never connect to the internet
-  automatically; they connect to GitHub (`h4lo-void/bageo-packs` and
-  `h4lo-void/bageo-call`, [API](API.md#local-data)) only when you manually
-  click Download or Check for updates.
+  pick them. Extra console/notification language packs (with the artwork of the
+  regions that speak them), local data updates (the prompt texts file
+  `bageo-prompts.json.gz` comes down with them), voice packs and Bageo release
+  checks never connect to the internet automatically; they connect to GitHub
+  (`h4lo-void/bageo-packs` and `h4lo-void/bageo-call`,
+  [API](API.md#local-data)) only when you manually click Download or Check for
+  updates.
 - **Contact imports**: vCard, CSV/TSV, plain text, `.xlsx` and `.docx` imports
   are read on your computer. **PDF files and pictures** (and files in which
   nothing was found) are sent to Gemini (`gemini-flash-lite-latest`) to read

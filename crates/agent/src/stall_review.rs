@@ -35,7 +35,9 @@
 //! as a scam. So when there is no answer, what the caller plainly said still
 //! counts ([`local_fallback`]): a card desk checking a purchase or a courier,
 //! with nothing only a scammer asks for, is an ordinary call (medium
-//! confidence). A quick 5xx is asked once more inside the same deadline.
+//! confidence). A 5xx with enough of that deadline left is asked once more;
+//! the second try waits only for what is left. A try that never answers is not
+//! asked again.
 
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -191,6 +193,13 @@ impl CallerContext {
     pub fn protected(&self) -> bool {
         self.saved_contact.is_some() || self.owner_safe
     }
+
+    /// Never looked at for sales / scam and never stalled: a saved contact, a
+    /// whitelisted number or one the owner marked safe, unless the number is
+    /// on the Stall list (`force_stall`: that list wins).
+    pub fn trusted(&self, force_stall: bool) -> bool {
+        !force_stall && self.protected()
+    }
 }
 
 /// How long the verdict may take. Nobody waits for it: the AI talks on and the
@@ -199,8 +208,9 @@ impl CallerContext {
 /// 1.05–1.49 s), so clinic notices went unrouted and scam calls unjudged.
 pub const REVIEW_TIMEOUT: Duration = Duration::from_millis(3000);
 
-/// A 5xx that came this soon is asked once more (inside [`REVIEW_TIMEOUT`]).
-const RETRY_5XX_BEFORE: Duration = Duration::from_millis(900);
+/// A 5xx is asked once more when at least this much of [`REVIEW_TIMEOUT`] is left.
+/// The second try waits only for what is left.
+const RETRY_5XX_MIN_LEFT: Duration = Duration::from_millis(700);
 
 /// Gemini's lowest-cost model: the question is short and the answer one word.
 pub const REVIEW_MODEL: &str = "gemini-flash-lite-latest";
@@ -485,13 +495,11 @@ async fn ask(
     let mut asked_again = false;
     loop {
         let body = request_body_for(dialogue, hits, ctx, purpose, strict);
-        let resp = http
-            .post(&url)
-            .header("x-goog-api-key", key)
-            .json(&body)
-            .send()
-            .await
-            .context("request")?;
+        let mut call = http.post(&url).header("x-goog-api-key", key).json(&body);
+        if asked_again {
+            call = call.timeout(REVIEW_TIMEOUT.saturating_sub(started.elapsed()));
+        }
+        let resp = call.send().await.context("request")?;
         let status = resp.status();
         let text = resp.text().await.context("response body")?;
         if status.as_u16() == 400 && strict {
@@ -501,8 +509,12 @@ async fn ask(
             strict = false;
             continue;
         }
-        if status.is_server_error() && !asked_again && started.elapsed() < RETRY_5XX_BEFORE {
-            // A busy model answers 503 at once; another try often gets through.
+        if status.is_server_error()
+            && !asked_again
+            && REVIEW_TIMEOUT.saturating_sub(started.elapsed()) >= RETRY_5XX_MIN_LEFT
+        {
+            // One more try. It only waits for the time that is left (set above
+            // on the next pass). A try that never answers is not asked again.
             asked_again = true;
             continue;
         }
@@ -1625,16 +1637,16 @@ mod tests {
         const BUSY: &str = r#"{"error":{"code":503,"status":"UNAVAILABLE"}}"#;
         type Replies = Vec<(u16, &'static str, Duration)>;
         /// One call against `replies`: the verdict and how many requests the
-        /// server got. "Quick" is by the clock ([RETRY_5XX_BEFORE]): with the
-        /// whole suite running beside it the first answer can come later than
-        /// that, and then there is rightly no second try. Such a round shows
-        /// nothing: None.
+        /// server got. A 5xx is asked again only while [`RETRY_5XX_MIN_LEFT`] of
+        /// [`REVIEW_TIMEOUT`] is left: with the whole suite running beside it
+        /// the first answer can come too late, and then there is rightly no
+        /// second try. Such a round shows nothing: None.
         async fn round(replies: Replies, said: &str) -> Option<(Verdict, usize)> {
             let (base, server) = serve(replies).await;
             let http = Client::new();
             let started = Instant::now();
             let v = review_at(&http, &base, "test-key", said, &hits(), "").await;
-            if started.elapsed() >= RETRY_5XX_BEFORE {
+            if REVIEW_TIMEOUT.saturating_sub(started.elapsed()) < RETRY_5XX_MIN_LEFT {
                 server.abort();
                 return None;
             }
@@ -1649,13 +1661,105 @@ mod tests {
                     return r;
                 }
             }
-            panic!("no round was answered inside {RETRY_5XX_BEFORE:?}");
+            panic!("no round finished with time left to retry");
         }
         let again = vec![(503, BUSY, Duration::ZERO), (200, NORMAL, Duration::ZERO)];
         assert_eq!(quick_round(again, "對方：媽，我下午匯款給你").await, (Verdict::Normal, 2));
         // Twice busy: no third try.
         let busy_twice = vec![(503, BUSY, Duration::ZERO), (503, BUSY, Duration::ZERO)];
         assert_eq!(quick_round(busy_twice, "對方：保證獲利").await, (Verdict::Unavailable, 2));
+    }
+
+    /// A 5xx is asked once more only while enough of the deadline is left, and
+    /// that second try is the last. No answer at all is not asked again.
+    #[tokio::test]
+    async fn a_server_error_retries_only_while_time_remains() {
+        const BUSY: &str = r#"{"error":{"code":503,"status":"UNAVAILABLE"}}"#;
+        let said = "對方：媽，我下午匯款給你";
+        /// The next canned reply must stay unused.
+        async fn stops(server: tokio::task::JoinHandle<Vec<String>>) {
+            let mut server = server;
+            let extra = tokio::time::timeout(Duration::from_millis(400), &mut server).await;
+            assert!(extra.is_err(), "another request was sent");
+            server.abort();
+        }
+
+        // 1200 ms, then 503: time left, so one retry, and the second answer stands.
+        let mut late_but_in_time = false;
+        for _ in 0..4 {
+            let (base, server) = serve(vec![
+                (503, BUSY, Duration::from_millis(1200)),
+                (200, NORMAL, Duration::ZERO),
+            ])
+            .await;
+            let started = Instant::now();
+            let v = review_at(&Client::new(), &base, "test-key", said, &hits(), "").await;
+            let left = REVIEW_TIMEOUT.saturating_sub(started.elapsed());
+            if v == Verdict::Unavailable && left < RETRY_5XX_MIN_LEFT {
+                server.abort();
+                continue;
+            }
+            assert_eq!(v, Verdict::Normal);
+            let seen = tokio::time::timeout(Duration::from_secs(2), server).await.expect("the retry never went out");
+            assert_eq!(seen.unwrap().len(), 2);
+            late_but_in_time = true;
+            break;
+        }
+        assert!(late_but_in_time, "the 1200 ms 503 never arrived with time left to retry");
+
+        // 2500 ms, then 503: not enough left. The ready 200 must not be asked for.
+        let mut saw_late = false;
+        for _ in 0..4 {
+            let (base, server) = serve(vec![
+                (503, BUSY, Duration::from_millis(2500)),
+                (200, NORMAL, Duration::ZERO),
+            ])
+            .await;
+            let started = Instant::now();
+            let v = review_at(&Client::new(), &base, "test-key", said, &hits(), "").await;
+            if started.elapsed() >= REVIEW_TIMEOUT {
+                server.abort();
+                continue;
+            }
+            assert_eq!(v, Verdict::Unavailable);
+            stops(server).await;
+            saw_late = true;
+            break;
+        }
+        assert!(saw_late, "the 2500 ms 503 never arrived inside the deadline");
+
+        // Twice 503: unavailable, and the third canned answer is never asked for.
+        let (base, server) = serve(vec![
+            (503, BUSY, Duration::ZERO),
+            (503, BUSY, Duration::ZERO),
+            (200, NORMAL, Duration::ZERO),
+        ])
+        .await;
+        let v = review_at(&Client::new(), &base, "test-key", "對方：保證獲利", &hits(), "").await;
+        assert_eq!(v, Verdict::Unavailable);
+        stops(server).await;
+
+        // No answer before the deadline: not a 5xx to retry. The later reply stays unused.
+        let (base, server) = serve(vec![
+            (200, NORMAL, Duration::from_millis(4500)),
+            (200, NORMAL, Duration::ZERO),
+        ])
+        .await;
+        let started = Instant::now();
+        let v = review_at(&Client::new(), &base, "test-key", "對方：你的帳戶被盜用", &hits(), "").await;
+        let took = started.elapsed();
+        assert_eq!(v, Verdict::Unavailable);
+        assert!(took >= REVIEW_TIMEOUT && took < REVIEW_TIMEOUT + Duration::from_millis(800), "{took:?}");
+        let mut server = server;
+        let extra = tokio::time::timeout(Duration::from_millis(2200), &mut server).await;
+        assert!(extra.is_err(), "a timed-out request was asked again");
+        server.abort();
+
+        // 200 once is the answer. The canned error after it stays unused.
+        let (base, server) = serve(vec![(200, NORMAL, Duration::ZERO), (503, BUSY, Duration::ZERO)]).await;
+        let v = review_at(&Client::new(), &base, "test-key", said, &hits(), "").await;
+        assert_eq!(v, Verdict::Normal);
+        stops(server).await;
     }
 
     /// No answer in time is no verdict: what it means for the call is the call

@@ -592,6 +592,7 @@ Details for these routes:
 - Creating an errand requires `task`, and a number (or a contact or an earlier errand whose number is used). Empty `identity` means `errand_identity`; empty `serial` means any suitable phone.
 - `answers` is optional: what you added after the questions, as `{key: text}`. The keys are the ones `preflight` returns in `missing` and `optional`, plus `note` for free text; up to 80 characters each (`note`: 120). Unknown keys are dropped. They reach the AI as a short block in the call's script.
 - `place_type` is optional: the `type` that `preflight` returned. Without it, Bageo reads the kind of call from the task.
+- `sub_id` is optional: the SIM to dial from on the `serial` phone (or write `serial` as `<serial>:<sub_id>`). When that SIM is of another country than a number written with `+`, the errand is refused with `sim_other_country` until you send the same body again with `"abroad_ok": true` (the owner agreed to an international call). The errand keeps it for **Try again** and redials.
 - `lines`: the captions after `seq`, `[{seq, who, text, at}]`, with `who` `ai`, `callee`, `owner` or `system`. The newest 400 are kept; a line is complete after 1.2 s without more words.
 - `question`: `null` or `{id, text, options, asked_at, expires_at}`, the question waiting for you.
 - `watching`: whether you count as watching. Each read marks you as watching for 6 seconds, so poll every few seconds while you follow the call.
@@ -620,6 +621,7 @@ Error codes (HTTP 400 `{ok: false, error, code}`, the same word in both):
 | `no_phone` | create, retry | No connected phone in AI mode (or the `serial` asked for is not one). |
 | `sim_unknown` | create, retry | No phone fits, and at least one has SIMs Bageo has not learned yet: call it once. |
 | `no_sim_for_country` | create, retry | No phone has a SIM of the number's country. |
+| `sim_other_country` | create, retry | The SIM picked (`sub_id`) is of another country than the number. The answer also carries `sim_country` and `number_country` (two-letter codes). Send again with `"abroad_ok": true` to call anyway. |
 | `not_found` | create | `contact_id` or `follow_up_of` does not exist (400 here). |
 | `busy` | retry, delete | The errand is still dialing or on the call. |
 | `not_on_call` | say | The call is not (or no longer) running. |
@@ -771,10 +773,10 @@ The same check also downloads newer prompt texts (`bageo-prompts.json.gz`, at mo
 | `POST /calls/api/packs/restore` | Body `{}`. Deletes the downloaded data, translations and prompt texts, and a downloaded voice list (`voice_list_kept`) and extras index (`extras_index_kept`), and goes back to the ones built into Bageo: the same fields, with `result` `restored` (`busy` while a check runs; `io` when a file cannot be deleted, and then that one stays in use). |
 | `GET /calls/api/packs/regions` | The regions of the local data in use, for the console's country picker (no secrets, no internet): `{version, regions: [{code, countries, name: {en, native, zh}, lang, other_langs, status, delivery: {en, zh}}], bubbles}`. |
 | `POST /calls/api/packs/bageo-check` | Body `{}`. Asks GitHub which Bageo release is the latest and installs nothing: `{ok, result, current, latest, url}`; `result` is `update_available`, `up_to_date` or `offline` (then without `latest`). `url` is the download page. This is *Check for updates* under *Bageo* in the console. |
-| `GET /calls/api/extras` | All 70 extra languages and known region art: `{ok, version, running, langs, art}`. |
-| `POST /calls/api/extras/download` | Body `{"lang": "<code>"}` or `{"art": "<region>"}`. Downloads and installs one extra language pack or region mascot art file straight from GitHub; returns `{..., result}`. |
-| `POST /calls/api/extras/delete` | Body `{"lang": "<code>"}` or `{"art": "<region>"}`. Deletes a downloaded extra file (`in_use` if the language is still set in settings, `removed`, `not_listed`, `restart`). |
-| `GET /calls/extras/art/{file}` | Public static route serving an already-downloaded and verified `art-<region>.json` file (never triggers a download; `no-cache`, `nosniff`). |
+| `GET /calls/api/extras` | All 70 extra languages and whether each is downloaded: `{ok, version, running, langs}`. |
+| `POST /calls/api/extras/download` | Body `{"lang": "<code>"}`. Downloads and installs one extra language pack straight from GitHub, with the mascot art of the regions whose main language it is; returns `{..., result}`. |
+| `POST /calls/api/extras/delete` | Body `{"lang": "<code>"}`. Deletes a downloaded language pack and the region art it brought (`in_use` if the language is still set in settings, `removed`, `not_listed`, `restart`). |
+| `GET /calls/extras/art/{file}` | Public static route serving one region's mascot art as `art-<region>.json`: built in for regions whose main language is one of the nine built-in languages, otherwise brought by a downloaded language pack (never triggers a download; `no-cache`, `nosniff`). |
 | `GET /calls/i18n/desktop/{file}` | Public static route serving a downloaded extra language's desktop widget strings (`<code>.json`) with English fallback per missing key. |
 | `GET /calls/i18n/{code}.json` | Public static route serving one console language: one of the nine built-in ones, or a downloaded extra language. HTTP 404 when Bageo has neither. |
 
@@ -784,7 +786,7 @@ Details:
 - `result`: `up_to_date`, `updated` (calls from now on use it; a call already going keeps the old data), `offline` (no connection, a time-out or GitHub did not answer: try again later), `bad_pack` (the download was refused; nothing changed), `update_bageo` (the data needs a newer Bageo), `restart` (too many updates were installed since Bageo started: restart it first), `io` (it could not be saved) or `busy` (another check is running).
 - What Bageo checks: it reads `bageo-pack-index.json` (at most 16 KiB) from `https://github.com/h4lo-void/bageo-packs/releases/latest/download/`, then the file it names (a plain file name, at most 4 MiB) in the same release. Every address, including each of at most 5 redirects, must be `https` on the standard port, without a user name, on `github.com` (under that repository's releases), `objects.githubusercontent.com` or `release-assets.githubusercontent.com`. The size and SHA-256 must match the index, the index's `format` and `min_bageo` must fit this Bageo, and the version must be newer than the one in use. The file is then checked in full, like the built-in one, and renamed into place in one step. The address cannot be changed by a setting.
 - The downloaded version is kept as `packs/bageo-pack.json` in the data folder and checked again each time Bageo starts; a download left unfinished there is deleted.
-- On-demand extra language packs (`lang-<code>.json.gz`, up to 600 KiB compressed and unpacked; calls already have all 70 languages built in) and region art files (`art-<region>.json`, up to 64 KiB, strict SVG element/attribute allowlist) come from `bageo-extras-index.json` (up to 256 KiB) in the same GitHub repository and live under `packs/extras/`. Extra packs are not backed up.
+- On-demand extra language packs (`lang-<code>.json.gz`, up to 600 KiB compressed and unpacked; calls already have all 70 languages built in) come from `bageo-extras-index.json` (up to 256 KiB) in the same GitHub repository and live under `packs/extras/`. A pack carries the mascot art of the regions whose main language it is; each region's art is checked on its own (up to 64 KiB, strict SVG element/attribute allowlist) and a bad one is left out without stopping the language. Extra packs are not backed up.
 
 ## Voice downloads
 

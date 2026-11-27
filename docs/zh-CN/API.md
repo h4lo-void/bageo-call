@@ -539,6 +539,7 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 - 响应里的状态是 `dialing`，手机或号码忙线时是 `queued`。
 - `answers` 可以不带：你回答补问后的内容，格式 `{key: 文字}`。key 就是 `preflight` 在 `missing` 和 `optional` 返回的那些，另有 `note` 放自由文字；每项最多 80 字（`note` 120 字），不认识的 key 会被丢掉。它们会以一小段文字放进这通电话的脚本交给 AI。
 - `place_type` 可以不带：`preflight` 返回的 `type`。没带就由 Bageo 从交办内容判断是哪一类电话。
+- `sub_id` 可以不带：用 `serial` 那台手机的哪张 SIM 拨（也可以把 `serial` 写成 `<serial>:<sub_id>`）。那张 SIM 与 `+` 开头号码的国家不同时，会返回 `sim_other_country`，要带 `"abroad_ok": true` 把同一份内容再发一次（主人同意打国际电话）才会拨。这条代打会记住它，“再打一次”和拨到通重拨都沿用。
 
 `POST /calls/api/errands/preflight` 的内容：
 
@@ -573,6 +574,7 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 | `no_phone` | 新建、再打 | 没有已连接、处于 AI 模式的手机（或指定的 `serial` 不是这样的手机）。 |
 | `sim_unknown` | 新建、再打 | 没有合适的手机，而且至少有一部的 SIM Bageo 还不知道：先给它打一通。 |
 | `no_sim_for_country` | 新建、再打 | 没有手机有该号码所属国家的 SIM。 |
+| `sim_other_country` | 新建、再打 | 指定的 SIM（`sub_id`）与号码不是同一个国家。响应另带 `sim_country`、`number_country`（两位国家代码）。带 `"abroad_ok": true` 再发一次就照样拨。 |
 | `not_found` | 新建 | `contact_id` 或 `follow_up_of` 不存在（这里返回 400）。 |
 | `busy` | 再打、删除 | 这条还在拨号或通话中。 |
 | `not_on_call` | say | 电话不在通话中（或已经结束）。 |
@@ -719,10 +721,10 @@ Content-Type: application/json
 | `POST /calls/api/packs/restore` | Body `{}`。删掉下载的数据、翻译和提示词，以及下载的语音列表（`voice_list_kept`）和扩展包列表（`extras_index_kept`），改回 Bageo 内置的版本：字段同上，`result` 是 `restored`（正在检查时是 `busy`；有文件删不掉时是 `io`，删不掉的那个继续使用）。 |
 | `GET /calls/api/packs/regions` | 当前使用的当地数据里的地区列表，给控制台的国家菜单用（不含机密，也不联网）：`{version, regions: [{code, countries, name: {en, native, zh}, lang, other_langs, status, delivery: {en, zh}}], bubbles}`。 |
 | `POST /calls/api/packs/bageo-check` | Body `{}`。问 GitHub 最新的 Bageo 是哪一版，什么都不安装：`{ok, result, current, latest, url}`；`result` 是 `update_available`、`up_to_date` 或 `offline`（这时没有 `latest`）。`url` 是下载页。就是控制台“Bageo”下面的“检查更新”。 |
-| `GET /calls/api/extras` | 全部 70 种扩展语言与已知地区插图列表：`{ok, version, running, langs, art}`。 |
-| `POST /calls/api/extras/download` | Body `{"lang": "<code>"}` 或 `{"art": "<region>"}`。直接从 GitHub 下载并安装一个语言扩展包或地区插图文件，返回 `{..., result}`。 |
-| `POST /calls/api/extras/delete` | Body `{"lang": "<code>"}` 或 `{"art": "<region>"}`。删除已下载的扩展文件（设置仍在使用时返回 `in_use`，其余为 `removed`、`not_listed`、`restart`）。 |
-| `GET /calls/extras/art/{file}` | 公开静态路由，仅返回这台电脑已下载并校验通过的 `art-<region>.json`（不会触发下载；附 `no-cache`、`nosniff`）。 |
+| `GET /calls/api/extras` | 全部 70 种扩展语言与各自是否已下载：`{ok, version, running, langs}`。 |
+| `POST /calls/api/extras/download` | Body `{"lang": "<code>"}`。直接从 GitHub 下载并安装一个语言扩展包，连同主要语言是这个语言的地区插图，返回 `{..., result}`。 |
+| `POST /calls/api/extras/delete` | Body `{"lang": "<code>"}`。删除已下载的语言扩展包和它带来的地区插图（设置仍在使用时返回 `in_use`，其余为 `removed`、`not_listed`、`restart`）。 |
+| `GET /calls/extras/art/{file}` | 公开静态路由，以 `art-<region>.json` 返回一个地区的插图：主要语言是内置九种之一的地区由 Bageo 内置，其他地区来自已下载的语言扩展包（不会触发下载；附 `no-cache`、`nosniff`）。 |
 | `GET /calls/i18n/desktop/{file}` | 公开静态路由，返回已下载语言的桌面状态小程序文本（`<code>.json`），缺少的键自动回退英文。 |
 | `GET /calls/i18n/{code}.json` | 公开静态路由，返回一种控制台语言：内置九种之一，或已下载的扩展语言。两者都没有时返回 HTTP 404。 |
 
@@ -732,7 +734,7 @@ Content-Type: application/json
 - `result`：`up_to_date`、`updated`（之后的电话都用新的；正在进行的通话照用旧的）、`offline`（没有网络、超时或 GitHub 没响应，请稍后再试）、`bad_pack`（下载的文件被拒收，什么都没改）、`update_bageo`（这份数据需要更新版的 Bageo）、`restart`（这次启动已经装了太多次更新，请先重新打开 Bageo）、`io`（无法保存）或 `busy`（已经有检查在跑）。
 - Bageo 怎么检查：从 `https://github.com/h4lo-void/bageo-packs/releases/latest/download/` 读 `bageo-pack-index.json`（最多 16 KiB），再下载同一个 Release 里它指定的文件（只能是纯文件名，最多 4 MiB）。每个网址，包括最多 5 次跳转的每一跳，都必须是 `https`、标准端口、不带用户名，主机只能是 `github.com`（限该数据库的 Release）、`objects.githubusercontent.com` 或 `release-assets.githubusercontent.com`。大小和 SHA-256 要跟 index 一致，index 的 `format` 与 `min_bageo` 要符合这版 Bageo，版本要比现在用的新。接着跟内置版本一样做完整检查，再一次改名到位。下载来源不能用设置修改。
 - 下载的版本保存在数据文件夹的 `packs/bageo-pack.json`，Bageo 每次启动都会再检查一次；没下载完的临时文件会删掉。
-- 按需下载的语言扩展包（`lang-<code>.json.gz`，压缩和解压后各最多 600 KiB；通话用的 70 种语言全部已内置）与地区插图（`art-<region>.json`，最多 64 KiB，仅允许白名单 SVG 元素与属性）来自同一个 GitHub 仓库的 `bageo-extras-index.json`（最多 256 KiB），存放在 `packs/extras/`，不列入备份。
+- 按需下载的语言扩展包（`lang-<code>.json.gz`，压缩和解压后各最多 600 KiB；通话用的 70 种语言全部已内置）来自同一个 GitHub 仓库的 `bageo-extras-index.json`（最多 256 KiB），存放在 `packs/extras/`，不列入备份。语言包带着主要语言是这个语言的地区插图；每个地区的插图单独检查（最多 64 KiB，仅允许白名单 SVG 元素与属性），不合格的那一区单独略过，不影响语言本身。
 
 ## 语音下载
 

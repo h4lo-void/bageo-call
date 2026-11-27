@@ -18,7 +18,8 @@
 //! own download, bageo-locales.json.gz ([locales]); [export] turns the app
 //! and desktop parts into the apps' resource files and [sync] copies the
 //! English originals out of bageo-call. The [extras] module holds the
-//! on-demand downloads: one file per extra language and per region drawing.
+//! on-demand downloads: one file per extra language, carrying the drawings
+//! of its regions, and the drawings built into Bageo.
 //! The [prompts] module holds the words Bageo tells the models and the
 //! download of changed ones, bageo-prompts.json.gz.
 
@@ -42,8 +43,9 @@ pub use check::{
     sound_locales,
 };
 pub use extras::{
-    build_extras, check_art, load_art, parse_extras_index, parse_lang_file, read_art_source, ExtraLang, ExtrasArtRef, ExtrasBuild,
-    ExtrasIndex, ExtrasLangRef, EXTRAS_FORMAT, EXTRAS_INDEX_FILE,
+    art_home, art_homes, build_art_bundle, build_extras, check_art, check_art_sources, load_art, load_region_langs, parse_art_bundle,
+    parse_extras_index, parse_lang_file, read_art_source, ArtBundle, ArtHome, ExtraLang, ExtrasArtRef, ExtrasBuild, ExtrasIndex,
+    ExtrasLangRef, ART_BUNDLE_FILE, EXTRAS_FORMAT, EXTRAS_INDEX_FILE,
 };
 pub use locales::{
     build_locales_at, build_locales_call_at, check_locales, check_locales_ref, load_locales, lrule, pack_locales, parse_locales,

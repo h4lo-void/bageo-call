@@ -327,10 +327,29 @@ fn summary_max_tokens(endpoint: &Endpoint) -> u32 {
 /// The call as short lines for the notification, in the language the owner
 /// reads ([`locale::notify_lang`]). `transcript` = [`build_summary_input`].
 /// Falls back to the caller's first words when no service is set or none answers.
-pub async fn summarize(http: &Client, settings: &Settings, caller_id: &str, transcript: &str) -> String {
+///
+/// `trusted`: the caller is the owner's saved contact, a Whitelist number or one
+/// marked safe. The model is told so, and a sales / scam label it writes anyway
+/// is taken out ([`without_sales_labels`]).
+pub async fn summarize(http: &Client, settings: &Settings, caller_id: &str, transcript: &str, trusted: bool) -> String {
+    let text = summarize_inner(http, settings, caller_id, transcript, trusted).await;
+    if trusted {
+        without_sales_labels(locale::active().notify_lang, &text)
+    } else {
+        text
+    }
+}
+
+/// What the summary model is told about a trusted caller (added to the call facts).
+const TRUSTED_CALLER_NOTE: &str = "\nNote: this caller is a saved contact of the owner (or a number the owner marked safe). Write what they actually wanted. Never label the call as a sales call or a suspected scam.\n";
+
+async fn summarize_inner(http: &Client, settings: &Settings, caller_id: &str, transcript: &str, trusted: bool) -> String {
     let active = locale::active();
     let lang = active.notify_lang;
-    let trimmed = transcript.trim().to_string();
+    let mut trimmed = transcript.trim().to_string();
+    if trusted && !trimmed.is_empty() {
+        trimmed.push_str(TRUSTED_CALLER_NOTE);
+    }
     let caller = caller_id.trim();
     if trimmed.is_empty() {
         return empty_transcript_summary(lang);
@@ -443,6 +462,74 @@ pub(crate) fn sales_labels(lang: Lang) -> (&'static str, &'static str) {
         Lang::De => ("Werbeanruf", "Betrugsverdacht"),
         Lang::Pt => ("Ligação de vendas", "Suspeita de golpe"),
     }
+}
+
+/// Every way the summary marks a sales call or a likely scam, lower-cased
+/// (ASCII only, so byte positions stay): the labels of all nine languages and
+/// the other phrasings [`summary_says_sales`] knows.
+fn sales_markers() -> Vec<String> {
+    let mut v: Vec<String> = Vec::new();
+    for l in [Lang::ZhTw, Lang::ZhCn, Lang::En, Lang::Ja, Lang::Ko, Lang::Es, Lang::Fr, Lang::De, Lang::Pt] {
+        let (sales, scam) = sales_labels(l);
+        v.push(sales.to_ascii_lowercase());
+        v.push(scam.to_ascii_lowercase());
+    }
+    for m in [
+        "sales pitch", "likely scam", "probable scam", "語音廣告", "语音广告", "セールス電話", "詐欺電話",
+        "판매 전화", "광고 전화", "llamada de ventas", "presunta estafa", "intento de estafa", "appel commercial",
+        "arnaque probable", "tentative d'arnaque", "verkaufsanruf", "betrugsversuch", "ligação comercial",
+        "tentativa de golpe",
+    ] {
+        v.push(m.to_ascii_lowercase());
+    }
+    v.sort_by_key(|m| std::cmp::Reverse(m.len()));
+    v.dedup();
+    v
+}
+
+/// A trusted caller's summary without any sales / scam label: on the "what they
+/// wanted" line the label that opens it, or a 「疑似詐騙」 / "Suspected scam"
+/// anywhere in it, is taken out, in any of the nine languages. The matter itself
+/// stays; a line left empty points to the transcript.
+pub fn without_sales_labels(lang: Lang, summary: &str) -> String {
+    let markers = sales_markers();
+    let label = locale::words(lang).s_matter.as_str();
+    let en_label = locale::words(Lang::En).s_matter.as_str();
+    let is_sep = |c: char| c.is_whitespace() || matches!(c, ':' | '：' | ',' | '，' | '、' | '-' | '—' | '–' | ';' | '；');
+    summary
+        .lines()
+        .map(|l| {
+            let t = l.trim_start();
+            let Some(lab) = [label, en_label, "事情"].into_iter().find(|p| !p.is_empty() && t.starts_with(p)) else {
+                return l.to_string();
+            };
+            let after = &t[lab.len()..];
+            let content = after.trim_start_matches(|c: char| c.is_whitespace() || c == ':' || c == '：');
+            let sep = &after[..after.len() - content.len()];
+            let mut rest = content.to_string();
+            loop {
+                let lower = rest.to_ascii_lowercase();
+                let Some((at, len)) = markers
+                    .iter()
+                    .filter(|m| !m.is_empty())
+                    .find_map(|m| lower.find(m.as_str()).map(|i| (i, m.len())))
+                else {
+                    break;
+                };
+                let before = rest[..at].trim_end_matches(is_sep);
+                let after = rest[at + len..].trim_start_matches(is_sep);
+                rest = match (before.is_empty(), after.is_empty()) {
+                    (true, _) => after.to_string(),
+                    (false, true) => before.to_string(),
+                    (false, false) => format!("{before}, {after}"),
+                };
+            }
+            let rest = rest.trim();
+            let rest = if rest.is_empty() { locale::words(lang).s_see_transcript.clone() } else { rest.to_string() };
+            format!("{lab}{sep}{rest}")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Words of a matter line about fraud that is not itself a pitch or a scam: a
@@ -1222,6 +1309,36 @@ pub async fn translate_dialogue(http: &Client, settings: &Settings, dialogue: &s
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A trusted caller's summary loses a sales / scam label in every language and
+    /// keeps the matter; ordinary summaries are left as written.
+    #[test]
+    fn a_trusted_callers_summary_loses_sales_and_scam_labels_in_every_language() {
+        let langs = [Lang::ZhTw, Lang::ZhCn, Lang::En, Lang::Ja, Lang::Ko, Lang::Es, Lang::Fr, Lang::De, Lang::Pt];
+        for lang in langs {
+            let w = locale::words(lang);
+            let (sales, scam) = sales_labels(lang);
+            for body in [format!("{sales}: seguro de vida"), format!("{scam}, asked for a code about the parcel"), format!("{} parcel talk ({scam})", "Tom")] {
+                let line = format!("{}{}{}", w.s_matter, w.sep, body);
+                let input = format!("{}{}Tom\n{line}\n{}{}nothing", w.s_caller, w.sep, w.s_todo, w.sep);
+                assert!(summary_says_sales(lang, &input), "{lang:?}: the label must be there first: {input}");
+                let out = without_sales_labels(lang, &input);
+                assert!(!summary_says_sales(lang, &out), "{lang:?}: {out}");
+                assert!(!out.to_lowercase().contains(&sales.to_lowercase()) && !out.to_lowercase().contains(&scam.to_lowercase()), "{lang:?}: {out}");
+                assert!(out.contains(&format!("{}{}Tom", w.s_caller, w.sep)) && out.contains(&format!("{}{}nothing", w.s_todo, w.sep)), "{lang:?}: other lines stay: {out}");
+            }
+            let fine = format!("{}{}{}\n{}{}ok", w.s_matter, w.sep, "dinner tonight at 8", w.s_todo, w.sep);
+            assert_eq!(without_sales_labels(lang, &fine), fine, "{lang:?}");
+        }
+        // The matter stays; a line with nothing left points to the transcript.
+        let en = without_sales_labels(Lang::En, "Caller: Mei\nAbout: Sales call: the lease renewal\nTo do: nothing");
+        assert!(en.contains("About: the lease renewal"), "{en}");
+        let only = without_sales_labels(Lang::En, "About: Suspected scam");
+        assert!(!summary_says_sales(Lang::En, &only) && only.starts_with("About"), "{only}");
+        assert_eq!(without_sales_labels(Lang::ZhTw, "事情：疑似詐騙，問下週吃飯"), "事情：問下週吃飯");
+        assert_eq!(without_sales_labels(Lang::ZhTw, "事情：推銷電話：保險方案"), "事情：保險方案");
+        assert_eq!(without_sales_labels(Lang::Ja, "用件：営業電話：光回線の案内").contains("営業電話"), false);
+    }
 
     fn settings() -> Settings {
         let mut s = Settings::from_env();

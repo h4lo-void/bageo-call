@@ -2099,6 +2099,29 @@
     "who": "the owner",
     "placeholders": []
   },
+  "er_err_sim_other_country": {
+    "where": "a red fallback sentence in the console when the warning window did not open. English: This SIM is from a different country than the number.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_abroad_title": {
+    "where": "the title of a warning window shown before the AI calls a number of another country than the SIM picked. English: This is an international call",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_abroad_body": {
+    "where": "the text of that warning window. English: The SIM you picked is from {sim}, but the number is in {dest}. Your carrier may charge for an international call.",
+    "who": "the owner",
+    "placeholders": [
+      "{sim}",
+      "{dest}"
+    ]
+  },
+  "er_abroad_ok": {
+    "where": "the button of that warning window that goes on with the call (the other button is Cancel). English: Call anyway",
+    "who": "the owner",
+    "placeholders": []
+  },
   "er_err_no_task": {
     "where": "a label or sentence in the console. English: Write what the AI should take care of.",
     "who": "the owner",
@@ -6758,11 +6781,6 @@
   },
   "ts_formal": {
     "where": "a label or sentence in the console. English: Formal",
-    "who": "the owner",
-    "placeholders": []
-  },
-  "ts_get_art": {
-    "where": "a button in the talk-style mascot box when a region's scene art is not downloaded yet. English: Download local scene",
     "who": "the owner",
     "placeholders": []
   },
