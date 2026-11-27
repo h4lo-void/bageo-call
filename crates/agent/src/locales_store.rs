@@ -48,13 +48,14 @@ use crate::prompts::Pack;
 /// The translations compiled into Bageo.
 const BUILTIN: &[u8] = include_bytes!("../data/packs/bageo-locales.json.gz");
 
-/// Bageo's English notification text and its notes: what a translation is
-/// checked against.
+/// Bageo's English notification text and its build-time slimmed validation
+/// metadata (notes stripped in build.rs).
 const NOTIFY_EN: &str = include_str!("../data/i18n/notify/en.json");
-const NOTIFY_META: &str = include_str!("../data/i18n/notify/_meta.json");
-/// The console's English, the same file the page ships, plus the notes for translators.
+const NOTIFY_META: &str = include_str!(concat!(env!("OUT_DIR"), "/notify_meta_slim.json"));
+/// The console's English, the same file the page ships, plus its build-time
+/// slimmed validation metadata.
 const CONSOLE_EN: &str = include_str!("../static/i18n/en.json");
-const CONSOLE_META: &str = include_str!("../static/i18n/_meta.json");
+const CONSOLE_META: &str = include_str!(concat!(env!("OUT_DIR"), "/console_meta_slim.json"));
 /// The desktop widget's English, shipped with the agent so downloaded extra
 /// language packs can be validated and served to the local desktop app.
 const DESKTOP_EN: &str = include_str!("../../../desktop/ui/i18n.json");
@@ -1771,6 +1772,33 @@ mod tests {
         // One language over 600 KB is left out alone.
         let loc = parse(&gz(v0 + 1, |v| v["langs"]["it"]["names"]["aliases"] = json!(vec!["x".repeat(700 * 1024)]))).unwrap().0;
         assert!(!loc.langs.contains_key("it") && loc.langs.contains_key("th"));
+    }
+
+    #[test]
+    fn embedded_slim_meta_matches_full_disk_meta_and_is_compact() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let notify_raw = std::fs::read_to_string(dir.join("data/i18n/notify/_meta.json")).unwrap();
+        let console_raw = std::fs::read_to_string(dir.join("static/i18n/_meta.json")).unwrap();
+
+        assert!(CONSOLE_META.len() < 40_000, "CONSOLE_META too large: {} bytes", CONSOLE_META.len());
+        assert!(CONSOLE_META.len() * 4 < console_raw.len(), "CONSOLE_META {} vs {}", CONSOLE_META.len(), console_raw.len());
+        assert!(NOTIFY_META.len() * 4 < notify_raw.len(), "NOTIFY_META {} vs {}", NOTIFY_META.len(), notify_raw.len());
+
+        for (label, text, slim_str, full_str, drop_lang) in [
+            ("notify", NOTIFY_EN, NOTIFY_META, notify_raw.as_str(), false),
+            ("console", CONSOLE_EN, CONSOLE_META, console_raw.as_str(), true),
+        ] {
+            let slim_src = en_source(text, slim_str, drop_lang);
+            let full_meta: BTreeMap<String, Meta> = serde_json::from_str(full_str).unwrap();
+            assert_eq!(slim_src.meta.len(), full_meta.len(), "{label}: key count");
+            for (k, full_m) in &full_meta {
+                let slim_m = slim_src.meta.get(k).unwrap_or_else(|| panic!("{label}: missing key {k}"));
+                assert_eq!(slim_m.placeholders, full_m.placeholders, "{label}: placeholders for {k}");
+                assert_eq!(slim_m.max, full_m.max, "{label}: max for {k}");
+                assert_eq!(slim_m.same_ok, full_m.same_ok, "{label}: same_ok for {k}");
+                assert!(slim_m.place.is_empty() && slim_m.who.is_empty(), "{label}: translator notes leaked for {k}");
+            }
+        }
     }
 }
 

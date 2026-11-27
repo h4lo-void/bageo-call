@@ -10,8 +10,13 @@
 use std::path::Path;
 use std::process::Command;
 
+use serde_json::{Map, Value};
+
 /// The longest id kept, so a stray value cannot grow the health answer.
 const MAX_LEN: usize = 32;
+
+const CONSOLE_META_REL: &str = "static/i18n/_meta.json";
+const NOTIFY_META_REL: &str = "data/i18n/notify/_meta.json";
 
 fn main() {
     let dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
@@ -21,7 +26,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=BAGEO_BUILD_ID");
     // Edits to the program's own files change the `-dirty` mark; a commit or a
     // staging change moves the git files.
-    for p in ["build.rs", "Cargo.toml", "src", "static", "data"] {
+    for p in ["build.rs", "Cargo.toml", "src", "static", "data", CONSOLE_META_REL, NOTIFY_META_REL] {
         println!("cargo:rerun-if-changed={p}");
     }
     for name in ["HEAD", "index"] {
@@ -29,6 +34,54 @@ fn main() {
             println!("cargo:rerun-if-changed={}", dir.join(path).display());
         }
     }
+
+    let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR must be set");
+    let out_dir = Path::new(&out_dir);
+    write_slim_meta(&dir.join(CONSOLE_META_REL), &out_dir.join("console_meta_slim.json"));
+    write_slim_meta(&dir.join(NOTIFY_META_REL), &out_dir.join("notify_meta_slim.json"));
+}
+
+fn write_slim_meta(src: &Path, dst: &Path) {
+    let raw = std::fs::read_to_string(src)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", src.display()));
+    let slim = slim_meta_json(&raw)
+        .unwrap_or_else(|e| panic!("failed to slim {}: {e}", src.display()));
+    if std::fs::read_to_string(dst).ok().as_deref() != Some(slim.as_str()) {
+        std::fs::write(dst, slim.as_bytes())
+            .unwrap_or_else(|e| panic!("failed to write {}: {e}", dst.display()));
+    }
+}
+
+/// Strip translator-only fields (`where`, `who`) from a `_meta.json` file,
+/// keeping only runtime validation fields (`placeholders`, `max`, `same_ok`)
+/// in compact JSON. Empty `placeholders`, null `max`, and `same_ok: false`
+/// are omitted since `bageo_packs::locales::Meta` defaults them on read.
+fn slim_meta_json(raw: &str) -> Result<String, String> {
+    let root: Value = serde_json::from_str(raw).map_err(|e| format!("invalid JSON: {e}"))?;
+    let obj = root.as_object().ok_or_else(|| "meta root must be a JSON object".to_string())?;
+    let mut out = Map::with_capacity(obj.len());
+    for (key, entry) in obj {
+        let entry_obj = entry
+            .as_object()
+            .ok_or_else(|| format!("entry '{key}' must be a JSON object"))?;
+        let mut slim = Map::new();
+        if let Some(ph) = entry_obj.get("placeholders") {
+            let arr = ph
+                .as_array()
+                .ok_or_else(|| format!("entry '{key}' placeholders must be an array"))?;
+            if !arr.is_empty() {
+                slim.insert("placeholders".to_string(), Value::Array(arr.clone()));
+            }
+        }
+        if let Some(max) = entry_obj.get("max").filter(|v| !v.is_null()) {
+            slim.insert("max".to_string(), max.clone());
+        }
+        if entry_obj.get("same_ok").and_then(Value::as_bool) == Some(true) {
+            slim.insert("same_ok".to_string(), Value::Bool(true));
+        }
+        out.insert(key.clone(), Value::Object(slim));
+    }
+    serde_json::to_string(&Value::Object(out)).map_err(|e| format!("failed to serialize slim meta: {e}"))
 }
 
 /// The id to use: git's when there is one, else the environment variable's.
@@ -133,5 +186,60 @@ mod tests {
         let sha = id.strip_suffix("-dirty").unwrap_or(&id);
         assert_eq!(sha.len(), 7, "{id}");
         assert!(sha.bytes().all(|b| b.is_ascii_hexdigit()), "{id}");
+    }
+
+    #[test]
+    fn slim_meta_strips_translator_notes_and_keeps_validation_fields() {
+        let sample = r#"{
+            "a_plain": {"where": "long description here", "who": "the owner", "placeholders": []},
+            "b_ph": {"where": "with ph", "who": "the caller", "placeholders": ["{number}", "{count}"]},
+            "c_max": {"where": "button", "who": "the owner", "placeholders": [], "max": 18},
+            "d_same": {"where": "code", "who": "the owner", "placeholders": ["{x}"], "same_ok": true}
+        }"#;
+        let slim = slim_meta_json(sample).unwrap();
+        assert!(!slim.contains("long description here"));
+        assert!(!slim.contains("the owner"));
+        assert!(!slim.contains("the caller"));
+        assert!(!slim.contains("\"where\""));
+        assert!(!slim.contains("\"who\""));
+        let parsed: Value = serde_json::from_str(&slim).unwrap();
+        assert_eq!(parsed["a_plain"], serde_json::json!({}));
+        assert_eq!(parsed["b_ph"], serde_json::json!({"placeholders": ["{number}", "{count}"]}));
+        assert_eq!(parsed["c_max"], serde_json::json!({"max": 18}));
+        assert_eq!(parsed["d_same"], serde_json::json!({"placeholders": ["{x}"], "same_ok": true}));
+    }
+
+    #[test]
+    fn slim_meta_on_repo_files_preserves_all_keys_and_shrinks_dramatically() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        for rel in [CONSOLE_META_REL, NOTIFY_META_REL] {
+            let raw = std::fs::read_to_string(dir.join(rel)).unwrap();
+            let slim = slim_meta_json(&raw).unwrap();
+            assert!(slim.len() * 4 < raw.len(), "{rel}: {} vs {}", slim.len(), raw.len());
+            let full_val: Value = serde_json::from_str(&raw).unwrap();
+            let slim_val: Value = serde_json::from_str(&slim).unwrap();
+            let full_obj = full_val.as_object().unwrap();
+            let slim_obj = slim_val.as_object().unwrap();
+            assert_eq!(slim_obj.len(), full_obj.len(), "{rel}: key count");
+            for (k, full_entry) in full_obj {
+                let slim_entry = slim_obj.get(k).unwrap_or_else(|| panic!("{rel}: missing key {k}"));
+                let full_ph = full_entry.get("placeholders").and_then(Value::as_array).cloned().unwrap_or_default();
+                let slim_ph = slim_entry.get("placeholders").and_then(Value::as_array).cloned().unwrap_or_default();
+                assert_eq!(slim_ph, full_ph, "{rel}: placeholders mismatch on {k}");
+                assert_eq!(slim_entry.get("max"), full_entry.get("max"), "{rel}: max mismatch on {k}");
+                let full_same = full_entry.get("same_ok").and_then(Value::as_bool).unwrap_or(false);
+                let slim_same = slim_entry.get("same_ok").and_then(Value::as_bool).unwrap_or(false);
+                assert_eq!(slim_same, full_same, "{rel}: same_ok mismatch on {k}");
+                assert!(slim_entry.get("where").is_none() && slim_entry.get("who").is_none(), "{rel}: notes leaked on {k}");
+            }
+        }
+    }
+
+    #[test]
+    fn slim_meta_rejects_invalid_inputs() {
+        assert!(slim_meta_json("not json").is_err());
+        assert!(slim_meta_json("[]").is_err());
+        assert!(slim_meta_json(r#"{"k": 123}"#).is_err());
+        assert!(slim_meta_json(r#"{"k": {"placeholders": "bad"}}"#).is_err());
     }
 }
