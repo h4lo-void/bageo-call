@@ -132,9 +132,9 @@ scamming:
    increases, soft sales pitches, and newer scam patterns (ATM steps, payment
    "errors", gift cards, "add me on LINE").
 3. **A second look at the meaning.** When the keywords cross the line,
-   `gemini-flash-lite` reads the conversation so far, knowing whether the
-   caller is in your contacts, while the AI keeps talking (at most 1.5
-   seconds).
+   `gemini-flash-lite` reads the conversation so far while the AI keeps
+   talking (at most 1.5 seconds). Saved contacts, Whitelist numbers and
+   numbers you marked *It was not* skip all three steps.
 
 A caller who has only said who they are is `too_early` and is looked at again
 after their next turn.

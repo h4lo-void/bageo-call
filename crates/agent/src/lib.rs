@@ -10101,7 +10101,7 @@ fn maybe_notify_voicemail(state: &AppState, call: &ActiveCall, notified: &Arc<At
                         "voicemail whisper ok serial={serial} call_id={call_id} chars={whisper_chars}"
                     );
                     if summary::summary_endpoint(&eff).is_some() {
-                        summary_block = summary::summarize(&http, &eff, &caller, &tx).await;
+                        summary_block = summary::summarize(&http, &eff, &caller, &tx, false).await;
                         info!(
                             "voicemail summary ok serial={serial} call_id={call_id} chars={}",
                             summary_block.chars().count()
@@ -10398,6 +10398,20 @@ fn standing_scam(judged: Option<&calls::ScamJudgement>, trusted: bool) -> Option
     judged.filter(|j| j.stands() && !trusted).cloned()
 }
 
+/// [`summary_end_hint`] for the call's record: a trusted caller's call never
+/// reads as stalled or judged sales / scam, whatever the events say.
+fn trusted_end_hint(events: &[String], scam: Option<&calls::ScamJudgement>, trusted: bool) -> String {
+    if !trusted {
+        return summary_end_hint(events, scam);
+    }
+    let kept: Vec<String> = events
+        .iter()
+        .filter(|e| !matches!(e.as_str(), "persona_stall_spam" | "persona_scam_detected" | "persona_stall_released"))
+        .cloned()
+        .collect();
+    summary_end_hint(&kept, None)
+}
+
 /// Press-1 hangup: Gemini live STT (+ optional Whisper AI segment) → **summary** → notification.
 /// The notification body is the summary only (not raw fragment dump). Hangup already stopped Live.
 fn spawn_ai_talk_tg_summary(
@@ -10417,7 +10431,6 @@ fn spawn_ai_talk_tg_summary(
     let ai_rel = record.ai_audio_path.clone();
     let remote_rel = record.remote_audio_path.clone();
     let duration_ms = record.duration_ms;
-    let end_hint = summary_end_hint(&record.events, record.scam.as_ref());
     // The AI's call-back with an appointment's answer: no appointment and no
     // calendar suggestion from it, its own title, its result for the task.
     let ai_callback = appointments::is_ai_callback(&record.events);
@@ -10442,6 +10455,7 @@ fn spawn_ai_talk_tg_summary(
         caller_is_trusted(&caller, sim.as_deref())
     };
     let scam = standing_scam(record.scam.as_ref(), trusted);
+    let end_hint = trusted_end_hint(&record.events, scam.as_ref(), trusted);
     let judged = scam.is_some();
     // Remembered for the number's next calls (hidden numbers are not): the owner's
     // own marks stand over this. Not when the look alone said so.
@@ -10631,7 +10645,7 @@ fn spawn_ai_talk_tg_summary(
                     transcript.chars().count()
                 );
                 source = "llm_summary";
-                summary::summarize(&http, &eff, &caller, &transcript).await
+                summary::summarize(&http, &eff, &caller, &transcript, trusted).await
             } else {
                 warn!("ai talk summary skipped serial={serial}: no summary service (set a Gemini key or another OpenAI-compatible service)");
                 let _ = caller_disp;
@@ -13127,6 +13141,30 @@ mod summary_fallback_tests {
         // Only the AI saying such words does not count.
         let ai_only = "接聽：I can't give you a verification code.\n對方：Okay, never mind, see you.";
         assert!(!remembers_scam_number(&by_look, ai_only));
+    }
+
+    /// The summary's "how it ended" line never says stalled / scam for a trusted caller.
+    #[test]
+    fn a_trusted_callers_end_hint_never_says_stalled_or_scam() {
+        let judged = calls::ScamJudgement {
+            kind: "scam".into(),
+            typology: "bank_impersonation".into(),
+            confidence: "high".into(),
+            source: "keywords".into(),
+            released: false,
+        };
+        for events in [
+            vec!["persona_stall_spam"],
+            vec!["persona_scam_detected"],
+            vec!["persona_stall_spam", "persona_stall_released"],
+        ] {
+            let ev: Vec<String> = events.iter().map(|e| e.to_string()).collect();
+            assert_eq!(trusted_end_hint(&ev, Some(&judged), true), "", "{events:?}");
+            assert_ne!(trusted_end_hint(&ev, Some(&judged), false), "", "{events:?}");
+        }
+        // Other endings still show.
+        let ev = vec!["persona_stall_spam".to_string(), "ai_segment_end".to_string()];
+        assert_eq!(trusted_end_hint(&ev, None, true), summary_end_hint(&["ai_segment_end".to_string()], None));
     }
 
     /// A trusted caller's call is never marked sales / scam after it, whatever
