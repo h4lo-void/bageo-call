@@ -99,7 +99,7 @@ Two limits apply to urgent calls. Once a call is judged sales or scam, you get n
 
 *Get the AI ready while the phone rings* connects to Gemini and prepares the first words before pick-up. It costs one short Gemini session even when the caller hangs up while it rings.
 
-**The caller's language.** *Reply in the caller's language* is on by default: when a caller clearly speaks another language, or asks whether you speak one, the AI switches to it. Turn it off to keep the AI in your *Language* on every call. It is saved as `reply_in_caller_language`.
+**The caller's language.** *Reply in the caller's language* is on by default: the AI switches only when it is sure the caller speaks another language. One clear, full sentence in one of the call's languages (the SIM's main and second languages, the number's country language) is enough; any other language needs two in a row, or the caller asking for it. A quick hello, a word or two or something unclear changes nothing. Turned off, the AI moves only between the call's languages, never to another one. It is saved as `reply_in_caller_language`.
 
 **Calls from abroad and the carrier's warning.** Taiwan's carriers play a recorded fraud warning at the start of every call from abroad. When a Taiwanese SIM takes a call from another country (a `+…` or `00…` number with another country code), the AI waits for that warning to end: it speaks once the line goes quiet, or after 7.5 seconds at most, and says its opening line only once.
 

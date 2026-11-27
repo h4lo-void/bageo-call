@@ -456,7 +456,8 @@ const LANGUAGE_NAMES: &[(&str, &[&str])] = &[
 /// Words that make a clause with a language's name in it a request: speak,
 /// talk, please, switch, understand…, in the core languages and a few others.
 const REQUEST_WORDS: &[&str] = &[
-    "speak", "speaks", "talk", "please", "switch", "understand", "habla", "hablar", "hable", "hablas", "hablamos",
+    "speak", "speaks", "talk", "please", "switch", "understand", "habla", "hablar", "hable", "hablas", "hablamos", "hablo",
+    "falo", "parlo",
     "favor", "entiende", "entiendes", "cambiar", "parle", "parler", "parlez", "parles", "parlons", "comprenez", "plaît",
     "plait", "sprechen", "sprichst", "spreche", "sprich", "bitte", "verstehen", "verstehst", "wechseln", "falar", "fala",
     "fale", "falas", "falamos", "entende", "mudar", "parla", "parlare", "parli", "говорите", "говорить", "говоришь",
@@ -467,19 +468,22 @@ const REQUEST_WORDS: &[&str] = &[
 /// español", "auf Deutsch", "em português".
 const REQUEST_BEFORE: &[&str] = &["in", "en", "auf", "em", "по"];
 
-/// A clause with any of these asks for nothing ("I don't speak Chinese",
-/// 「我不會講英文」, 「英語は話せません」, 「영어 못해요」).
+/// A "not" before a name in Latin or Cyrillic letters: that name is not asked
+/// for ("I don't speak Chinese").
 const NEGATION_WORDS: &[&str] = &[
     "not", "don't", "dont", "doesn't", "can't", "cant", "cannot", "won't", "never", "no", "ne", "pas", "nicht", "kein",
     "keine", "não", "nao", "nunca", "не",
 ];
-/// A clause with any of these asks for nothing: a "not" (「我不會講英文」,
-/// 「英語は話せません」, 「영어 못해요」), or asking how to say something
-/// (「這個用英文怎麼說」).
-const NEGATION_MARKS: &[&str] = &[
+/// A "not" right before a name in Chinese letters (「我不會講英文」, 「我不要講英文」),
+/// or asking how to say something (「怎麼用英文說」): that name is not asked for.
+const NEGATION_BEFORE_NAME: &[&str] = &[
     "不會", "不会", "不懂", "不能", "不行", "不要", "不太", "沒辦法", "没办法", "別", "别", "怎麼", "怎么",
-    "什麼意思", "什么意思", "できない", "できません", "話せない", "話せません", "分からない", "わからない", "分かりません",
-    "わかりません", "どう言", "못", "모르", "몰라", "안 돼", "안돼", "뭐라고",
+];
+/// The same right after a name: Japanese and Korean put their "not" there
+/// (「英語は話せません」, 「영어 못해요」), and 「這個用英文怎麼說」.
+const NEGATION_AFTER_NAME: &[&str] = &[
+    "怎麼", "怎么", "什麼意思", "什么意思", "不太", "できない", "できません", "話せない", "話せません", "分からない",
+    "わからない", "分かりません", "わかりません", "どう言", "못", "모르", "몰라", "안 돼", "안돼", "뭐라고",
 ];
 
 /// Around a name in Chinese, Japanese, Korean or Thai letters, a request on
@@ -502,8 +506,9 @@ const REQUEST_CUES: &[&str] = &[
 
 /// The language a caller plainly asks the AI to speak ("Can you speak English?",
 /// "English, please", 「可以講中文嗎」, 「英語でお願いします」, 「영어로 해 주세요」,
-/// "¿Habla español?"), in a clause of their turn with no "not" in it ("I don't
-/// speak Chinese" asks for nothing). The last such clause counts. A turn that
+/// "¿Habla español?"); a name with a "not" of its own is not asked for ("I
+/// don't speak Chinese" asks for nothing, "I don't speak Chinese can you speak
+/// English" for English). The last such clause counts. A turn that
 /// is only a language's name ("English?", 「中文。」) asks for it too.
 pub fn asks_for_language(said: &str) -> Option<Lang> {
     let said = said.replace('’', "'").to_lowercase();
@@ -530,31 +535,85 @@ fn clauses(said: &str) -> Vec<&str> {
     out.into_iter().filter(|c| c.chars().any(char::is_alphabetic)).collect()
 }
 
-/// The language code a clause (lower case) asks for.
+/// Characters before and after a name in Chinese, Japanese, Korean or Thai
+/// letters that a "not" of its own is looked for in (「我不會講中文」,
+/// 「英語は話せません」), up to the name before or after it.
+const NEGATION_BEFORE_CHARS: usize = 6;
+const NEGATION_AFTER_CHARS: usize = 8;
+
+/// Words of Latin or Cyrillic letters before a name that a "not" of its own is
+/// looked for in: from this many before the verb that goes with it ("I don't
+/// want to speak English"), else before the name.
+const NEGATION_BEFORE_WORDS: usize = 3;
+
+/// A language's name in Latin or Cyrillic letters.
+fn is_latin_name(w: &str) -> bool {
+    LANGUAGE_NAMES.iter().any(|(_, names)| names.contains(&w))
+}
+
+/// Where each language name in Chinese, Japanese, Korean or Thai letters
+/// stands in `clause` (byte ranges).
+fn cjk_name_spans(clause: &str) -> Vec<(usize, usize)> {
+    let mut spans: Vec<(usize, usize)> = LANGUAGE_NAMES
+        .iter()
+        .flat_map(|(_, names)| names.iter())
+        .filter(|n| !n.chars().all(|c| c.is_alphabetic() && !is_cjk_or_thai(c)))
+        .flat_map(|n| clause.match_indices(*n).map(|(i, m)| (i, i + m.len())))
+        .collect();
+    spans.sort_unstable();
+    spans
+}
+
+/// The language code a clause (lower case) asks for. A "not" counts for the
+/// name it goes with only: in 「我不會講中文可以講英文嗎」 or "I don't speak
+/// Chinese can you speak English", English is asked for.
 fn clause_asks(clause: &str, short_turn: bool) -> Option<&'static str> {
     let words: Vec<&str> = clause
         .split(|c: char| !(c.is_alphabetic() || c == '\''))
         .filter(|w| !w.is_empty())
         .collect();
-    if words.iter().any(|w| NEGATION_WORDS.contains(w)) || NEGATION_MARKS.iter().any(|m| clause.contains(m)) {
-        return None;
-    }
     let question = clause.trim_end().ends_with(['?', '？']);
     let request_word = words.iter().any(|w| REQUEST_WORDS.contains(w));
     let cue = question || REQUEST_CUES.iter().any(|m| clause.contains(*m));
+    let spans = cjk_name_spans(clause);
     for (code, names) in LANGUAGE_NAMES {
         for &name in names.iter() {
             let asked = if name.chars().all(|c| c.is_alphabetic() && !is_cjk_or_thai(c)) {
                 // A word of Latin or Cyrillic letters.
                 let Some(at) = words.iter().position(|w| *w == name) else { continue };
+                // The "not" before this name: from a little before its verb, after
+                // the name before it ("Ich spreche kein Englisch, können wir Deutsch…").
+                let after_name = words[..at].iter().rposition(|w| is_latin_name(w)).map_or(0, |i| i + 1);
+                let from = match words[..at].iter().rposition(|w| REQUEST_WORDS.contains(w)) {
+                    Some(verb) => verb.saturating_sub(NEGATION_BEFORE_WORDS),
+                    None => at.saturating_sub(NEGATION_BEFORE_WORDS),
+                }
+                .max(after_name);
+                if words[from..at].iter().any(|w| NEGATION_WORDS.contains(w)) {
+                    continue;
+                }
                 request_word
                     || (at > 0 && REQUEST_BEFORE.contains(&words[at - 1]))
                     || (question && words.len() <= 3)
                     || (short_turn && words.len() <= 2)
             } else {
                 let Some(at) = clause.find(name) else { continue };
+                let end = at + name.len();
                 let before = clause[..at].trim_end();
-                let after = &clause[at + name.len()..];
+                let after = &clause[end..];
+                // The "not" around this name, up to the names next to it.
+                let prev_end = spans.iter().filter(|s| s.1 <= at).map(|s| s.1).max().unwrap_or(0);
+                let next_start = spans.iter().filter(|s| s.0 >= end).map(|s| s.0).min().unwrap_or(clause.len());
+                let near_before: String = {
+                    let b: Vec<char> = clause[prev_end..at].chars().collect();
+                    b[b.len().saturating_sub(NEGATION_BEFORE_CHARS)..].iter().collect()
+                };
+                let near_after: String = clause[end..next_start].chars().take(NEGATION_AFTER_CHARS).collect();
+                if NEGATION_BEFORE_NAME.iter().any(|m| near_before.contains(m))
+                    || NEGATION_AFTER_NAME.iter().any(|m| near_after.contains(m))
+                {
+                    continue;
+                }
                 request_word
                     || STRONG_BEFORE.iter().any(|m| before.ends_with(*m))
                     || STRONG_AFTER.iter().any(|m| after.starts_with(*m))
@@ -1525,8 +1584,31 @@ mod certain_switch {
             assert!(c.caller_turn(said).is_some(), "{said}");
             assert_ne!(c.lang(), Some(Lang::En), "{said}");
         }
+        // A "not" counts for its own language only, with no mark between the two halves.
+        for (said, to) in [
+            ("我不會講中文可以講英文嗎", Lang::En),
+            ("我不会讲中文可以讲英文吗", Lang::En),
+            ("I don't speak Chinese can you speak English", Lang::En),
+            ("No hablo inglés puede hablar español", Lang::Es),
+            ("Je ne parle pas anglais vous parlez français", Lang::Fr),
+            ("Ich spreche kein Englisch können wir Deutsch sprechen", Lang::De),
+            ("Não falo inglês você fala português", Lang::Pt),
+            ("英語は話せません日本語でお願いします", Lang::Ja),
+            ("영어 못해요 한국어로 말해 주세요", Lang::Ko),
+        ] {
+            assert!(asks_for_language(said).is_some_and(|l| l == to || (l.is_zh() && to.is_zh())), "{said}: {:?}", asks_for_language(said));
+        }
+        let mut c = CallLanguage::new(Lang::ZhTw, Lang::ZhTw);
+        assert_eq!(c.caller_turn("我不會講中文可以講英文嗎"), Some(Spoken::Lang(Lang::En)));
+        let mut c = CallLanguage::new(Lang::En, Lang::En);
+        assert_eq!(c.caller_turn("No hablo inglés puede hablar español"), Some(Spoken::Lang(Lang::Es)));
         // A "not", a statement or a question about a word asks for nothing.
         for said in [
+            "我不要講英文",
+            "我不要讲英文",
+            "我不會講英文也不會講日文",
+            "I don't want to speak English",
+            "No quiero hablar inglés",
             "I don't speak Chinese.",
             "我不會講英文",
             "Je ne parle pas anglais.",

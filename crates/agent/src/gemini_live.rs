@@ -1940,9 +1940,10 @@ pub fn call_lang_plan_for(
         None => opening_lang_for(caller_id, home_code, lang),
     };
     // The languages the call moves between on one clear sentence of the
-    // caller's, besides its opening's and its prompt's: the SIM's main and
-    // second languages and the number's country's.
-    let mut base_langs: Vec<Lang> = sim_lang.into_iter().chain(sim_more.iter().map(|(l, _)| *l)).collect();
+    // caller's, besides its opening's and its prompt's: the SIM's main language
+    // (the owner's, else its country's) and second languages and the number's
+    // country's.
+    let mut base_langs: Vec<Lang> = sim_main.into_iter().chain(sim_more.iter().map(|(l, _)| *l)).collect();
     base_langs.extend(number.as_ref().and_then(|n| country_lang(n.country)));
     // A country whose language the AI has no setting for (Italy, Thailand…): its
     // way of answering, not the setting's language. A number from another country
@@ -3450,7 +3451,7 @@ fn session_prompt(prompt: &str, outbound: Outbound) -> String {
 /// The language a call starts held in and its base languages
 /// ([`crate::lang_lock::CallLanguage`]): the opening's (`opening`, else the
 /// prompt's), the prompt's (`prompt`), the SIM's main language (setting
-/// `sim_languages`, else `language`), its second languages and the number's
+/// `sim_languages`, else its country's), its second languages and the number's
 /// country's ([`CallLangPlan::base_langs`]), and a local way of answering's when the
 /// call opened that way (persona mode, [`CallLangPlan::local_hello`]). The call
 /// leaves them only when it follows the caller into their language: a call that
@@ -3477,7 +3478,7 @@ fn call_language_for(
     let follows = outbound != Outbound::Incoming || crate::prompts::has_caller_language_note(system_prompt);
     crate::lang_lock::CallLanguage::new(opening.unwrap_or(prompt), prompt)
         .with_base(
-            std::iter::once(plan.sim_lang.unwrap_or_else(crate::locale::current))
+            std::iter::once(plan.sim_lang.unwrap_or(prompt))
                 .chain(plan.base_langs.iter().copied())
                 .chain(local_lang),
             local.is_some() && local_lang.is_none(),
@@ -17035,6 +17036,39 @@ mod call_language_tests {
         // Japanese is no base language: one sentence is not enough.
         assert_eq!(c.caller_turn("では、管理人室に預けておきますので、後で受け取ってください。"), None);
         assert_eq!(c.lang(), Some(Lang::En));
+    }
+
+    /// A SIM without a language set: its country's language is a base language
+    /// too, so one clear sentence in it moves the call there; another language
+    /// still needs two.
+    #[test]
+    fn an_unset_sims_country_language_is_a_base_language() {
+        let none = BTreeMap::new();
+        // (number, SIM, the setting `language`, the opening, a line in the SIM country's language, its language)
+        let cases: &[(&str, &str, Lang, Lang, &str, Lang)] = &[
+            ("+12025550143", "jp", Lang::ZhTw, Lang::En, "もしもし、大和運輸の田中です。お荷物のお届けに参りました。", Lang::Ja),
+            ("+33123456789", "kr", Lang::De, Lang::Fr, "여보세요, 택배 왔는데 집에 계세요?", Lang::Ko),
+            ("+81312345678", "fr", Lang::Es, Lang::Ja, "Bonjour, je vous appelle pour le colis de monsieur, il est chez le gardien.", Lang::Fr),
+            ("+12025550143", "de", Lang::Pt, Lang::En, "Guten Tag, ich habe ein Paket für Sie, sind Sie heute zu Hause?", Lang::De),
+            ("+34912345678", "tw", Lang::En, Lang::Es, "你好，我是快遞，你的包裹要放哪裡？", Lang::ZhTw),
+        ];
+        for &(number, sim, lang, opening, line, sim_lang) in cases {
+            let plan = call_lang_plan(number, Some(sim), lang, "886", &none);
+            assert_eq!(plan.opening, Some(opening), "{sim} {number}");
+            assert!(plan.base_langs.contains(&sim_lang), "{sim}: {:?}", plan.base_langs);
+            let prompt = plan.prompt_lang.unwrap_or(lang);
+            let mut c = call_language_for(&plan, plan.opening, prompt, true, Outbound::Incoming, &follow_note());
+            assert_eq!(c.lang(), Some(opening), "{sim}");
+            assert_eq!(c.caller_turn(line), Some(Spoken::Lang(sim_lang)), "{sim}: {line}");
+        }
+        // A language that is none of them (German on a Japanese SIM, an English
+        // owner, a Spanish number) still needs two clear sentences.
+        let plan = call_lang_plan("+34912345678", Some("jp"), Lang::En, "886", &none);
+        let mut c = call_language_for(&plan, plan.opening, Lang::En, true, Outbound::Incoming, &follow_note());
+        assert_eq!(c.lang(), Some(Lang::Es));
+        let de = "Guten Tag, ich habe ein Paket für Sie, sind Sie heute zu Hause?";
+        assert_eq!(c.caller_turn(de), None);
+        assert_eq!(c.caller_turn(de), Some(Spoken::Lang(Lang::De)));
     }
 
     /// A prompt with the note on following the caller (the setting's default).

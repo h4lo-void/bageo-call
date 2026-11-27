@@ -1397,6 +1397,15 @@ pub fn build_parts(ctx: &Ctx) -> (String, String) {
     } else {
         ctx.custom.trim().to_string()
     };
+    // The Chinese persona's line that has the AI follow any caller into their
+    // language goes: with the setting `reply_in_caller_language` on, the full
+    // note says how instead; off, Bageo keeps the call in its base languages
+    // and tells the AI of a change.
+    let base = if ctx.lang.is_zh() {
+        base.replacen(zh_text(ctx.lang, ZH_FOLLOW_LANGUAGE.get().to_string()).as_str(), "", 1)
+    } else {
+        base
+    };
     let base = match ctx.stall {
         StallPrompt::Off => base,
         StallPrompt::ListenFirst if base.contains(&p.sales_reject_line) => {
@@ -2716,8 +2725,14 @@ mod tests {
         custom.custom = "我是{owner}，快遞請放管理室。";
         let custom_scoped = scope_to_region(&build(&custom), Lang::ZhTw, Scope { region: Some(r("tw")), carrier_note: false, ..Default::default() });
         assert_eq!(custom_scoped.matches("管理室").count(), 1, "{custom_scoped}");
-        // The persona's short language line goes only where the full note is.
-        assert!(built.contains(ZH_FOLLOW_LANGUAGE.get()) && p.contains(ZH_FOLLOW_LANGUAGE.get()));
+        // The persona's short "follow any language" line never stays: the full
+        // note takes its place, and with the setting off it goes (Bageo switches).
+        assert!(!built.contains(ZH_FOLLOW_LANGUAGE.get()) && !p.contains(ZH_FOLLOW_LANGUAGE.get()), "{built}");
+        assert!(!built.contains("【對方講別的語言】") && built.contains("用自然的口語中文。"), "{built}");
+        let cn = build(&ctx(Lang::ZhCn, false, StallPrompt::Off));
+        assert!(!cn.contains(&zh_text(Lang::ZhCn, ZH_FOLLOW_LANGUAGE.get().to_string())), "{cn}");
+        let stall = build(&ctx(Lang::ZhTw, false, StallPrompt::Full));
+        assert!(!stall.contains(ZH_FOLLOW_LANGUAGE.get()), "{stall}");
         let mut c = ctx(Lang::ZhTw, false, StallPrompt::Off);
         c.auto_language = true;
         let with_note = scope_to_region(&build(&c), Lang::ZhTw, Scope { region: Some(r("tw")), carrier_note: false, ..Default::default() });

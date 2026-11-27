@@ -5593,7 +5593,7 @@ function simCountrySel(cls, label, value, emptyKey) {
   return sel;
 }
 function simLangSel(cls, label, value, emptyKey) {
-  const lg = h("select", { class: "sl-lang " + cls, "aria-label": label });
+  const lg = h("select", { class: "sl-lang " + cls, "aria-label": label, dataset: { empty: emptyKey } });
   lg.append(h("option", { value: "", text: t(emptyKey) }));
   for (const x of offeredLangs("call")) lg.append(h("option", { value: x.code, text: langText(x) }));
   keepSaved(lg, value);
@@ -6568,7 +6568,17 @@ async function exSyncMenus() {
     const d = await api("/settings");
     if (d && d.settings && Array.isArray(d.settings.languages)) {
       S.languages = d.settings.languages;
+      const sims = Array.from(document.querySelectorAll("#simLangRows .sl-lang")).map((el) => ({ el, val: el.value }));
       fillLanguageSelects($("f-language").value, $("f-notify_language").value);
+      // Each SIM's language menus get the new language too; what they show stays.
+      for (const { el, val } of sims) {
+        while (el.options.length) el.remove(0);
+        el.append(h("option", { value: "", text: t(el.dataset.empty || "nl_same") }));
+        for (const x of offeredLangs("call")) el.append(h("option", { value: x.code, text: langText(x) }));
+        keepSaved(el, val);
+        if (S) el.append(h("option", { value: "__more__", text: t("ex_more") }));
+        el.value = val;
+      }
       fillPageLangs();
       refreshLangCombos();
     }
@@ -6597,7 +6607,12 @@ function exRender() {
           const sel = exTargetSel;
           $("exLangDlg").close();
           if (sel.id === "langSel") { if (await chooseLang(r.code)) store.set("pca.lang", r.code); }
-          else { sel.value = r.code; refreshLangCombos(); sel.dispatchEvent(new Event("change", { bubbles: true })); }
+          else {
+            if (!Array.from(sel.options).some((o) => o.value === r.code)) keepSaved(sel, r.code);
+            sel.value = r.code;
+            refreshLangCombos();
+            sel.dispatchEvent(new Event("change", { bubbles: true }));
+          }
         } }));
       }
       acts.append(h("button", { type: "button", class: "btn xs ghost", disabled: !!exBusy || inUse, text: t("vp_delete"), onclick: () => exRun(r.code, "del") }));
