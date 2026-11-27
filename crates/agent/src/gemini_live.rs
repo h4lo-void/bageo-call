@@ -5010,6 +5010,74 @@ fn silence_turn_after_carrier_prompt(
         && !line_talking
 }
 
+/// How long after the carrier's prompt the model's answer to that prompt is still
+/// expected (its end of turn comes with the line going quiet). Its audio is not played.
+const PROMPT_REPLY_WAIT: Duration = Duration::from_millis(1_200);
+
+/// The window in which the model's answer to the carrier's prompt is dropped:
+/// opened when the prompt is over, never when no prompt came (`Play`).
+fn prompt_reply_window(step: IntlGateStep, now: tokio::time::Instant) -> Option<tokio::time::Instant> {
+    (step == IntlGateStep::PromptOver).then(|| now + PROMPT_REPLY_WAIT)
+}
+
+/// Whether the model's audio is kept off the line right now.
+fn intl_drops_model_audio(gate: IntlGate, reply_window: Option<tokio::time::Instant>, voice_menu: bool) -> bool {
+    matches!(gate, IntlGate::Prompt { .. }) || reply_window.is_some() || voice_menu
+}
+
+/// The prompt's tail is still on the line when the window opens: the window
+/// lasts until the line has been quiet for [CARRIER_PROMPT_QUIET], at most this
+/// long after it opened (a caller who talks on without a pause is not held off).
+const PROMPT_TAIL_MAX: Duration = Duration::from_millis(3_000);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PromptTail {
+    /// Still on the line: the window ends no sooner than this.
+    Talking(tokio::time::Instant),
+    /// It ended: the window ends then, and only voice from now on counts as the caller's.
+    Over(tokio::time::Instant),
+}
+
+/// The window `until`, opened at `since` with the prompt's tail on the line;
+/// `quiet_for`: how long the line has been quiet (None while it talks).
+fn prompt_tail_step(
+    until: tokio::time::Instant,
+    since: tokio::time::Instant,
+    now: tokio::time::Instant,
+    quiet_for: Option<Duration>,
+) -> PromptTail {
+    let over = quiet_for.is_some_and(|q| q >= CARRIER_PROMPT_QUIET) || now.saturating_duration_since(since) >= PROMPT_TAIL_MAX;
+    let end = until.max(now + PROMPT_REPLY_WAIT);
+    if over {
+        PromptTail::Over(end)
+    } else {
+        PromptTail::Talking(end)
+    }
+}
+
+/// The caller really talks (not a click) while the window is open: it ends.
+/// Only voice after the prompt's tail counts (`voice_after_tail_ms`); the tail
+/// itself is the carrier's.
+fn caller_spoke_in_reply_window(window_open: bool, tail_on_line: bool, voice_after_tail_ms: u32) -> bool {
+    window_open && !tail_on_line && voice_after_tail_ms >= LOCAL_MIN_VOICE_MS
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PromptReplyStep {
+    /// Still inside the window (or its turn is open): keep dropping.
+    Hold,
+    /// The window is over and the model is idle: ask for the opening, once.
+    Kick,
+}
+
+fn prompt_reply_step(until: tokio::time::Instant, now: tokio::time::Instant, turn_open: bool) -> PromptReplyStep {
+    if now >= until && !turn_open {
+        PromptReplyStep::Kick
+    } else {
+        PromptReplyStep::Hold
+    }
+}
+
 /// Characters of a short reply in Chinese (「嗯嗯」「好」「對啊」「好的」).
 const ACK_CHARS: &str = "嗯喔哦噢好對对的欸啊阿呃恩唔啦呀耶囉";
 /// Short replies as words of their own ("okay", "mm", 「はい」, "vâng").
@@ -6747,6 +6815,13 @@ pub async fn run_session(
     // The prompt ended while the turn kept off the line was still open: the
     // opening is asked for when that turn ends, if nothing was heard by then.
     let mut intl_kick_owed = false;
+    // The carrier's prompt just ended: the model's answer to the prompt itself is
+    // not played; the opening is asked for once instead.
+    let mut prompt_reply_until: Option<tokio::time::Instant> = None;
+    // The window opened while the prompt's tail was still on the line: since when,
+    // and the caller's voice heard after the tail ended (only that ends the window).
+    let mut prompt_tail_since: Option<tokio::time::Instant> = None;
+    let mut prompt_reply_voice_ms: u32 = 0;
     // Whether any non-dropped model turn has spoken actual words (letters/digits),
     // and whether we already re-kicked once after a wordless ("...") turn that
     // answered the carrier's international-call prompt after the gate opened.
@@ -7510,6 +7585,54 @@ pub async fn run_session(
         // while the line stays quiet, and plays if it stays so; once the line talks
         // (the carrier's prompt) it is dropped, so is anything the model says during
         // the prompt, and the model's own 「喂？」 after it is the first thing heard.
+        if let (Some(until), Some(since)) = (prompt_reply_until, prompt_tail_since) {
+            let now = tokio::time::Instant::now();
+            let quiet_for = (!activity_open)
+                .then(|| last_caller_voice_at.map_or(Duration::MAX, |t| now.saturating_duration_since(t)));
+            match prompt_tail_step(until, since, now, quiet_for) {
+                PromptTail::Talking(until) => prompt_reply_until = Some(until),
+                PromptTail::Over(until) => {
+                    prompt_reply_until = Some(until);
+                    prompt_tail_since = None;
+                    prompt_reply_voice_ms = 0;
+                }
+            }
+        }
+        if let Some(until) = prompt_reply_until {
+            let now = tokio::time::Instant::now();
+            if prompt_reply_step(until, now, model_generating || intl_gated_turn) == PromptReplyStep::Kick {
+                prompt_reply_until = None;
+                prompt_tail_since = None;
+                let line_talking = activity_open
+                    || last_caller_voice_at.is_some_and(|t| now.saturating_duration_since(t) < CARRIER_PROMPT_QUIET);
+                let kick = kick_after_carrier_prompt(
+                    false,
+                    intl_kick_owed,
+                    delivered_bytes.load(Ordering::Relaxed).max(downlink_pcm_bytes),
+                    prebuf.is_empty(),
+                    false,
+                    first_delivery_kick_retried,
+                    line_talking,
+                );
+                intl_kick_owed = false;
+                if kick == PromptKick::Send {
+                    match send_text_before_deadline(
+                        &mut sink,
+                        greets_kick_text.clone(),
+                        now + KICK_SEND_TIMEOUT,
+                        "gemini carrier-prompt greets kick send",
+                    )
+                    .await
+                    {
+                        Ok(()) => {
+                            first_delivery_kick_retried = true;
+                            info!("Gemini Live intl caller serial={serial} — nothing heard after the carrier prompt: greets kick sent");
+                        }
+                        Err(e) => warn!("Gemini Live carrier-prompt greets kick failed serial={serial}: {e:#}"),
+                    }
+                }
+            }
+        }
         if intl_gate != IntlGate::Open {
             let now = tokio::time::Instant::now();
             let quiet_for = (!activity_open)
@@ -7567,37 +7690,28 @@ pub async fn run_session(
                     if step == IntlGateStep::PromptOver {
                         // What the model made of the prompt never reached the line:
                         // nothing makes it speak again, so ask for the opening once.
+                        // The span often runs out while the prompt's tail is still on the
+                        // line: the model answers that tail when it ends, so the window
+                        // opens anyway and lasts until the tail is over.
                         let line_talking = !quiet_for.is_some_and(|q| q >= CARRIER_PROMPT_QUIET);
-                        match kick_after_carrier_prompt(
+                        let kick = kick_after_carrier_prompt(
                             true,
                             false,
                             delivered_bytes.load(Ordering::Relaxed).max(downlink_pcm_bytes),
                             n == 0,
                             model_generating || intl_gated_turn,
                             first_delivery_kick_retried,
-                            line_talking,
-                        ) {
-                            PromptKick::Send => {
-                                match send_text_before_deadline(
-                                    &mut sink,
-                                    greets_kick_text.clone(),
-                                    now + KICK_SEND_TIMEOUT,
-                                    "gemini carrier-prompt greets kick send",
-                                )
-                                .await
-                                {
-                                    Ok(()) => {
-                                        first_delivery_kick_retried = true;
-                                        info!("Gemini Live intl caller serial={serial} — nothing heard after the carrier prompt: greets kick sent");
-                                    }
-                                    Err(e) => warn!("Gemini Live carrier-prompt greets kick failed serial={serial}: {e:#}"),
-                                }
-                            }
-                            PromptKick::WaitForTurn => {
-                                intl_kick_owed = true;
-                                info!("Gemini Live intl caller serial={serial} — the turn kept off the line is still open: greets kick when it ends");
-                            }
-                            PromptKick::Skip => {}
+                            false,
+                        );
+                        if kick != PromptKick::Skip {
+                            prompt_reply_until = prompt_reply_window(step, now);
+                            prompt_tail_since = line_talking.then_some(now);
+                            prompt_reply_voice_ms = 0;
+                            intl_kick_owed = true;
+                            info!(
+                                "Gemini Live intl caller serial={serial} — carrier prompt over (tail on the line={line_talking}, turn open={}): its answer is not played, greets kick follows",
+                                kick == PromptKick::WaitForTurn
+                            );
                         }
                     }
                 }
@@ -8690,7 +8804,7 @@ pub async fn run_session(
                                 // International call: the model's words during the carrier's
                                 // prompt are not played, so not written down either; nor
                                 // anything it says to a recording / voice menu.
-                                let intl_drop = matches!(intl_gate, IntlGate::Prompt { .. }) || ivr_since.is_some();
+                                let intl_drop = intl_drops_model_audio(intl_gate, prompt_reply_until, ivr_since.is_some());
                                 // …and what it says before (held, maybe played later) is.
                                 let intl_hold = matches!(intl_gate, IntlGate::Waiting { .. });
                                 // An errand call: our own words read back in a script none of
@@ -9650,6 +9764,16 @@ pub async fn run_session(
                                     }
                                 } else if gated_turn {
                                     intl_gated_turn = false;
+                                    // Dropped, not held to play later: its words were never heard.
+                                    if prebuf.is_empty() {
+                                        if let Some(mark) = turn_tx_mark {
+                                            if let Some(b) = transcript_out.as_ref() {
+                                                if let Ok(mut g) = b.lock() {
+                                                    let _ = drop_ai_lines_after(&mut g, mark);
+                                                }
+                                            }
+                                        }
+                                    }
                                     turn_out_text.clear();
                                     turn_base_bytes = delivered_bytes.load(Ordering::Relaxed);
                                     out_leak_turn = false;
@@ -9657,33 +9781,37 @@ pub async fn run_session(
                                         "Gemini Live turnComplete of a turn kept off the line serial={serial} gate={intl_gate:?} voice_menu={} — turn checks skipped",
                                         ivr_since.is_some()
                                     );
-                                    // The prompt ended meanwhile and nothing was heard: the opening is asked for now.
-                                    let line_talking = activity_open
-                                        || last_caller_voice_at.is_some_and(|t| t.elapsed() < CARRIER_PROMPT_QUIET);
-                                    let kick = kick_after_carrier_prompt(
-                                        false,
-                                        intl_kick_owed,
-                                        delivered_bytes.load(Ordering::Relaxed).max(downlink_pcm_bytes),
-                                        prebuf.is_empty(),
-                                        false,
-                                        first_delivery_kick_retried,
-                                        line_talking,
-                                    );
-                                    intl_kick_owed = false;
-                                    if kick == PromptKick::Send {
-                                        match send_text_before_deadline(
-                                            &mut sink,
-                                            greets_kick_text.clone(),
-                                            tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
-                                            "gemini carrier-prompt greets kick send",
-                                        )
-                                        .await
-                                        {
-                                            Ok(()) => {
-                                                first_delivery_kick_retried = true;
-                                                info!("Gemini Live intl caller serial={serial} — nothing heard after the carrier prompt: greets kick sent");
+                                    // The answer to the carrier's prompt is over: the window asks for
+                                    // the opening once it ends (prompt_reply_step), not here.
+                                    if prompt_reply_until.is_none() {
+                                        // The prompt ended meanwhile and nothing was heard: the opening is asked for now.
+                                        let line_talking = activity_open
+                                            || last_caller_voice_at.is_some_and(|t| t.elapsed() < CARRIER_PROMPT_QUIET);
+                                        let kick = kick_after_carrier_prompt(
+                                            false,
+                                            intl_kick_owed,
+                                            delivered_bytes.load(Ordering::Relaxed).max(downlink_pcm_bytes),
+                                            prebuf.is_empty(),
+                                            false,
+                                            first_delivery_kick_retried,
+                                            line_talking,
+                                        );
+                                        intl_kick_owed = false;
+                                        if kick == PromptKick::Send {
+                                            match send_text_before_deadline(
+                                                &mut sink,
+                                                greets_kick_text.clone(),
+                                                tokio::time::Instant::now() + KICK_SEND_TIMEOUT,
+                                                "gemini carrier-prompt greets kick send",
+                                            )
+                                            .await
+                                            {
+                                                Ok(()) => {
+                                                    first_delivery_kick_retried = true;
+                                                    info!("Gemini Live intl caller serial={serial} — nothing heard after the carrier prompt: greets kick sent");
+                                                }
+                                                Err(e) => warn!("Gemini Live carrier-prompt greets kick failed serial={serial}: {e:#}"),
                                             }
-                                            Err(e) => warn!("Gemini Live carrier-prompt greets kick failed serial={serial}: {e:#}"),
                                         }
                                     }
                                 } else if turn_complete && tool_quiet {
@@ -10712,6 +10840,17 @@ pub async fn run_session(
                             stall_nudge_chunks = None;
                             if persona && goodbye_pending {
                                 voice_since_arm_ms = voice_since_arm_ms.saturating_add(frame_ms);
+                            }
+                            // The caller speaks after the carrier's prompt: the model answers
+                            // them, so nothing is dropped and no opening is added.
+                            if prompt_reply_until.is_some() && prompt_tail_since.is_none() {
+                                prompt_reply_voice_ms = prompt_reply_voice_ms.saturating_add(frame_ms);
+                            }
+                            if caller_spoke_in_reply_window(prompt_reply_until.is_some(), prompt_tail_since.is_some(), prompt_reply_voice_ms) {
+                                prompt_reply_until = None;
+                                prompt_reply_voice_ms = 0;
+                                intl_kick_owed = false;
+                                info!("Gemini Live intl caller serial={serial} — the caller spoke after the carrier prompt: the model's answer plays");
                             }
                             // An appointment's call-back not picked up yet: a ringing tone is nobody.
                             if voiced_ms >= LOCAL_MIN_VOICE_MS && (!cb_once || cb_floor.turn_may_open()) {
@@ -11835,6 +11974,78 @@ mod tests {
         assert_eq!(intl_gate_step(prompt, mid, true, Some(CARRIER_PROMPT_QUIET)), IntlGateStep::PromptOver);
         assert_eq!(intl_gate_step(prompt, t0 + CARRIER_PROMPT_SPAN, true, None), IntlGateStep::PromptOver);
         assert_eq!(CARRIER_PROMPT_SPAN, Duration::from_millis(7_500));
+    }
+
+    #[test]
+    fn the_model_answering_the_carrier_prompt_is_not_played_and_the_opening_follows() {
+        let t0 = tokio::time::Instant::now();
+        let open = IntlGate::Open;
+        // The prompt is over: its answer is dropped for a short window.
+        let window = prompt_reply_window(IntlGateStep::PromptOver, t0).expect("window");
+        assert_eq!(window, t0 + PROMPT_REPLY_WAIT);
+        assert!(intl_drops_model_audio(open, Some(window), false));
+        // The gate was open all the time but no prompt came (Play): nothing changes.
+        assert_eq!(prompt_reply_window(IntlGateStep::Play, t0), None);
+        assert_eq!(prompt_reply_window(IntlGateStep::PromptStarted, t0), None);
+        assert_eq!(prompt_reply_window(IntlGateStep::Wait, t0), None);
+        assert!(!intl_drops_model_audio(open, None, false));
+        // Held as before during the prompt and for a voice menu.
+        assert!(intl_drops_model_audio(IntlGate::Prompt { until: t0 }, None, false));
+        assert!(intl_drops_model_audio(open, None, true));
+        // The opening is asked for once the window is over and the model is idle…
+        assert_eq!(prompt_reply_step(window, t0, false), PromptReplyStep::Hold);
+        assert_eq!(prompt_reply_step(window, window, false), PromptReplyStep::Kick);
+        // …never while a turn is still open (it ends first, then the kick).
+        assert_eq!(prompt_reply_step(window, window + Duration::from_secs(1), true), PromptReplyStep::Hold);
+        // The caller speaks inside the window: it is cancelled, so their answer is not dropped.
+        assert!(caller_spoke_in_reply_window(true, false, LOCAL_MIN_VOICE_MS));
+        assert!(!caller_spoke_in_reply_window(true, false, LOCAL_MIN_VOICE_MS - 1));
+        assert!(!caller_spoke_in_reply_window(false, false, LOCAL_MIN_VOICE_MS));
+        let cancelled: Option<tokio::time::Instant> = None;
+        assert!(!intl_drops_model_audio(open, cancelled, false));
+        // …and no opening is added over them (they are talking).
+        assert_eq!(kick_after_carrier_prompt(false, false, 0, true, false, false, true), PromptKick::Skip);
+        // Once, and not over the caller's words or after a hello that was heard.
+        assert_eq!(kick_after_carrier_prompt(false, true, 0, true, false, false, false), PromptKick::Send);
+        assert_eq!(kick_after_carrier_prompt(false, true, 0, true, false, true, false), PromptKick::Skip);
+        assert_eq!(kick_after_carrier_prompt(false, true, 0, true, false, false, true), PromptKick::Skip);
+        assert_eq!(kick_after_carrier_prompt(false, true, 960, true, false, false, false), PromptKick::Skip);
+    }
+
+    #[test]
+    fn the_prompt_still_on_the_line_when_its_span_runs_out_is_not_taken_for_the_caller() {
+        let t0 = tokio::time::Instant::now();
+        let ms = Duration::from_millis;
+        // The span ran out with the prompt's tail on the line (no quiet yet): the
+        // window is opened all the same; the line talking is no reason to skip.
+        assert_eq!(kick_after_carrier_prompt(true, false, 0, true, false, false, false), PromptKick::Send);
+        let window = prompt_reply_window(IntlGateStep::PromptOver, t0).expect("window");
+        // The tail is the carrier's: neither the line talking nor its voice ends the window.
+        assert!(!caller_spoke_in_reply_window(true, true, 6_120));
+        // While it talks the window keeps moving on, so the model's answer to it
+        // (the server ends that turn as the tail stops) is still dropped.
+        let PromptTail::Talking(until) = prompt_tail_step(window, t0, t0 + ms(1_000), None) else {
+            panic!("tail still on the line");
+        };
+        assert!(until >= t0 + ms(1_000) + PROMPT_REPLY_WAIT);
+        assert_eq!(prompt_reply_step(until, t0 + ms(1_500), false), PromptReplyStep::Hold);
+        // A short pause is not its end.
+        assert!(matches!(
+            prompt_tail_step(until, t0, t0 + ms(1_200), Some(CARRIER_PROMPT_QUIET - ms(1))),
+            PromptTail::Talking(_)
+        ));
+        // Quiet long enough: over; the window lasts a little longer for that answer…
+        let PromptTail::Over(after) = prompt_tail_step(until, t0, t0 + ms(1_800), Some(CARRIER_PROMPT_QUIET)) else {
+            panic!("tail over");
+        };
+        assert!(after >= t0 + ms(1_800) + PROMPT_REPLY_WAIT);
+        // …then the opening is asked for, once the dropped answer's turn has ended.
+        assert_eq!(prompt_reply_step(after, after, true), PromptReplyStep::Hold);
+        assert_eq!(prompt_reply_step(after, after, false), PromptReplyStep::Kick);
+        // Only voice after the tail is the caller's, and it ends the window.
+        assert!(caller_spoke_in_reply_window(true, false, LOCAL_MIN_VOICE_MS));
+        // A line that never pauses is not held off for long.
+        assert!(matches!(prompt_tail_step(window, t0, t0 + PROMPT_TAIL_MAX, None), PromptTail::Over(_)));
     }
 
     #[test]
