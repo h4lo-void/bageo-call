@@ -471,13 +471,22 @@ const REQUEST_BEFORE: &[&str] = &["in", "en", "auf", "em", "по"];
 /// A "not" before a name in Latin or Cyrillic letters: that name is not asked
 /// for ("I don't speak Chinese").
 const NEGATION_WORDS: &[&str] = &[
-    "not", "don't", "dont", "doesn't", "can't", "cant", "cannot", "won't", "never", "no", "ne", "pas", "nicht", "kein",
-    "keine", "não", "nao", "nunca", "не",
+    "not", "don't", "dont", "doesn't", "didn't", "can't", "cant", "cannot", "won't", "wouldn't", "shouldn't", "couldn't",
+    "never", "stop", "no", "ne", "pas", "nicht", "kein", "keine", "não", "nao", "nunca", "не",
 ];
+/// "No" and "ne" also open a turn on their own ("No, can you speak English?"
+/// with the comma lost): they only count this close to the verb or the name.
+const NEGATION_NEAR_ONLY: &[&str] = &["no", "ne"];
+const NEGATION_NEAR_WORDS: usize = 2;
 /// A "not" right before a name in Chinese letters (「我不會講英文」, 「我不要講英文」),
 /// or asking how to say something (「怎麼用英文說」): that name is not asked for.
 const NEGATION_BEFORE_NAME: &[&str] = &[
-    "不會", "不会", "不懂", "不能", "不行", "不要", "不太", "沒辦法", "没办法", "別", "别", "怎麼", "怎么",
+    "不會", "不会", "不懂", "不能", "不行", "不要", "不想", "不講", "不讲", "不說", "不说", "不用", "不必", "不需要",
+    "不太", "沒辦法", "没办法", "別", "别", "怎麼", "怎么",
+];
+/// Chinese "A or not A" questions (「你能不能講英文」): a request, not a "not".
+const A_NOT_A: &[&str] = &[
+    "能不能", "會不會", "会不会", "可不可以", "要不要", "行不行", "好不好", "可以不可以", "有沒有辦法", "有没有办法",
 ];
 /// The same right after a name: Japanese and Korean put their "not" there
 /// (「英語は話せません」, 「영어 못해요」), and 「這個用英文怎麼說」.
@@ -544,7 +553,7 @@ const NEGATION_AFTER_CHARS: usize = 8;
 /// Words of Latin or Cyrillic letters before a name that a "not" of its own is
 /// looked for in: from this many before the verb that goes with it ("I don't
 /// want to speak English"), else before the name.
-const NEGATION_BEFORE_WORDS: usize = 3;
+const NEGATION_BEFORE_WORDS: usize = 4;
 
 /// A language's name in Latin or Cyrillic letters.
 fn is_latin_name(w: &str) -> bool {
@@ -584,12 +593,14 @@ fn clause_asks(clause: &str, short_turn: bool) -> Option<&'static str> {
                 // The "not" before this name: from a little before its verb, after
                 // the name before it ("Ich spreche kein Englisch, können wir Deutsch…").
                 let after_name = words[..at].iter().rposition(|w| is_latin_name(w)).map_or(0, |i| i + 1);
-                let from = match words[..at].iter().rposition(|w| REQUEST_WORDS.contains(w)) {
-                    Some(verb) => verb.saturating_sub(NEGATION_BEFORE_WORDS),
-                    None => at.saturating_sub(NEGATION_BEFORE_WORDS),
-                }
-                .max(after_name);
-                if words[from..at].iter().any(|w| NEGATION_WORDS.contains(w)) {
+                let anchor = words[..at].iter().rposition(|w| REQUEST_WORDS.contains(w)).unwrap_or(at);
+                let from = anchor.saturating_sub(NEGATION_BEFORE_WORDS).max(after_name);
+                let near = anchor.saturating_sub(NEGATION_NEAR_WORDS);
+                if words[from..at]
+                    .iter()
+                    .enumerate()
+                    .any(|(i, w)| NEGATION_WORDS.contains(w) && (from + i >= near || !NEGATION_NEAR_ONLY.contains(w)))
+                {
                     continue;
                 }
                 request_word
@@ -609,6 +620,8 @@ fn clause_asks(clause: &str, short_turn: bool) -> Option<&'static str> {
                     b[b.len().saturating_sub(NEGATION_BEFORE_CHARS)..].iter().collect()
                 };
                 let near_after: String = clause[end..next_start].chars().take(NEGATION_AFTER_CHARS).collect();
+                // 「能不能」「會不會」 ask; their 「不能」「不會」 are no "not".
+                let near_before = A_NOT_A.iter().fold(near_before, |s, q| s.replace(q, "？"));
                 if NEGATION_BEFORE_NAME.iter().any(|m| near_before.contains(m))
                     || NEGATION_AFTER_NAME.iter().any(|m| near_after.contains(m))
                 {
@@ -1595,6 +1608,15 @@ mod certain_switch {
             ("Não falo inglês você fala português", Lang::Pt),
             ("英語は話せません日本語でお願いします", Lang::Ja),
             ("영어 못해요 한국어로 말해 주세요", Lang::Ko),
+            // A "no" that opens the turn, its comma lost, is no "not" of the name.
+            ("no can you speak English", Lang::En),
+            ("No sorry can you speak English", Lang::En),
+            ("No ¿puede hablar español?", Lang::Es),
+            // 「能不能」「會不會」 ask.
+            ("你能不能講英文？", Lang::En),
+            ("你会不会说日文？", Lang::Ja),
+            ("可不可以用英文？", Lang::En),
+            ("要不要改講英文？", Lang::En),
         ] {
             assert!(asks_for_language(said).is_some_and(|l| l == to || (l.is_zh() && to.is_zh())), "{said}: {:?}", asks_for_language(said));
         }
@@ -1621,6 +1643,17 @@ mod certain_switch {
             "這份文件是英文的",
             "這個字用英文怎麼說？",
             "他說英文名字叫 Tom",
+            // Asking not to speak a language, politely or as a question.
+            "可以不講英文嗎？",
+            "可以不讲英文吗？",
+            "我不想講英文可以嗎？",
+            "不用講英文了嗎？",
+            "能不能不說日文？",
+            "I wouldn't speak English",
+            "Don't ask me to speak English",
+            "Please stop speaking English",
+            "I didn't speak English",
+            "Je ne veux pas parler anglais",
         ] {
             assert_eq!(asks_for_language(said), None, "{said}");
         }
