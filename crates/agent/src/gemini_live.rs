@@ -3435,6 +3435,21 @@ pub(crate) fn caller_said_scam_words(transcript: &str) -> bool {
     crate::scam_db::has_hard_hit(&caller_lines(&merge_dialogue_fragments(transcript)))
 }
 
+/// After the call: the caller's words in `transcript` (the session's raw
+/// transcript) back a sales / scam judgement — keywords that cross the line
+/// ([`stall_engages`]) or a word only scammers say. Not: the judgement rested on
+/// the look alone. A lone weak keyword does not count: the owner calling from
+/// another number says 「是我」 / "it's me" too.
+pub(crate) fn caller_words_back_a_scam(transcript: &str) -> bool {
+    let caller = caller_lines(&merge_dialogue_fragments(transcript));
+    if crate::scam_db::has_hard_hit(&caller) {
+        return true;
+    }
+    let mut hits = Vec::new();
+    let score = stall_score_add(&caller, &mut hits);
+    stall_engages(score, &hits)
+}
+
 /// Words only scammers say were heard in this call: among the keyword hits, as
 /// they came in (`heard_hard`), or anywhere in the caller's side of `transcript`.
 fn hard_words_said(hits: &[&'static str], heard_hard: bool, transcript: &Option<Arc<std::sync::Mutex<String>>>) -> bool {
@@ -3595,6 +3610,12 @@ fn persona_resume_reply_client_content() -> String {
 ///   do not count against the caps. The [`STALL_REVIEW_EARLY_MAX`]th "too early" of
 ///   a keyword-flagged call counts as a scam; a second low-confidence scam in a
 ///   row does when keywords flagged the call, and is let be when none did.
+/// - A scam answer with nothing behind it (no keyword crossed the line, no words
+///   only scammers say, the owner never marked the number): speech-to-text
+///   mishears, and a reminder to pay the water bill came out as a refund and was
+///   kept talking. A sure one stalls only when the look after the caller's next
+///   turn says scam again (asked even past [`BLIND_MAX`]); a likely one counts as
+///   unsure, like a low-confidence one.
 /// - No answer ([`Verdict::Unavailable`]): words only scammers say still stall the
 ///   caller; a contact or a number the owner marked safe is left alone; anything
 ///   else is looked at again after the caller's next turn. After
@@ -3604,7 +3625,9 @@ fn persona_resume_reply_client_content() -> String {
 ///   callers talking for a whole call.
 /// - Stalling ([`StallReview::should_ask_confirm`]): one more look after the
 ///   caller's next [`CONFIRM_AFTER_TURNS`] turns (one, if long); a sure "normal" lets
-///   the caller go back to an ordinary call ([`StallVerdictStep::Release`]).
+///   the caller go back to an ordinary call ([`StallVerdictStep::Release`]). A
+///   check that does not answer is asked again after the next turn, at most
+///   [`CONFIRM_MAX`] checks a call.
 /// - Words only scammers say anywhere in the caller's side of the call: stalling is
 ///   kept, or starts again when a caller who was let go says them; an unsure
 ///   "normal" is looked at once more. A sure "normal" still holds in a call that
@@ -3630,6 +3653,8 @@ const CONTENT_TURN_UNITS: usize = 4;
 const CONFIRM_AFTER_TURNS: u32 = 2;
 /// …or after one, when they have said this much since stalling started.
 const CONFIRM_EARLY_UNITS: usize = 12;
+/// Checks a call: the second only when the first did not answer.
+const CONFIRM_MAX: u32 = 2;
 
 /// Why a look was asked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -3671,6 +3696,16 @@ struct StallFacts {
     hard_hit: bool,
     /// A saved contact or a number the owner marked safe.
     protected: bool,
+    /// The owner marked the number scam / sales (not an earlier automatic verdict).
+    owner_flagged: bool,
+}
+
+impl StallFacts {
+    /// Something besides the look says sales / scam: the keywords, words only
+    /// scammers say, or the owner's own mark on the number.
+    fn backed(&self) -> bool {
+        self.flagged || self.hard_hit || self.owner_flagged
+    }
 }
 
 #[derive(Debug, Default)]
@@ -3712,6 +3747,13 @@ struct StallReview {
     stall_turns: u32,
     units_at_engage: usize,
     confirm_asked: bool,
+    /// Checks to let the caller go asked so far (see [`CONFIRM_MAX`]).
+    confirms: u32,
+    /// The last check did not answer: ask again after the caller's next turn.
+    confirm_again: bool,
+    /// A sure "scam" with nothing else behind it: it stalls only if the look
+    /// after the caller's next turn says so again (not past [`BLIND_MAX`]).
+    unbacked_scam: bool,
 }
 
 /// What a verdict does to the call.
@@ -3755,8 +3797,17 @@ impl StallReview {
         match origin {
             LookOrigin::Keywords => self.kw_spent += 1,
             LookOrigin::Blind => self.blind += 1,
-            LookOrigin::Confirm => self.confirm_asked = true,
+            LookOrigin::Confirm => {
+                self.confirm_asked = true;
+                self.confirms += 1;
+            }
         }
+    }
+
+    /// A look without keywords may still be asked: under [`BLIND_MAX`], or the one
+    /// that must say "scam" again before stalling starts.
+    fn blind_left(&self) -> bool {
+        self.blind < BLIND_MAX || self.unbacked_scam
     }
 
     /// Why the look under way was asked, for the request.
@@ -3776,7 +3827,7 @@ impl StallReview {
             return false;
         }
         self.after_turn = None;
-        if origin == LookOrigin::Blind && self.blind >= BLIND_MAX {
+        if origin == LookOrigin::Blind && !self.blind_left() {
             return false;
         }
         self.start(origin);
@@ -3835,10 +3886,20 @@ impl StallReview {
     }
 
     /// Stalling, a caller turn just ended (`units` said so far): check now whether
-    /// they should be let go? Once a call, and only when the review judged it.
+    /// they should be let go? Once a call, and only when the review judged it; a
+    /// check that did not answer is asked again after this turn (at most
+    /// [`CONFIRM_MAX`] in all).
     fn should_ask_confirm(&mut self, units: usize) -> bool {
         self.stall_turns += 1;
-        if self.confirm_asked || self.pending || self.why != EngageWhy::Review {
+        if self.pending || self.why != EngageWhy::Review {
+            return false;
+        }
+        if self.confirm_again {
+            self.confirm_again = false;
+            self.start(LookOrigin::Confirm);
+            return true;
+        }
+        if self.confirm_asked {
             return false;
         }
         let said = units.saturating_sub(self.units_at_engage);
@@ -3868,7 +3929,7 @@ impl StallReview {
     /// Look again now (`more`: the caller said more while it was looked at) or
     /// after their next turn; a look without keywords past its cap is not asked.
     fn again(&mut self, origin: LookOrigin, more: bool) -> StallVerdictStep {
-        if origin == LookOrigin::Blind && self.blind >= BLIND_MAX {
+        if origin == LookOrigin::Blind && !self.blind_left() {
             return StallVerdictStep::Carry;
         }
         if more {
@@ -3892,6 +3953,12 @@ impl StallReview {
             }
         };
         if origin == LookOrigin::Confirm {
+            // No answer (too slow, a server error): asked again after the
+            // caller's next turn, or a caller judged wrongly is kept to the end.
+            if review.verdict == Verdict::Unavailable && self.confirms < CONFIRM_MAX {
+                self.confirm_again = true;
+                return StallVerdictStep::AfterTurn;
+            }
             // Stalling already: only a sure "normal" changes anything, and not
             // after words only scammers say (a spoofed number asking for a code
             // can sound ordinary to the look).
@@ -3928,8 +3995,24 @@ impl StallReview {
         }
         self.fails_in_row = 0;
         self.why = EngageWhy::Review;
+        // Only the look says "scam", and only the caller's words (often misheard
+        // by speech-to-text) to go on: a sure answer must hold after the caller's
+        // next turn, a likely one counts as unsure.
+        let unbacked = !facts.backed();
+        let sure_twice = std::mem::take(&mut self.unbacked_scam);
         match review.verdict {
-            Verdict::ScamOrSales if review.confidence == Confidence::Low => {
+            Verdict::ScamOrSales if unbacked && sure_twice && review.confidence != Confidence::Low => {
+                self.lows = 0;
+                StallVerdictStep::Engage
+            }
+            Verdict::ScamOrSales if unbacked && review.confidence == Confidence::High => {
+                self.unbacked_scam = true;
+                self.lows = 0;
+                not_spent(self);
+                self.after_turn = Some(origin);
+                StallVerdictStep::AfterTurn
+            }
+            Verdict::ScamOrSales if review.confidence == Confidence::Low || unbacked => {
                 self.lows += 1;
                 not_spent(self);
                 if self.lows >= 2 {
@@ -10470,6 +10553,7 @@ pub async fn run_session(
                     flagged: stall_engages(stall_score, &stall_hits),
                     hard_hit,
                     protected: ctx.protected(),
+                    owner_flagged: ctx.owner_flagged,
                 };
                 let step = stall_review.decide(&review, score, stall_score, facts);
                 info!(
@@ -11939,7 +12023,7 @@ mod tests {
         // …unless it said words only scammers say (caller ids can be spoofed).
         let mut r = StallReview::default();
         assert!(r.should_ask(true, 3));
-        let spoofed = StallFacts { flagged: true, hard_hit: true, protected: true };
+        let spoofed = StallFacts { flagged: true, hard_hit: true, protected: true, ..StallFacts::default() };
         assert_eq!(r.decide(&failed, 3, 3, spoofed), StallVerdictStep::Engage);
         // No key: asking again will not help, so the keywords decide at once.
         let mut r = StallReview::default();
@@ -11982,7 +12066,7 @@ mod tests {
     #[test]
     fn hard_words_need_a_sure_normal_to_be_let_be() {
         use crate::stall_review::{Confidence::*, Verdict::*};
-        let hard = StallFacts { flagged: true, hard_hit: true, protected: true };
+        let hard = StallFacts { flagged: true, hard_hit: true, protected: true, ..StallFacts::default() };
         let mut r = StallReview::default();
         assert!(r.should_ask(true, 3));
         assert_eq!(r.decide(&review_of(Normal, Medium), 3, 3, hard), StallVerdictStep::AfterTurn);
@@ -12017,10 +12101,18 @@ mod tests {
         assert!(r.should_ask_blind(10 + 2 * BLIND_NEXT_UNITS, 4, false));
         assert_eq!(r.decide(&normal, 0, 0, StallFacts::default()), StallVerdictStep::Carry);
         assert!(!r.should_ask_blind(500, 9, false), "at most {BLIND_MAX} a call");
-        // A number marked or judged before: after the first turn.
+        // A number marked or judged before: after the first turn. Judged before by
+        // this check only, a sure "scam" waits for the next turn to say so again…
         let mut r = StallReview::default();
         assert!(r.should_ask_blind(6, 1, true));
+        assert_eq!(r.decide(&review_of(ScamOrSales, High), 0, 0, StallFacts::default()), StallVerdictStep::AfterTurn);
+        assert!(r.should_ask_after_turn());
         assert_eq!(r.decide(&review_of(ScamOrSales, High), 0, 0, StallFacts::default()), StallVerdictStep::Engage);
+        // …marked by the owner, it stalls at once, as before.
+        let mut r = StallReview::default();
+        assert!(r.should_ask_blind(6, 1, true));
+        let owner = StallFacts { owner_flagged: true, ..StallFacts::default() };
+        assert_eq!(r.decide(&review_of(ScamOrSales, High), 0, 0, owner), StallVerdictStep::Engage);
     }
 
     /// Once stalling, one check after the caller's next two turns: only a sure
@@ -12034,11 +12126,12 @@ mod tests {
         assert!(r.should_ask_confirm(24));
         assert_eq!(r.decide(&review_of(Normal, High), 0, 0, StallFacts::default()), StallVerdictStep::Release);
         assert!(!r.should_ask_confirm(80), "once a call");
-        for (verdict, confidence) in [(Normal, Medium), (ScamOrSales, High), (Unavailable, Medium)] {
+        for (verdict, confidence) in [(Normal, Medium), (ScamOrSales, High)] {
             let mut r = StallReview::default();
             r.note_engaged(20);
             assert!(r.should_ask_confirm(20 + CONFIRM_EARLY_UNITS));
             assert_eq!(r.decide(&review_of(verdict, confidence), 0, 0, StallFacts::default()), StallVerdictStep::Carry, "{verdict:?} {confidence:?}");
+            assert!(!r.should_ask_confirm(80), "once a call: {verdict:?} {confidence:?}");
         }
         // Unmistakable scam-only words from a non-protected caller engage at once
         // without waiting for an HTTP review or spending a follow-up confirm call;
@@ -12049,6 +12142,168 @@ mod tests {
         assert_eq!(r.why, EngageWhy::HardWords);
         r.note_engaged(20);
         assert!(!r.should_ask_confirm(80));
+    }
+
+    /// The check while stalling did not answer (too slow, a server error): it is
+    /// asked again after the caller's next turn, at most twice a call, so a caller
+    /// judged wrongly is not kept to the end because of one slow answer.
+    #[test]
+    fn an_unanswered_check_while_stalling_is_asked_again_once() {
+        use crate::stall_review::{Confidence::*, Verdict::*};
+        let failed = review_of(Unavailable, Medium);
+        let mut r = StallReview::default();
+        r.note_engaged(20);
+        assert!(r.should_ask_confirm(20 + CONFIRM_EARLY_UNITS));
+        assert_eq!(r.decide(&failed, 0, 0, StallFacts::default()), StallVerdictStep::AfterTurn);
+        // The caller's next turn, however short: asked again.
+        assert!(r.should_ask_confirm(20 + CONFIRM_EARLY_UNITS + 1));
+        assert_eq!(r.purpose(), crate::stall_review::Purpose::Confirm);
+        assert_eq!(r.decide(&review_of(Normal, High), 0, 0, StallFacts::default()), StallVerdictStep::Release);
+        assert!(!r.should_ask_confirm(90));
+        // Two misses: stalling goes on, no third check.
+        let mut r = StallReview::default();
+        r.note_engaged(20);
+        assert!(r.should_ask_confirm(20 + CONFIRM_EARLY_UNITS));
+        assert_eq!(r.decide(&failed, 0, 0, StallFacts::default()), StallVerdictStep::AfterTurn);
+        assert!(r.should_ask_confirm(40));
+        assert_eq!(r.decide(&failed, 0, 0, StallFacts::default()), StallVerdictStep::Carry);
+        assert!(!r.should_ask_confirm(60));
+        assert!(!r.should_ask_confirm(80));
+        assert_eq!(r.confirms, CONFIRM_MAX);
+        // Not asked again while the retry is still under way.
+        let mut r = StallReview::default();
+        r.note_engaged(20);
+        assert!(r.should_ask_confirm(20 + CONFIRM_EARLY_UNITS));
+        assert_eq!(r.decide(&failed, 0, 0, StallFacts::default()), StallVerdictStep::AfterTurn);
+        assert!(r.should_ask_confirm(40));
+        assert!(!r.should_ask_confirm(50), "one at a time");
+        // Words only scammers say still keep the caller on the second check.
+        let hard = StallFacts { hard_hit: true, ..StallFacts::default() };
+        assert_eq!(r.decide(&review_of(Normal, High), 0, 0, hard), StallVerdictStep::KeepForHardWords);
+    }
+
+    /// The look alone says "scam" (no keyword crossed the line, no words only
+    /// scammers say, the owner never marked the number): a sure answer waits for
+    /// the caller's next turn and stalls only if the look says so again; a likely
+    /// one counts as unsure. With keywords, scam-only words or the owner's mark,
+    /// one sure answer still stalls.
+    #[test]
+    fn a_scam_answer_with_nothing_behind_it_waits_for_the_next_turn() {
+        use crate::stall_review::{Confidence::*, Verdict::*};
+        let none = StallFacts::default();
+        let sure = review_of(ScamOrSales, High);
+        // Sure once: not yet; sure (or likely) again after the next turn: stalls.
+        for second in [High, Medium] {
+            let mut r = StallReview::default();
+            assert!(r.should_ask_blind(30, 2, false));
+            assert_eq!(r.decide(&sure, 0, 0, none), StallVerdictStep::AfterTurn, "{second:?}");
+            assert!(!r.should_ask_blind(60, 3, false), "the look after the turn comes first");
+            assert!(r.should_ask_after_turn());
+            assert_eq!(r.purpose(), crate::stall_review::Purpose::Content);
+            assert_eq!(r.decide(&review_of(ScamOrSales, second), 0, 0, none), StallVerdictStep::Engage, "{second:?}");
+            assert_eq!(r.why, EngageWhy::Review);
+        }
+        // The caller's turn ended while it was looked at: still the next turn, not at once.
+        let mut r = StallReview::default();
+        assert!(r.should_ask_blind(30, 2, false));
+        r.note_caller_turn_end();
+        assert_eq!(r.decide(&sure, 0, 0, none), StallVerdictStep::AfterTurn);
+        // Sure once, then "normal": an ordinary call.
+        let mut r = StallReview::default();
+        assert!(r.should_ask_blind(30, 2, false));
+        assert_eq!(r.decide(&sure, 0, 0, none), StallVerdictStep::AfterTurn);
+        assert!(r.should_ask_after_turn());
+        assert_eq!(r.decide(&review_of(Normal, High), 0, 0, none), StallVerdictStep::Carry);
+        // Sure once, then only a guess: no stalling.
+        let mut r = StallReview::default();
+        assert!(r.should_ask_blind(30, 2, false));
+        assert_eq!(r.decide(&sure, 0, 0, none), StallVerdictStep::AfterTurn);
+        assert!(r.should_ask_after_turn());
+        assert_ne!(r.decide(&review_of(ScamOrSales, Low), 0, 0, none), StallVerdictStep::Engage);
+        // The last look a call allows says "sure": the one after the next turn is still asked.
+        let mut r = StallReview::default();
+        assert!(r.should_ask_blind(30, 2, false));
+        assert_eq!(r.decide(&review_of(Normal, High), 0, 0, none), StallVerdictStep::Carry);
+        assert!(r.should_ask_blind(30 + BLIND_NEXT_UNITS, 3, false));
+        assert_eq!(r.decide(&review_of(Normal, High), 0, 0, none), StallVerdictStep::Carry);
+        assert!(r.should_ask_blind(30 + 2 * BLIND_NEXT_UNITS, 4, false));
+        assert_eq!(r.blind, BLIND_MAX);
+        assert_eq!(r.decide(&sure, 0, 0, none), StallVerdictStep::AfterTurn);
+        assert!(r.should_ask_after_turn(), "asked past the cap");
+        assert_eq!(r.decide(&sure, 0, 0, none), StallVerdictStep::Engage);
+        // No answer to the look after the turn: asked once more, still needed.
+        let mut r = StallReview::default();
+        assert!(r.should_ask_blind(30, 2, false));
+        assert_eq!(r.decide(&sure, 0, 0, none), StallVerdictStep::AfterTurn);
+        assert!(r.should_ask_after_turn());
+        assert_eq!(r.decide(&review_of(Unavailable, Medium), 0, 0, none), StallVerdictStep::AfterTurn);
+        assert!(r.should_ask_after_turn());
+        assert_eq!(r.decide(&sure, 0, 0, none), StallVerdictStep::Engage);
+        // Likely, twice: unsure twice with nothing behind it, let be.
+        let likely = review_of(ScamOrSales, Medium);
+        let mut r = StallReview::default();
+        assert!(r.should_ask_blind(30, 2, false));
+        assert_eq!(r.decide(&likely, 0, 0, none), StallVerdictStep::AfterTurn);
+        assert!(r.should_ask_after_turn());
+        assert_eq!(r.decide(&likely, 0, 0, none), StallVerdictStep::Carry);
+        // Keywords crossed the line, words only scammers say, or the owner's mark:
+        // one sure (or likely) answer stalls, as before.
+        let backed = [
+            StallFacts { flagged: true, ..StallFacts::default() },
+            StallFacts { hard_hit: true, ..StallFacts::default() },
+            StallFacts { owner_flagged: true, ..StallFacts::default() },
+        ];
+        for facts in backed {
+            for confidence in [High, Medium] {
+                let mut r = StallReview::default();
+                if facts.flagged {
+                    assert!(r.should_ask(true, 3));
+                } else {
+                    assert!(r.should_ask_blind(30, 2, facts.owner_flagged));
+                }
+                assert_eq!(r.decide(&review_of(ScamOrSales, confidence), 3, 3, facts), StallVerdictStep::Engage, "{facts:?} {confidence:?}");
+            }
+        }
+    }
+
+    /// A reminder or notice that asks for nothing (the owner's own other number:
+    /// "remember to pay the water bill", misheard by speech-to-text) is no keyword
+    /// call; one sure "scam" from the look does not keep the caller talking, and
+    /// the next look's "normal" holds. Many languages.
+    #[test]
+    fn a_reminder_that_asks_for_nothing_is_not_kept_talking() {
+        use crate::stall_review::{Confidence::*, Verdict::*};
+        let reminders = [
+            "提醒你月底前記得繳水費，用平常的方式繳就好。",
+            "我想申請退繳水費",
+            "提醒您一下，这个月的电费月底前记得交。",
+            "Hi, just a reminder your bill is due at the end of the month.",
+            "水道料金のお支払い期限は月末です。お忘れなく。",
+            "이번 달 수도 요금은 월말까지 내면 돼요. 잊지 마세요.",
+            "Hola, solo te recuerdo que la factura del agua vence a fin de mes.",
+            "Bonjour, petit rappel : votre facture d'eau est à régler avant la fin du mois.",
+            "Hallo, nur zur Erinnerung: Die Wasserrechnung ist Ende des Monats fällig.",
+            "Olá, só para lembrar que a conta de água vence no fim do mês.",
+            "Ciao, ti ricordo che la bolletta dell'acqua scade a fine mese.",
+            "Halo, sekadar mengingatkan tagihan air jatuh tempo akhir bulan.",
+        ];
+        for line in reminders {
+            let said = Some(Arc::new(std::sync::Mutex::new(format!("對方：{line}\n接聽：好。"))));
+            let mut hits = Vec::new();
+            let score = stall_score_add(line, &mut hits);
+            let facts = StallFacts {
+                flagged: stall_engages(score, &hits),
+                hard_hit: hard_words_said(&hits, false, &said),
+                ..StallFacts::default()
+            };
+            assert!(!facts.backed(), "{line}: {facts:?} {hits:?}");
+            let mut r = StallReview::default();
+            assert!(r.should_ask_blind(30, 2, false), "{line}");
+            assert_eq!(r.decide(&review_of(ScamOrSales, High), score, score, facts), StallVerdictStep::AfterTurn, "{line}");
+            assert!(r.should_ask_after_turn(), "{line}");
+            assert_eq!(r.decide(&review_of(Normal, High), score, score, facts), StallVerdictStep::Carry, "{line}");
+            assert!(!dialogue_is_sales(&format!("對方：{line}")), "{line}");
+        }
     }
 
     /// Stalling started on the look's say-so; only later (keywords no longer
@@ -12106,6 +12361,7 @@ mod tests {
                 flagged: true,
                 hard_hit: hard_words_said(&[], false, said),
                 protected: true,
+                ..StallFacts::default()
             };
             let step = r.decide(&review_of(Normal, High), 0, 0, facts);
             (step, r.why)
@@ -12123,7 +12379,7 @@ mod tests {
             let mut r = StallReview::default();
             r.note_engaged(20);
             assert!(r.should_ask_confirm(20 + CONFIRM_EARLY_UNITS));
-            let facts = StallFacts { flagged: true, hard_hit: hard_words_said(&[], true, &None), protected: true };
+            let facts = StallFacts { flagged: true, hard_hit: hard_words_said(&[], true, &None), protected: true, ..StallFacts::default() };
             assert_eq!(r.decide(&review_of(Normal, High), 0, 0, facts), StallVerdictStep::KeepForHardWords);
             // Only ordinary words from the caller (the AI's own mention of a code
             // does not count): let go, as before.
@@ -12134,11 +12390,11 @@ mod tests {
             let mut r = StallReview::default();
             r.note_engaged(20);
             assert!(r.should_ask_confirm(20 + CONFIRM_EARLY_UNITS));
-            let facts = StallFacts { flagged: true, hard_hit: hard_words_said(&[], false, &fine), protected: true };
+            let facts = StallFacts { flagged: true, hard_hit: hard_words_said(&[], false, &fine), protected: true, ..StallFacts::default() };
             assert_eq!(r.decide(&review_of(Normal, High), 0, 0, facts), StallVerdictStep::Release);
             let after = transcript(format!("{before}\n對方：{ordinary}\n接聽：Okay.\n對方：{scam}"));
             assert!(r.should_ask(true, 4));
-            let facts = StallFacts { flagged: true, hard_hit: hard_words_said(&[], false, &after), protected: true };
+            let facts = StallFacts { flagged: true, hard_hit: hard_words_said(&[], false, &after), protected: true, ..StallFacts::default() };
             assert_eq!(r.decide(&review_of(Normal, High), 4, 4, facts), StallVerdictStep::Engage, "{scam}");
             assert_eq!(r.why, EngageWhy::HardWords);
         }
@@ -12167,7 +12423,7 @@ mod tests {
             assert!(hard_hit, "the warning uses a scammer's words: {line}");
             let mut r = StallReview::default();
             assert!(r.should_ask(true, 3));
-            let facts = StallFacts { flagged: true, hard_hit, protected: true };
+            let facts = StallFacts { flagged: true, hard_hit, protected: true, ..StallFacts::default() };
             assert_eq!(r.decide(&review_of(Normal, High), 3, 3, facts), StallVerdictStep::Carry, "{line}");
         }
     }
