@@ -6016,8 +6016,11 @@ function vpName(p, inLang) {
   if (!ln || ln === p.lang) ln = (inLang === "en" ? LANG_EN[p.lang] : LANG_NAMES[p.lang]) || p.native || p.en || p.lang;
   if (!p.region) return ln;
   const reg = (packRegions || []).find((r) => r.code === p.region);
-  let rn = reg && Array.isArray(reg.countries) && reg.countries.length === 1 ? countryNameIn(loc, reg.countries[0]) : "";
-  if (!rn && reg && reg.name && typeof reg.name === "object") rn = reg.name[inLang] || reg.name.en || reg.name.native || "";
+  const oneCc = reg && Array.isArray(reg.countries) && reg.countries.length === 1 ? reg.countries[0] : (/^[a-z]{2}$/i.test(p.region) ? p.region : "");
+  let rn = oneCc ? countryNameIn(loc, oneCc) : "";
+  if (!rn && reg && reg.name && typeof reg.name === "object") {
+    rn = reg.name[inLang] || (String(inLang).startsWith("zh") ? reg.name.zh : "") || reg.name.en || reg.name.native || "";
+  }
   return tIn(inLang, "vp_name", { lang: ln, region: rn || String(p.region).toUpperCase() });
 }
 // Regions this console is used in: the home country, the phones' SIMs, the browser's languages.
@@ -6029,6 +6032,9 @@ function vpRegions() {
     if (r && !out.includes(r.code)) out.push(r.code);
   }
   return out;
+}
+function vpIsBundled(p) {
+  return !!(p && (p.bundled || (p.lang === "en" && (!p.region || p.region === "us" || p.region === "default"))));
 }
 // The pack worth getting for a language here (the region's, else the language's own);
 // null when none is listed or one is here already.
@@ -6049,7 +6055,7 @@ function vpPackFor(l, preferCountry) {
     || packs.find((p) => !p.region)
     || def
     || packs[0];
-  return match && !match.downloaded ? match : null;
+  return match && !match.downloaded && !vpIsBundled(match) ? match : null;
 }
 // The pack the card and modal offer when a language/voice pack is missing and has not been
 // dismissed yet (using local built-in data, never connecting to the internet until the user
@@ -6483,9 +6489,11 @@ function countryNameIn(locale, cc) {
   if (neutral) return neutral;
   try {
     if (!(locale in regionNamers)) {
-      regionNamers[locale] = Intl.DisplayNames.supportedLocalesOf([locale]).length ? new Intl.DisplayNames([locale], { type: "region", fallback: "none" }) : null;
+      regionNamers[locale] = Intl.DisplayNames.supportedLocalesOf([locale]).length ? new Intl.DisplayNames([locale], { type: "region" }) : null;
     }
-    return (regionNamers[locale] && regionNamers[locale].of(cc.toUpperCase())) || "";
+    const up = cc.toUpperCase();
+    const out = (regionNamers[locale] && regionNamers[locale].of(up)) || "";
+    return out && out !== up ? out : "";
   } catch (_) { return ""; }
 }
 // How the country writes its own name: the region's own name when the region is that one country.

@@ -6630,9 +6630,18 @@ function vpName(p, inLang) {
   const lc = LANG_INTL[inLang] || inLang;
   let ln = "";
   try { ln = new Intl.DisplayNames([lc], { type: "language" }).of(LANG_INTL[p.lang] || p.lang) || ""; } catch (_) {}
-  if (!ln || ln === p.lang) ln = (inLang === "en" ? LANG_EN[p.lang] : LANG_NAMES[p.lang]) || p.native || p.lang;
+  if (!ln || ln === p.lang) ln = (inLang === "en" ? LANG_EN[p.lang] : LANG_NAMES[p.lang]) || p.native || p.en || p.lang;
   if (!p.region) return ln;
-  return tIn(inLang, "vp_name", { lang: ln, region: String(p.region).toUpperCase() });
+  const reg = (packRegions || []).find((r) => r.code === p.region);
+  const oneCc = reg && Array.isArray(reg.countries) && reg.countries.length === 1 ? reg.countries[0] : (/^[a-z]{2}$/i.test(p.region) ? p.region : "");
+  let rn = oneCc ? countryName(oneCc) : "";
+  if (!rn && reg && reg.name && typeof reg.name === "object") {
+    rn = reg.name[inLang] || (String(inLang).startsWith("zh") ? reg.name.zh : "") || reg.name.en || reg.name.native || "";
+  }
+  return tIn(inLang, "vp_name", { lang: ln, region: rn || String(p.region).toUpperCase() });
+}
+function vpIsBundled(p) {
+  return !!(p && (p.bundled || (p.lang === "en" && (!p.region || p.region === "us" || p.region === "default"))));
 }
 function vpPackFor(l, preferCountry) {
   const raw = String(l || "").trim();
@@ -6645,8 +6654,9 @@ function vpPackFor(l, preferCountry) {
   if (!packs.length) return null;
   const prefReg = preferCountry ? regionOfCountry(String(preferCountry).toLowerCase()) : null;
   const prefCode = prefReg ? prefReg.code : String(preferCountry || "").toLowerCase();
-  const match = (prefCode && packs.find((p) => p.region === prefCode)) || packs.find((p) => !p.region) || packs[0];
-  return match && !match.downloaded ? match : null;
+  const def = code === "en" ? packs.find((p) => p.region === "us") : code === "es" ? packs.find((p) => p.region === "es") : null;
+  const match = (prefCode && packs.find((p) => p.region === prefCode)) || packs.find((p) => !p.region) || def || packs[0];
+  return match && !match.downloaded && !vpIsBundled(match) ? match : null;
 }
 let vpManualOffer = null;
 function exFirstPackFor(raw) {
