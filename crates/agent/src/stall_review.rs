@@ -180,6 +180,10 @@ pub struct CallerContext {
     /// Sanitized name (+ optional note) when the number is in the owner's
     /// address book (`contacts::review_label`).
     pub saved_contact: Option<String>,
+    /// The number is a contact the owner trusts
+    /// ([`crate::contacts::is_trusted_contact`]), even when its name cannot be
+    /// shown (a name of only brackets or quotes leaves `saved_contact` None).
+    pub saved_in_contacts: bool,
     /// The owner's marks, earlier verdicts and number hints
     /// ([`crate::scam_db::caller_facts`]), one English line each.
     pub number_notes: Vec<String>,
@@ -195,7 +199,7 @@ impl CallerContext {
     /// A saved contact or a number the owner marked safe: protected when the
     /// review cannot answer, and not looked at without keywords.
     pub fn protected(&self) -> bool {
-        self.saved_contact.is_some() || self.owner_safe
+        self.saved_contact.is_some() || self.saved_in_contacts || self.owner_safe
     }
 
     /// Never looked at for sales / scam and never stalled: a saved contact, a

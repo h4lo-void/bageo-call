@@ -7407,11 +7407,13 @@ fn start_gemini_session_core(
                 let sim = call_sim_country(&serial_for_ctx)
                     .or_else(|| phone_region::last_sim(&canonical_device_serial(&serial_for_ctx)));
                 let saved_contact = contacts::review_label(&caller, sim.as_deref());
+                let saved_in_contacts = contacts::is_trusted_contact(&caller, sim.as_deref());
                 // The owner's marks, earlier verdicts and number hints (scam database).
                 let facts = scam_db::caller_facts(&caller, sim.as_deref());
                 stall_review::CallerContext {
                     number: caller,
                     saved_contact,
+                    saved_in_contacts,
                     number_notes: facts.notes,
                     owner_safe: facts.owner_safe,
                     flagged_before: facts.flagged_before,
@@ -10386,6 +10388,7 @@ fn caller_is_trusted(caller: &str, sim: Option<&str>) -> bool {
     let force_stall = contacts::is_force_stall(caller, sim).is_some();
     stall_review::CallerContext {
         saved_contact: contacts::review_label(caller, sim),
+        saved_in_contacts: contacts::is_trusted_contact(caller, sim),
         owner_safe: scam_db::caller_facts(caller, sim).owner_safe,
         ..Default::default()
     }
