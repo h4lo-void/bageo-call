@@ -6784,11 +6784,6 @@
     "who": "the owner",
     "placeholders": []
   },
-  "ts_get_art": {
-    "where": "a button in the talk-style mascot box when a region's scene art is not downloaded yet. English: Download local scene",
-    "who": "the owner",
-    "placeholders": []
-  },
   "ts_scene": {
     "where": "a label or sentence in the console. English: Change the view outside the window",
     "who": "the owner",

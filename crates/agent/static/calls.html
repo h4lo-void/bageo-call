@@ -1563,10 +1563,6 @@ html[data-embed="android"] .brand .word{display:none}
                 <button type="button" class="btn sm primary" id="btnTsVpVoice"></button>
                 <span class="pv-status" id="tsVpStatus" aria-live="polite"></span>
               </div>
-              <div class="pv" id="tsArtBox" hidden style="margin-top:8px">
-                <button type="button" class="btn sm ghost" id="btnTsArt" data-i18n="ts_get_art"></button>
-                <span class="pv-status" id="tsArtStatus" aria-live="polite"></span>
-              </div>
             </div>
           </div>
           <div class="hr"></div>
@@ -6144,6 +6140,7 @@ async function vpAcceptOffer() {
       if (d.result === "installed") {
         await markFirstPackPrompt(offer.id);
         await exSyncMenus();
+        tsArtReset();
         toast(t("vp_r_installed"));
         if (offeredLangs("console").some((x) => x.code === offer.lang)) {
           await chooseLang(offer.lang, true);
@@ -6311,6 +6308,7 @@ async function exRun(code, act) {
     if (d.result === "installed" || d.result === "removed") {
       delete exFailed[code];
       await exSyncMenus();
+      tsArtReset();
       toast(t(d.result === "installed" ? "vp_r_installed" : "vp_r_removed"));
     } else {
       if (act === "get") exFailed[code] = true;
@@ -6733,7 +6731,6 @@ function tsMountExtArt(code, art) {
     }
   }
 }
-let tsArtDownloading = false;
 function tsLoadArt(code) {
   if (!code || TS_REGIONS[code] || TS_EXT_ART[code] || TS_EXT_LOADING[code] || TS_EXT_MISS[code]) return;
   const artUrl = "/calls/extras/art/art-" + encodeURIComponent(code) + ".json";
@@ -6808,10 +6805,6 @@ function tsRender(animate) {
   const rObj = regionOfCountry(homeCountryNow());
   const sample = tsSampleLine((rObj && rObj.code) || code, level, pickedStyle() === "persona", curCallLang());
   $("tsBubbleDesc").textContent = sample || t("ts_" + level + "_d");
-  if ($("tsArtBox")) {
-    const wantArt = rObj && rObj.code && rObj.code !== "default" && !TS_REGIONS[rObj.code] && !TS_EXT_ART[rObj.code] && !!TS_EXT_MISS[rObj.code];
-    $("tsArtBox").hidden = !wantArt && !tsArtDownloading;
-  }
   svg.setAttribute("data-level", String(level));
   for (const key of Object.keys(TS_BASE)) svg.style.setProperty("--bts-" + key, r.pal[key] || TS_BASE[key]);
   box.querySelectorAll(".bts-outfit").forEach((el) => el.classList.toggle("bts-on", el.getAttribute("data-l") === String(level)));
@@ -6859,31 +6852,11 @@ $("f-talk_style_level").addEventListener("input", () => {
   $("abSuggest").hidden = true;
   tsRender(true);
 });
-if ($("btnTsArt")) {
-  $("btnTsArt").addEventListener("click", async () => {
-    const rObj = regionOfCountry(homeCountryNow());
-    const wantCode = rObj && rObj.code;
-    if (!wantCode || TS_REGIONS[wantCode] || tsArtDownloading) return;
-    tsArtDownloading = true;
-    $("btnTsArt").disabled = true;
-    $("tsArtStatus").textContent = t("ex_downloading");
-    try {
-      const d = await api("/extras/download", jsonBody("POST", { art: wantCode }));
-      if (d && (d.result === "installed" || d.result === "up_to_date")) {
-        delete TS_EXT_MISS[wantCode];
-        $("tsArtStatus").textContent = "";
-        tsLoadArt(wantCode);
-      } else {
-        $("tsArtStatus").textContent = exErrText(d && d.result);
-      }
-    } catch (e) {
-      $("tsArtStatus").textContent = (e && e.message) || t("pk_r_offline");
-    } finally {
-      tsArtDownloading = false;
-      $("btnTsArt").disabled = false;
-      tsRender(false);
-    }
-  });
+// A language pack brings or takes the drawings of its regions: look again.
+function tsArtReset() {
+  for (const k of Object.keys(TS_EXT_MISS)) delete TS_EXT_MISS[k];
+  for (const k of Object.keys(TS_EXT_ART)) delete TS_EXT_ART[k];
+  tsRender(false);
 }
 $("bts-scene-btn").addEventListener("click", () => {
   const r = tsLook(tsRegionShown);
