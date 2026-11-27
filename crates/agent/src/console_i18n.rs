@@ -365,7 +365,8 @@ mod tests {
         }
         let mut sorted = codes.clone();
         sorted.sort();
-        assert_eq!(sorted, ["br", "de", "fr", "gulf", "jp", "kr", "tr", "tw", "us"]);
+        // The other built-in regions come from the built-in drawings (bageo-art.json.gz).
+        assert_eq!(sorted, crate::extras::PAGE_ART_REGIONS);
         assert_eq!(codes.len(), scenes.len());
         for (i, code) in codes.iter().enumerate() {
             assert!(regions.contains_key(code), "{code}: not a region of the built-in pack");

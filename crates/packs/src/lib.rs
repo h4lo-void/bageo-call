@@ -45,7 +45,7 @@ pub use check::{
 pub use extras::{
     art_home, art_homes, build_art_bundle, build_extras, check_art, check_art_sources, load_art, load_region_langs, parse_art_bundle,
     parse_extras_index, parse_lang_file, read_art_source, ArtBundle, ArtHome, ExtraLang, ExtrasArtRef, ExtrasBuild, ExtrasIndex,
-    ExtrasLangRef, ART_BUNDLE_FILE, EXTRAS_FORMAT, EXTRAS_INDEX_FILE,
+    ExtrasLangRef, ART_BUNDLE_FILE, BUILTIN_ART_REGIONS, EXTRAS_FORMAT, EXTRAS_INDEX_FILE,
 };
 pub use locales::{
     build_locales_at, build_locales_call_at, check_locales, check_locales_ref, load_locales, lrule, pack_locales, parse_locales,

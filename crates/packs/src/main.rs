@@ -480,7 +480,7 @@ fn cmd_build_extras(args: &[String]) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// build-art: the drawings built into Bageo (regions whose main language is a core language), one file.
+/// build-art: the drawings built into Bageo (the nine built-in regions and regions whose main language is a core language), one file.
 fn cmd_build_art(args: &[String]) -> ExitCode {
     let Some(a) = parse_args(args, &["--version", "--commit", "--out", "--built-at"], &[]) else { return usage() };
     let ([dir], Some(version), Some(commit), Some(out)) = (a.pos.as_slice(), a.opts.get("--version"), a.opts.get("--commit"), a.opts.get("--out"))

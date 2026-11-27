@@ -61,10 +61,11 @@ fn valid_code(s: &str) -> bool {
 }
 
 /// Regions whose mascot art is drawn into `calls.html` itself.
-pub(crate) const BUILTIN_ART_REGIONS: [&str; 9] = ["tw", "jp", "kr", "us", "de", "fr", "tr", "br", "gulf"];
+pub(crate) const PAGE_ART_REGIONS: [&str; 1] = ["tw"];
 
-/// The drawings of the regions whose main language is a core language (no
-/// language pack carries them), built by `packs build-art` from bageo-packs.
+/// The drawings of the other built-in regions and of the regions whose main
+/// language is a core language (no language pack carries them), built by
+/// `packs build-art` from bageo-packs.
 const BUILTIN_ART: &[u8] = include_bytes!("../data/packs/bageo-art.json.gz");
 
 /// The built-in drawings that passed, as JSON text by region; read once.
@@ -515,9 +516,9 @@ pub(crate) fn clear_index_cooldown() {
 // ---- public read-only static endpoints --------------------------------------------------------
 
 /// A region's drawing: built in, else from a downloaded language pack of
-/// table. The regions drawn into the page itself and `default` have none here.
+/// table. The region drawn into the page itself and `default` have none here.
 fn art_text_in(table: &LocaleTable, region: &str) -> Option<String> {
-    if !valid_code(region) || region == "default" || BUILTIN_ART_REGIONS.contains(&region) {
+    if !valid_code(region) || region == "default" || PAGE_ART_REGIONS.contains(&region) {
         return None;
     }
     builtin_art().get(region).cloned().or_else(|| locales_store::region_art_in(table, region))
@@ -566,7 +567,7 @@ pub fn router() -> Router<CallsState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bageo_packs::extras::{check_art, lang_file_name};
+    use bageo_packs::extras::{check_art, lang_file_name, BUILTIN_ART_REGIONS};
     use crate::pack_update::tests::{tmp, Reply, Server};
     use flate2::write::GzEncoder;
     use flate2::Compression;
@@ -579,9 +580,10 @@ mod tests {
     const TAGGED: &str = "/h4lo-void/bageo-packs/releases/download/v9/";
 
     /// The regions whose main language is a core language (bageo-packs regions/*.json).
-    const CORE_LANG_REGIONS: [&str; 19] = [
-        "ar-uy", "at", "au-nz", "be", "ca", "ch", "cn", "es", "gb-ie", "hk-mo", "in", "ke-tz-et-mg-ht", "latam", "lu", "mx", "ph", "pt",
-        "sg", "za",
+    const CORE_LANG_REGIONS: [&str; 33] = [
+        "ao-mz-gw-cv-st", "ar-uy", "at", "au-nz", "be", "bt", "ca", "cd-cg-cm-ga-cf-td-bi", "ch", "cn", "es", "gb-ie", "gq", "hk-mo", "in",
+        "ke-tz-et-mg-ht", "kh", "latam", "lu", "mt", "mu-sc-km", "mv", "mx", "ng-gh-sl-lr-gm", "pg-fj-sb-vu", "ph", "pt", "sg",
+        "sn-ci-bf-ml-ne-tg-bj-gn", "tl", "ws-to-ki-fm-mh-pw-nr-tv", "za", "zm-zw-mw",
     ];
 
     fn sha256(bytes: &[u8]) -> String {
@@ -724,10 +726,10 @@ mod tests {
         let count = Arc::new(AtomicUsize::new(0));
         let packs_dir = d.0.join("packs");
         let root = locales_store::extras_dir(&packs_dir);
-        let mut bad = sample_art("kh", 2026112101);
+        let mut bad = sample_art("mm", 2026112101);
         bad["draw"]["print"] = json!([["script", {}]]);
         let mut th = sample_lang("th", 2026112101, true, true);
-        th["art"] = json!({ "th": sample_art("th", 2026112101), "la": sample_art("la", 2026112101), "kh": bad });
+        th["art"] = json!({ "th": sample_art("th", 2026112101), "la": sample_art("la", 2026112101), "mm": bad });
         let th_gz = gz(&th);
         let srv = release(index_for(2026112101, &[("th", 2026112101, &th_gz, "console")]), vec![(lang_file_name("th"), th_gz.clone())]);
 
@@ -749,7 +751,7 @@ mod tests {
         inm.insert(axum::http::header::IF_NONE_MATCH, etag);
         assert_eq!(serve_art_in(table, "art-th.json", &inm).status(), StatusCode::NOT_MODIFIED);
         assert_eq!(serve_art_in(table, "art-la.json", &HeaderMap::new()).status(), StatusCode::OK);
-        assert_eq!(serve_art_in(table, "art-kh.json", &HeaderMap::new()).status(), StatusCode::NOT_FOUND);
+        assert_eq!(serve_art_in(table, "art-mm.json", &HeaderMap::new()).status(), StatusCode::NOT_FOUND);
         let body: Value = serde_json::from_str(&art_text_in(table, "la").unwrap()).unwrap();
         assert_eq!(body["region"], "la");
         // Regions drawn into the page, default and odd names are never served here.
@@ -790,11 +792,14 @@ mod tests {
     }
 
     #[test]
-    fn builtin_drawings_cover_the_core_language_regions() {
+    fn builtin_drawings_cover_the_built_in_and_core_language_regions() {
+        let mut want: Vec<&str> = CORE_LANG_REGIONS.to_vec();
+        want.extend(BUILTIN_ART_REGIONS.iter().filter(|r| !PAGE_ART_REGIONS.contains(r)));
+        want.sort();
         let have: Vec<&str> = builtin_art().keys().map(String::as_str).collect();
-        assert_eq!(have, CORE_LANG_REGIONS);
+        assert_eq!(have, want);
         let table = locales_store::builtin();
-        for region in CORE_LANG_REGIONS {
+        for region in want {
             let resp = serve_art_in(table, &format!("art-{region}.json"), &HeaderMap::new());
             assert_eq!(resp.status(), StatusCode::OK, "{region}");
             let text = art_text_in(table, region).unwrap();
@@ -802,8 +807,9 @@ mod tests {
             assert_eq!(v["region"], region);
             assert!(check_art(&format!("art-{region}.json"), text.as_bytes(), region).is_empty(), "{region}");
         }
-        for region in BUILTIN_ART_REGIONS {
+        for region in PAGE_ART_REGIONS {
             assert!(!builtin_art().contains_key(region), "{region} is drawn into the page");
+            assert!(art_text_in(table, region).is_none(), "{region}");
         }
         // A region of an extra language comes only with its language pack.
         assert!(art_text_in(table, "pl").is_none());
