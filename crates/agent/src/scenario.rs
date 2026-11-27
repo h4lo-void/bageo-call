@@ -309,7 +309,9 @@ const SCAM_ASK_WORDS: &[&str] = &[
     "禮物卡", "礼品卡", "點數卡", "保密", "警察",
     "檢察", "检察", "法院", "password", "pin", "code", "otp", "card number", "cvv", "social security", "transfer",
     "wire", "gift card", "remote", "screen", "download", "install", "app", "whatsapp", "telegram", "police",
-    "暗証番号", "認証", "振込", "振り込", "비밀번호", "인증", "이체", "contraseña", "código", "codigo",
+    // Not "이체" alone: a courier is paid for the goods by transfer, a bill by 자동이체.
+    "暗証番号", "認証", "振込", "振り込", "비밀번호", "인증", "먼저 이체", "바로 이체", "지금 이체", "즉시 이체", "선입금",
+    "이체하세요", "이체하셔야", "계좌로 이체하세요", "contraseña", "código", "codigo",
     "transferencia", "mot de passe", "virement", "passwort", "überweisung", "senha", "transferência", "pix",
     "codice", "bonifico", "polizia", "conto sicuro", "пароль", "перевод", "полиция", "безопасный счет", "безопасный счёт",
     // Not "chuyển khoản" alone: a real courier asks for the goods' price by transfer.
@@ -318,9 +320,8 @@ const SCAM_ASK_WORDS: &[&str] = &[
     "पासवर्ड", "ओटीपी", "पुलिस", "ट्रांसफर", "كلمة المرور", "رمز التحقق", "تحويل", "الشرطة",
     "身份證", "身分证", "出生", "生日", "有效期", "帳號", "帐号", "帳戶", "账户", "連結", "链接", "網址", "网址", "點擊",
     "点击", "運費", "运费", "關稅", "关税", "click", "link", "date of birth", "birthday", "expiry", "expiration",
-    // Not "계좌" alone: a clinic refunds to the account on file.
-    "account number", "delivery fee", "customs", "生年月日", "口座", "リンク", "생년월일", "계좌번호", "계좌 번호", "계좌이체",
-    "계좌 이체", "링크",
+    // Not "계좌" or "계좌이체" alone: a clinic refunds to the account on file, a courier is paid by transfer.
+    "account number", "delivery fee", "customs", "生年月日", "口座", "リンク", "생년월일", "계좌번호", "계좌 번호", "링크",
     "繳費", "缴费", "付款", "付費", "付费", "繳款", "缴款", "證件", "证件", "送金", "お支払い", "支払って", "송금", "결제",
     "pay a", "pay the", "pay us", "to pay", "fee", "your id", "id card", "photo of your", "pagar", "payer", "zahlen",
     "pagamento",
@@ -1180,6 +1181,32 @@ mod everyday_calls {
         }
         for t in ["要先繳保證金才能解凍", "请先交保证金到保证金账户"] {
             assert!(scam_ask(t), "{t}");
+        }
+    }
+
+    /// Korean 이체: a courier paid for the goods by transfer, a clinic refunding
+    /// to an account, a bill paid by 자동이체 are everyday calls; a "courier" who
+    /// wants a transfer first, now, or to a safe account is not.
+    #[test]
+    fn a_korean_transfer_as_a_way_to_pay_is_no_scam_ask() {
+        for (t, want) in [
+            ("택배입니다. 물건값은 계좌이체로 보내주셔도 됩니다", Scenario::Delivery),
+            ("택배기사입니다. 착불 대신 계좌 이체도 가능해요", Scenario::Delivery),
+            ("서울병원입니다. 검사 결과 나왔고 환불금은 등록하신 계좌로 이체해 드립니다", Scenario::ImportantNotice),
+            ("서울병원입니다. 진료비 자동이체 날짜가 변경되었습니다", Scenario::ImportantNotice),
+        ] {
+            assert!(!scam_ask(t), "{t}");
+            assert_eq!(ordinary(None, t), Some(want), "{t}");
+        }
+        for t in [
+            "택배입니다. 통관 문제로 지금 이체 안 하시면 반송됩니다",
+            "택배기사인데요, 관세를 먼저 이체해 주셔야 배송됩니다",
+            "택배입니다. 배송비 선입금이 확인돼야 출발합니다",
+            "택배입니다. 이 계좌로 이체하세요",
+            "카드사입니다. 안전계좌로 이체하셔야 합니다",
+        ] {
+            assert!(scam_ask(t), "{t}");
+            assert_eq!(ordinary(Some(Scenario::Delivery), t), None, "{t}");
         }
     }
 

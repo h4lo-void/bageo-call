@@ -3694,6 +3694,9 @@ const CONFIRM_AFTER_TURNS: u32 = 2;
 const CONFIRM_EARLY_UNITS: usize = 12;
 /// Checks a call: the second only when the first did not answer.
 const CONFIRM_MAX: u32 = 2;
+/// Looks asked again in a call because an everyday call's looks kept failing
+/// (Gemini down): one per caller turn, then no more until more keywords come.
+const EVERYDAY_RETRY_MAX: u32 = 3;
 
 /// Why a look was asked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -3872,6 +3875,9 @@ struct StallReview {
     /// would have stalled it): looked at again once it is not
     /// ([`StallReview::reopen_unless_everyday`]).
     everyday_normal: bool,
+    /// Looks asked again because an everyday call's looks kept failing
+    /// (at most [`EVERYDAY_RETRY_MAX`]).
+    everyday_retries: u32,
 }
 
 /// What a verdict does to the call.
@@ -4117,8 +4123,17 @@ impl StallReview {
                     // An everyday call: the keywords alone do not stall it, and
                     // the call is not left to them for good either (a pitch or
                     // Gemini back later still counts). Look again after the
-                    // caller's next turn.
-                    return self.again(origin, false);
+                    // caller's next turn, at most EVERYDAY_RETRY_MAX times;
+                    // then let be until more keywords come or it is no
+                    // everyday call any more (words only scammers say still
+                    // stall it at once).
+                    if self.everyday_retries < EVERYDAY_RETRY_MAX {
+                        self.everyday_retries += 1;
+                        return self.again(origin, false);
+                    }
+                    self.normal_at = Some(asked_at);
+                    self.everyday_normal = true;
+                    return StallVerdictStep::Carry;
                 }
                 self.keyword_rule = true;
                 self.no_key |= review.no_key;
@@ -12866,7 +12881,7 @@ mod tests {
         let mut r = StallReview::default();
         assert!(r.should_ask(true, 3));
         assert_eq!(r.decide(&failed, 3, 3, everyday), StallVerdictStep::AfterTurn);
-        for _ in 0..4 {
+        for _ in 0..EVERYDAY_RETRY_MAX {
             assert!(r.should_ask_after_turn());
             assert_eq!(r.decide(&failed, 3, 3, everyday), StallVerdictStep::AfterTurn);
             assert!(!r.keyword_rule);
@@ -12915,6 +12930,57 @@ mod tests {
             let hits = stall_keyword_hits(line);
             assert_eq!(everyday_for_keywords(None, line, &hits, false, false), Some(Scenario::BankVerify), "{line}");
         }
+    }
+
+    /// Gemini stays down on an everyday call: looked at again after at most
+    /// [`EVERYDAY_RETRY_MAX`] caller turns, then let be (not left to the
+    /// keywords): asked again only when more keywords come or it is no everyday
+    /// call any more; words only scammers say still stall it at once.
+    #[test]
+    fn an_everyday_call_is_looked_at_again_only_a_few_times_while_gemini_is_down() {
+        use crate::scenario::Scenario;
+        use crate::stall_review::{Confidence::*, Verdict::*};
+        let failed = review_of(Unavailable, Medium);
+        let everyday = StallFacts { flagged: true, ordinary: Some(Scenario::ImportantNotice), ..StallFacts::default() };
+        let used_up = || {
+            let mut r = StallReview::default();
+            assert!(r.should_ask(true, 3));
+            assert_eq!(r.decide(&failed, 3, 3, everyday), StallVerdictStep::AfterTurn);
+            for _ in 0..EVERYDAY_RETRY_MAX {
+                assert!(r.should_ask_after_turn());
+                assert_eq!(r.decide(&failed, 3, 3, everyday), StallVerdictStep::AfterTurn);
+            }
+            assert!(r.should_ask_after_turn());
+            assert_eq!(r.decide(&failed, 3, 3, everyday), StallVerdictStep::Carry);
+            assert_eq!(r.everyday_retries, EVERYDAY_RETRY_MAX);
+            assert!(!r.keyword_rule, "not left to the keywords for good");
+            assert!(!r.should_ask_after_turn(), "no more looks after the turn");
+            r
+        };
+        let mut r = used_up();
+        assert!(!r.should_ask(true, 3), "not on every word");
+        r.reopen_unless_everyday(true);
+        assert!(!r.should_ask(true, 3 + STALL_REVIEW_STEP - 1));
+        assert!(r.should_ask(true, 3 + STALL_REVIEW_STEP), "more keywords");
+        // That look fails too: let be again, no retries left.
+        assert_eq!(r.decide(&failed, 5, 5, everyday), StallVerdictStep::Carry);
+        assert!(!r.should_ask_after_turn());
+        // No everyday call any more (a fee, a code…): looked at again, and the keyword rule decides.
+        let mut r = used_up();
+        r.reopen_unless_everyday(false);
+        assert!(r.should_ask(true, 3));
+        let no_more = StallFacts { ordinary: None, ..everyday };
+        assert_eq!(r.decide(&failed, 3, 3, no_more), StallVerdictStep::Engage);
+        assert_eq!(r.why, EngageWhy::KeywordRule);
+        // Words only scammers say: at once, retries or not.
+        let mut r = used_up();
+        assert!(r.engage_hard_at_once(true, true, false));
+        let mut r = used_up();
+        r.reopen_unless_everyday(false);
+        assert!(r.should_ask(true, 3));
+        let hard = StallFacts { hard_hit: true, ..everyday };
+        assert_eq!(r.decide(&failed, 3, 3, hard), StallVerdictStep::Engage);
+        assert_eq!(r.why, EngageWhy::HardWords);
     }
 
     /// An everyday call let be on unsure answers, or still only "who we are" to
