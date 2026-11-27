@@ -145,6 +145,11 @@ more usage.
 
 Honest calls are left alone: a bank checking a card charge, a clinic, a
 courier collecting cash on delivery, family talking about money.
+Saved contacts skip the check entirely. From other numbers, a courier, a
+notice, setting a time or a bank checking one charge needs the second look to
+say scam twice in a row, and keywords alone never mark it; asking for a code, a
+transfer, a link or a fee, or threatening to cut off or freeze something, still
+counts at once.
 
 When a bank asks whether a charge was yours, the AI neither confirms nor denies
 it, agrees to no blocking or reporting, notes the amount, merchant and time, and

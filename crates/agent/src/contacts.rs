@@ -1101,6 +1101,29 @@ impl ContactStore {
         })
     }
 
+    /// Whether `number` belongs to a contact the owner trusts: not on the Stall
+    /// list or the Blacklist, and some entry for it on another list (an
+    /// ordinary contact or the Whitelist), whether or not its name can be shown
+    /// ([`review_label`] is None for a name of only brackets or quotes).
+    pub fn is_trusted_contact(&self, number: &str, region: Option<&str>) -> bool {
+        if is_prefix(number) || self.is_force_stall(number, region).is_some() || self.blacklisted(number, region).is_some() {
+            return false;
+        }
+        let call_region = region
+            .map(str::trim)
+            .filter(|r| !r.is_empty())
+            .map(|r| r.to_ascii_lowercase());
+        let effective_region = call_region.clone().or_else(|| (self.region)());
+        let Some(key) = num_key(number, effective_region.as_deref()) else {
+            return false;
+        };
+        self.with_book(|b| {
+            b.find_all_matches(&key, call_region.as_deref())
+                .into_iter()
+                .any(|i| !matches!(b.contacts[i].kind.as_str(), "blacklist" | "stall"))
+        })
+    }
+
     /// [`review_label`] for this store: the label of the saved contact (or
     /// Whitelist entry) the number belongs to; None when it is unknown, on the
     /// Blacklist or the Stall list (any entry for the number on the Stall list
@@ -1778,6 +1801,11 @@ pub fn urgent_block(lang: Lang, assistant: bool, owner: &str, who: TransferWho, 
 /// blacklist / stall list.
 pub fn review_label(caller_id: &str, sim_country: Option<&str>) -> Option<String> {
     STORE.get()?.review_label(caller_id, sim_country)
+}
+
+/// Whether `caller_id` is a contact the owner trusts ([`ContactStore::is_trusted_contact`]).
+pub fn is_trusted_contact(caller_id: &str, sim_country: Option<&str>) -> bool {
+    STORE.get().is_some_and(|s| s.is_trusted_contact(caller_id, sim_country))
 }
 
 /// [`review_label`]'s text for a contact's name and note.
@@ -3905,6 +3933,48 @@ mod tests {
         assert!(store.is_force_stall("0912000007", TW).is_some());
         assert!(!trusted("0912000007"), "stall + owner safe: the Stall list wins");
         assert!(store.is_force_stall("0912000001", TW).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A contact whose name is only brackets or quotes has no label for the
+    /// review, but is still a contact the owner trusts; on the Stall list or the
+    /// Blacklist it is not.
+    #[test]
+    fn a_contact_named_only_with_symbols_is_still_trusted() {
+        use crate::stall_review::CallerContext;
+        let dir = temp_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("contacts.json");
+        let list = vec![
+            json!({"id": "c1", "name": "()", "phones": ["0912-000-201"], "kind": ""}),
+            json!({"id": "c2", "name": "「」", "phones": ["0912-000-202"], "kind": "contact"}),
+            json!({"id": "w1", "name": "\"\"", "phones": ["0912-000-203"], "kind": "whitelist"}),
+            json!({"id": "c4", "name": "<<>>", "phones": ["0912-000-204"], "kind": ""}),
+            json!({"id": "s1", "name": "()", "phones": ["0912-000-205"], "kind": "stall"}),
+            json!({"id": "b1", "name": "「」", "phones": ["0912-000-206"], "kind": "blacklist"}),
+            json!({"id": "c7", "name": "()", "phones": ["0912-000-207"], "kind": ""}),
+            json!({"id": "s7", "name": "Pest", "phones": ["+886912000207"], "kind": "stall"}),
+        ];
+        std::fs::write(&path, json!({ "contacts": list }).to_string()).unwrap();
+        let store = ContactStore::open_with(path, Box::new(|| Some("tw".to_string())));
+        let trusted = |n: &str| -> bool {
+            CallerContext {
+                saved_contact: store.review_label(n, TW),
+                saved_in_contacts: store.is_trusted_contact(n, TW),
+                ..CallerContext::default()
+            }
+            .trusted(store.is_force_stall(n, TW).is_some())
+        };
+        for n in ["0912000201", "+886 912 000 201", "0912000202", "+886912000203", "0912000204"] {
+            assert!(store.review_label(n, TW).is_none(), "{n}: no name to show");
+            assert!(store.is_trusted_contact(n, TW), "{n}");
+            assert!(trusted(n), "{n}");
+        }
+        // The Stall list, the Blacklist, the same number also on the Stall list, a stranger: not trusted.
+        for n in ["0912000205", "0912000206", "0912000207", "+886 912 000 207", "0912000299"] {
+            assert!(!store.is_trusted_contact(n, TW), "{n}");
+            assert!(!trusted(n), "{n}");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

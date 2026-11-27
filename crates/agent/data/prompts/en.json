@@ -336,6 +336,10 @@
       "The AI is already keeping this caller talking (the call was judged a scam or sales call). Look again at everything the caller said: answer normal with high confidence only if it is clearly an ordinary call; the AI then goes back to talking normally.",
       ""
     ],
+    "stall_review_purpose_line_3": [
+      "The owner trusts this caller (a saved contact, a trusted number, or someone following up on the owner's own matter); this call is not checked for scams. Only the scenario is used: name what the call is about, or none when it is unclear.",
+      ""
+    ],
     "stall_script_en_in_caller_language": " Say all of this in the caller's language.",
     "stall_script_en_general_script": "[This call] Nothing to weigh or work out here: mishearing a word, asking for an example, a line of small talk or retelling what they said a bit wrong all keep it going.",
     "stall_script_en_compact_block": [
