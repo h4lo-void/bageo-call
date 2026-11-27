@@ -781,6 +781,22 @@ impl Drop for Running {
     }
 }
 
+/// The primary region whose recordings live in `assets/voices/<lang>/`.
+fn bundled_region(lang: &str) -> Option<&'static str> {
+    match lang {
+        "en" => Some("us"),
+        "zh-TW" => Some("tw"),
+        "zh-CN" => Some("cn"),
+        "ja" => Some("jp"),
+        "ko" => Some("kr"),
+        "es" => Some("es"),
+        "fr" => Some("fr"),
+        "de" => Some("de"),
+        "pt" => Some("br"),
+        _ => None,
+    }
+}
+
 /// What the console lists: the packs of the index (with their size and
 /// whether they are here; `bundled` = a language-wide pack whose language
 /// came with Bageo in `bundled`) and the ones on this computer.
@@ -794,7 +810,7 @@ pub(crate) fn list_json(root: &Path, bundled: &Path, dismissed: &[String]) -> Va
             let id = e.id();
             let shipped = (e.region.is_none()
                 || e.region.as_deref() == Some("default")
-                || crate::locale::Lang::parse_any(&e.lang).and_then(region_for) == e.region.as_deref())
+                || e.region.as_deref() == bundled_region(&e.lang))
                 && bundled.join(&e.lang).is_dir();
             json!({"id": id, "lang": e.lang, "region": e.region, "bytes": e.bytes, "downloaded": have.iter().any(|(h, _)| *h == id), "bundled": shipped})
         })
