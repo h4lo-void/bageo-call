@@ -174,6 +174,11 @@ impl CallLanguage {
     pub fn caller_turn(&mut self, said: &str) -> Option<Spoken> {
         self.turns += 1;
         let before = self.now;
+        // One or two stray words (a "Sí", an "Oi", 「喂」) say nothing about the language.
+        if words_or_letters(said) < SHORT_TURN_WORDS && said.chars().filter(|c| c.is_alphabetic()).count() < PART_MIN {
+            self.caller_read = None;
+            return None;
+        }
         for part in script_parts(said) {
             self.caller_part(part);
         }
@@ -255,9 +260,17 @@ impl CallLanguage {
     pub fn ai_turn_after(&mut self, said: &str, late: &str, can_tell: bool) -> Option<Drift> {
         self.ai_turns += 1;
         let call = self.lang()?;
-        let ai = match self.clear(said)? {
-            Spoken::Lang(l) => l,
-            Spoken::Other => return None,
+        // One or two words: too short to be read as a language ([Self::clear] never
+        // does), but the model can still follow a caller's stray "Sí" or "Oi" into
+        // it. A greeting or "yes" of another core language than the call's is a drift.
+        let short = words_or_letters(said) < SHORT_TURN_WORDS;
+        let ai = if short {
+            short_word_lang(said).filter(|l| !(l.is_zh() && call.is_zh()))?
+        } else {
+            match self.clear(said)? {
+                Spoken::Lang(l) => l,
+                Spoken::Other => return None,
+            }
         };
         // Only a turn in a core language is a drift: another language read from
         // its letters may be the call's own told apart wrong.
@@ -275,7 +288,8 @@ impl CallLanguage {
         }
         // Close Latin languages share short words (a Spanish line can score a
         // point of Portuguese): a drift between them needs a clear margin.
-        if call.is_core()
+        if !short
+            && call.is_core()
             && crate::urgency::is_latin_lang(ai)
             && crate::urgency::is_latin_lang(call)
             && crate::urgency::latin_margin(said, ai, call) < 2
@@ -291,6 +305,30 @@ impl CallLanguage {
         self.drift_notes += 1;
         Some(Drift { ai, call, turn: self.ai_turns })
     }
+}
+
+/// A turn of fewer words or letters than this is one or two stray words: it
+/// moves no call's language ([CallLanguage::caller_turn]).
+const SHORT_TURN_WORDS: usize = TENTATIVE_MIN_WORDS;
+
+/// The core language of a one-word greeting or "yes" ("Sí", "Oi", "Ja", 「はい」,
+/// 「喂」), when it is one only that language uses.
+fn short_word_lang(said: &str) -> Option<Lang> {
+    const WORDS: &[(Lang, &[&str])] = &[
+        (Lang::En, &["yes", "yeah", "yep", "hi", "hello", "hey"]),
+        (Lang::Es, &["sí", "hola", "aló"]),
+        (Lang::Pt, &["sim", "oi", "olá", "alô"]),
+        (Lang::Fr, &["oui", "allô", "salut", "bonjour", "bonsoir"]),
+        (Lang::De, &["ja", "hallo", "nein", "genau"]),
+        (Lang::Ja, &["はい", "もしもし", "ええ", "うん"]),
+        (Lang::Ko, &["네", "예", "여보세요", "응"]),
+        (Lang::ZhTw, &["喂", "你好", "嗯", "是的", "對", "对", "好的"]),
+    ];
+    let w: String = said
+        .trim()
+        .trim_matches(|c: char| !c.is_alphanumeric())
+        .to_lowercase();
+    WORDS.iter().find(|(_, ws)| ws.contains(&w.as_str())).map(|(l, _)| *l)
 }
 
 /// Latin words plus Chinese, Japanese and Korean letters in `said`.
@@ -1011,5 +1049,62 @@ mod one_misheard_line {
         // Whole Chinese sentences still count: two move the call.
         assert_eq!(c.caller_turn("你好，我是快遞，你的包裹要放哪裡？"), None);
         assert_eq!(c.caller_turn("那我就幫你放在一樓管理室，等一下記得去拿喔。"), Some(Spoken::Lang(Lang::ZhTw)));
+    }
+
+    const SHORT_WORDS: &[&str] = &["Sí.", "Oi.", "Hi.", "Ja.", "Да.", "はい。", "네.", "喂", "Oui.", "Sim"];
+
+    #[test]
+    fn one_or_two_stray_words_do_not_change_the_language_of_the_call() {
+        for opening in [Lang::En, Lang::ZhTw, Lang::Ja, Lang::De, Lang::Fr] {
+            let mut c = CallLanguage::new(opening, Lang::ZhTw);
+            for said in SHORT_WORDS {
+                assert_eq!(c.caller_turn(said), None, "{opening:?}: {said}");
+                assert_eq!(c.lang(), Some(c.same_variant(opening)), "{opening:?}: {said}");
+            }
+        }
+        // Also after the call has settled.
+        let mut c = CallLanguage::new(Lang::En, Lang::ZhTw);
+        c.caller_turn("Hello, I am calling from the courier about a package for your office");
+        for said in SHORT_WORDS {
+            assert_eq!(c.caller_turn(said), None, "{said}");
+            assert_eq!(c.caller_turn(said), None, "{said}");
+        }
+        assert_eq!(c.lang(), Some(Lang::En));
+    }
+
+    #[test]
+    fn a_whole_sentence_in_another_language_still_moves_the_call() {
+        let lines = [
+            ("Buenos días, le llamo de la empresa de mensajería por un paquete que tengo para usted", Lang::Es),
+            ("Bonjour, je vous appelle de la société de livraison à propos d'un colis pour vous", Lang::Fr),
+            ("すみません、宅配便です。今ご自宅にいらっしゃいますか？", Lang::Ja),
+            ("여보세요, 택배 왔는데 집에 계세요?", Lang::Ko),
+        ];
+        for (said, to) in lines {
+            let mut c = CallLanguage::new(Lang::En, Lang::ZhTw);
+            c.caller_turn("Sí.");
+            assert_eq!(c.caller_turn(said), Some(Spoken::Lang(to)), "{said}");
+        }
+    }
+
+    #[test]
+    fn the_ai_following_a_stray_word_into_another_language_is_told() {
+        for (said, ai) in [("Sí.", Lang::Es), ("Oi.", Lang::Pt), ("Ja.", Lang::De), ("Oui.", Lang::Fr), ("はい。", Lang::Ja), ("네.", Lang::Ko)] {
+            let mut c = CallLanguage::new(Lang::En, Lang::En);
+            assert_eq!(c.caller_turn(said), None);
+            let d = c.ai_turn(said, true).unwrap_or_else(|| panic!("{said}"));
+            assert_eq!((d.ai, d.call), (ai, Lang::En), "{said}");
+        }
+        // The call's own greeting or "yes" is no drift, nor is one the caller really speaks.
+        let mut c = CallLanguage::new(Lang::En, Lang::En);
+        assert_eq!(c.ai_turn("Hi.", true), None);
+        assert_eq!(c.ai_turn("Yes.", true), None);
+        let mut c = CallLanguage::new(Lang::ZhTw, Lang::ZhTw);
+        assert_eq!(c.ai_turn("喂？", true), None);
+        let mut c = CallLanguage::new(Lang::Pt, Lang::Pt);
+        assert_eq!(c.ai_turn("Oi.", true), None);
+        // Not while it cannot be told.
+        let mut c = CallLanguage::new(Lang::En, Lang::En);
+        assert_eq!(c.ai_turn("Sí.", false), None);
     }
 }
