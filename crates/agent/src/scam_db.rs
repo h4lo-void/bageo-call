@@ -1855,6 +1855,8 @@ pub struct CallerFacts {
     /// The owner marked it scam / sales, or [`AUTO_FLAG_MIN`] calls from it were
     /// judged so: the call is looked at sooner.
     pub flagged_before: bool,
+    /// The owner marked it scam / sales (in the number book or their own list).
+    pub owner_flagged: bool,
     /// One English line each, for the reviewing model.
     pub notes: Vec<String>,
 }
@@ -1881,11 +1883,16 @@ pub fn caller_facts_in(book: &NumberBook, local: &[LocalNumber], raw: &str, sim:
             }
             ("owner", v) => {
                 f.flagged_before = true;
+                f.owner_flagged = true;
                 f.notes.push(format!("The owner marked this number as {v} {times}, last on {}{}.", date_of(&e.last_at), typology_note(&e.typology)));
             }
             (_, v) => {
                 f.flagged_before = e.count >= AUTO_FLAG_MIN;
-                f.notes.push(format!("Earlier calls from this number were judged {v} {times}, last on {}{}.", date_of(&e.last_at), typology_note(&e.typology)));
+                f.notes.push(format!(
+                    "Earlier calls from this number were judged {v} {times}, last on {}{}. That was this automatic check, not the owner, and it can be wrong: a hint only, never a reason on its own.",
+                    date_of(&e.last_at),
+                    typology_note(&e.typology)
+                ));
             }
         }
     }
@@ -1902,6 +1909,7 @@ pub fn caller_facts_in(book: &NumberBook, local: &[LocalNumber], raw: &str, sim:
             f.owner_safe = true;
         } else {
             f.flagged_before = true;
+            f.owner_flagged = true;
         }
         let note = if n.note.trim().is_empty() { String::new() } else { format!(": {}", n.note.trim()) };
         f.notes.push(format!("The owner's own list marks this number as {}{}{note}.", n.verdict, typology_note(&n.typology)));
@@ -2736,7 +2744,7 @@ mod tests {
         // The owner's list marks numbers.
         let book = NumberBook::open(None);
         let f = caller_facts_in(&book, &local.numbers, "+886912345678", Some("tw"));
-        assert!(f.flagged_before && !f.owner_safe, "{f:?}");
+        assert!(f.flagged_before && f.owner_flagged && !f.owner_safe, "{f:?}");
         assert!(f.notes.iter().any(|n| n.contains("own list") && n.contains("假檢察官")), "{f:?}");
         assert!(caller_facts_in(&book, &local.numbers, "02-2345-6789", Some("tw")).owner_safe);
     }
@@ -2797,10 +2805,18 @@ mod tests {
         let f = caller_facts_in(&book, &[], "0912345678", Some("tw"));
         assert!(!f.flagged_before && !f.owner_safe);
         assert!(f.notes[0].starts_with("Earlier calls from this number were judged scam once"), "{f:?}");
+        // An automatic verdict says it may be wrong and is no reason on its own.
+        assert!(f.notes[0].contains("automatic") && f.notes[0].contains("can be wrong") && f.notes[0].contains("never a reason on its own"), "{f:?}");
         book.record_auto(&key, "scam", "fake_bank_installment");
         let f = caller_facts_in(&book, &[], "0912345678", Some("tw"));
-        assert!(f.flagged_before);
+        assert!(f.flagged_before && !f.owner_flagged, "{f:?}");
         assert!(f.notes[0].contains("2 times") && f.notes[0].contains("(fake_bank_installment)"), "{f:?}");
+        // The owner's own scam mark is theirs, not the check's.
+        let owner_scam = NumberBook::open(None);
+        owner_scam.mark_owner(&key, "scam", "");
+        let f = caller_facts_in(&owner_scam, &[], "0912345678", Some("tw"));
+        assert!(f.flagged_before && f.owner_flagged, "{f:?}");
+        assert!(!f.notes[0].contains("automatic"), "{f:?}");
         book.mark_owner(&key, "safe", "");
         let f = caller_facts_in(&book, &[], "+886912345678", Some("tw"));
         assert!(f.owner_safe && !f.flagged_before, "{f:?}");

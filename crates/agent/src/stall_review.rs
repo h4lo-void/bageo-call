@@ -181,6 +181,8 @@ pub struct CallerContext {
     pub owner_safe: bool,
     /// Marked or judged sales / scam before: the call is looked at sooner.
     pub flagged_before: bool,
+    /// The owner marked the number scam / sales: the look's answer alone is enough.
+    pub owner_flagged: bool,
 }
 
 impl CallerContext {

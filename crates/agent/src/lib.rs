@@ -7415,6 +7415,7 @@ fn start_gemini_session_core(
                     number_notes: facts.notes,
                     owner_safe: facts.owner_safe,
                     flagged_before: facts.flagged_before,
+                    owner_flagged: facts.owner_flagged,
                 }
             }))),
             urgent_transfer: urgent_target.is_some().then(|| {
@@ -10370,6 +10371,14 @@ async fn calendar_ready(
     }
 }
 
+/// A call judged sales / scam marks its number for next time, unless the look
+/// alone said so: the caller's words (`transcript`: the session's raw transcript)
+/// had no keywords crossing the line and no word only scammers say. A misheard
+/// reminder must not make the number suspect.
+fn remembers_scam_number(j: &calls::ScamJudgement, transcript: &str) -> bool {
+    j.source != "review" || gemini_live::caller_words_back_a_scam(transcript)
+}
+
 /// Press-1 hangup: Gemini live STT (+ optional Whisper AI segment) → **summary** → notification.
 /// The notification body is the summary only (not raw fragment dump). Hangup already stopped Live.
 fn spawn_ai_talk_tg_summary(
@@ -10410,8 +10419,9 @@ fn spawn_ai_talk_tg_summary(
     let scam = record.scam.clone().filter(|j| j.stands());
     let judged = scam.is_some();
     // Remembered for the number's next calls (hidden numbers are not): the owner's
-    // own marks stand over this.
-    if let Some(j) = &scam {
+    // own marks stand over this. Not when the look alone said so.
+    let transcript_at_end = live_transcript.lock().map(|g| g.clone()).unwrap_or_default();
+    if let Some(j) = scam.as_ref().filter(|j| remembers_scam_number(j, &transcript_at_end)) {
         let sim = record.sim_country.clone().or_else(|| phone_region::last_sim(&canonical_device_serial(&serial)));
         if let Some(key) = scam_db::number_key(&caller, sim.as_deref()) {
             match scam_db::numbers().record_auto(&key, &j.kind, &j.typology) {
@@ -10419,6 +10429,8 @@ fn spawn_ai_talk_tg_summary(
                 None => info!("scam number already marked by the owner call_id={call_id}"),
             }
         }
+    } else if scam.is_some() {
+        info!("scam number not remembered call_id={call_id} — only the look said so, no keywords crossed the line and no scam-only words");
     }
     // Nothing from the AI reached the caller: Gemini's own transcript is text it
     // generated but never played (e.g. 「喂？你好。」 with 0 audio) — drop it.
@@ -13042,6 +13054,53 @@ mod summary_fallback_tests {
         // A kind the database does not know: the old wording.
         let unknown = calls::ScamJudgement { typology: String::new(), ..judged };
         assert!(summary_end_hint(&["persona_stall_spam".to_string()], Some(&unknown)).contains("像推銷／詐騙"));
+    }
+
+    /// Judged sales / scam by the look alone, with no keywords crossing the line
+    /// and no word only scammers say from the caller (a misheard bill reminder):
+    /// the number is not marked for next time. A lone weak word ("it's me",
+    /// "ich bin's") is not enough. Keywords, scam-only words or another source
+    /// still mark it.
+    #[test]
+    fn a_number_is_not_remembered_on_the_look_alone() {
+        let by_look = calls::ScamJudgement {
+            kind: "scam".into(),
+            typology: "tax_refund_scam".into(),
+            confidence: "high".into(),
+            source: "review".into(),
+            released: false,
+        };
+        let said = |line: &str| format!("接聽：喂？\n對方：{line}\n接聽：好。");
+        let reminders = [
+            "提醒你月底前記得繳水費喔。",
+            "提醒您一下，这个月的电费月底前记得交。",
+            "Hi, it's me, just a reminder your water bill is due at the end of the month.",
+            "水道料金のお支払い、月末までなので忘れないでね。",
+            "Hola, soy yo, solo para recordarte que pagues el agua antes de fin de mes.",
+            "Hallo, ich bin's, denk dran, das Wasser bis Monatsende zu bezahlen.",
+            "Oi, sou eu, só para lembrar de pagar a água até o fim do mês.",
+            "Ciao, sono io, ricordati di pagare l'acqua entro fine mese.",
+        ];
+        assert!(!gemini_live::stall_keyword_hits(reminders[2]).is_empty(), "a weak word is heard");
+        for line in reminders {
+            assert!(!remembers_scam_number(&by_look, &said(line)), "{line}");
+            for source in ["hard_words", "keywords", "stall_list"] {
+                let other = calls::ScamJudgement { source: source.into(), ..by_look.clone() };
+                assert!(remembers_scam_number(&other, &said(line)), "{source}: {line}");
+            }
+        }
+        // The caller's own keywords or scam-only words back the look.
+        for line in [
+            "To stop it, read me the verification code we just sent you.",
+            "停止のため、届いた認証コードを教えてください。",
+            "Para anularla, dígame el código de verificación que le llegó.",
+            "喂您好，這邊是大愛銀行信用卡風險管控中心。",
+        ] {
+            assert!(remembers_scam_number(&by_look, &said(line)), "{line}");
+        }
+        // Only the AI saying such words does not count.
+        let ai_only = "接聽：I can't give you a verification code.\n對方：Okay, never mind, see you.";
+        assert!(!remembers_scam_number(&by_look, ai_only));
     }
 
     #[test]
