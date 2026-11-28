@@ -28,6 +28,7 @@
 //!
 //! Times are the machine's local time (`TZ`), written `YYYY-MM-DDTHH:MM`.
 
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -2345,9 +2346,11 @@ async fn dispatch_callback(control: &ControlRegistry, cb: &PendingCallback) -> (
     };
     match placed {
         Ok(true) => {
-            // The phone the route picked (not always the one that took the call).
+            // The phone the route picked (not always the one that took the call),
+            // and the place_call id the media hello must name.
             if let Some(s) = control.callback_session_for(&cb.task_id, "").await {
                 callbacks_set_serial(&cb.task_id, &s.serial);
+                callbacks_set_call_id(&cb.task_id, &s.call_id);
             }
             info!("appointment call-back placed task_id={}", cb.task_id);
             ("dialing".to_string(), locale::fill(w.dialing, &cb.number))
@@ -2414,6 +2417,12 @@ struct PendingCallback {
     /// phone or the number, and is kept only so that its call, should the phone
     /// still place it, is known and hung up ([`cancel_errand_call`]).
     dropped: bool,
+    /// The `place_call` id ([`crate::callback::CallbackSession::call_id`]). A media
+    /// hello names it when the call is the one the agent placed.
+    call_id: String,
+    /// An incoming call took the line before this dial started. It waits and is
+    /// dialed again when the phone is idle ([`retry_held_callbacks`]).
+    incoming_hold: bool,
 }
 
 impl PendingCallback {
@@ -2432,6 +2441,8 @@ impl PendingCallback {
             kind: CallbackKind::Appointment,
             sub_id: None,
             dropped: false,
+            call_id: String::new(),
+            incoming_hold: false,
         }
     }
 
@@ -2584,6 +2595,12 @@ fn callbacks_set_serial(task_id: &str, serial: &str) {
     }
 }
 
+fn callbacks_set_call_id(task_id: &str, call_id: &str) {
+    if let Some(c) = callbacks().iter_mut().find(|c| c.task_id == task_id) {
+        c.call_id = call_id.trim().to_string();
+    }
+}
+
 fn callbacks_remove(task_id: &str) -> Option<PendingCallback> {
     let mut list = callbacks();
     let i = list.iter().position(|c| c.task_id == task_id)?;
@@ -2594,10 +2611,13 @@ fn callbacks_remove(task_id: &str) -> Option<PendingCallback> {
 /// another call-back to it is still under way.
 fn callbacks_next(key: &str) -> Option<PendingCallback> {
     let mut list = callbacks();
-    if list.iter().any(|c| c.key == key && c.stage != CallbackStage::Queued && !c.dropped) {
+    // A dial held for an incoming call still occupies this number.
+    if list.iter().any(|c| {
+        c.key == key && !c.dropped && (c.stage != CallbackStage::Queued || c.incoming_hold)
+    }) {
         return None;
     }
-    let c = list.iter_mut().find(|c| c.key == key && c.stage == CallbackStage::Queued)?;
+    let c = list.iter_mut().find(|c| c.key == key && c.stage == CallbackStage::Queued && !c.incoming_hold)?;
     c.stage = CallbackStage::Dialing;
     c.since = std::time::Instant::now();
     Some(c.clone())
@@ -2643,8 +2663,22 @@ pub struct CallbackCall {
 /// The call-back the phone `serial` reported ready whose number is this
 /// media session's `caller_id` (a hello without one: the only one ready on that
 /// phone). It is `OnCall` from now on, so its script goes to one session only.
+/// A hello that names `direction` or `call_id` gets a script only when it says
+/// the call is outbound and the id is this call-back's. An older hello, after
+/// the phone reported an incoming call, never takes one for an empty number.
 fn take_ready_callback(serial: &str, caller_id: &str) -> Option<CallbackCall> {
-    let digits_empty = !caller_id.chars().any(|c| c.is_ascii_digit());
+    if let Some(claim) = hello_claim(serial) {
+        if claim.has_fields {
+            if !claim.outbound {
+                return None;
+            }
+            return take_ready_for_call_id(serial, &claim.call_id);
+        }
+    }
+    let digits_empty = caller_has_no_digits(caller_id);
+    if digits_empty && phone_incoming_open(serial) {
+        return None;
+    }
     let mut list = callbacks();
     let ready = |c: &PendingCallback| {
         c.stage == CallbackStage::Ready && c.serial.eq_ignore_ascii_case(serial.trim()) && c.since.elapsed() < CALLBACK_READY_WINDOW
@@ -2675,10 +2709,49 @@ fn take_ready_callback(serial: &str, caller_id: &str) -> Option<CallbackCall> {
     Some(CallbackCall { task_id: c.task_id.clone(), script: c.script.clone(), lang: c.lang, errand: c.kind == CallbackKind::Errand })
 }
 
+/// The ready call-back whose `place_call` id is `call_id` on this phone.
+fn take_ready_for_call_id(serial: &str, call_id: &str) -> Option<CallbackCall> {
+    let call_id = call_id.trim();
+    if call_id.is_empty() {
+        return None;
+    }
+    let mut list = callbacks();
+    let i = list.iter().position(|c| {
+        c.stage == CallbackStage::Ready
+            && !c.dropped
+            && c.call_id == call_id
+            && c.serial.eq_ignore_ascii_case(serial.trim())
+            && c.since.elapsed() < CALLBACK_READY_WINDOW
+    })?;
+    let c = &mut list[i];
+    c.stage = CallbackStage::OnCall;
+    c.since = std::time::Instant::now();
+    Some(CallbackCall { task_id: c.task_id.clone(), script: c.script.clone(), lang: c.lang, errand: c.kind == CallbackKind::Errand })
+}
+
 /// A call-back is dialing on `serial` to this number (its `outbound_ready`
-/// may still be on its way).
+/// may still be on its way). A hello that names a direction only waits for
+/// the call-back with that `call_id`, and never after an incoming call when
+/// the number is empty.
 fn callback_dialing_on(serial: &str, caller_id: &str) -> bool {
-    let digits_empty = !caller_id.chars().any(|c| c.is_ascii_digit());
+    if let Some(claim) = hello_claim(serial) {
+        if claim.has_fields {
+            if !claim.outbound {
+                return false;
+            }
+            let call_id = claim.call_id.trim();
+            return !call_id.is_empty()
+                && callbacks().iter().any(|c| {
+                    c.stage == CallbackStage::Dialing
+                        && c.call_id == call_id
+                        && c.serial.eq_ignore_ascii_case(serial.trim())
+                });
+        }
+    }
+    let digits_empty = caller_has_no_digits(caller_id);
+    if digits_empty && phone_incoming_open(serial) {
+        return false;
+    }
     callbacks().iter().any(|c| {
         c.stage == CallbackStage::Dialing
             && c.serial.eq_ignore_ascii_case(serial.trim())
@@ -2712,7 +2785,13 @@ pub struct OutgoingCall {
 /// it takes nothing ([`callback_for_call`] hands the script over once). With no
 /// number, only the one call the phone reported ready (`Ready` / `OnCall`).
 pub fn outgoing_call_on(serial: &str, caller_id: &str) -> Option<OutgoingCall> {
-    let digits_empty = !caller_id.chars().any(|c| c.is_ascii_digit());
+    let digits_empty = caller_has_no_digits(caller_id);
+    // A ring with no number, after the phone reported an incoming call, is that
+    // incoming call. The media hello's direction is applied later, when the
+    // script is handed over.
+    if digits_empty && phone_incoming_open(serial) {
+        return None;
+    }
     let list = callbacks();
     let found: Option<&PendingCallback> = if digits_empty {
         let mut active = list.iter().filter(|c| {
@@ -2919,13 +2998,115 @@ pub struct CallbackCtx<'a> {
     pub errands: Option<&'a crate::errands::ErrandStore>,
 }
 
+/// A phone reported an incoming call (`incoming`) that has not been cancelled.
+pub(crate) fn note_phone_incoming(serial: &str) {
+    phone_marks().incoming.insert(phone_key(serial));
+}
+
+pub(crate) fn clear_phone_incoming(serial: &str) {
+    phone_marks().incoming.remove(&phone_key(serial));
+}
+
+pub(crate) fn phone_incoming_open(serial: &str) -> bool {
+    phone_marks().incoming.contains(&phone_key(serial))
+}
+
+/// The phone's own `in_call` (from `status`), or true while a held dial must
+/// not go out again during the call that interrupted it.
+pub(crate) fn note_phone_in_call(serial: &str, in_call: bool) {
+    let key = phone_key(serial);
+    let mut marks = phone_marks();
+    if in_call {
+        marks.in_call.insert(key);
+    } else {
+        marks.in_call.remove(&key);
+    }
+}
+
+fn phone_in_call(serial: &str) -> bool {
+    phone_marks().in_call.contains(&phone_key(serial))
+}
+
+/// What a media `hello` says about whose call this is. `has_fields` is set when
+/// `direction` or `call_id` is present, so an older app (neither key) is told
+/// apart from one that always sends both.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct HelloClaim {
+    pub has_fields: bool,
+    /// `direction` is outbound and `call_id` is non-empty.
+    pub outbound: bool,
+    pub call_id: String,
+}
+
+pub(crate) fn hello_claim_of(parsed: &Value) -> HelloClaim {
+    let has_fields = parsed.get("direction").is_some() || parsed.get("call_id").is_some();
+    let direction = parsed.get("direction").and_then(Value::as_str).unwrap_or("").trim();
+    let call_id = parsed.get("call_id").and_then(Value::as_str).unwrap_or("").trim().to_string();
+    let outbound = direction.eq_ignore_ascii_case("outbound") && !call_id.is_empty();
+    HelloClaim { has_fields, outbound, call_id }
+}
+
+/// Remember the media hello for the session that starts from it.
+pub(crate) fn note_hello_gate(serial: &str, parsed: &Value) {
+    phone_marks().hello.insert(phone_key(serial), hello_claim_of(parsed));
+}
+
+pub(crate) fn hello_claim(serial: &str) -> Option<HelloClaim> {
+    phone_marks().hello.get(&phone_key(serial)).cloned()
+}
+
+pub(crate) fn caller_has_no_digits(caller_id: &str) -> bool {
+    !caller_id.chars().any(|c| c.is_ascii_digit())
+}
+
+/// A call-back on `serial` is still being dialed or is up, and its `place_call`
+/// id is `call_id`. A failed or finished one does not count.
+pub(crate) fn callback_matches_call(serial: &str, call_id: &str) -> bool {
+    let call_id = call_id.trim();
+    if call_id.is_empty() {
+        return false;
+    }
+    callbacks().iter().any(|c| {
+        !c.dropped
+            && c.call_id == call_id
+            && c.serial.eq_ignore_ascii_case(serial.trim())
+            && matches!(c.stage, CallbackStage::Dialing | CallbackStage::Ready | CallbackStage::OnCall)
+    })
+}
+
+fn phone_key(serial: &str) -> String {
+    serial.trim().to_ascii_lowercase()
+}
+
+struct PhoneMarks {
+    incoming: HashSet<String>,
+    in_call: HashSet<String>,
+    hello: HashMap<String, HelloClaim>,
+}
+
+fn phone_marks() -> std::sync::MutexGuard<'static, PhoneMarks> {
+    static MARKS: std::sync::OnceLock<std::sync::Mutex<PhoneMarks>> = std::sync::OnceLock::new();
+    MARKS
+        .get_or_init(|| {
+            std::sync::Mutex::new(PhoneMarks {
+                incoming: HashSet::new(),
+                in_call: HashSet::new(),
+                hello: HashMap::new(),
+            })
+        })
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
 /// A phone's report on a call (`outbound_ready`, `place_call_failed`,
 /// `call_end` on its control socket, from `serial`) that is about an
 /// appointment's call-back: `outbound_ready` of the call this phone was asked
 /// to place, to that number, readies its script; a failed dial, or an end
 /// before its call started, ends it as `failed`; the end of its call waits for
-/// the call's summary ([`callback_call_over`]). Reports on anything else are
-/// left alone.
+/// the call's summary ([`callback_call_over`]). An incoming call while the
+/// dial has not started puts an appointment's call-back back in the queue
+/// ([`retry_held_callbacks`]) and an errand on the same wait as a busy phone.
+/// Reports on anything else are left alone.
 pub async fn on_callback_event(ctx: &CallbackCtx<'_>, serial: &str, msg: &Value) {
     let kind = msg.get("type").and_then(Value::as_str).unwrap_or("");
     let call_id = msg.get("call_id").and_then(Value::as_str).unwrap_or("").trim();
@@ -2947,6 +3128,7 @@ pub async fn on_callback_event(ctx: &CallbackCtx<'_>, serial: &str, msg: &Value)
             callbacks_set_serial(&task_id, &session.serial);
             let number = msg.get("number").and_then(Value::as_str).unwrap_or("");
             if callback_ready(&task_id, serial, number) {
+                clear_incoming_hold(&task_id);
                 info!("appointment call-back task_id={task_id} serial={serial}: dialing, the AI waits for the callee");
                 if !errand {
                     set_call_code(ctx.tasks, &task_id, "connected").await;
@@ -2955,11 +3137,22 @@ pub async fn on_callback_event(ctx: &CallbackCtx<'_>, serial: &str, msg: &Value)
                 warn!("appointment call-back task_id={task_id}: outbound_ready from serial={serial} does not match the call asked for — not used");
             }
         }
-        // The phone was on a call: an errand waits for it again.
-        "place_call_failed" if errand && msg.get("reason").and_then(Value::as_str) == Some("busy") => {
-            finish_callback(ctx, &task_id, "phone_busy").await
+        "place_call_ack" => clear_incoming_hold(&task_id),
+        // The phone was on a call: an errand waits for it again. An incoming
+        // call before the dial started is the same wait, not a failed errand.
+        "place_call_failed" => {
+            let reason = msg.get("reason").and_then(Value::as_str).unwrap_or("");
+            if errand && (reason == "busy" || reason == "incoming_call") {
+                finish_callback(ctx, &task_id, "phone_busy").await;
+            } else if !errand && (reason == "incoming_call" || (reason == "busy" && callback_is_held(&task_id))) {
+                hold_callback_for_incoming(&task_id);
+                // The failure can arrive before `incoming`. Do not dial again
+                // until the phone says the line is idle.
+                note_phone_in_call(serial, true);
+            } else {
+                finish_callback(ctx, &task_id, "failed").await;
+            }
         }
-        "place_call_failed" => finish_callback(ctx, &task_id, "failed").await,
         "call_end" => match stage {
             CallbackStage::OnCall if callbacks_is_dropped(&task_id) => finish_callback(ctx, &task_id, "failed").await,
             CallbackStage::OnCall => callbacks_set_stage(&task_id, CallbackStage::Ended),
@@ -2979,7 +3172,9 @@ pub async fn callback_call_over(ctx: &CallbackCtx<'_>, task_id: &str, answered: 
 }
 
 /// Call-backs the phone never reported on in time (see the limits above).
+/// A dial held for an incoming call is tried again once the phone is idle.
 pub async fn sweep_callbacks(ctx: &CallbackCtx<'_>) {
+    retry_held_callbacks(ctx).await;
     for (task_id, code) in callbacks_overdue() {
         warn!("appointment call-back task_id={task_id}: no report in time — {code}");
         finish_callback(ctx, &task_id, code).await;
@@ -3005,6 +3200,90 @@ fn callbacks_overdue() -> Vec<(String, &'static str)> {
             Some((c.task_id.clone(), code))
         })
         .collect()
+}
+
+fn callback_is_held(task_id: &str) -> bool {
+    callbacks().iter().any(|c| c.task_id == task_id && c.incoming_hold)
+}
+
+fn clear_incoming_hold(task_id: &str) {
+    if let Some(c) = callbacks().iter_mut().find(|c| c.task_id == task_id) {
+        c.incoming_hold = false;
+    }
+}
+
+/// Put an appointment's dial back in the queue. The ten minutes start the
+/// first time it is held and are not reset when a too-early busy holds it again.
+fn hold_callback_for_incoming(task_id: &str) {
+    let mut list = callbacks();
+    let Some(c) = list.iter_mut().find(|c| c.task_id == task_id) else {
+        return;
+    };
+    if !c.incoming_hold {
+        c.since = std::time::Instant::now();
+    }
+    c.incoming_hold = true;
+    c.stage = CallbackStage::Queued;
+}
+
+/// Dial appointment call-backs that an incoming call put back in the queue,
+/// once that phone is idle. One still waiting after [`crate::errands::QUEUE_LIMIT`]
+/// is `failed`. A dial that does not go out stays queued.
+pub async fn retry_held_callbacks(ctx: &CallbackCtx<'_>) {
+    let mut expired = Vec::new();
+    let mut due = Vec::new();
+    {
+        let list = callbacks();
+        for c in list.iter() {
+            if c.kind != CallbackKind::Appointment || !c.incoming_hold || c.stage != CallbackStage::Queued {
+                continue;
+            }
+            if c.since.elapsed() >= crate::errands::QUEUE_LIMIT {
+                expired.push(c.task_id.clone());
+            } else if !phone_in_call(&c.serial) {
+                due.push(c.task_id.clone());
+            }
+        }
+    }
+    for id in expired {
+        warn!("appointment call-back task_id={id}: still waiting after an incoming call — failed");
+        finish_callback(ctx, &id, "failed").await;
+    }
+    for id in due {
+        let picked = {
+            let mut list = callbacks();
+            let pos = list.iter().position(|c| {
+                c.task_id == id && c.incoming_hold && c.stage == CallbackStage::Queued
+            });
+            let Some(pos) = pos else {
+                continue;
+            };
+            let serial = list[pos].serial.clone();
+            let key = list[pos].key.clone();
+            let blocked = phone_in_call(&serial)
+                || list.iter().any(|o| {
+                    o.task_id != id && o.key == key && !o.dropped && o.stage != CallbackStage::Queued
+                });
+            if blocked {
+                None
+            } else {
+                // Leave `since` alone so the ten minutes keep running.
+                list[pos].stage = CallbackStage::Dialing;
+                Some(list[pos].clone())
+            }
+        };
+        let Some(cb) = picked else {
+            continue;
+        };
+        let (code, _) = dispatch_callback(ctx.control, &cb).await;
+        if code != "dialing" {
+            if let Some(c) = callbacks().iter_mut().find(|c| {
+                c.task_id == id && c.incoming_hold && c.stage == CallbackStage::Dialing
+            }) {
+                c.stage = CallbackStage::Queued;
+            }
+        }
+    }
 }
 
 /// A call-back is over (`code`, [`Appointment::call`]): kept on its task,
@@ -4607,6 +4886,160 @@ mod tests {
         assert!(callback_ready("t-cb-a2", "phone-a2", ""));
         assert_eq!(take_ready_callback("phone-a2", "").map(|c| c.task_id).as_deref(), Some("t-cb-a2"));
         callbacks_remove("t-cb-a2");
+    }
+
+    fn ready_on(task_id: &str, number: &str, serial: &str, call_id: &str, script: &str) {
+        let mut cb = PendingCallback::new(task_id, number, serial, script.into());
+        cb.call_id = call_id.into();
+        assert!(callbacks_add(cb), "{task_id}");
+        assert!(callback_ready(task_id, serial, number), "{task_id}");
+    }
+
+    #[tokio::test]
+    async fn a_hello_with_outbound_direction_and_the_same_call_id_gets_the_script() {
+        let serial = "phone-h6-out";
+        ready_on("t-h6-out", "0912000601", serial, "cid-h6-out", "SCRIPT-OUT");
+        note_hello_gate(serial, &json!({"type": "hello", "direction": "outbound", "call_id": "cid-h6-out"}));
+        let got = callback_for_call(serial, "").await.expect("the dial this hello names");
+        assert_eq!((got.task_id.as_str(), got.script.as_str()), ("t-h6-out", "SCRIPT-OUT"));
+        callbacks_remove("t-h6-out");
+    }
+
+    #[tokio::test]
+    async fn a_hello_that_says_incoming_does_not_get_the_ready_script() {
+        let serial = "phone-h6-in";
+        ready_on("t-h6-in", "0912000602", serial, "cid-h6-in", "SCRIPT-IN");
+        note_hello_gate(serial, &json!({"type": "hello", "direction": "incoming", "call_id": ""}));
+        assert!(callback_for_call(serial, "").await.is_none());
+        assert!(callback_for_call(serial, "0912000602").await.is_none());
+        assert_eq!(callbacks_stage("t-h6-in"), Some(CallbackStage::Ready));
+        callbacks_remove("t-h6-in");
+    }
+
+    #[tokio::test]
+    async fn a_hello_with_the_wrong_call_id_does_not_get_the_script() {
+        let serial = "phone-h6-wrong";
+        ready_on("t-h6-wrong", "0912000603", serial, "cid-h6-right", "SCRIPT-RIGHT");
+        note_hello_gate(serial, &json!({"type": "hello", "direction": "outbound", "call_id": "cid-h6-other"}));
+        assert!(callback_for_call(serial, "").await.is_none());
+        assert!(callback_for_call(serial, "0912000603").await.is_none());
+        assert_eq!(callbacks_stage("t-h6-wrong"), Some(CallbackStage::Ready));
+        callbacks_remove("t-h6-wrong");
+    }
+
+    #[test]
+    fn an_older_app_with_an_open_incoming_call_does_not_take_the_ready_script_for_an_empty_number() {
+        let serial = "phone-h6-old-in";
+        ready_on("t-h6-old-in", "0912000604", serial, "cid-h6-old-in", "SCRIPT-OLD");
+        note_phone_incoming(serial);
+        note_hello_gate(serial, &json!({"type": "hello"}));
+        assert!(take_ready_callback(serial, "").is_none());
+        assert!(outgoing_call_on(serial, "").is_none());
+        assert_eq!(callbacks_stage("t-h6-old-in"), Some(CallbackStage::Ready));
+        // A number that is this dial is still that dial. The empty-number rule is the one that changed.
+        assert!(outgoing_call_on(serial, "0912000604").is_some());
+        clear_phone_incoming(serial);
+        callbacks_remove("t-h6-old-in");
+    }
+
+    #[test]
+    fn an_older_app_without_an_incoming_call_still_gives_the_only_ready_script_to_an_empty_number() {
+        let serial = "phone-h6-old-ok";
+        clear_phone_incoming(serial);
+        ready_on("t-h6-old-ok", "0912000605", serial, "cid-h6-old-ok", "SCRIPT-OLD-OK");
+        note_hello_gate(serial, &json!({"type": "hello", "caller_id": ""}));
+        assert_eq!(take_ready_callback(serial, "").map(|c| c.task_id).as_deref(), Some("t-h6-old-ok"));
+        callbacks_remove("t-h6-old-ok");
+    }
+
+    #[tokio::test]
+    async fn an_incoming_call_holds_an_appointment_callback_for_another_dial() {
+        use crate::callback::test_socket::{next_json, phone_socket};
+        use std::time::Duration;
+        let (root, store, _calls) = stores();
+        let mut settings = crate::config::Settings::from_env();
+        settings.call_notify = false;
+        let http = Client::new();
+        let control = ControlRegistry::default();
+        let ctx = CallbackCtx {
+            http: &http,
+            settings: &settings,
+            tasks: store.as_ref(),
+            control: &control,
+            errands: None,
+        };
+        let serial = "phone-h6-hold";
+        let number = "0912000606";
+        let a = appt(&later(2, 15), &later(2, 16), "看房");
+        let task = store.create(TaskRecord { id: String::new(), ..task_for(number, &a) }).await.unwrap();
+        let (sink, mut phone) = phone_socket().await;
+        control.register_client(serial.into(), sink).await;
+        assert!(callbacks_add(PendingCallback::new(&task.id, number, serial, "SCRIPT-HOLD".into())));
+        let pending = {
+            let list = callbacks();
+            list.iter().find(|c| c.task_id == task.id).unwrap().clone()
+        };
+        let (code, _) = dispatch_callback(&control, &pending).await;
+        assert_eq!(code, "dialing");
+        let first = next_json(&mut phone, Duration::from_secs(2)).await.expect("place_call");
+        let call_id = first["call_id"].as_str().unwrap().to_string();
+        assert_eq!(callbacks().iter().find(|c| c.task_id == task.id).unwrap().call_id, call_id);
+        let failed = json!({
+            "type": "place_call_failed",
+            "reason": "incoming_call",
+            "call_id": call_id,
+            "task_id": task.id,
+            "number": number,
+        });
+        control.handle_phone_event(&failed, store.as_ref()).await;
+        on_callback_event(&ctx, serial, &failed).await;
+        assert_eq!(callbacks_stage(&task.id), Some(CallbackStage::Queued));
+        assert!(callback_is_held(&task.id));
+        let kept = store.get(&task.id).await.unwrap();
+        assert_ne!(kept.appointment.unwrap().call, "failed");
+        assert!(!kept.events.iter().any(|e| e.contains("place_call_failed")));
+        // The line is still busy: not dialed again.
+        retry_held_callbacks(&ctx).await;
+        assert_eq!(callbacks_stage(&task.id), Some(CallbackStage::Queued));
+        assert!(next_json(&mut phone, Duration::from_millis(200)).await.is_none());
+        // Idle: dialed again, and a busy answer while it is held does not fail it.
+        note_phone_in_call(serial, false);
+        clear_phone_incoming(serial);
+        retry_held_callbacks(&ctx).await;
+        assert_eq!(callbacks_stage(&task.id), Some(CallbackStage::Dialing));
+        assert!(callback_is_held(&task.id));
+        let second = next_json(&mut phone, Duration::from_secs(2)).await.expect("redial");
+        assert_eq!(second["type"].as_str(), Some("place_call"));
+        assert_ne!(second["call_id"].as_str(), Some(call_id.as_str()));
+        let busy = json!({
+            "type": "place_call_failed",
+            "reason": "busy",
+            "call_id": second["call_id"],
+            "task_id": task.id,
+            "number": number,
+        });
+        control.handle_phone_event(&busy, store.as_ref()).await;
+        on_callback_event(&ctx, serial, &busy).await;
+        assert_eq!(callbacks_stage(&task.id), Some(CallbackStage::Queued));
+        assert!(callback_is_held(&task.id));
+        assert_ne!(store.get(&task.id).await.unwrap().appointment.unwrap().call, "failed");
+        // No phone: stays queued, not failed.
+        control.unregister_client(serial).await;
+        note_phone_in_call(serial, false);
+        retry_held_callbacks(&ctx).await;
+        assert_eq!(callbacks_stage(&task.id), Some(CallbackStage::Queued));
+        assert_ne!(store.get(&task.id).await.unwrap().appointment.unwrap().call, "failed");
+        // Ten minutes with no idle dial: failed.
+        let back = std::time::Instant::now()
+            .checked_sub(Duration::from_secs(11 * 60))
+            .expect("monotonic clock");
+        callbacks().iter_mut().find(|c| c.task_id == task.id).unwrap().since = back;
+        retry_held_callbacks(&ctx).await;
+        assert!(callbacks_stage(&task.id).is_none());
+        assert_eq!(store.get(&task.id).await.unwrap().appointment.unwrap().call, "failed");
+        clear_phone_incoming(serial);
+        note_phone_in_call(serial, false);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

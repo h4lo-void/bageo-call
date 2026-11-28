@@ -820,6 +820,33 @@ async fn hello_is_outbound_with(
     caller_id: &str,
     parsed: &Value,
 ) -> bool {
+    let claim = appointments::hello_claim_of(parsed);
+    // A hello that names direction or call_id is one call: the script and the
+    // outbound route apply only when it says this dial, and the id matches.
+    if claim.has_fields {
+        if !claim.outbound {
+            return false;
+        }
+        if let Some(session) = control.callback_session_for("", &claim.call_id).await {
+            let same_phone = session.serial.eq_ignore_ascii_case(serial.trim())
+                || canonical_device_serial(&session.serial)
+                    .eq_ignore_ascii_case(&canonical_device_serial(serial));
+            if same_phone
+                && !matches!(
+                    session.phase,
+                    callback::CallbackPhase::Failed | callback::CallbackPhase::Done
+                )
+            {
+                return true;
+            }
+        }
+        return appointments::callback_matches_call(serial, &claim.call_id);
+    }
+    // An older app omits those fields. An empty number after it reported an
+    // incoming call (and has not cancelled it) is that incoming call.
+    if appointments::caller_has_no_digits(caller_id) && appointments::phone_incoming_open(serial) {
+        return false;
+    }
     let task_id = parsed
         .get("task_id")
         .and_then(Value::as_str)
@@ -2879,6 +2906,13 @@ async fn handle_control_idle_ws(
                             info!("Whitelist urgent call: phone idle serial={serial} — owner-on-call mark cleared");
                         }
                         state.phones.on_status(&serial, &parsed);
+                        if let Some(in_call) = parsed.get("in_call").and_then(|v| v.as_bool()) {
+                            appointments::note_phone_in_call(&serial, in_call);
+                            if !in_call {
+                                appointments::clear_phone_incoming(&serial);
+                                appointment_retry_held(&state).await;
+                            }
+                        }
                         sync_normal_mode(&state, &serial).await;
                         errands::note_hello_sims(&canonical_device_serial(&serial), &parsed);
                     }
@@ -2911,6 +2945,8 @@ async fn handle_control_idle_ws(
                             info!("incoming serial={serial} ignored, owner is on the call (whitelist urgent call) — no AI, no answer plan");
                             continue;
                         }
+                        appointments::note_phone_incoming(&serial);
+                        appointments::note_phone_in_call(&serial, true);
                         // A new call: what the last one failed with is not this one's. Cleared
                         // before this call's ring prewarm starts, so a failure the prewarm
                         // records while the phone rings is still there at the hangup.
@@ -3046,10 +3082,13 @@ async fn handle_control_idle_ws(
                         );
                     }
                     "incoming_cancel" => {
+                        appointments::clear_phone_incoming(&serial);
+                        appointments::note_phone_in_call(&serial, false);
                         state
                             .ring_prewarm
                             .cancel(&serial, None, "call ended before pickup");
                         state.reject_pending.take(&serial);
+                        appointment_retry_held(&state).await;
                     }
                     other => {
                         info!("control_idle text serial={serial} type={other}");
@@ -3494,7 +3533,9 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                 );
                                 // Active outbound calls (appointment callbacks, errands, to-do
                                 // callbacks) must be recognized BEFORE incoming reject-list /
-                                // ring-prewarm logic runs.
+                                // ring-prewarm logic runs. The hello's direction is what the
+                                // script hand-off reads.
+                                appointments::note_hello_gate(&serial, &parsed);
                                 let is_outbound =
                                     hello_is_outbound(&state, &serial, &caller_id, &parsed).await;
                                 // Blocked numbers: this number, or the phone's ringing call was on
@@ -7151,7 +7192,12 @@ async fn spawn_gemini_session_tasks(
     // A to-do's phone call-back (a voicemail answered by phone) the same way.
     let callback = match appointments::callback_for_call(&serial, &caller_id).await {
         Some(cb) => Some(cb),
-        None => fulfill::voicemail_callback_for_call(state.control.as_ref(), &serial, &caller_id).await,
+        None => match voicemail_script_caller(state.control.as_ref(), &serial, &caller_id).await {
+            Some(cid) => {
+                fulfill::voicemail_callback_for_call(state.control.as_ref(), &serial, &cid).await
+            }
+            None => None,
+        },
     };
     let mut errand = None;
     if let Some(cb) = &callback {
@@ -10952,6 +10998,56 @@ fn spawn_ai_talk_tg_summary(
     });
 }
 
+/// The number a to-do call-back may be matched on. A hello that names a
+/// direction only when it is this outbound dial; an older app's empty number
+/// after an incoming call is not one.
+async fn voicemail_script_caller(
+    control: &callback::ControlRegistry,
+    serial: &str,
+    caller_id: &str,
+) -> Option<String> {
+    if let Some(claim) = appointments::hello_claim(serial) {
+        if claim.has_fields {
+            if !claim.outbound {
+                return None;
+            }
+            let session = control.callback_session_for("", &claim.call_id).await?;
+            let same_phone = session.serial.eq_ignore_ascii_case(serial.trim())
+                || canonical_device_serial(&session.serial)
+                    .eq_ignore_ascii_case(&canonical_device_serial(serial));
+            if !same_phone
+                || matches!(
+                    session.phase,
+                    callback::CallbackPhase::Failed | callback::CallbackPhase::Done
+                )
+            {
+                return None;
+            }
+            let number = session.number.trim();
+            if number.is_empty() {
+                return None;
+            }
+            return Some(number.to_string());
+        }
+    }
+    if appointments::caller_has_no_digits(caller_id) && appointments::phone_incoming_open(serial) {
+        return None;
+    }
+    Some(caller_id.to_string())
+}
+
+async fn appointment_retry_held(state: &AppState) {
+    let eff = state.settings_store.snapshot().effective(&state.settings);
+    let ctx = appointments::CallbackCtx {
+        http: &state.http,
+        settings: &eff,
+        tasks: state.task_store.as_ref(),
+        control: state.control.as_ref(),
+        errands: Some(state.errands.as_ref()),
+    };
+    appointments::retry_held_callbacks(&ctx).await;
+}
+
 /// Appointment call-backs: a phone's report on a call it was asked to place
 /// (`ev`, from `serial`), or None for the periodic check of ones never
 /// reported on ([`appointments::on_callback_event`], [`appointments::sweep_callbacks`]).
@@ -13958,6 +14054,177 @@ mod audit_a_tests {
         );
         let _ = std::fs::remove_file(&errands_path);
         let _ = std::fs::remove_file(&sims_path);
+    }
+
+    fn h6_errands(name: &str) -> (std::path::PathBuf, std::path::PathBuf, std::sync::Arc<errands::ErrandStore>) {
+        let errands_path = unique_tmp(name);
+        let sims_path = unique_tmp(&format!("{name}-sims"));
+        let sims = errands::SimBook::open(sims_path.clone());
+        let store = errands::ErrandStore::open(errands_path.clone(), sims);
+        (errands_path, sims_path, store)
+    }
+
+    #[tokio::test]
+    async fn a_hello_with_outbound_direction_and_a_matching_call_id_is_outbound() {
+        let control = callback::ControlRegistry::new();
+        let (sink, _sock) = callback::test_socket::phone_socket().await;
+        let serial = "phone-h6-lib-out";
+        control.register_client(serial.into(), sink).await;
+        let (errands_path, sims_path, errands) = h6_errands("h6-out");
+        assert!(control
+            .try_dispatch_phone_callback("task-h6-lib-out", "0912000701", serial, &["0912000701".to_string()])
+            .await
+            .unwrap());
+        let call_id = control.callback_session_for("task-h6-lib-out", "").await.unwrap().call_id;
+        assert!(hello_is_outbound_with(
+            &control,
+            &errands,
+            serial,
+            "",
+            &json!({"type": "hello", "direction": "outbound", "call_id": call_id}),
+        )
+        .await);
+        let _ = std::fs::remove_file(&errands_path);
+        let _ = std::fs::remove_file(&sims_path);
+    }
+
+    #[tokio::test]
+    async fn a_hello_that_says_incoming_is_not_outbound() {
+        let control = callback::ControlRegistry::new();
+        let (sink, _sock) = callback::test_socket::phone_socket().await;
+        let serial = "phone-h6-lib-in";
+        control.register_client(serial.into(), sink).await;
+        let (errands_path, sims_path, errands) = h6_errands("h6-in");
+        assert!(control
+            .try_dispatch_phone_callback("task-h6-lib-in", "0912000702", serial, &["0912000702".to_string()])
+            .await
+            .unwrap());
+        let call_id = control.callback_session_for("task-h6-lib-in", "").await.unwrap().call_id;
+        assert!(!hello_is_outbound_with(
+            &control,
+            &errands,
+            serial,
+            "",
+            &json!({"type": "hello", "direction": "incoming", "call_id": call_id}),
+        )
+        .await);
+        let _ = std::fs::remove_file(&errands_path);
+        let _ = std::fs::remove_file(&sims_path);
+    }
+
+    #[tokio::test]
+    async fn a_hello_with_the_wrong_call_id_is_not_outbound() {
+        let control = callback::ControlRegistry::new();
+        let (sink, _sock) = callback::test_socket::phone_socket().await;
+        let serial = "phone-h6-lib-wrong";
+        control.register_client(serial.into(), sink).await;
+        let (errands_path, sims_path, errands) = h6_errands("h6-wrong");
+        assert!(control
+            .try_dispatch_phone_callback("task-h6-lib-wrong", "0912000703", serial, &["0912000703".to_string()])
+            .await
+            .unwrap());
+        assert!(!hello_is_outbound_with(
+            &control,
+            &errands,
+            serial,
+            "0912000703",
+            &json!({"type": "hello", "direction": "outbound", "call_id": "cid-h6-not-this"}),
+        )
+        .await);
+        let _ = std::fs::remove_file(&errands_path);
+        let _ = std::fs::remove_file(&sims_path);
+    }
+
+    #[tokio::test]
+    async fn an_older_hello_with_a_task_id_is_still_outbound() {
+        let control = callback::ControlRegistry::new();
+        let (sink, _sock) = callback::test_socket::phone_socket().await;
+        let serial = "phone-h6-lib-old-task";
+        control.register_client(serial.into(), sink).await;
+        let (errands_path, sims_path, errands) = h6_errands("h6-old-task");
+        assert!(control
+            .try_dispatch_phone_callback("task-h6-lib-old", "0912000704", serial, &["0912000704".to_string()])
+            .await
+            .unwrap());
+        assert!(hello_is_outbound_with(
+            &control,
+            &errands,
+            serial,
+            "0912000704",
+            &json!({"type": "hello", "task_id": "task-h6-lib-old"}),
+        )
+        .await);
+        let _ = std::fs::remove_file(&errands_path);
+        let _ = std::fs::remove_file(&sims_path);
+    }
+
+    #[tokio::test]
+    async fn an_older_app_with_an_open_incoming_call_does_not_treat_an_empty_number_as_outbound() {
+        let control = callback::ControlRegistry::new();
+        let (sink, _sock) = callback::test_socket::phone_socket().await;
+        let serial = "phone-h6-lib-empty-in";
+        control.register_client(serial.into(), sink).await;
+        let (errands_path, sims_path, errands) = h6_errands("h6-empty-in");
+        let code = appointments::place_errand_call(&control, "errand-h6-empty-in", "0912000705", serial, None, "S".into()).await;
+        assert_eq!(code, "dialing");
+        appointments::note_phone_incoming(serial);
+        assert!(!hello_is_outbound_with(&control, &errands, serial, "", &json!({"type": "hello"})).await);
+        appointments::clear_phone_incoming(serial);
+        let session = control.callback_session_for("errand-h6-empty-in", "").await.unwrap();
+        let settings = crate::config::Settings::from_env();
+        let http = reqwest::Client::new();
+        let tasks_path = unique_tmp("h6-empty-in-tasks");
+        let tasks = crate::tasks::TaskStore::new(tasks_path.clone());
+        let ctx = appointments::CallbackCtx {
+            http: &http,
+            settings: &settings,
+            tasks: &tasks,
+            control: &control,
+            errands: Some(&errands),
+        };
+        appointments::on_callback_event(
+            &ctx,
+            serial,
+            &json!({"type": "place_call_failed", "reason": "no_line", "call_id": session.call_id, "task_id": "errand-h6-empty-in"}),
+        )
+        .await;
+        let _ = std::fs::remove_file(&errands_path);
+        let _ = std::fs::remove_file(&sims_path);
+        let _ = std::fs::remove_dir_all(&tasks_path);
+    }
+
+    #[tokio::test]
+    async fn an_older_app_without_an_incoming_call_still_treats_an_empty_number_as_outbound() {
+        let control = callback::ControlRegistry::new();
+        let (sink, _sock) = callback::test_socket::phone_socket().await;
+        let serial = "phone-h6-lib-empty-ok";
+        control.register_client(serial.into(), sink).await;
+        let (errands_path, sims_path, errands) = h6_errands("h6-empty-ok");
+        appointments::clear_phone_incoming(serial);
+        let code = appointments::place_errand_call(&control, "errand-h6-empty-ok", "0912000706", serial, None, "S".into()).await;
+        assert_eq!(code, "dialing");
+        assert!(hello_is_outbound_with(&control, &errands, serial, "", &json!({"type": "hello"})).await);
+        let session = control.callback_session_for("errand-h6-empty-ok", "").await.unwrap();
+        let settings = crate::config::Settings::from_env();
+        let http = reqwest::Client::new();
+        let tasks_path = unique_tmp("h6-empty-ok-tasks");
+        let tasks = crate::tasks::TaskStore::new(tasks_path.clone());
+        let ctx = appointments::CallbackCtx {
+            http: &http,
+            settings: &settings,
+            tasks: &tasks,
+            control: &control,
+            errands: Some(&errands),
+        };
+        appointments::on_callback_event(
+            &ctx,
+            serial,
+            &json!({"type": "place_call_failed", "reason": "no_line", "call_id": session.call_id, "task_id": "errand-h6-empty-ok"}),
+        )
+        .await;
+        let _ = std::fs::remove_file(&errands_path);
+        let _ = std::fs::remove_file(&sims_path);
+        let _ = std::fs::remove_dir_all(&tasks_path);
     }
 
     #[tokio::test]
