@@ -353,7 +353,7 @@ fn discord_bot_prepared(api: &str, ch: &Channel, msg: &Message) -> Result<Prepar
     if !channel.chars().all(|c| c.is_ascii_digit()) {
         return Err(bad_value("target", "a Discord channel or user ID is made of digits"));
     }
-    let mut payload = json!({ "content": clip(&msg.body, 1900), "allowed_mentions": { "parse": [] } });
+    let mut payload = json!({ "content": clip(&md_safe(&msg.body), 1900), "allowed_mentions": { "parse": [] } });
     let buttons: Vec<Value> = msg
         .actions
         .iter()
@@ -381,7 +381,13 @@ fn slack_bot_prepared(ch: &Channel, msg: &Message) -> Result<Prepared> {
     let token = need("token", "bot token", &ch.token)?;
     let channel = need("target", "channel ID", &ch.target)?;
     let text = clip(&msg.body, 3000);
-    let mut payload = json!({ "channel": channel, "text": text, "unfurl_links": false, "unfurl_media": false });
+    let mut payload = json!({
+        "channel": channel,
+        "text": slack_safe(&text),
+        "mrkdwn": false,
+        "unfurl_links": false,
+        "unfurl_media": false,
+    });
     let buttons: Vec<Value> = msg
         .actions
         .iter()
@@ -532,6 +538,45 @@ fn phone_number(s: &str) -> String {
     }
 }
 
+/// Text that came from outside (a text message, what a caller said), made safe for
+/// chat services that read Markdown: the characters that make links, bold, quotes
+/// or code get a backslash, and "@" is cut from the name after it so nobody is
+/// pinged. Web addresses stay as they are, up to a bracket, parenthesis or backtick.
+fn md_safe(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + s.len() / 8);
+    let mut rest = s;
+    while let Some(c) = rest.chars().next() {
+        if rest.starts_with("http://") || rest.starts_with("https://") {
+            let end = rest.find(|c: char| c.is_whitespace() || "[]()<>`\\".contains(c)).unwrap_or(rest.len());
+            out.push_str(&rest[..end]);
+            rest = &rest[end..];
+            continue;
+        }
+        match c {
+            '\\' | '*' | '_' | '~' | '`' | '[' | ']' | '(' | ')' | '<' | '>' => {
+                out.push('\\');
+                out.push(c);
+            }
+            '@' => out.push_str("@\u{200b}"),
+            _ => out.push(c),
+        }
+        rest = &rest[c.len_utf8()..];
+    }
+    out
+}
+
+/// Text for Slack's message format: `&`, `<` and `>` as Slack writes them, so
+/// `<!channel>`, `<@user>` and `<link|label>` stay plain words.
+fn slack_safe(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+/// Text for Google Chat, which has no way to escape its `<link|label>` and
+/// `<users/all>`: the angle brackets become look-alikes, and "@" is cut like in [`md_safe`].
+fn chat_links_safe(s: &str) -> String {
+    s.replace('<', "\u{2039}").replace('>', "\u{203a}").replace('@', "@\u{200b}")
+}
+
 /// A Teams message holding one Adaptive Card. Adaptive Cards ignore single line
 /// breaks inside a TextBlock, so every line gets its own block; the first line
 /// is the headline and a blank line becomes extra space above the next block.
@@ -543,7 +588,7 @@ fn teams_card(body: &str, actions: &[NotifyAction]) -> Value {
             gap = true;
             continue;
         }
-        let mut block = json!({ "type": "TextBlock", "text": line, "wrap": true });
+        let mut block = json!({ "type": "TextBlock", "text": md_safe(line), "wrap": true });
         if blocks.is_empty() {
             block["weight"] = json!("Bolder");
             block["size"] = json!("Medium");
@@ -612,10 +657,13 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
         "discord" if base.is_empty() && !ch.token.trim().is_empty() => discord_bot_prepared(DISCORD_API, ch, msg)?,
         "discord" => post_json(
             need_http("url", "webhook URL", &base)?,
-            json!({ "content": clip(body, 1900) }),
+            json!({ "content": clip(&md_safe(body), 1900), "allowed_mentions": { "parse": [] } }),
         ),
         "slack" if base.is_empty() && !ch.token.trim().is_empty() => slack_bot_prepared(ch, msg)?,
-        "slack" => post_json(need_http("url", "webhook URL", &base)?, json!({ "text": clip(body, 3500) })),
+        "slack" => post_json(
+            need_http("url", "webhook URL", &base)?,
+            json!({ "text": slack_safe(&clip(body, 3500)), "mrkdwn": false }),
+        ),
         // Microsoft Learn, "Create incoming webhooks with Workflows for Microsoft
         // Teams": the "Post to a channel when a webhook request is received"
         // workflow takes a message whose attachment is an Adaptive Card. The old
@@ -624,10 +672,10 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
         // https://developers.google.com/workspace/chat/quickstart/webhooks — the
         // space's webhook URL carries its key and token; text is capped at 4,096
         // characters.
-        "googlechat" => post_json(need_http("url", "webhook URL", &base)?, json!({ "text": clip(body, 4000) })),
+        "googlechat" => post_json(need_http("url", "webhook URL", &base)?, json!({ "text": clip(&chat_links_safe(body), 4000) })),
         // https://docs.rocket.chat (Integrations → Incoming webhooks): POST
         // {"text": …} to …/hooks/<id>/<token>.
-        "rocketchat" => post_json(need_http("url", "webhook URL", &base)?, json!({ "text": clip(body, 3500) })),
+        "rocketchat" => post_json(need_http("url", "webhook URL", &base)?, json!({ "text": clip(&md_safe(body), 3500) })),
         // https://zulip.com/api/send-message — HTTP Basic with the bot's email
         // and API key, form-encoded. Messages are capped at 10,000 bytes, hence
         // 2,400 characters (four bytes each at worst).
@@ -657,7 +705,7 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
                 form.push(("to".to_string(), target.trim_start_matches('#').to_string()));
                 form.push(("topic".to_string(), "Bageo".to_string()));
             }
-            form.push(("content".to_string(), clip(body, 2400)));
+            form.push(("content".to_string(), clip(&md_safe(body), 2400)));
             Prepared { put: false, url, headers: vec![("Authorization".into(), auth)], body: Body::Form(form) }
         }
         // https://developer.webex.com/docs/api/v1/messages/create-a-message —
@@ -695,7 +743,7 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
                     ("OCS-APIRequest".into(), "true".into()),
                     ("Accept".into(), "application/json".into()),
                 ],
-                body: Body::Json(json!({ "message": clip(body, 3500) })),
+                body: Body::Json(json!({ "message": clip(&md_safe(body), 3500) })),
             }
         }
         // Synology Chat help, "Integration → Incoming webhooks": a form field
@@ -857,7 +905,7 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
                 headers: Vec::new(),
                 body: Body::Form(vec![
                     ("title".into(), clip(title, 30)),
-                    ("desp".into(), clip(body, 3500)),
+                    ("desp".into(), clip(&md_safe(body), 3500)),
                 ]),
             }
         }
@@ -2770,6 +2818,60 @@ mod tests {
         assert_eq!(json_body(&p)["to"], "U123");
         assert_eq!(json_body(&p)["messages"][0]["text"], m.body);
         assert!(prepare(&ch("discord", "discord.com/hook", "", ""), &m, 0).is_err());
+    }
+
+    const TRICK: &str = "Original SMS: [your bank](https://evil.example/x) @everyone <!channel> **bold** `code` snake_case\n> quote";
+
+    #[test]
+    fn markdown_from_outside_is_made_plain_for_markdown_services() {
+        let safe = md_safe(TRICK);
+        assert!(safe.contains(r"\[your bank\]\(https://evil.example/x\)"), "{safe}");
+        assert!(!safe.contains("@everyone") && safe.contains("@\u{200b}everyone"), "{safe}");
+        assert!(safe.contains(r"\<!channel\>") && safe.contains(r"\*\*bold\*\*") && safe.contains(r"\`code\`"), "{safe}");
+        assert!(safe.contains(r"snake\_case") && safe.contains("\n\\> quote"), "{safe}");
+        // Our own addresses and ordinary words come through unchanged.
+        let own = "Details: https://bageo.example/calls?id=a_b-1\nNumber: 0912345678 (hidden)";
+        assert_eq!(md_safe("Number: 0912345678"), "Number: 0912345678");
+        assert_eq!(md_safe("Details: https://bageo.example/calls?id=a_b-1"), "Details: https://bageo.example/calls?id=a_b-1");
+        assert!(md_safe(own).contains(r"\(hidden\)"));
+        assert_eq!(md_safe("王小明 說：你好"), "王小明 說：你好");
+        // An address cannot carry a link of its own past a bracket.
+        assert!(md_safe("https://a.example/[x](https://b.example)").contains(r"\[x\]\("));
+        assert_eq!(slack_safe("<!channel> <@U1> <https://e.example|bank> a&b"), "&lt;!channel&gt; &lt;@U1&gt; &lt;https://e.example|bank&gt; a&amp;b");
+        let g = chat_links_safe("<users/all> <https://e.example|bank> @all");
+        assert!(!g.contains('<') && !g.contains('>') && !g.contains("@all"), "{g}");
+    }
+
+    #[test]
+    fn chat_services_get_the_made_plain_text_and_no_pings() {
+        let m = Message { body: TRICK.into(), ..msg() };
+        let hook = "https://example.org/hook/abc";
+        let p = prepare(&ch("discord", "https://discord.com/api/webhooks/1/x", "", ""), &m, 0).unwrap();
+        assert_eq!(json_body(&p)["allowed_mentions"], json!({ "parse": [] }));
+        assert_eq!(json_body(&p)["content"], md_safe(TRICK));
+        let bot = discord_bot_prepared("https://discord.example/api", &ch("discord", "", "tok", "123"), &m).unwrap();
+        assert_eq!(json_body(&bot)["allowed_mentions"], json!({ "parse": [] }));
+        assert_eq!(json_body(&bot)["content"], md_safe(TRICK));
+        let p = prepare(&ch("slack", "https://hooks.slack.com/services/T/B/x", "", ""), &m, 0).unwrap();
+        assert_eq!(json_body(&p)["mrkdwn"], false);
+        let text = json_body(&p)["text"].as_str().unwrap();
+        assert!(text.contains("&lt;!channel&gt;") && !text.contains("<!channel>"), "{text}");
+        let sbot = slack_bot_prepared(&ch("slack", "", "xoxb-tok", "C123"), &m).unwrap();
+        assert_eq!(json_body(&sbot)["mrkdwn"], false);
+        assert!(!json_body(&sbot)["text"].as_str().unwrap().contains("<!channel>"));
+        let p = prepare(&ch("teams", hook, "", ""), &m, 0).unwrap();
+        let first = json_body(&p)["attachments"][0]["content"]["body"][0]["text"].as_str().unwrap().to_string();
+        assert!(first.contains(r"\[your bank\]") && first.contains("@\u{200b}everyone"), "{first}");
+        for kind in ["rocketchat", "googlechat"] {
+            let p = prepare(&ch(kind, hook, "", ""), &m, 0).unwrap();
+            let text = json_body(&p)["text"].as_str().unwrap();
+            assert!(!text.contains("@everyone") && !text.contains("<!channel>"), "{kind}: {text}");
+        }
+        let p = prepare(&ch("zulip", hook, "bot@example.org:key", "general"), &m, 0).unwrap();
+        assert!(!form_body(&p)["content"].contains("@everyone"));
+        // Services that show plain text get the words as they are.
+        let p = prepare(&ch("ntfy", "", "", "calls"), &m, 0).unwrap();
+        assert_eq!(json_body(&p)["message"], TRICK);
     }
 
     #[test]
