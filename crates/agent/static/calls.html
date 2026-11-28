@@ -121,16 +121,40 @@ dialog .btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 38
 .btn.xs{min-height:27px;padding:2px 9px;font-size:.8rem}
 .btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
 .btn.ghost:hover{background:var(--surface2);color:var(--text)}
-input[type=text],input[type=search],input[type=password],input[type=number],input[type=url],input[type=tel],input[type=datetime-local],select,textarea{width:100%;padding:8px 12px;min-height:40px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--surface);color:var(--text);transition:border-color .14s}
+input[type=text],input[type=search],input[type=password],input[type=number],input[type=url],input[type=tel],select,textarea{width:100%;padding:8px 12px;min-height:40px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--surface);color:var(--text);transition:border-color .14s}
 input:hover,select:hover,textarea:hover{border-color:var(--line-strong)}
 input::placeholder,textarea::placeholder{color:var(--muted);opacity:.72}
 textarea{resize:vertical;min-height:96px;line-height:1.5}
 select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888b94' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 9px center;background-size:14px;padding-inline-end:28px;text-overflow:ellipsis}
 input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid color-mix(in srgb,var(--focus) 35%,transparent);outline-offset:0;border-color:var(--focus);border-radius:var(--radius-sm)}
-input[type=datetime-local]{font:inherit;font-variant-numeric:tabular-nums;cursor:pointer}
-input[type=datetime-local]::-webkit-calendar-picker-indicator{cursor:pointer;opacity:.6;padding:3px;border-radius:6px;transition:opacity .14s,background-color .14s}
-input[type=datetime-local]::-webkit-calendar-picker-indicator:hover{opacity:1;background-color:var(--surface2)}
 .er-at{display:grid;gap:6px;margin-top:12px}
+.dt{position:relative;width:100%;max-width:18rem}
+.dt-btn{display:flex;align-items:center;gap:10px;width:100%;min-height:40px;padding:8px 12px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--surface);color:var(--text);text-align:start;cursor:pointer;font-variant-numeric:tabular-nums;transition:border-color .14s}
+.dt-btn:hover{border-color:var(--line-strong)}
+.dt-btn[aria-expanded=true]{border-color:var(--focus)}
+.dt-btn svg{flex:0 0 auto;width:17px;height:17px;color:var(--muted)}
+.dt-btn .dt-txt{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dt-btn .dt-txt.empty{color:var(--muted)}
+.dt-pop{position:absolute;z-index:60;top:calc(100% + 6px);inset-inline-start:0;width:296px;max-width:calc(100vw - 32px);padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);box-shadow:0 10px 28px rgba(0,0,0,.18)}
+.dt-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px}
+.dt-head b{font-weight:600}
+.dt-nav{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--muted);cursor:pointer}
+.dt-nav:hover:not(:disabled){background:var(--surface2);color:var(--text)}
+.dt-nav:disabled{opacity:.35;cursor:default}
+.dt-nav svg{width:16px;height:16px}
+[dir=rtl] .dt-nav svg{transform:scaleX(-1)}
+.dt-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+.dt-wd{font-size:.76rem;color:var(--muted);padding:4px 0}
+.dt-day{height:34px;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--text);cursor:pointer;font-variant-numeric:tabular-nums}
+.dt-day:hover:not(:disabled){background:var(--surface2)}
+.dt-day.today{box-shadow:inset 0 0 0 1px var(--line-strong)}
+.dt-day.on{background:var(--accent);color:var(--on-accent);font-weight:600}
+.dt-day:disabled{color:var(--muted);opacity:.4;cursor:default}
+.dt-day.pad{visibility:hidden}
+.dt-time{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.dt-time svg{width:16px;height:16px;color:var(--muted);flex:0 0 auto}
+.dt-time select{flex:1 1 0;min-height:36px;font-variant-numeric:tabular-nums}
+.dt-time span{color:var(--muted)}
 .tag{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:6px;font-size:.76rem;font-weight:500;background:var(--surface2);color:var(--muted);white-space:nowrap}
 .tag.ok{background:var(--ok-soft);color:var(--ok)}
 .tag.warn{background:var(--warn-soft);color:var(--warn)}
@@ -677,7 +701,7 @@ dialog form{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflo
   .btn.xs{min-height:36px}
   .call .call-acts .btn{min-height:36px;padding:2px 10px}
   input:not([type=checkbox]):not([type=radio]),select:not(.lang),textarea{font-size:16px!important}
-  input[type=text],input[type=search],input[type=password],input[type=number],input[type=url],input[type=tel],input[type=datetime-local],select,textarea{min-height:44px}
+  input[type=text],input[type=search],input[type=password],input[type=number],input[type=url],input[type=tel],select,textarea{min-height:44px}
   .lang{min-height:40px}
   .search{flex:1 1 100%}
   .filters select{flex:1 1 auto;min-height:44px}
@@ -1072,8 +1096,8 @@ html[data-embed="android"] .brand .word{display:none}
           <label><input type="radio" name="er_when" value="later" /><span><b data-i18n="er_when_later"></b><small data-i18n="er_when_later_d"></small></span></label>
         </div>
         <div class="er-at" id="erAtBox" hidden>
-          <label for="erAt" data-i18n="er_at"></label>
-          <input type="datetime-local" id="erAt" step="60" style="max-width:16rem" />
+          <label for="erAtBtn" data-i18n="er_at"></label>
+          <input type="hidden" id="erAt" />
           <div class="help" id="erAtHelp"></div>
         </div></div>
       <div class="field"><label for="erPhone" data-i18n="er_phone"></label>
@@ -8100,11 +8124,120 @@ function erLeft(s) {
   } catch (_) { return ""; }
 }
 function erSchLine(at) { return t("er_sch_at", { when: erFmtAt(at), left: erLeft(at) }); }
-// A Date as a datetime-local field's value.
+// A Date as a date-and-time field's value ("2026-12-01T08:00", local time).
 function erLocalValue(d) {
   if (!d) return "";
   const p = (x) => String(x).padStart(2, "0");
   return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+// The page's own date-and-time picker over hidden `input` (value, min and max
+// as "2026-12-01T08:00"): a button showing the time picked, a month to pick the
+// day from, then the hour and minute. Picking sends "input" and "change".
+// `input.dtSync()` redraws it after its value is set from code.
+const DT_ICON_CAL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>';
+const DT_ICON_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+const DT_ICON_PREV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>';
+const DT_ICON_NEXT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+function dtParse(v) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(v || "");
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
+}
+function dtDay(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function dtLabel(d) {
+  try { return new Intl.DateTimeFormat(loc(), { year: "numeric", month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d); } catch (_) { return erLocalValue(d).replace("T", " "); }
+}
+// The one picker open; a press anywhere else closes it.
+let dtOpen = null;
+document.addEventListener("pointerdown", (ev) => { if (dtOpen && !dtOpen.wrap.contains(ev.target)) dtOpen.close(); });
+function dtMount(input) {
+  const svg = (s) => { const t = document.createElement("template"); t.innerHTML = s; return t.content.firstChild; };
+  const txt = h("span", { class: "dt-txt" });
+  const btn = h("button", { type: "button", class: "dt-btn", id: input.id ? input.id + "Btn" : null, attr: { "aria-haspopup": "dialog", "aria-expanded": "false" } }, svg(DT_ICON_CAL), txt);
+  const pop = h("div", { class: "dt-pop", role: "dialog", hidden: true });
+  const wrap = h("div", { class: "dt" });
+  if (input.parentNode) input.replaceWith(wrap);
+  wrap.append(input, btn, pop);
+  let month = null;
+  const bounds = () => [dtParse(input.min), dtParse(input.max)];
+  function set(d) {
+    const [lo, hi] = bounds();
+    if (lo && d < lo) d = lo;
+    if (hi && d > hi) d = hi;
+    input.value = erLocalValue(d);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    sync();
+    if (!pop.hidden) draw();
+  }
+  function sync() {
+    const d = dtParse(input.value);
+    txt.textContent = d ? dtLabel(d) : t("er_at");
+    txt.classList.toggle("empty", !d);
+  }
+  function draw() {
+    clear(pop);
+    const cur = dtParse(input.value);
+    const [lo, hi] = bounds();
+    const first = new Date(month.getFullYear(), month.getMonth(), 1);
+    let title = "";
+    try { title = new Intl.DateTimeFormat(loc(), { year: "numeric", month: "long" }).format(first); } catch (_) { title = first.getFullYear() + "-" + (first.getMonth() + 1); }
+    const step = (n) => { month = new Date(month.getFullYear(), month.getMonth() + n, 1); draw(); };
+    const prevOk = !lo || first > dtDay(lo);
+    const nextFirst = new Date(month.getFullYear(), month.getMonth() + 1, 1);
+    const nextOk = !hi || nextFirst <= hi;
+    pop.append(h("div", { class: "dt-head" },
+      h("button", { type: "button", class: "dt-nav", disabled: !prevOk, onclick: () => step(-1) }, svg(DT_ICON_PREV)),
+      h("b", { text: title }),
+      h("button", { type: "button", class: "dt-nav", disabled: !nextOk, onclick: () => step(1) }, svg(DT_ICON_NEXT))));
+    const grid = h("div", { class: "dt-grid" });
+    let wdf = null;
+    try { wdf = new Intl.DateTimeFormat(loc(), { weekday: "narrow" }); } catch (_) {}
+    for (let i = 0; i < 7; i++) grid.append(h("div", { class: "dt-wd", text: wdf ? wdf.format(new Date(2026, 10, 1 + i)) : "" }));
+    for (let i = 0; i < first.getDay(); i++) grid.append(h("span", { class: "dt-day pad" }));
+    const today = dtDay(new Date()).getTime();
+    const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+    for (let n = 1; n <= days; n++) {
+      const day = new Date(month.getFullYear(), month.getMonth(), n);
+      const off = (lo && day < dtDay(lo)) || (hi && day > dtDay(hi));
+      const on = cur && dtDay(cur).getTime() === day.getTime();
+      grid.append(h("button", {
+        type: "button", class: "dt-day" + (on ? " on" : "") + (day.getTime() === today ? " today" : ""), disabled: !!off, text: String(n),
+        onclick: () => { const base = cur || new Date(2000, 0, 1, 9, 0); day.setHours(base.getHours(), base.getMinutes()); set(day); },
+      }));
+    }
+    pop.append(grid);
+    const p2 = (x) => String(x).padStart(2, "0");
+    const hour = h("select", { "aria-label": t("er_at"), disabled: !cur });
+    for (let i = 0; i < 24; i++) hour.append(h("option", { value: String(i), text: p2(i) }));
+    const min = h("select", { "aria-label": t("er_at"), disabled: !cur });
+    for (let i = 0; i < 60; i++) min.append(h("option", { value: String(i), text: p2(i) }));
+    if (cur) { hour.value = String(cur.getHours()); min.value = String(cur.getMinutes()); }
+    const pick = () => { const d = dtParse(input.value); if (!d) return; d.setHours(+hour.value, +min.value); set(d); };
+    hour.addEventListener("change", pick);
+    min.addEventListener("change", pick);
+    pop.append(h("div", { class: "dt-time" }, svg(DT_ICON_CLOCK), hour, h("span", { text: ":" }), min));
+  }
+  function open() {
+    if (dtOpen) dtOpen.close();
+    const d = dtParse(input.value) || dtParse(input.min) || new Date();
+    month = new Date(d.getFullYear(), d.getMonth(), 1);
+    pop.hidden = false;
+    btn.setAttribute("aria-expanded", "true");
+    dtOpen = { wrap, close };
+    draw();
+  }
+  function close() {
+    if (dtOpen && dtOpen.wrap === wrap) dtOpen = null;
+    if (pop.hidden) return;
+    pop.hidden = true;
+    btn.setAttribute("aria-expanded", "false");
+  }
+  btn.addEventListener("click", () => (pop.hidden ? open() : close()));
+  wrap.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && !pop.hidden) { ev.stopPropagation(); close(); btn.focus(); } });
+  input.dtSync = sync;
+  input.focus = () => btn.focus();
+  sync();
+  return wrap;
 }
 function erWhen() {
   const r = document.querySelector('input[name="er_when"]:checked');
@@ -8172,6 +8305,7 @@ function renderErrandHelp() {
   const g = er.grab;
   $("erRedialH").textContent = g ? t("er_redial_h", { gap: g.gap_s, min: g.window_min }) : "";
   $("erAtHelp").textContent = g ? t("er_at_h", { days: g.max_days }) : "";
+  if ($("erAt").dtSync) $("erAt").dtSync();
 }
 
 // ---- the form: who, what, as whom, from which phone
@@ -8283,6 +8417,7 @@ function erResetForm() {
   erRedialTouched = false;
   document.querySelectorAll('input[name="er_when"]').forEach((r) => { r.checked = r.value === "now"; });
   $("erAt").value = "";
+  $("erAt").dtSync();
   $("erAtBox").hidden = true;
   erRenderPick();
   erHideSugg();
@@ -8356,6 +8491,7 @@ $("erTask").addEventListener("input", erCount);
 for (const id of ["erTask", "erTo"]) $(id).addEventListener("input", () => { if (erPre) erPreHide(); });
 $("erPhone").addEventListener("change", () => { if (erPre) erPreHide(); });
 document.querySelectorAll('input[name="er_when"]').forEach((r) => r.addEventListener("change", erWhenChanged));
+dtMount($("erAt"));
 $("erAt").addEventListener("change", () => { if (erPre) erPreHide(); erLoadHeld(); });
 $("erRedial").addEventListener("change", () => { erRedialTouched = true; erLoadHeld(); });
 document.querySelectorAll('input[name="er_identity"]').forEach((r) => r.addEventListener("change", () => { erIdTouched = true; }));
@@ -8645,11 +8781,15 @@ function errandCard(e) {
 }
 // "Change time" on a scheduled errand: the new date and time, saved or dropped.
 function erMoveBox(e) {
-  const input = h("input", { type: "datetime-local", step: 60, "aria-label": t("er_at"), style: "max-width:16rem;flex:1 1 12rem" });
+  const input = h("input", { type: "hidden" });
   input.value = erMove.get(e.id) || erLocalValue(parseStamp(e.scheduled_at));
   input.min = erLocalValue(new Date(Date.now() + 60000));
+  const days = er.grab ? Number(er.grab.max_days) || 0 : 0;
+  if (days) input.max = erLocalValue(new Date(Date.now() + days * 86400000));
   input.addEventListener("input", () => erMove.set(e.id, input.value));
-  return h("div", { class: "row er-move", style: "gap:8px;flex-wrap:wrap;margin-top:8px" }, input,
+  const field = dtMount(input);
+  field.style.flex = "1 1 14rem";
+  return h("div", { class: "row er-move", style: "gap:8px;flex-wrap:wrap;margin-top:8px" }, field,
     h("button", { type: "button", class: "btn sm primary", disabled: er.busy.has(e.id), text: t("er_move_save"), onclick: () => erMoveSave(e, input.value) }),
     h("button", { type: "button", class: "btn sm ghost", text: t("cancel"), onclick: () => { erMove.delete(e.id); renderErrands(); } }));
 }
