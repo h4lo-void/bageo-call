@@ -7341,7 +7341,7 @@ mod tests {
         rig.control.register_client("pixel-plan-1".into(), sink).await;
         let phones = vec![phone("pixel-plan-1", &[(1, "tw")])];
         let at = (chrono::Local::now() + chrono::Duration::seconds(5)).to_rfc3339();
-        let e = create(&rig.env(phones.clone()), &scheduled_body("0223459101", "pixel-plan-1", 1, &at)).await.unwrap();
+        let e = create(&rig.env(phones.clone()), &scheduled_body("0223459151", "pixel-plan-1", 1, &at)).await.unwrap();
         assert_eq!((e.status.as_str(), e.call_code.as_str(), e.redial, e.sub_id_asked), (SCHEDULED, SCHEDULED, true, Some(1)));
         assert_eq!(e.grab_since, e.scheduled_at);
         assert_eq!(next_json(&mut ph, QUIET).await, None, "not dialed before its time");
@@ -7366,7 +7366,7 @@ mod tests {
         assert_eq!((going.status.as_str(), going.attempts, going.dialed_at.len(), going.grab_since.as_str()), (DIALING, 1, 1, e.scheduled_at.as_str()));
         assert_eq!(plan_notices(&e.id), vec![false, true]);
         // Its first ring is told as our call going out.
-        assert_eq!(ring(&rig, "pixel-plan-1", "0223459101").await, CallNotice::Outgoing);
+        assert_eq!(ring(&rig, "pixel-plan-1", "0223459151").await, CallNotice::Outgoing);
         assert_eq!(next_json(&mut ph, QUIET).await, None, "dialed once");
     }
 
