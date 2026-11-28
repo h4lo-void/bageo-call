@@ -4887,6 +4887,8 @@ fn grab_json() -> Value {
         "window_min": plan::GRAB.window.as_secs() / 60,
         "max_days": plan::MAX_DAYS,
         "max_open": plan::OPEN_MAX,
+        "tz": plan::zone_name(),
+        "utc_offset_min": plan::utc_offset_min(),
     })
 }
 

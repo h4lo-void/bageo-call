@@ -581,7 +581,7 @@ had already picked up; a scheduled one keeps waiting for its time.
 
 | Method and path | What |
 |---|---|
-| `GET /calls/api/errands` | `{ok, errands, grab}`: every errand not over yet, then the newest of the rest, at most 200; `grab` is `{lead_s, gap_s, window_min, max_days, max_open}`. |
+| `GET /calls/api/errands` | `{ok, errands, grab}`: every errand not over yet, then the newest of the rest, at most 200; `grab` is `{lead_s, gap_s, window_min, max_days, max_open, tz, utc_offset_min}`. |
 | `POST /calls/api/errands` | Start one. Body `{number, name, contact_id, task, identity, serial, follow_up_of, answers, redial}` (`redial`: `true` for **Redial until answered**, default `false`). Answer `{ok, errand}` with status `dialing`, or `queued` when the phone or the number is busy. With `scheduled_at` it is scheduled instead (see below). |
 | `POST /calls/api/errands/{id}/schedule` | A scheduled errand that has not started: body `{scheduled_at, serial, sub_id, grab}` (only `scheduled_at` required). `{ok, errand}`. |
 | `GET /calls/api/errands/lines?at=&grab=&except=` | The lines another errand holds over a call at `at` (empty: now), `{ok, held: [{serial, sub_id, held_by}], grab}`. `except`: the errand being moved. |

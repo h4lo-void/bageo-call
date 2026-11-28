@@ -173,6 +173,18 @@ pub fn start_by(at: DateTime<Utc>, grab: bool) -> DateTime<Utc> {
     at + span(if grab { GRAB.window } else { LATE_MAX })
 }
 
+/// Bageo's time zone as an IANA name ("Asia/Taipei"): `TZ` when it names
+/// one, else the system's; empty when neither can be read.
+pub fn zone_name() -> String {
+    let from_env = std::env::var("TZ").ok().map(|z| z.trim().trim_start_matches(':').to_string()).filter(|z| z.contains('/'));
+    from_env.or_else(|| iana_time_zone::get_timezone().ok()).unwrap_or_default()
+}
+
+/// Bageo's offset from UTC now, in minutes (+480 for UTC+8).
+pub fn utc_offset_min() -> i32 {
+    Local::now().offset().local_minus_utc() / 60
+}
+
 /// A local wall-clock time in the owner's zone (the earlier one when the
 /// clock goes back; None when it is skipped).
 pub fn local_of(n: NaiveDateTime) -> Option<DateTime<Local>> {

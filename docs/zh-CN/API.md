@@ -526,7 +526,7 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 
 | 方法与路径 | 内容 |
 |---|---|
-| `GET /calls/api/errands` | `{ok, errands, grab}`：所有还没结束的代打，再补最新已结束的，最多 200 条；`grab` 是 `{lead_s, gap_s, window_min, max_days, max_open}`。 |
+| `GET /calls/api/errands` | `{ok, errands, grab}`：所有还没结束的代打，再补最新已结束的，最多 200 条；`grab` 是 `{lead_s, gap_s, window_min, max_days, max_open, tz, utc_offset_min}`。 |
 | `POST /calls/api/errands` | 开始一条。请求体 `{number, name, contact_id, task, identity, serial, follow_up_of, answers, redial}`（`redial` 是 `true` 就打开“拨到通”，默认 `false`），响应 `{ok, errand}`。带 `scheduled_at` 就改成指定时间（见下方）。 |
 | `POST /calls/api/errands/{id}/schedule` | 还没开始的指定时间代打：请求体 `{scheduled_at, serial, sub_id, grab}`（只有 `scheduled_at` 必填）。`{ok, errand}`。 |
 | `GET /calls/api/errands/lines?at=&grab=&except=` | 在 `at`（留空：现在）那通电话期间被别的代打占用的号码，`{ok, held: [{serial, sub_id, held_by}], grab}`。`except`：正在改时间的那一条。 |

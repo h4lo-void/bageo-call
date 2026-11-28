@@ -128,6 +128,9 @@ textarea{resize:vertical;min-height:96px;line-height:1.5}
 select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888b94' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 9px center;background-size:14px;padding-inline-end:28px;text-overflow:ellipsis}
 input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid color-mix(in srgb,var(--focus) 35%,transparent);outline-offset:0;border-color:var(--focus);border-radius:var(--radius-sm)}
 .er-at{display:grid;gap:6px;margin-top:12px}
+.er-at-row{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}
+.er-at-row .dt{flex:0 1 18rem}
+.er-at-row select{flex:1 1 14rem;max-width:24rem}
 .dt{position:relative;width:100%;max-width:18rem}
 .dt-btn{display:flex;align-items:center;gap:10px;width:100%;min-height:40px;padding:8px 12px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--surface);color:var(--text);text-align:start;cursor:pointer;font-variant-numeric:tabular-nums;transition:border-color .14s}
 .dt-btn:hover{border-color:var(--line-strong)}
@@ -1097,7 +1100,7 @@ html[data-embed="android"] .brand .word{display:none}
         </div>
         <div class="er-at" id="erAtBox" hidden>
           <label for="erAtBtn" data-i18n="er_at"></label>
-          <input type="hidden" id="erAt" />
+          <div class="er-at-row"><input type="hidden" id="erAt" /><select id="erTz"></select></div>
           <div class="help" id="erAtHelp"></div>
         </div></div>
       <div class="field"><label for="erPhone" data-i18n="er_phone"></label>
@@ -8107,7 +8110,11 @@ function erHolderName(hb) { return String((hb && hb.name) || "").trim() || Strin
 function erFmtAt(s) {
   const d = parseStamp(s);
   if (!d) return "";
-  try { return new Intl.DateTimeFormat(loc(), { calendar: "gregory", weekday: "short", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d); } catch (_) { return d.toLocaleString(); }
+  // In Bageo's zone, named when this browser is in another one.
+  const bz = erBageoZone();
+  const opts = { calendar: "gregory", weekday: "short", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" };
+  if (bz) { opts.timeZone = bz; if (bz !== erHereZone()) opts.timeZoneName = "shortOffset"; }
+  try { return new Intl.DateTimeFormat(loc(), opts).format(d); } catch (_) { return d.toLocaleString(); }
 }
 // How long until then ("in 3 hours"), in the page's language.
 function erLeft(s) {
@@ -8129,6 +8136,91 @@ function erLocalValue(d) {
   if (!d) return "";
   const p = (x) => String(x).padStart(2, "0");
   return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+// ---- time zones: Bageo's (what a plain time means to it) or one the owner picks
+function erBageoZone() { return (er.grab && er.grab.tz) || ""; }
+function erHereZone() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (_) { return ""; } }
+// The zone the date field is read in.
+function erZone() { return $("erTz").value || erBageoZone() || erHereZone(); }
+// The wall clock in `zone` at instant `ms`, as UTC milliseconds of those fields (null: unknown zone).
+function erWallUtc(zone, ms) {
+  try {
+    const f = new Intl.DateTimeFormat("en-US", { timeZone: zone || undefined, calendar: "gregory", numberingSystem: "latn", hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" });
+    const p = {};
+    for (const x of f.formatToParts(new Date(ms))) p[x.type] = +x.value;
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute);
+  } catch (_) { return null; }
+}
+// A date field value: the wall clock in `zone` at instant `ms`.
+function erWallValue(zone, ms) {
+  const w = erWallUtc(zone, ms);
+  if (w == null) return erLocalValue(new Date(ms));
+  return new Date(w).toISOString().slice(0, 16);
+}
+// The instant a date field value ("2026-12-01T08:00") is in `zone` (null: unreadable).
+function erInstant(zone, v) {
+  const d = dtParse(v);
+  if (!d) return null;
+  const want = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes());
+  if (erWallUtc(zone, want) == null) return d.getTime();
+  let ms = want;
+  for (let i = 0; i < 3; i++) ms += want - erWallUtc(zone, ms);
+  return ms;
+}
+// The time to send: as typed when it is Bageo's own zone; otherwise the instant, in UTC.
+function erAtSend() {
+  const v = $("erAt").value;
+  if (!v || !$("erTz").value) return v;
+  const ms = erInstant($("erTz").value, v);
+  return ms == null ? v : new Date(ms).toISOString();
+}
+// The date field's earliest and latest, in the zone it is read in.
+function erAtBounds() {
+  const days = er.grab ? Number(er.grab.max_days) || 0 : 0;
+  $("erAt").min = erWallValue(erZone(), Date.now() + 60000);
+  if (days) $("erAt").max = erWallValue(erZone(), Date.now() + days * 86400000);
+}
+// "Taipei Standard Time · GMT+8" in the page's language.
+function erZoneLabel(zone) {
+  const part = (opts) => {
+    try { return (new Intl.DateTimeFormat(loc(), Object.assign({ timeZone: zone }, opts)).formatToParts(new Date()).find((x) => x.type === "timeZoneName") || {}).value || ""; } catch (_) { return ""; }
+  };
+  const off = part({ timeZoneName: "shortOffset" });
+  const name = part({ timeZoneName: "longGeneric" }) || part({ timeZoneName: "long" });
+  return name && name !== off ? name + " · " + off : off || zone;
+}
+// Bageo's zone when its name is not known: its offset only.
+function erOffsetLabel(min) {
+  const s = min < 0 ? "-" : "+";
+  const a = Math.abs(min);
+  return "GMT" + s + Math.floor(a / 60) + (a % 60 ? ":" + String(a % 60).padStart(2, "0") : "");
+}
+// The zone list: Bageo's first, then every zone this browser knows, by offset.
+let erTzLang = "";
+function erFillZones() {
+  const sel = $("erTz");
+  const bz = erBageoZone();
+  const key = lang + "|" + bz + "|" + (er.grab ? er.grab.utc_offset_min : "");
+  if (erTzLang === key) return;
+  erTzLang = key;
+  const keep = sel.value;
+  clear(sel);
+  const bLabel = bz ? erZoneLabel(bz) : er.grab ? erOffsetLabel(Number(er.grab.utc_offset_min) || 0) : "";
+  sel.append(h("option", { value: "", text: t("er_tz_bageo", { zone: bLabel }) }));
+  let zones = [];
+  try { zones = Intl.supportedValuesOf("timeZone"); } catch (_) {}
+  const now = Date.now();
+  const rows = zones.filter((z) => z !== bz).map((z) => {
+    const w = erWallUtc(z, now);
+    return { z, off: w == null ? 0 : Math.round((w - now) / 60000) };
+  }).sort((a, b) => a.off - b.off || a.z.localeCompare(b.z));
+  for (const r of rows) {
+    const city = r.z.split("/").pop().replace(/_/g, " ");
+    sel.append(h("option", { value: r.z, text: erZoneLabel(r.z) + " · " + city }));
+  }
+  sel.value = Array.from(sel.options).some((o) => o.value === keep) ? keep : "";
+  sel.setAttribute("aria-label", t("er_tz"));
+  sel.title = t("er_tz");
 }
 // The page's own date-and-time picker over hidden `input` (value, min and max
 // as "2026-12-01T08:00"): a button showing the time picked, a month to pick the
@@ -8307,7 +8399,7 @@ function showErrands() {
 async function erLoadHeld() {
   const seq = ++erHeldSeq;
   const later = erWhen() === "later";
-  const at = later ? $("erAt").value : "";
+  const at = later ? erAtSend() : "";
   if (later && !at) { erHeld = new Map(); erRenderPhones(); return; }
   try {
     const q = new URLSearchParams({ at, grab: String($("erRedial").checked) });
@@ -8328,8 +8420,8 @@ function erWhenChanged() {
   $("erAtBox").hidden = !later;
   if (!erRedialTouched) $("erRedial").checked = later;
   const days = er.grab ? Number(er.grab.max_days) || 0 : 0;
-  $("erAt").min = erLocalValue(new Date(Date.now() + 60000));
-  if (days) $("erAt").max = erLocalValue(new Date(Date.now() + days * 86400000));
+  erFillZones();
+  erAtBounds();
   if (erPre) erPreHide();
   renderErrandHelp();
   erLoadHeld();
@@ -8338,6 +8430,7 @@ function renderErrandHelp() {
   const g = er.grab;
   $("erRedialH").textContent = g ? t("er_redial_h", { gap: g.gap_s, min: g.window_min }) : "";
   $("erAtHelp").textContent = g ? t("er_at_h", { days: g.max_days }) : "";
+  if (!$("erAtBox").hidden) erFillZones();
   if ($("erAt").dtSync) $("erAt").dtSync();
 }
 
@@ -8526,6 +8619,7 @@ $("erPhone").addEventListener("change", () => { if (erPre) erPreHide(); });
 document.querySelectorAll('input[name="er_when"]').forEach((r) => r.addEventListener("change", erWhenChanged));
 dtMount($("erAt"));
 $("erAt").addEventListener("change", () => { if (erPre) erPreHide(); erLoadHeld(); });
+$("erTz").addEventListener("change", () => { erAtBounds(); if (erPre) erPreHide(); erLoadHeld(); });
 $("erRedial").addEventListener("change", () => { erRedialTouched = true; erLoadHeld(); });
 document.querySelectorAll('input[name="er_identity"]').forEach((r) => r.addEventListener("change", () => { erIdTouched = true; }));
 $("erRefresh").addEventListener("click", () => loadErrands());
@@ -8547,9 +8641,9 @@ $("erForm").addEventListener("submit", async (ev) => {
   const colon = pickedLine.indexOf(":");
   if (erWhen() === "later") {
     // A set time: in the future, and a line of its own (checked again by Bageo).
-    const at = $("erAt").value;
-    if (!at) return erFormErr(t("er_err_need_time"), $("erAt"));
-    if (!(new Date(at).getTime() > Date.now())) return erFormErr(t("er_err_past_time"), $("erAt"));
+    if (!$("erAt").value) return erFormErr(t("er_err_need_time"), $("erAt"));
+    if (!(erInstant(erZone(), $("erAt").value) > Date.now())) return erFormErr(t("er_err_past_time"), $("erAt"));
+    const at = erAtSend();
     if (colon <= 0) return erFormErr(t("er_err_need_line"), $("erPhone"));
     body.scheduled_at = at;
     body.grab = $("erRedial").checked;
@@ -8815,10 +8909,12 @@ function errandCard(e) {
 // "Change time" on a scheduled errand: the new date and time, saved or dropped.
 function erMoveBox(e) {
   const input = h("input", { type: "hidden" });
-  input.value = erMove.get(e.id) || erLocalValue(parseStamp(e.scheduled_at));
-  input.min = erLocalValue(new Date(Date.now() + 60000));
+  // In Bageo's zone: a plain time sent back is read in it.
+  const at = parseStamp(e.scheduled_at);
+  input.value = erMove.get(e.id) || (at ? erWallValue(erBageoZone(), at.getTime()) : "");
+  input.min = erWallValue(erBageoZone(), Date.now() + 60000);
   const days = er.grab ? Number(er.grab.max_days) || 0 : 0;
-  if (days) input.max = erLocalValue(new Date(Date.now() + days * 86400000));
+  if (days) input.max = erWallValue(erBageoZone(), Date.now() + days * 86400000);
   input.addEventListener("input", () => erMove.set(e.id, input.value));
   const field = dtMount(input);
   field.style.flex = "1 1 14rem";
