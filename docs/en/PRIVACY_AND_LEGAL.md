@@ -140,7 +140,9 @@ AI errands and AI call-backs are outgoing calls a machine makes in your name.
   side would not expect from you.
 - Bageo never dials emergency numbers, short codes or premium-rate numbers,
   and calls each errand once. It redials only if you turn on **Redial until
-  answered** for that errand: at most 30 times, a minute apart.
+  answered** for that errand (on by default for a scheduled one): 3 seconds
+  after a try that did not get through, for up to 30 minutes unless you set
+  another length (1 to 120 minutes), and never more than 10 calls a minute.
 
 ## What the AI will and will not do
 
