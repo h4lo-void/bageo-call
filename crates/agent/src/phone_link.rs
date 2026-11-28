@@ -224,6 +224,7 @@ pub struct LinkKey {
     path: PathBuf,
     key: Mutex<Option<String>>,
     generation: AtomicU64,
+    renewed: tokio::sync::Notify,
 }
 
 impl LinkKey {
@@ -238,7 +239,7 @@ impl LinkKey {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
         }
-        Self { path, key: Mutex::new(key), generation: AtomicU64::new(0) }
+        Self { path, key: Mutex::new(key), generation: AtomicU64::new(0), renewed: tokio::sync::Notify::new() }
     }
 
     fn slot(&self) -> std::sync::MutexGuard<'_, Option<String>> {
@@ -269,12 +270,18 @@ impl LinkKey {
         write_key(&self.path, &k)?;
         *self.slot() = Some(k);
         self.generation.fetch_add(1, Ordering::AcqRel);
+        self.renewed.notify_waiters();
         Ok(())
     }
 
     /// Changes each time the key is replaced.
     pub fn generation(&self) -> u64 {
         self.generation.load(Ordering::Acquire)
+    }
+
+    /// Woken when the key is replaced (the USB side hands it over at once).
+    pub fn renewed(&self) -> &tokio::sync::Notify {
+        &self.renewed
     }
 }
 
@@ -381,6 +388,18 @@ mod tests {
         assert_ne!(again.key(), key);
         assert_eq!(again.generation(), g + 1);
         assert_eq!(LinkKey::open(&dir).key(), again.key(), "the new key is saved");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn link_renew_wakes_the_usb_side_at_once() {
+        let dir = temp_dir("wake");
+        let link = LinkKey::open(&dir);
+        let notified = link.renewed().notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        link.renew().unwrap();
+        assert!(tokio::time::timeout(std::time::Duration::from_secs(2), notified).await.is_ok());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

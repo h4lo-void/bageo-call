@@ -1883,6 +1883,9 @@ fn phone_ws(
     res
 }
 
+/// How long a phone that started the link check has to send its hello.
+const HELLO_WITHIN: Duration = if cfg!(test) { Duration::from_secs(2) } else { Duration::from_secs(10) };
+
 /// How a phone's WebSocket came in.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct PhoneLink {
@@ -1933,6 +1936,12 @@ impl PhoneLink {
             handshake,
             verified: false,
         }
+    }
+
+    /// The phone started the link check and has not finished it: nothing but
+    /// its hello is taken (anything else closes the connection).
+    fn awaiting_hello(&self) -> bool {
+        self.handshake.is_some() && !self.verified
     }
 
     /// The hello: finish the link check. False when the phone started it and
@@ -2118,6 +2127,7 @@ async fn phone_pairing_claim(
         phone_wifi::entry_port(),
         pin.as_deref(),
         via_tls,
+        phone_link::link(),
     );
     if res.status().is_success() {
         info!("phone pairing: a phone at {} paired with a pairing code", peer.ip());
@@ -2144,6 +2154,7 @@ fn claim_answer_with_tls(
     entry_port: Option<u16>,
     tls_pin: Option<&str>,
     via_tls: bool,
+    link: &phone_link::LinkKey,
 ) -> axum::response::Response {
     let json_type = headers
         .get(axum::http::header::CONTENT_TYPE)
@@ -2184,7 +2195,9 @@ fn claim_answer_with_tls(
     match codes.claim_authenticated(None, mac_req, from, std::time::Instant::now()) {
         Ok(matched_code) => {
             let token = pairing.key();
-            let mut body = json!({"ok": true, "token": token, "path": "/ws"});
+            // The link key too, inside the pinned TLS answer: the phone then
+            // checks this agent on every connection, as one paired over USB.
+            let mut body = json!({"ok": true, "token": token, "path": "/ws", "link_key": link.key()});
             if let Some(port) = entry_port {
                 body["ws_port"] = json!(port);
             }
@@ -3357,6 +3370,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, mut link: PhoneLink)
     // Set by the confirm-prompt task once playback ends → arms the DTMF wait.
     let arm_vm_confirm = Arc::new(AtomicBool::new(false));
     let arm_vm_contact_readback = Arc::new(AtomicBool::new(false));
+    // A phone that started the link check must finish it with its hello by then.
+    let hello_by = tokio::time::Instant::now() + HELLO_WITHIN;
 
     if send_json(
         &sink,
@@ -3454,6 +3469,10 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, mut link: PhoneLink)
                 // arm_auto_ai is re-checked at top of next loop iteration.
                 continue;
             }
+            _ = tokio::time::sleep_until(hello_by), if link.awaiting_hello() => {
+                warn!("phone connection closed: the link check was started but no hello came within {}s", HELLO_WITHIN.as_secs());
+                break;
+            }
             maybe_msg = stream.next() => {
                 let Some(msg) = maybe_msg else { break };
                 let msg = match msg {
@@ -3463,20 +3482,40 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, mut link: PhoneLink)
                         break;
                     }
                 };
+                // Until the hello finishes a started link check, nothing else is taken.
+                if link.awaiting_hello() && !matches!(msg, Message::Text(_) | Message::Ping(_) | Message::Pong(_)) {
+                    warn!("phone connection closed: a message before the hello finished the link check");
+                    break;
+                }
                 match msg {
                     Message::Text(t) => {
                         let parsed: Value = match serde_json::from_str(&t) {
                             Ok(v) => v,
+                            Err(_) if link.awaiting_hello() => {
+                                warn!("phone connection closed: not a hello while the link check is open");
+                                break;
+                            }
                             Err(_) => {
                                 let _ = send_json(&sink, json!({"type":"error","message":"invalid json"})).await;
                                 continue;
                             }
                         };
                         let mtype = parsed.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                        if link.awaiting_hello() && mtype != "hello" {
+                            warn!("phone connection closed: {mtype:?} before the hello finished the link check");
+                            break;
+                        }
                         match mtype {
                             "hello" => {
                                 // The phone started the link check: its hello must finish it.
-                                if !link.finish_check(parsed.get("link_proof").and_then(Value::as_str)) {
+                                let checked = link.finish_check(parsed.get("link_proof").and_then(Value::as_str));
+                                // A phone on the cable without a working key: hand it the key again.
+                                if !link.wifi && !link.verified {
+                                    if let Some(s) = parsed.get("serial").and_then(Value::as_str) {
+                                        usb_bridge::link_check_missed(&canonical_device_serial(s));
+                                    }
+                                }
+                                if !checked {
                                     warn!("phone hello refused: the link check failed; closing");
                                     break;
                                 }
@@ -4036,6 +4075,11 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, mut link: PhoneLink)
                             "ringing" => {
                                 if let Some(s) = parsed.get("serial").and_then(|v| v.as_str()) {
                                     if !s.is_empty() {
+                                        // Same rule as the hello: no taking a checked phone's serial.
+                                        if !phone_link::may_take(&canonical_device_serial(s), link.verified, phone_link::holders()) {
+                                            warn!("phone ringing refused: a checked connection holds that serial and this one skipped the link check");
+                                            break;
+                                        }
                                         serial = s.to_string();
                                     }
                                 }
@@ -13838,17 +13882,96 @@ mod phone_link_ws_tests {
 
     /// The main port's phone routes on loopback, over a test agent.
     async fn serve() -> (SocketAddr, std::path::PathBuf) {
+        let (addr, root, _) = serve_with_state().await;
+        (addr, root)
+    }
+
+    async fn serve_with_state() -> (SocketAddr, std::path::PathBuf, AppState) {
         let (state, root) = crate::health_access_tests::make_test_app_state("link-ws");
         let app = Router::new()
             .route("/", get(crate::root))
             .route("/ws", get(crate::ws_upgrade))
-            .with_state(state);
+            .with_state(state.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
             let _ = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await;
         });
-        (addr, root)
+        (addr, root, state)
+    }
+
+    /// True when the agent closes the connection (a close frame or the end).
+    async fn closed(ws: &mut Phone, within: Duration) -> bool {
+        let until = tokio::time::Instant::now() + within;
+        loop {
+            match tokio::time::timeout_at(until, ws.next()).await {
+                Ok(Some(Ok(WsMessage::Close(_)))) | Ok(Some(Err(_))) | Ok(None) => return true,
+                Ok(Some(Ok(_))) => continue,
+                Err(_) => return false,
+            }
+        }
+    }
+
+    /// The link check started, no hello, straight to call messages or audio:
+    /// the agent closes, and no call record or notice comes of it.
+    #[tokio::test]
+    async fn link_messages_before_the_hello_close_without_a_call() {
+        let (addr, root, state) = serve_with_state().await;
+        let marker = "0912000777";
+        let firsts = [
+            json!({"type": "ringing", "serial": "link-early", "caller_id": marker}),
+            json!({"type": "call_end", "serial": "link-early", "caller_id": marker}),
+            json!({"type": "end_utterance"}),
+            json!({"type": "owner_takeover"}),
+        ];
+        for first in firsts {
+            let (mut ws, _, _) = connect_checked(addr, "/ws", &phone_link::fresh_key()).await;
+            ws.send(WsMessage::Text(first.to_string().into())).await.unwrap();
+            assert!(closed(&mut ws, Duration::from_secs(5)).await, "{first} before the hello must close");
+        }
+        let (mut ws, _, _) = connect_checked(addr, "/", &phone_link::fresh_key()).await;
+        ws.send(WsMessage::Binary(vec![0u8; 1920].into())).await.unwrap();
+        assert!(closed(&mut ws, Duration::from_secs(5)).await, "audio before the hello must close");
+        let (mut ws, _, _) = connect_checked(addr, "/ws", &phone_link::fresh_key()).await;
+        ws.send(WsMessage::Text("not json".into())).await.unwrap();
+        assert!(closed(&mut ws, Duration::from_secs(5)).await, "junk before the hello must close");
+
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(state.calls.live_calls_count_try(), 0, "no call started");
+        assert!(state.calls.list().await.is_empty(), "no call record");
+        let (_, notices) = crate::recent_notices::snapshot(0);
+        assert!(!notices.iter().any(|n| n.text.contains(marker) || n.from.contains(marker)), "no notice");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The link check started and no hello came: closed after [`HELLO_WITHIN`].
+    #[tokio::test]
+    async fn link_hello_must_come_in_time() {
+        let (addr, root) = serve().await;
+        let (mut ws, _, _) = connect_checked(addr, "/ws", &phone_link::fresh_key()).await;
+        assert!(closed(&mut ws, HELLO_WITHIN + Duration::from_secs(3)).await, "silent after the upgrade: closed");
+        // Without the check (an older app) there is no such deadline.
+        let (mut old, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/")).await.unwrap();
+        assert!(!closed(&mut old, HELLO_WITHIN + Duration::from_secs(1)).await);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `ringing` may not move an unchecked connection onto a checked phone's serial.
+    #[tokio::test]
+    async fn link_unchecked_ringing_cannot_take_a_checked_serial() {
+        let (addr, root) = serve().await;
+        let key = phone_link::link().key();
+        let serial = format!("link-ring-{}", uuid::Uuid::new_v4().simple());
+        let cnonce = phone_link::fresh_key();
+        let (mut real, snonce, _) = connect_checked(addr, "/ws", &cnonce).await;
+        let (_, phone) = phone_link::proofs(&key, &cnonce, &snonce.unwrap()).unwrap();
+        hello(&mut real, &serial, Some(&phone)).await;
+        assert!(acked(&mut real).await);
+        let (mut fake, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/")).await.unwrap();
+        let ring = json!({"type": "ringing", "serial": serial, "caller_id": "0912000888"});
+        fake.send(WsMessage::Text(ring.to_string().into())).await.unwrap();
+        assert!(closed(&mut fake, Duration::from_secs(5)).await);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// Connect with the link check (`cnonce`): the phone, the agent's nonce and proof.
@@ -14030,8 +14153,9 @@ mod access_and_whitelist_tests {
         let mac_body = |code: &str| {
             json!({"cnonce": cnonce, "code_mac": wifi_tls::claim_request_mac(code, &cnonce, &pin), "name": "Pixel"}).to_string()
         };
+        let link = phone_link::LinkKey::open(&dir);
         let claim = |on: bool, headers: &axum::http::HeaderMap, body: &[u8], from, port, via_tls| {
-            claim_answer_with_tls(on, headers, body, from, &codes, &pairing, port, Some(&pin), via_tls)
+            claim_answer_with_tls(on, headers, body, from, &codes, &pairing, port, Some(&pin), via_tls, &link)
         };
 
         let from: std::net::IpAddr = "192.168.1.30".parse().unwrap();
@@ -14053,6 +14177,8 @@ mod access_and_whitelist_tests {
         assert_eq!(b["path"], "/ws");
         assert_eq!(b["ws_port"], 8788);
         assert_eq!(b["proof"].as_str().unwrap(), wifi_tls::claim_response_proof(&code, &cnonce, &pin, &token));
+        assert_eq!(b["link_key"].as_str(), Some(link.key().as_str()), "IP pairing hands over the link key too");
+        assert!(phone_link::valid_key(b["link_key"].as_str().unwrap()));
         assert!(pairing.accepts(Some(&token)));
         assert!(phone_wifi::entry_allows(Some(&token), "", &pairing), "it opens the phone entry");
         let (s, b) = answer(claim(true, &json_headers, body.as_bytes(), from, None, true)).await;
@@ -14085,22 +14211,23 @@ mod access_and_whitelist_tests {
         json_headers.insert(axum::http::header::CONTENT_TYPE, "application/json".parse().unwrap());
         let from: std::net::IpAddr = "192.168.1.30".parse().unwrap();
         let pin = "a1".repeat(32);
+        let link = phone_link::LinkKey::open(&dir);
         let code = codes.issue(std::time::Instant::now());
         let status_code = |res: axum::response::Response| async move {
             let status = res.status().as_u16();
             let body: Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), 4096).await.unwrap()).unwrap();
-            (status, body["code"].as_str().unwrap_or("").to_string(), body.get("token").is_some())
+            (status, body["code"].as_str().unwrap_or("").to_string(), body.get("token").is_some() || body.get("link_key").is_some())
         };
         let plain = format!(r#"{{"code":"{code}"}}"#);
         for (pin, via_tls) in [(Some(pin.as_str()), true), (Some(pin.as_str()), false), (None, false)] {
-            let r = claim_answer_with_tls(true, &json_headers, plain.as_bytes(), from, &codes, &pairing, None, pin, via_tls);
+            let r = claim_answer_with_tls(true, &json_headers, plain.as_bytes(), from, &codes, &pairing, None, pin, via_tls, &link);
             assert_eq!(status_code(r).await, (410, "old_app".to_string(), false));
         }
         let cnonce = "ab".repeat(16);
         let mac = json!({"cnonce": cnonce, "code_mac": wifi_tls::claim_request_mac(&code, &cnonce, &pin)}).to_string();
-        let r = claim_answer_with_tls(true, &json_headers, mac.as_bytes(), from, &codes, &pairing, None, Some(&pin), false);
+        let r = claim_answer_with_tls(true, &json_headers, mac.as_bytes(), from, &codes, &pairing, None, Some(&pin), false, &link);
         assert_eq!(status_code(r).await, (410, "old_app".to_string(), false), "no TLS");
-        let r = claim_answer_with_tls(true, &json_headers, mac.as_bytes(), from, &codes, &pairing, None, Some(&pin), true);
+        let r = claim_answer_with_tls(true, &json_headers, mac.as_bytes(), from, &codes, &pairing, None, Some(&pin), true, &link);
         assert_eq!(status_code(r).await.0, 200, "the code was not used up by the refused tries");
         let _ = std::fs::remove_dir_all(&dir);
     }

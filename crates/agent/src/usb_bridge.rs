@@ -254,6 +254,41 @@ pub fn start_script(link_key: &str) -> Option<String> {
     ))
 }
 
+/// Phones whose hello over the cable did not pass the link check (no key, or
+/// a wrong one): the key is handed to them again on the next round.
+static MISSED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// A phone on this computer said hello without passing the link check.
+pub fn link_check_missed(serial: &str) {
+    let serial = serial.trim();
+    if serial.is_empty() {
+        return;
+    }
+    let mut m = MISSED.lock().unwrap_or_else(|e| e.into_inner());
+    if !m.iter().any(|s| s == serial) && m.len() < 64 {
+        m.push(serial.to_string());
+    }
+}
+
+fn take_missed() -> Vec<String> {
+    std::mem::take(&mut *MISSED.lock().unwrap_or_else(|e| e.into_inner()))
+}
+
+/// Forget that the phones in `missed` were given the key. A serial the app
+/// reported that matches no plugged-in phone (the app could not read the
+/// device serial) counts for every plugged-in phone.
+pub fn forget_delivered(delivered: &mut HashMap<String, u64>, missed: &[String], plugged: &[String]) {
+    for m in missed {
+        if plugged.iter().any(|p| p == m) {
+            delivered.remove(m);
+        } else {
+            for p in plugged {
+                delivered.remove(p);
+            }
+        }
+    }
+}
+
 /// Why the call service is started on a plugged-in phone now, if it is.
 /// `delivered`: the link key generation this phone was last given (none yet
 /// since the agent started); `generation`: the current one. A phone not given
@@ -297,6 +332,7 @@ where
         let mut installed: HashMap<String, bool> = HashMap::new();
         // The link key generation each phone was given since the agent started.
         let mut delivered: HashMap<String, u64> = HashMap::new();
+        let mut seen_generation = crate::phone_link::link().generation();
         let mut said_missing = false;
         loop {
             if adb.is_none() {
@@ -375,6 +411,12 @@ where
                     let lagging = should_arm(connected, ready.len(), active);
                     let link = crate::phone_link::link();
                     let generation = link.generation();
+                    // "Pair phones again" made a new key: hand it over now, without the back-off.
+                    if generation != seen_generation {
+                        seen_generation = generation;
+                        last_arm.clear();
+                    }
+                    forget_delivered(&mut delivered, &take_missed(), &ready);
                     for serial in &ready {
                         let backoff_over = last_arm.get(serial).is_none_or(|t| t.elapsed() >= ARM_BACKOFF);
                         let Some(why) = arm_reason(
@@ -403,7 +445,11 @@ where
                 }
             }
             set_status(st);
-            tokio::time::sleep(cfg.interval).await;
+            // A new link key wakes the next round at once.
+            tokio::select! {
+                _ = tokio::time::sleep(cfg.interval) => {}
+                _ = crate::phone_link::link().renewed().notified() => {}
+            }
         }
     });
 }
@@ -465,6 +511,29 @@ mod tests {
         assert_eq!(arm_reason(false, false, true, true, Some(1), 1), None);
         assert_eq!(arm_reason(false, false, true, false, None, 0), None, "never during a call");
         assert_eq!(arm_reason(false, false, false, true, None, 0), None, "back off");
+    }
+
+    #[test]
+    fn link_key_is_sent_again_when_the_phone_lost_it() {
+        let plugged = vec!["SERIAL-A".to_string(), "SERIAL-B".to_string()];
+        let full = || HashMap::from([("SERIAL-A".to_string(), 3u64), ("SERIAL-B".to_string(), 3u64)]);
+        let mut d = full();
+        forget_delivered(&mut d, &["SERIAL-A".to_string()], &plugged);
+        assert_eq!(d.get("SERIAL-A"), None, "that phone gets the key again");
+        assert_eq!(d.get("SERIAL-B"), Some(&3));
+        assert_eq!(arm_reason(false, false, true, true, d.get("SERIAL-A").copied(), 3), Some("link key"));
+        let mut d = full();
+        forget_delivered(&mut d, &["pixel-10123".to_string()], &plugged);
+        assert!(d.is_empty(), "an app without the device serial: every plugged-in phone");
+        let mut d = full();
+        forget_delivered(&mut d, &[], &plugged);
+        assert_eq!(d, full());
+        link_check_missed("SERIAL-C");
+        link_check_missed("SERIAL-C");
+        link_check_missed(" ");
+        let taken = take_missed();
+        assert_eq!(taken.iter().filter(|s| *s == "SERIAL-C").count(), 1);
+        assert!(!taken.iter().any(|s| s.trim().is_empty()));
     }
 
     #[test]

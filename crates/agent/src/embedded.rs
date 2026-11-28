@@ -1005,6 +1005,26 @@ mod tests {
         assert!(acked, "a right link_proof is taken");
         let _ = ws.close(None).await;
 
+        // Any cnonce opens the upgrade, but without the key nothing but a right hello is taken.
+        let mut rq = format!("ws://127.0.0.1:{port}/ws").into_client_request().unwrap();
+        rq.headers_mut().insert(HEADER_LINK, "1".parse().unwrap());
+        rq.headers_mut().insert(HEADER_CNONCE, "ee".repeat(32).parse().unwrap());
+        let (mut ws, _) = tokio_tungstenite::connect_async(rq).await.unwrap();
+        let ring = json!({"type": "ringing", "serial": "emb-test", "caller_id": "0912000999"});
+        ws.send(WsMessage::Text(ring.to_string().into())).await.unwrap();
+        let mut closed = false;
+        for _ in 0..6 {
+            match tokio::time::timeout(Duration::from_secs(5), ws.next()).await {
+                Ok(Some(Ok(WsMessage::Close(_)))) | Ok(Some(Err(_))) | Ok(None) => {
+                    closed = true;
+                    break;
+                }
+                Ok(Some(Ok(_))) => continue,
+                Err(_) => break,
+            }
+        }
+        assert!(closed, "ringing without the hello's proof closes the bridge connection");
+
         // The console is not on the bridge, even with the link check.
         let client = reqwest::Client::new();
         let url = format!("http://127.0.0.1:{port}/calls/api/settings");
