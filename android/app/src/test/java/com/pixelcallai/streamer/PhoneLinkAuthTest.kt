@@ -101,6 +101,24 @@ class PhoneLinkAuthTest {
     }
 
     @Test
+    fun the_call_connection_never_goes_unchecked_to_usb_once_a_pinned_pairing_exists() {
+        val pin = "a1".repeat(32)
+        val usb = "ws://127.0.0.1:8765"
+        val pinned = "wss://192.168.1.20:8788/ws?token=k&pin=$pin"
+        // No key: the pinned address instead of USB, and USB itself is refused.
+        assertEquals(pinned, PhoneLinkAuth.mediaUrl(usb, listOf(usb, pinned), hasKey = false))
+        assertTrue(PhoneLinkAuth.mediaPlan(PhoneLinkAuth.Plan.Legacy, usb, listOf(usb, pinned)) === PhoneLinkAuth.Plan.Refuse)
+        assertTrue(PhoneLinkAuth.mediaPlan(PhoneLinkAuth.Plan.Legacy, pinned, listOf(usb, pinned)) === PhoneLinkAuth.Plan.Legacy)
+        // No network pairing: as before.
+        assertEquals(usb, PhoneLinkAuth.mediaUrl(usb, listOf(usb), hasKey = false))
+        assertTrue(PhoneLinkAuth.mediaPlan(PhoneLinkAuth.Plan.Legacy, usb, listOf(usb)) === PhoneLinkAuth.Plan.Legacy)
+        // With a key: USB stays, and the check runs on it.
+        assertEquals(usb, PhoneLinkAuth.mediaUrl(usb, listOf(usb, pinned), hasKey = true))
+        val check = PhoneLinkAuth.Plan.Check(PhoneLinkAuth.Session(key))
+        assertTrue(PhoneLinkAuth.mediaPlan(check, usb, listOf(usb, pinned)) === check)
+    }
+
+    @Test
     fun ip_pairing_link_key_is_given_out_once_for_its_address() {
         val url = "wss://192.168.1.20:8787/ws?token=k&pin=${"a1".repeat(32)}"
         IpPairing.rememberLinkKey(url, key.uppercase())

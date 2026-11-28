@@ -30,6 +30,8 @@ class BridgeClient(
     private val onDisconnected: ((String) -> Unit)? = null,
     /** The link key Bageo handed over USB (bridge flavor); see [PhoneLinkAuth]. */
     private val linkKey: String? = null,
+    /** The phone's connection addresses: with a pinned one, [url] is not used unchecked. */
+    private val candidates: List<String> = emptyList(),
 ) {
     private var client: WebSocketClient? = null
     private val open = AtomicBoolean(false)
@@ -59,11 +61,12 @@ class BridgeClient(
         debugSerial = serial
         agentReady.set(false)
         // The link check: Bageo proves itself before the call's details go out.
-        val session = when (val plan = EmbeddedAgent.linkPlan(linkKey)) {
+        // Unchecked only where the control connection may be ([PhoneLinkAuth.uncheckedAllowed]).
+        val session = when (val plan = PhoneLinkAuth.mediaPlan(EmbeddedAgent.linkPlan(linkKey), url, candidates)) {
             is PhoneLinkAuth.Plan.Check -> plan.session
             PhoneLinkAuth.Plan.Legacy -> null
             PhoneLinkAuth.Plan.Refuse -> {
-                Log.w(TAG, "bridge not opened: no link key yet serial=$serial")
+                Log.w(TAG, "bridge not opened: no link key for ${Prefs.redactUrl(url)} serial=$serial")
                 onDisconnected?.invoke("no link key")
                 return
             }

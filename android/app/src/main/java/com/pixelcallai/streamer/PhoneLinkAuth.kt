@@ -157,4 +157,17 @@ object PhoneLinkAuth {
      */
     fun uncheckedAllowed(url: String, candidates: List<String>): Boolean =
         isPinned(url) || candidates.none { isPinned(it) }
+
+    /**
+     * The address for the in-call connection: [active] (where the control one got through),
+     * unless the phone has no link key ([hasKey]) and [active] may not go unchecked
+     * ([uncheckedAllowed]); then the first pinned one of [candidates].
+     */
+    fun mediaUrl(active: String, candidates: List<String>, hasKey: Boolean): String =
+        if (hasKey || uncheckedAllowed(active, candidates)) active
+        else candidates.firstOrNull { isPinned(it) } ?: active
+
+    /** The plan for the in-call connection to [url]: unchecked only where [uncheckedAllowed] lets it. */
+    fun mediaPlan(plan: Plan, url: String, candidates: List<String>): Plan =
+        if (plan === Plan.Legacy && !uncheckedAllowed(url, candidates)) Plan.Refuse else plan
 }

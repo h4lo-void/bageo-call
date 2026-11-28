@@ -1623,9 +1623,17 @@ class CallAudioService : Service() {
                 startOk
             }
 
+            val mediaCandidates = Prefs.connectionCandidates(this@CallAudioService)
+            val mediaKey = Prefs.linkKey(this@CallAudioService)
             val client = BridgeClient(
-                // The address the control connection got through on (USB or Wi-Fi).
-                url = AgentControlClient.activeUrl(Prefs.connectionCandidates(this@CallAudioService)),
+                // The address the control connection got through on (USB or Wi-Fi); without a
+                // link key, a pinned one rather than an unchecked USB one.
+                url = PhoneLinkAuth.mediaUrl(
+                    AgentControlClient.activeUrl(mediaCandidates),
+                    mediaCandidates,
+                    BuildConfig.STANDALONE || PhoneLinkAuth.normalizeKey(mediaKey) != null,
+                ),
+                candidates = mediaCandidates,
                 onBinary = { pcm ->
                     if (!isSessionCurrent(generation, callInstanceId)) return@BridgeClient
                     if (BuildConfig.STANDALONE && ownerHandlingCallFlag) return@BridgeClient
@@ -1636,7 +1644,7 @@ class CallAudioService : Service() {
                 onText = { msg -> handleBridgeText(msg, generation, callInstanceId, inj) },
                 pcmDumpDir = File(dumpRoot, "tts_pcm"),
                 onDisconnected = { reason -> onMediaConnectionLost(generation, callInstanceId, smoke, reason) },
-                linkKey = Prefs.linkKey(this@CallAudioService),
+                linkKey = mediaKey,
             )
             if (!mutateCurrentSession(generation, callInstanceId) {
                     bridge = client
