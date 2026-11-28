@@ -14250,7 +14250,7 @@ mod audit_a_tests {
             &errands,
             serial,
             "0912000713",
-            &json!({"type": "hello", "app_version": env!("CARGO_PKG_VERSION"), "task_id": "task-h6-lib-ver"}),
+            &json!({"type": "hello", "app_version": appointments::FIRST_DIRECTION_APP, "task_id": "task-h6-lib-ver"}),
         )
         .await);
         assert!(hello_is_outbound_with(
@@ -14260,7 +14260,7 @@ mod audit_a_tests {
             "",
             &json!({
                 "type": "hello",
-                "app_version": env!("CARGO_PKG_VERSION"),
+                "app_version": appointments::FIRST_DIRECTION_APP,
                 "direction": "outbound",
                 "call_id": call_id,
             }),

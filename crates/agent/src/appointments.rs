@@ -3142,10 +3142,15 @@ fn version_at_least(app: &str, than: &str) -> bool {
     x >= y
 }
 
+/// The first phone app that names a call's direction and dial in its hello.
+/// An app of this version or later that leaves them out is taken as an
+/// incoming call; older ones (2.2.0 and before, still on phones) go the old way.
+pub(crate) const FIRST_DIRECTION_APP: &str = "2.3.0";
+
 pub(crate) fn hello_claim_of(parsed: &Value) -> HelloClaim {
     let has_keys = parsed.get("direction").is_some() || parsed.get("call_id").is_some();
     let app_version = parsed.get("app_version").and_then(Value::as_str).unwrap_or("");
-    let current_without_fields = !has_keys && version_at_least(app_version, env!("CARGO_PKG_VERSION"));
+    let current_without_fields = !has_keys && version_at_least(app_version, FIRST_DIRECTION_APP);
     let has_fields = has_keys || current_without_fields;
     let direction = parsed.get("direction").and_then(Value::as_str).unwrap_or("").trim();
     let call_id = parsed.get("call_id").and_then(Value::as_str).unwrap_or("").trim().to_string();
@@ -5477,7 +5482,7 @@ mod tests {
         clear_phone_incoming(serial);
         clear_phone_incoming(older);
         ready_on("t-h6-ver", "0912000711", serial, "cid-h6-ver", "SCRIPT-VER");
-        note_hello_gate(serial, &json!({"type": "hello", "app_version": env!("CARGO_PKG_VERSION")}));
+        note_hello_gate(serial, &json!({"type": "hello", "app_version": FIRST_DIRECTION_APP}));
         assert!(take_ready_callback(serial, "").is_none());
         assert!(take_ready_callback(serial, "0912000711").is_none());
         assert_eq!(callbacks_stage("t-h6-ver"), Some(CallbackStage::Ready));
@@ -5485,7 +5490,7 @@ mod tests {
             serial,
             &json!({
                 "type": "hello",
-                "app_version": env!("CARGO_PKG_VERSION"),
+                "app_version": FIRST_DIRECTION_APP,
                 "direction": "outbound",
                 "call_id": "cid-h6-ver",
             }),
@@ -5496,6 +5501,11 @@ mod tests {
         note_hello_gate(older, &json!({"type": "hello", "app_version": "0.9.0"}));
         assert_eq!(take_ready_callback(older, "").map(|c| c.task_id).as_deref(), Some("t-h6-ver-old"));
         callbacks_remove("t-h6-ver-old");
+        // The 2.2.0 app on phones today sends neither: it still gets its call back's script.
+        ready_on("t-h6-ver-220", "0912000714", older, "cid-h6-ver-220", "SCRIPT-220");
+        note_hello_gate(older, &json!({"type": "hello", "app_version": "2.2.0"}));
+        assert_eq!(take_ready_callback(older, "").map(|c| c.task_id).as_deref(), Some("t-h6-ver-220"));
+        callbacks_remove("t-h6-ver-220");
     }
 
     #[test]

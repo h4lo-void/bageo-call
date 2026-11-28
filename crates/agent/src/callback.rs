@@ -966,7 +966,10 @@ impl ControlRegistry {
                 // A to-do call-back is in that book too, and the owner sees the wait.
                 let deferred = reason == "incoming_call";
                 drop(sessions);
-                let voicemail = deferred && crate::fulfill::voicemail_callback_known(&task_id);
+                // Still held in the call-back queue (up to its ten minutes), even once the
+                // script book's own five minutes are over.
+                let voicemail = deferred
+                    && (crate::appointments::voicemail_callback_tracked(&task_id) || crate::fulfill::voicemail_callback_known(&task_id));
                 if write_task && deferred && voicemail {
                     let _ = store.push_event(&task_id, "callback_place_call_deferred").await;
                     let _ = store
