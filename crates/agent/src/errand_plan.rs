@@ -723,8 +723,24 @@ fn when_token(tok: &str) -> bool {
         || AM.contains(&s.as_str())
         || MONTHS.iter().any(|(m, _)| s.trim_end_matches(['.', ',']) == *m)
         || (digits && s.trim_end_matches([',', '.', 'º', '°']).chars().all(|c| c.is_ascii_digit()) && s.len() <= 2)
-        // A zone name after the time ("UTC") stays with it, so the time is refused, never read as local.
+        // A zone after the time ("UTC", "+0800") stays with it, so the time is refused, never read as local.
         || zone_word(tok.trim_end_matches([',', '.']))
+        || offset_token(tok.trim_end_matches([',', '.']))
+}
+
+/// An offset written alone: `+HH`, `+HMM` or `+HHMM` (`-` too: "+08",
+/// "+530", "-0500"), hours up to 14 and minutes under 60. A country code
+/// ("+886", "+44") is none, so a number written after the time stays the number.
+fn offset_token(tok: &str) -> bool {
+    let Some(d) = tok.strip_prefix(['+', '-', '\u{2212}']) else {
+        return false;
+    };
+    if !(2..=4).contains(&d.len()) || !d.chars().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    let (h, m) = d.split_at(d.len() - if d.len() == 2 { 0 } else { 2 });
+    let (h, m): (u32, u32) = (h.parse().unwrap_or(99), m.parse().unwrap_or(0));
+    h <= 14 && m < 60
 }
 
 /// The date and time a chat command starts with ("12/1 08:00 0912345678 …"),
@@ -790,9 +806,43 @@ fn zone_word(word: &str) -> bool {
     ["utc", "gmt"].contains(&name.to_ascii_lowercase().as_str()) || ZONE_NAMES.contains(&name.as_str())
 }
 
+/// The words that end a time as [find_time] reads it ("8 pm", "8點半",
+/// "8시 30분", "8 o'clock", "20 heures"), longest first.
+const TIME_ENDS: &[&str] = &[
+    "o'clock", "o\u{2019}clock", "oclock", "heures", "heure", "horas", "hora", "a.m.", "p.m.", "uhr", "am", "pm", "h", "點", "点", "時", "时", "시", "分鐘",
+    "分钟", "分", "半", "분", "반",
+];
+/// Words a bare hour follows ("at 8", "à 20", "a las 8", "às 8", "um 8", "alle 8").
+const TIME_BEFORE: &[&str] = &["at", "à", "às", "as", "las", "la", "um", "alle"];
+
+/// The [TIME_ENDS] word at `i` in `t` (lower case), and its length; a Latin
+/// one only when no letter follows it.
+fn time_end_at(t: &[char], i: usize) -> Option<usize> {
+    let ahead: String = t[i.min(t.len())..t.len().min(i + 8)].iter().collect::<String>().to_lowercase();
+    TIME_ENDS.iter().find(|w| ahead.starts_with(**w)).map(|w| w.chars().count()).filter(|n| {
+        let cjk = t.get(i).is_some_and(|c| !c.is_ascii());
+        cjk || !letter(t.get(i + n))
+    })
+}
+
+/// The word just before `i` in `t`, lower case ("at" in "at 8").
+fn word_before(t: &[char], i: usize) -> String {
+    let mut b = i;
+    while b > 0 && t[b - 1].is_whitespace() {
+        b -= 1;
+    }
+    let mut a = b;
+    while a > 0 && t[a - 1].is_alphabetic() && !is_cjk(t[a - 1]) {
+        a -= 1;
+    }
+    t[a..b].iter().collect::<String>().to_lowercase()
+}
+
 /// Whether a time in `text` is followed by a zone: `Z`, an offset (`+08:00`,
-/// `-5`) or a zone name ([ZONE_NAMES]). A time: digits after `:` or `h`
-/// ("08:00", "20h15"), or before am/pm, h, Uhr, 點 ("8 pm", "20h").
+/// `-5`) or a zone name ([ZONE_NAMES]). A time, as [find_time] reads it:
+/// digits after `:` or `h` ("08:00", "20h15"), an hour with the words that end
+/// it (am/pm, h, Uhr, o'clock, heures, horas, 點, 點半, 點30分, 시 30분: [TIME_ENDS])
+/// or after the words a bare hour follows ("at 8", "a las 8": [TIME_BEFORE]).
 pub fn has_zone(text: &str) -> bool {
     let t: Vec<char> = text.chars().collect();
     let mut i = 0;
@@ -805,16 +855,32 @@ pub fn has_zone(text: &str) -> bool {
         while i < t.len() && t[i].is_ascii_digit() {
             i += 1;
         }
-        let after_mark = start > 1 && (t[start - 1] == ':' || (t[start - 1].eq_ignore_ascii_case(&'h') && t[start - 2].is_ascii_digit()));
+        let mut is_time = start > 1 && (t[start - 1] == ':' || (t[start - 1].eq_ignore_ascii_case(&'h') && t[start - 2].is_ascii_digit()));
+        is_time |= TIME_BEFORE.contains(&word_before(&t, start).as_str());
+        // The words ending the time, and the minutes after a CJK hour ("8點30分", "8시 30분").
         let mut end = i;
-        if !after_mark {
-            let s = skip_spaces(&t, i);
-            let lower: String = t[s..t.len().min(s + 4)].iter().collect::<String>().to_lowercase();
-            let suffix = ["a.m.", "p.m.", "uhr", "am", "pm", "h", "點", "点", "時", "时", "시"].iter().find(|w| lower.starts_with(**w));
-            match suffix {
-                Some(w) if !letter(t.get(s + w.chars().count())) || w.chars().all(|c| !c.is_ascii()) => end = s + w.chars().count(),
-                _ => continue,
+        loop {
+            let s = skip_spaces(&t, end);
+            if let Some(n) = time_end_at(&t, s) {
+                end = s + n;
+                is_time = true;
+                continue;
             }
+            let after_cjk_unit = end > 0 && is_cjk(t[end - 1]);
+            if after_cjk_unit && t.get(s).is_some_and(|c| c.is_ascii_digit()) {
+                let mut k = s;
+                while k < t.len() && t[k].is_ascii_digit() {
+                    k += 1;
+                }
+                if time_end_at(&t, skip_spaces(&t, k)).is_some() {
+                    end = k;
+                    continue;
+                }
+            }
+            break;
+        }
+        if !is_time {
+            continue;
         }
         let s = skip_spaces(&t, end);
         let next = t.get(s).copied();
@@ -1640,5 +1706,46 @@ mod tests {
         // A French "est" after a time is a word, not a zone.
         assert!(!has_zone("Le 1/12 à 20h est parfait, appelle le bistrot"));
         assert!(!has_zone("2026-12-01 08:00"));
+    }
+
+    /// Every way of writing the hour that a time is read in (minutes in
+    /// Chinese and Korean, am/pm after a space, o'clock, heures, horas, a word
+    /// before a bare hour) is refused with a zone after it; written without
+    /// the zone it reads as before. A chat command keeps an offset written
+    /// alone with its time, never a country code.
+    #[test]
+    fn every_way_of_writing_the_hour_is_refused_with_a_zone_after_it() {
+        let now = at(2026, 11, 28, 10, 0);
+        for (time, zone, lang, want) in [
+            ("12/1 8點30分", " UTC", Lang::ZhTw, at(2026, 12, 1, 8, 30)),
+            ("12/1 8點半", " Z", Lang::ZhTw, at(2026, 12, 1, 8, 30)),
+            ("12월 1일 8시 30분", " GMT", Lang::Ko, at(2026, 12, 1, 8, 30)),
+            ("12/1 08:00 am", " UTC", Lang::En, at(2026, 12, 1, 8, 0)),
+            ("12/1 08:00 PM", " +08:00", Lang::En, at(2026, 12, 1, 20, 0)),
+            ("12/1 8 o'clock", " UTC", Lang::En, at(2026, 12, 1, 8, 0)),
+            ("1/12 20 heures", " UTC", Lang::Fr, at(2026, 12, 1, 20, 0)),
+            ("1/12 8 horas", " UTC", Lang::Es, at(2026, 12, 1, 8, 0)),
+            ("12/1 at 8", " UTC", Lang::En, at(2026, 12, 1, 8, 0)),
+            ("1/12 à 20", " CET", Lang::Fr, at(2026, 12, 1, 20, 0)),
+            ("1/12 a las 8", " +01:00", Lang::Es, at(2026, 12, 1, 8, 0)),
+        ] {
+            let zoned = format!("{time}{zone}");
+            assert!(has_zone(&zoned), "{zoned}");
+            assert_eq!(resolve_when(&zoned, now, lang), None, "{zoned}");
+            assert!(!has_zone(time), "{time}");
+            assert_eq!(resolve_when(time, now, lang), Some(want), "{time}");
+        }
+        // A chat command: "+0800" stays with the time and is refused; "+886" is the number's.
+        let (when, rest) = leading_when("12/1 08:00 +0800 0912345678 訂位").unwrap();
+        assert_eq!((when, rest), ("12/1 08:00 +0800", "0912345678 訂位"));
+        assert_eq!(resolve_when(when, now, Lang::ZhTw), None);
+        assert_eq!(leading_when("12/1 08:00 +886 2 2345 6789 訂位"), Some(("12/1 08:00", "+886 2 2345 6789 訂位")));
+        assert_eq!(leading_when("12/1 08:00 +44 20 7946 0000 book"), Some(("12/1 08:00", "+44 20 7946 0000 book")));
+        for t in ["+08", "-05", "+0800", "-0530", "+530", "+14"] {
+            assert!(offset_token(t), "{t}");
+        }
+        for t in ["+886", "+44", "+1", "+81", "+08000", "0800", "+1599"] {
+            assert!(!offset_token(t), "{t}");
+        }
     }
 }
