@@ -134,7 +134,7 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px soli
 .dt-btn[aria-expanded=true]{border-color:var(--focus)}
 .dt-btn svg{flex:0 0 auto;width:17px;height:17px;color:var(--muted)}
 .dt-btn .dt-txt{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dt-btn .dt-txt.empty{color:var(--muted)}
+.dt-btn .dt-txt.dt-ph{color:var(--muted);letter-spacing:.04em}
 .dt-pop{position:absolute;z-index:60;top:calc(100% + 6px);inset-inline-start:0;width:296px;max-width:calc(100vw - 32px);padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);box-shadow:0 10px 28px rgba(0,0,0,.18)}
 .dt-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px}
 .dt-head b{font-weight:600}
@@ -8107,7 +8107,7 @@ function erHolderName(hb) { return String((hb && hb.name) || "").trim() || Strin
 function erFmtAt(s) {
   const d = parseStamp(s);
   if (!d) return "";
-  try { return new Intl.DateTimeFormat(loc(), { weekday: "short", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d); } catch (_) { return d.toLocaleString(); }
+  try { return new Intl.DateTimeFormat(loc(), { calendar: "gregory", weekday: "short", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d); } catch (_) { return d.toLocaleString(); }
 }
 // How long until then ("in 3 hours"), in the page's language.
 function erLeft(s) {
@@ -8143,8 +8143,39 @@ function dtParse(v) {
   return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
 }
 function dtDay(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+// Every language and region: the Gregorian calendar (the days in the grid),
+// the language's own digits and order, its first day of the week.
+function dtFmt(opts) {
+  try { return new Intl.DateTimeFormat(loc(), Object.assign({ calendar: "gregory" }, opts)); } catch (_) {}
+  try { return new Intl.DateTimeFormat("en", opts); } catch (_) { return null; }
+}
 function dtLabel(d) {
-  try { return new Intl.DateTimeFormat(loc(), { year: "numeric", month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d); } catch (_) { return erLocalValue(d).replace("T", " "); }
+  const f = dtFmt({ year: "numeric", month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  return f ? f.format(d) : erLocalValue(d).replace("T", " ");
+}
+// What an empty field shows: the picked time's shape in this language, its digits dashed.
+function dtBlank() {
+  const f = dtFmt({ year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const s = f ? f.format(new Date(2026, 10, 30, 9, 0)) : "2026-11-30 09:00";
+  return s.replace(/\p{Nd}/gu, "-");
+}
+// Numbers in the language's own digits, at least `width` of them.
+function dtNum(width) {
+  let f = null;
+  try { f = new Intl.NumberFormat(loc(), { minimumIntegerDigits: width, useGrouping: false }); } catch (_) {}
+  return (n) => (f ? f.format(n) : String(n).padStart(width, "0"));
+}
+// 0 Sunday … 6 Saturday.
+function dtWeekStart() {
+  try {
+    const l = new Intl.Locale(loc());
+    const w = typeof l.getWeekInfo === "function" ? l.getWeekInfo() : l.weekInfo;
+    if (w && w.firstDay) return w.firstDay % 7;
+  } catch (_) {}
+  const base = String(loc()).toLowerCase().split("-")[0];
+  if (["ar", "fa", "ps", "ckb"].includes(base)) return 6;
+  if (["en", "zh", "ja", "ko", "pt", "he", "hi", "th", "id", "fil", "tl", "bn", "mr", "gu", "kn", "ml", "ta", "te", "pa", "ne", "my", "km", "lo", "am", "sw", "zu", "xh", "af"].includes(base)) return 0;
+  return 1;
 }
 // The one picker open; a press anywhere else closes it.
 let dtOpen = null;
@@ -8171,16 +8202,16 @@ function dtMount(input) {
   }
   function sync() {
     const d = dtParse(input.value);
-    txt.textContent = d ? dtLabel(d) : t("er_at");
-    txt.classList.toggle("empty", !d);
+    txt.textContent = d ? dtLabel(d) : dtBlank();
+    txt.classList.toggle("dt-ph", !d);
   }
   function draw() {
     clear(pop);
     const cur = dtParse(input.value);
     const [lo, hi] = bounds();
     const first = new Date(month.getFullYear(), month.getMonth(), 1);
-    let title = "";
-    try { title = new Intl.DateTimeFormat(loc(), { year: "numeric", month: "long" }).format(first); } catch (_) { title = first.getFullYear() + "-" + (first.getMonth() + 1); }
+    const tf = dtFmt({ year: "numeric", month: "long" });
+    const title = tf ? tf.format(first) : first.getFullYear() + "-" + (first.getMonth() + 1);
     const step = (n) => { month = new Date(month.getFullYear(), month.getMonth() + n, 1); draw(); };
     const prevOk = !lo || first > dtDay(lo);
     const nextFirst = new Date(month.getFullYear(), month.getMonth() + 1, 1);
@@ -8190,10 +8221,12 @@ function dtMount(input) {
       h("b", { text: title }),
       h("button", { type: "button", class: "dt-nav", disabled: !nextOk, onclick: () => step(1) }, svg(DT_ICON_NEXT))));
     const grid = h("div", { class: "dt-grid" });
-    let wdf = null;
-    try { wdf = new Intl.DateTimeFormat(loc(), { weekday: "narrow" }); } catch (_) {}
-    for (let i = 0; i < 7; i++) grid.append(h("div", { class: "dt-wd", text: wdf ? wdf.format(new Date(2026, 10, 1 + i)) : "" }));
-    for (let i = 0; i < first.getDay(); i++) grid.append(h("span", { class: "dt-day pad" }));
+    const ws = dtWeekStart();
+    const wdf = dtFmt({ weekday: "narrow" });
+    const num = dtNum(1);
+    // 2026-11-01 is a Sunday.
+    for (let i = 0; i < 7; i++) grid.append(h("div", { class: "dt-wd", text: wdf ? wdf.format(new Date(2026, 10, 1 + ((ws + i) % 7))) : "" }));
+    for (let i = 0; i < (first.getDay() - ws + 7) % 7; i++) grid.append(h("span", { class: "dt-day pad" }));
     const today = dtDay(new Date()).getTime();
     const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
     for (let n = 1; n <= days; n++) {
@@ -8201,12 +8234,12 @@ function dtMount(input) {
       const off = (lo && day < dtDay(lo)) || (hi && day > dtDay(hi));
       const on = cur && dtDay(cur).getTime() === day.getTime();
       grid.append(h("button", {
-        type: "button", class: "dt-day" + (on ? " on" : "") + (day.getTime() === today ? " today" : ""), disabled: !!off, text: String(n),
+        type: "button", class: "dt-day" + (on ? " on" : "") + (day.getTime() === today ? " today" : ""), disabled: !!off, text: num(n),
         onclick: () => { const base = cur || new Date(2000, 0, 1, 9, 0); day.setHours(base.getHours(), base.getMinutes()); set(day); },
       }));
     }
     pop.append(grid);
-    const p2 = (x) => String(x).padStart(2, "0");
+    const p2 = dtNum(2);
     const hour = h("select", { "aria-label": t("er_at"), disabled: !cur });
     for (let i = 0; i < 24; i++) hour.append(h("option", { value: String(i), text: p2(i) }));
     const min = h("select", { "aria-label": t("er_at"), disabled: !cur });
