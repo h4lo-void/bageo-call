@@ -709,13 +709,34 @@ pub fn leading_when(args: &str) -> Option<(&str, &str)> {
 }
 
 /// The time an errand's `when` names: `YYYY-MM-DDTHH:MM` (what the chat
-/// model writes), else a date and time as the owner wrote them ([parse_when]).
+/// model writes; with a zone, `Z` or `+08:00`, that moment in the owner's
+/// local time), else a date and time as the owner wrote them ([parse_when]).
+/// A zone that cannot be read is no time at all, never dropped.
 pub fn resolve_when(when: &str, now: NaiveDateTime, owner: Lang) -> Option<NaiveDateTime> {
     let w = when.trim();
+    let zoned = w.strip_suffix(['Z', 'z']).map(|s| format!("{s}+00:00")).unwrap_or_else(|| w.to_string());
+    if let Some(t) = DateTime::parse_from_rfc3339(&zoned).ok().or_else(|| DateTime::parse_from_str(&zoned, "%Y-%m-%dT%H:%M%:z").ok()) {
+        return Some(t.with_timezone(&Local).naive_local());
+    }
+    if zone_tail(w) {
+        return None;
+    }
     ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"]
         .iter()
         .find_map(|f| NaiveDateTime::parse_from_str(w, f).ok())
         .or_else(|| parse_when(w, now, day_first(w, owner)))
+}
+
+/// `YYYY-MM-DDTHH:MM[:SS]` followed by a zone (`Z`, `+…`, `-…`).
+fn zone_tail(w: &str) -> bool {
+    let Some(head) = w.get(..16) else {
+        return false;
+    };
+    if ["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"].iter().all(|f| NaiveDateTime::parse_from_str(head, f).is_err()) {
+        return false;
+    }
+    let rest = w[16..].trim_start_matches(|c: char| c.is_ascii_digit() || c == ':' || c == '.').trim_start();
+    rest.starts_with(['Z', 'z', '+', '-'])
 }
 
 // ---------------------------------------------------------------- the owner's words
@@ -1244,6 +1265,31 @@ mod tests {
         assert_eq!(resolve_when("1/12 20h", now, Lang::Fr), Some(at(2026, 12, 1, 20, 0)));
         assert_eq!(resolve_when("2027-01-02T09:00", now, Lang::De), Some(at(2027, 1, 2, 9, 0)));
         assert_eq!(resolve_when("whenever", now, Lang::En), None);
+    }
+
+    #[test]
+    fn a_time_with_its_zone_is_that_moment_in_local_time() {
+        let now = at(2026, 11, 28, 10, 0);
+        let local = |h: u32, offset_h: i32| {
+            chrono::FixedOffset::east_opt(offset_h * 3600).unwrap().with_ymd_and_hms(2026, 12, 1, h, 0, 0).unwrap().with_timezone(&Local).naive_local()
+        };
+        for (when, want) in [
+            ("2026-12-01T08:00:00Z", local(8, 0)),
+            ("2026-12-01T08:00Z", local(8, 0)),
+            ("2026-12-01T08:00:00+08:00", local(8, 8)),
+            ("2026-12-01T08:00+08:00", local(8, 8)),
+            ("2026-12-01T08:00:00-05:00", local(8, -5)),
+            ("2026-12-01T08:00-05:00", local(8, -5)),
+        ] {
+            assert_eq!(resolve_when(when, now, Lang::En), Some(want), "{when}");
+        }
+        // No zone: the owner's local time as written.
+        assert_eq!(resolve_when("2026-12-01T08:00", now, Lang::En), Some(at(2026, 12, 1, 8, 0)));
+        assert_eq!(resolve_when("2026-12-01T08:00:00", now, Lang::En), Some(at(2026, 12, 1, 8, 0)));
+        // A zone that cannot be read: refused, not dropped.
+        for when in ["2026-12-01T08:00+8", "2026-12-01T08:00:00+08", "2026-12-01T08:00 -5"] {
+            assert_eq!(resolve_when(when, now, Lang::En), None, "{when}");
+        }
     }
 
     #[test]
