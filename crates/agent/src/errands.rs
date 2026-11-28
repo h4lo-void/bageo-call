@@ -3737,11 +3737,19 @@ pub async fn after_call(
 /// is dialed again [plan::GrabRules::gap] later while the run's window lasts,
 /// and the owner is told nothing until the end; any other end, or with it
 /// off, the errand is over ([`finish`]).
-async fn end_try(cb: &CallbackCtx<'_>, store: &ErrandStore, id: &str, mut result: Outcome, code: &str, again: bool) {
+async fn end_try(cb: &CallbackCtx<'_>, store: &ErrandStore, id: &str, result: Outcome, code: &str, again: bool) {
+    if let Some(result) = last_try(store, id, result, code, again).await {
+        finish(cb, store, id, result, code).await;
+    }
+}
+
+/// [`end_try`] up to the owner being told: None, it is dialed again later;
+/// else the result it ends with.
+async fn last_try(store: &ErrandStore, id: &str, mut result: Outcome, code: &str, again: bool) -> Option<Outcome> {
     if let Some(e) = store.get(id).filter(|e| again && e.redial && !e.is_final()) {
         if let Some(at) = e.grab_next_after(&store.dials_to(&e.number), chrono::Utc::now()) {
             redial_later(store, id, result, code, at).await;
-            return;
+            return None;
         }
         let w = words(locale::notify_lang());
         let last = result.summary.trim().to_string();
@@ -3753,7 +3761,7 @@ async fn end_try(cb: &CallbackCtx<'_>, store: &ErrandStore, id: &str, mut result
             ..Default::default()
         };
     }
-    finish(cb, store, id, result, code).await;
+    Some(result)
 }
 
 /// Errand `id`'s try did not get through (`result`, `code`): kept in its
@@ -3777,19 +3785,25 @@ async fn redial_later(store: &ErrandStore, id: &str, result: Outcome, code: &str
 
 /// The errand is over with `result`: kept, and the owner told.
 async fn finish(cb: &CallbackCtx<'_>, store: &ErrandStore, id: &str, result: Outcome, code: &str) {
+    if let Some(e) = close(store, id, result, code).await {
+        notify(cb, &e).await;
+    }
+}
+
+/// [`finish`] but the owner not told yet: the errand as it ended, None when
+/// it was over already.
+async fn close(store: &ErrandStore, id: &str, result: Outcome, code: &str) -> Option<Errand> {
     let status = status_of(&result.outcome);
-    let Some(e) = store.update_active(id, |e| {
+    let e = store.update_active(id, |e| {
         e.status = status.to_string();
         e.call_code = code.to_string();
         e.queued_at.clear();
         e.result = Some(result);
-    }) else {
-        return;
-    };
+    })?;
     store.end_live(id);
     store.persist().await;
     info!(errand = id, status, code, "errand over");
-    notify(cb, &e).await;
+    Some(e)
 }
 
 /// A dial that never got going (`code`: why).
@@ -3964,6 +3978,21 @@ async fn notify(cb: &CallbackCtx<'_>, e: &Errand) {
     let body = notice_body(lang, e, cb.settings);
     let ok = crate::notify::notify_ai_errand(cb.http, cb.settings, &e.number, &e.serial, &notice_headline(lang, e), &body).await;
     info!(errand = e.id.as_str(), sent = ok, "errand notice");
+}
+
+/// [`notify`] sent in the background: a slow notification service never
+/// holds up the timer's other errands.
+fn notify_in_background(env: &Env<'_>, e: &Errand) {
+    #[cfg(test)]
+    tests::NOTICES.lock().unwrap_or_else(|p| p.into_inner()).push(e.id.clone());
+    let lang = locale::notify_lang();
+    let body = notice_body(lang, e, env.settings);
+    let headline = notice_headline(lang, e);
+    let (http, settings, id, number, serial) = (env.http.clone(), env.settings.clone(), e.id.clone(), e.number.clone(), e.serial.clone());
+    tokio::spawn(async move {
+        let ok = crate::notify::notify_ai_errand(&http, &settings, &number, &serial, &headline, &body).await;
+        info!(errand = id.as_str(), sent = ok, "errand notice");
+    });
 }
 
 /// The notification that scheduled errand `e` was set (`started`: its time
@@ -4370,7 +4399,12 @@ pub async fn reschedule(env: &Env<'_>, id: &str, body: &Value) -> Result<Errand,
     };
     let sub_id = body.get("sub_id").and_then(Value::as_i64).filter(|n| *n >= 0).or(e.sub_id_asked);
     let grab = body.get("grab").and_then(Value::as_bool).unwrap_or(e.redial);
-    let pick = match pick_phone_abroad(&env.phones, &e.number, &serial, sub_id, &home_region(env.rt), e.abroad_ok) {
+    // A call abroad confirmed for one SIM is not confirmed for another: a new
+    // line needs the owner's confirmation again (`abroad_ok`).
+    let asked_ok = body.get("abroad_ok").and_then(Value::as_bool).unwrap_or(false);
+    let same_line = serial.eq_ignore_ascii_case(&e.phone_asked) && sub_id == e.sub_id_asked;
+    let abroad_ok = asked_ok || (same_line && e.abroad_ok);
+    let pick = match pick_phone_abroad(&env.phones, &e.number, &serial, sub_id, &home_region(env.rt), abroad_ok) {
         Ok(p) => p,
         Err(code) => {
             let cross = if code == "sim_other_country" { cross_country(&env.phones, &e.number, &serial, sub_id) } else { None };
@@ -4390,6 +4424,7 @@ pub async fn reschedule(env: &Env<'_>, id: &str, body: &Value) -> Result<Errand,
         e.device_label = label.clone();
         e.phone_asked = pick.serial.clone();
         e.sub_id_asked = pick.sub_id;
+        e.abroad_ok = abroad_ok;
     });
     let e = match changed {
         Ok(Some(e)) => e,
@@ -4615,13 +4650,20 @@ async fn redial_due(env: &Env<'_>, home: &str) {
             let why = if matches!(e.call_code.as_str(), "phone_busy" | "no_phone" | "sim_unknown") { code_reason(&w, &e.call_code) } else { w.outcomes[4] };
             warn!(errand = e.id.as_str(), code = e.call_code.as_str(), "errand: its window is over");
             let result = Outcome { outcome: "no_answer".into(), summary: why.into(), ..Default::default() };
-            end_try(&env.cb(), env.store, &e.id, result, "no_answer", true).await;
+            if let Some(result) = last_try(env.store, &e.id, result, "no_answer", true).await {
+                if let Some(over) = close(env.store, &e.id, result, "no_answer").await {
+                    notify_in_background(env, &over);
+                }
+            }
             continue;
         }
         match pick_phone_abroad(&env.phones, &e.number, &e.phone_asked, e.sub_id_asked, home, e.abroad_ok) {
             Ok(pick) => {
-                info!(errand = e.id.as_str(), next_try = e.redial_try(), "errand: dialed again");
-                dial(env, &e.id, &pick).await;
+                // Logged only for a dial really sent: a busy phone is looked at every second.
+                let last = e.dialed_at.last();
+                if dial(env, &e.id, &pick).await.is_some_and(|x| x.dialed_at.last() != last) {
+                    info!(errand = e.id.as_str(), next_try = e.redial_try(), "errand: dialed again");
+                }
             }
             Err(code) => {
                 // No phone can dial it now: looked at again a second later, within its window.
@@ -4642,39 +4684,67 @@ async fn redial_due(env: &Env<'_>, home: &str) {
 /// (`missed`); then the redialing errands whose next try is due.
 pub async fn due(env: &Env<'_>) {
     let now = chrono::Utc::now();
-    let lead = plan::span(plan::GRAB.lead);
     let mut starting = Vec::new();
-    for e in env.store.all().into_iter().filter(|e| e.status == SCHEDULED) {
-        let Some(at) = e.scheduled() else {
-            continue;
-        };
-        if now < at - lead {
-            continue;
+    for e in env.store.all() {
+        match due_state(&e, now) {
+            Due::Not => {}
+            Due::Missed => miss_scheduled(env, &e.id).await,
+            Due::Start => starting.push(e.id),
         }
-        if now >= plan::start_by(at, e.redial) {
-            warn!(errand = e.id.as_str(), at = e.scheduled_at.as_str(), "scheduled errand missed its time");
-            let claimed = env.store.update_if(&e.id, |x| x.status == SCHEDULED, |x| x.status = QUEUED.to_string());
-            if claimed.is_some() {
-                fail(&env.cb(), env.store, &e.id, "missed").await;
-            }
-            continue;
-        }
-        starting.push(e.id);
     }
     // Several due at the same moment all dial at once: none waits for another.
     futures_util::future::join_all(starting.iter().map(|id| start_scheduled(env, id))).await;
     redial_due(env, &home_region(env.rt)).await;
 }
 
+/// Where a scheduled errand stands at a moment.
+#[derive(Debug, PartialEq, Eq)]
+enum Due {
+    /// Not scheduled, or not its time yet.
+    Not,
+    /// Its first dial goes out now ([plan::GRAB.lead] early).
+    Start,
+    /// Its time passed beyond its window ([plan::start_by]).
+    Missed,
+}
+
+fn due_state(e: &Errand, now: chrono::DateTime<chrono::Utc>) -> Due {
+    if e.status != SCHEDULED {
+        return Due::Not;
+    }
+    let Some(at) = e.scheduled() else {
+        return Due::Not;
+    };
+    if now < at - plan::span(plan::GRAB.lead) {
+        Due::Not
+    } else if now >= plan::start_by(at, e.redial) {
+        Due::Missed
+    } else {
+        Due::Start
+    }
+}
+
+/// Scheduled errand `id` missed its time: it fails (`missed`), checked
+/// again as it is now (the owner may have just moved it).
+async fn miss_scheduled(env: &Env<'_>, id: &str) {
+    let claimed = env.store.update_if(id, |x| due_state(x, chrono::Utc::now()) == Due::Missed, |x| x.status = QUEUED.to_string());
+    if let Some(e) = claimed {
+        warn!(errand = id, at = e.scheduled_at.as_str(), "scheduled errand missed its time");
+        fail(&env.cb(), env.store, id, "missed").await;
+    }
+}
+
 /// Scheduled errand `id`'s time came: it waits no more, and its first try
 /// goes out on its line at once (a busy phone or none connected: looked at
 /// again a second later in grab mode, within its window; else by the sweep,
 /// for as long). The owner is told after, without holding up the dial.
+/// Its time is checked again as it is now: one the owner just moved later
+/// keeps waiting.
 async fn start_scheduled(env: &Env<'_>, id: &str) {
     let w = plan::words(locale::notify_lang());
     let started = env.store.update_if(
         id,
-        |e| e.status == SCHEDULED,
+        |e| due_state(e, chrono::Utc::now()) == Due::Start,
         |e| {
             e.status = QUEUED.to_string();
             e.call_code.clear();
@@ -7865,5 +7935,77 @@ mod tests {
             assert_eq!(create(&env, &body).await.map(|e| e.id), Err("bad_time"), "{at}");
         }
         assert_eq!(next_json(&mut ph, QUIET).await, None, "nothing dialed");
+    }
+
+    /// The owner moving a schedule later between the timer's look and its
+    /// start: it keeps waiting for its new time, neither dialed nor failed.
+    #[tokio::test]
+    async fn a_schedule_moved_after_the_timer_looked_keeps_waiting() {
+        let rig = Rig::new();
+        let (sink, mut ph) = phone_socket().await;
+        rig.control.register_client("pixel-plan-15".into(), sink).await;
+        let env = rig.env(vec![phone("pixel-plan-15", &[(1, "tw")])]);
+        let ago = |mins: i64| stamp_of(chrono::Utc::now() - chrono::Duration::minutes(mins));
+        let base = |id: &str, number: &str, at: String| Errand {
+            id: id.into(),
+            number: number.into(),
+            task: "訂位".into(),
+            status: SCHEDULED.into(),
+            call_code: SCHEDULED.into(),
+            attempts: 1,
+            redial: true,
+            phone_asked: "pixel-plan-15".into(),
+            sub_id_asked: Some(1),
+            grab_since: at.clone(),
+            scheduled_at: at,
+            ..Default::default()
+        };
+        rig.store.insert(base("e-moved-due", "0223459871", ago(0)));
+        rig.store.insert(base("e-moved-missed", "0223459872", ago(31)));
+        // The timer's look: one starts now, the other missed its time.
+        let now = chrono::Utc::now();
+        assert_eq!(due_state(&rig.store.get("e-moved-due").unwrap(), now), Due::Start);
+        assert_eq!(due_state(&rig.store.get("e-moved-missed").unwrap(), now), Due::Missed);
+        // Meanwhile the owner moves both to tomorrow.
+        for (id, mins) in [("e-moved-due", 24 * 60), ("e-moved-missed", 26 * 60)] {
+            reschedule(&env, id, &json!({"scheduled_at": in_minutes(mins)})).await.unwrap();
+        }
+        start_scheduled(&env, "e-moved-due").await;
+        miss_scheduled(&env, "e-moved-missed").await;
+        for id in ["e-moved-due", "e-moved-missed"] {
+            let e = rig.store.get(id).unwrap();
+            assert_eq!((e.status.as_str(), e.call_code.as_str(), e.dialed_at.len()), (SCHEDULED, SCHEDULED, 0), "{id}");
+            assert!(e.scheduled().unwrap() > chrono::Utc::now() + chrono::Duration::hours(23), "{id}");
+            assert_eq!(notices(id), 0, "{id}");
+            assert!(plan_notices(id).is_empty(), "{id}");
+        }
+        assert_eq!(next_json(&mut ph, QUIET).await, None, "nothing dialed");
+    }
+
+    /// A schedule moved to another line needs the call abroad confirmed
+    /// again; on its own line the confirmation it had stays.
+    #[tokio::test]
+    async fn a_schedule_moved_to_another_line_asks_again_for_a_call_abroad() {
+        let rig = Rig::new();
+        let env = rig.env(vec![phone("pixel-plan-16", &[(1, "tw"), (2, "tw")]), phone("pixel-plan-16b", &[(3, "tw")])]);
+        let mut body = scheduled_body("+1 650 555 0164", "pixel-plan-16", 1, &in_minutes(60));
+        body["abroad_ok"] = json!(true);
+        let e = create(&env, &body).await.unwrap();
+        assert!(e.abroad_ok);
+        let cross = Some(("tw".to_string(), "us".to_string()));
+        // Its own line, a new time: still confirmed.
+        let kept = reschedule(&env, &e.id, &json!({"scheduled_at": in_minutes(90)})).await.unwrap();
+        assert!(kept.abroad_ok);
+        // Another phone, or the other SIM of its phone, without a new confirmation: refused.
+        for line in [json!({"serial": "pixel-plan-16b", "sub_id": 3}), json!({"sub_id": 2})] {
+            let mut moved = line.clone();
+            moved["scheduled_at"] = json!(in_minutes(120));
+            let r = reschedule(&env, &e.id, &moved).await.unwrap_err();
+            assert_eq!((r.code, r.cross.clone()), ("sim_other_country", cross.clone()), "{line}");
+            assert_eq!(rig.store.get(&e.id).unwrap().phone_asked, "pixel-plan-16", "{line}");
+        }
+        // Confirmed for the new line: moved, and that confirmation kept.
+        let moved = reschedule(&env, &e.id, &json!({"scheduled_at": in_minutes(120), "serial": "pixel-plan-16b", "sub_id": 3, "abroad_ok": true})).await.unwrap();
+        assert_eq!((moved.phone_asked.as_str(), moved.sub_id_asked, moved.abroad_ok), ("pixel-plan-16b", Some(3), true));
     }
 }
