@@ -1,7 +1,7 @@
 {
   "format": 1,
   "lang": "ja",
-  "locked": ["short_text_hold"],
+  "locked": ["short_text_hold", "short_text_not_human"],
   "texts": {
     "short_text_language": "言葉は自然な話し言葉の日本語で。",
     "short_text_hold": "お金、振り込み、契約、パスワード、認証コード、個人情報、会う約束や日時の取り決めは、どれも承諾せず、やんわりかわします。",
@@ -33,6 +33,7 @@
       "",
       "{END}"
     ],
+    "short_text_not_human": "、人間のふりも",
     "appointments_prompt_block": [
       "- Never make the caller wait on the line and never say you are looking something up right now, in any language (nothing like \"one moment\", \"hold on\", \"let me look\", \"ちょっと待って\", \"確認するから待って\", \"等一下\"): call the function silently and carry on with the conversation. Saying that you will check it after the call and get back to them is something else: that is exactly what you say below.",
       ""

@@ -57,6 +57,12 @@ pub struct Words {
     pub confirm_how: &'static str,
     pub yes: &'static str,
     pub no: &'static str,
+    /// Typed 1 / 2 cannot pick a card (several are waiting, or the one waiting
+    /// came from an MCP client): say this.
+    pub use_button: &'static str,
+    /// A chat with no buttons already has a card: say this instead, so a
+    /// typed 1 or 2 can finish that one.
+    pub finish_first: &'static str,
     pub expired: &'static str,
     pub e_decided: &'static str,
     pub dropped: &'static str,
@@ -123,6 +129,79 @@ pub fn words(lang: Lang) -> &'static Words {
     }
 }
 
+/// A typed yes, besides 1: the button's word and the short yes, in each language.
+const YES_WORDS: &[&str] = &[
+    "go ahead",
+    "執行",
+    "执行",
+    "実行",
+    "실행",
+    "adelante",
+    "lancer",
+    "ausführen",
+    "seguir",
+    "是",
+    "對",
+    "对",
+    "同意",
+    "yes",
+    "はい",
+    "네",
+    "예",
+    "sí",
+    "si",
+    "oui",
+    "ja",
+    "sim",
+];
+
+/// A typed no, besides 2.
+const NO_WORDS: &[&str] = &[
+    "drop",
+    "取消",
+    "取り消し",
+    "취소",
+    "descartar",
+    "abandonner",
+    "verwerfen",
+    "否",
+    "不要",
+    "no",
+    "いいえ",
+    "아니요",
+    "non",
+    "nein",
+    "não",
+    "nao",
+];
+
+fn fold_word(s: &str) -> String {
+    s.trim().chars().flat_map(char::to_lowercase).collect()
+}
+
+/// 1 or 2, or a whole-message yes / no in one of the nine languages.
+/// A longer sentence is not one ("是的，兩位" is an answer, not a yes).
+pub fn typed_yes_no(text: &str) -> Option<bool> {
+    let raw = text.trim();
+    if raw == "1" || raw == "１" {
+        return Some(true);
+    }
+    if raw == "2" || raw == "２" {
+        return Some(false);
+    }
+    let folded = fold_word(raw);
+    if folded.is_empty() {
+        return None;
+    }
+    if YES_WORDS.iter().any(|w| fold_word(w) == folded) {
+        return Some(true);
+    }
+    if NO_WORDS.iter().any(|w| fold_word(w) == folded) {
+        return Some(false);
+    }
+    None
+}
+
 /// The command list for a platform's menu: (command, what it does).
 pub fn menu(w: &Words) -> Vec<(&'static str, &'static str)> {
     COMMANDS.iter().zip(w.menu.iter()).map(|(c, (_, what))| (*c, *what)).collect()
@@ -182,7 +261,11 @@ pub fn error_text(w: &Words, code: &str) -> String {
         "busy" => w.e_busy.to_string(),
         "question_closed" => w.closed.to_string(),
         "already_decided" => w.e_decided.to_string(),
-        other => fmt(w.failed, &[other]),
+        other => match crate::errand_plan::error_text(crate::locale::notify_lang(), other) {
+            // The errand holding the line comes with LineHeld; without it, a dash.
+            Some(text) => text.replace("{who}", "—").replace("{when}", "—"),
+            None => fmt(w.failed, &[other]),
+        },
     }
 }
 
@@ -300,6 +383,10 @@ pub fn render(o: &Outcome, w: &Words) -> String {
                 _ => fmt(w.list_unblocked, &[&who]),
             }
         }
+        Outcome::LineHeld { code, who, when } => match crate::errand_plan::error_text(crate::locale::notify_lang(), code) {
+            Some(text) => text.replace("{who}", who).replace("{when}", when),
+            None => error_text(w, code),
+        },
         Outcome::Failed { code } => error_text(w, code),
     }
 }
@@ -376,6 +463,8 @@ const EN: Words = Words {
     confirm_how: "Reply 1 to go ahead or 2 to drop it, within 2 minutes (code {1}).",
     yes: "Go ahead",
     no: "Drop",
+    use_button: "Press the button on the card to answer.",
+    finish_first: "Finish the card already waiting (reply 1 or 2).",
     expired: "That confirmation has expired or was already used. Send the command again.",
     e_decided: "That to-do was already decided elsewhere; nothing was changed.",
     dropped: "Dropped. Nothing was done.",
@@ -463,6 +552,8 @@ const ZH_TW: Words = Words {
     confirm_how: "2 分鐘內回覆 1 執行、2 取消（確認碼 {1}）。",
     yes: "執行",
     no: "取消",
+    use_button: "請按卡上的按鈕回覆。",
+    finish_first: "請先處理前一張（回覆 1 或 2）。",
     expired: "這個確認已過期或已用過，請重新下指令。",
     e_decided: "這件待辦已經在別處處理過了，沒有變動。",
     dropped: "已取消，什麼都沒做。",
@@ -550,6 +641,8 @@ const ZH_CN: Words = Words {
     confirm_how: "2 分钟内回复 1 执行、2 取消（确认码 {1}）。",
     yes: "执行",
     no: "取消",
+    use_button: "请按卡片上的按钮回复。",
+    finish_first: "请先处理前一张（回复 1 或 2）。",
     expired: "这个确认已过期或已用过，请重新下指令。",
     e_decided: "这件待办已经在别处处理过了，没有变动。",
     dropped: "已取消，什么都没做。",
@@ -637,6 +730,8 @@ const JA: Words = Words {
     confirm_how: "2 分以内に 1（実行）か 2（取り消し）で返信してください（確認コード {1}）。",
     yes: "実行",
     no: "取り消し",
+    use_button: "カードのボタンで答えてください。",
+    finish_first: "先に、待っているカードを済ませてください（1 か 2 で返信）。",
     expired: "この確認は期限切れか、すでに使われています。もう一度コマンドを送ってください。",
     e_decided: "この用件はすでに別の場所で処理済みです。何も変更していません。",
     dropped: "取り消しました。何もしていません。",
@@ -724,6 +819,8 @@ const KO: Words = Words {
     confirm_how: "2분 안에 1(실행) 또는 2(취소)로 답하세요(확인 코드 {1}).",
     yes: "실행",
     no: "취소",
+    use_button: "카드의 버튼으로 답해 주세요.",
+    finish_first: "먼저 기다리고 있는 카드를 처리해 주세요(1 또는 2로 답하기).",
     expired: "이 확인은 만료되었거나 이미 사용되었습니다. 명령을 다시 보내세요.",
     e_decided: "이 할 일은 이미 다른 곳에서 처리되었습니다. 아무것도 바꾸지 않았습니다.",
     dropped: "취소했습니다. 아무것도 하지 않았습니다.",
@@ -811,6 +908,8 @@ const ES: Words = Words {
     confirm_how: "Responde 1 para seguir o 2 para descartarlo, en 2 minutos (código {1}).",
     yes: "Adelante",
     no: "Descartar",
+    use_button: "Responde con el botón de la tarjeta.",
+    finish_first: "Termina primero la tarjeta que ya espera (responde 1 o 2).",
     expired: "Esa confirmación caducó o ya se usó. Envía el comando otra vez.",
     e_decided: "Ese pendiente ya se decidió en otro lugar; no se cambió nada.",
     dropped: "Descartado. No se hizo nada.",
@@ -898,6 +997,8 @@ const FR: Words = Words {
     confirm_how: "Réponds 1 pour lancer ou 2 pour abandonner, sous 2 minutes (code {1}).",
     yes: "Lancer",
     no: "Abandonner",
+    use_button: "Répondez avec le bouton de la carte.",
+    finish_first: "Traite d'abord la carte déjà en attente (réponds 1 ou 2).",
     expired: "Cette confirmation a expiré ou a déjà servi. Renvoie la commande.",
     e_decided: "Cette tâche a déjà été traitée ailleurs ; rien n'a été modifié.",
     dropped: "Abandonné. Rien n'a été fait.",
@@ -985,6 +1086,8 @@ const DE: Words = Words {
     confirm_how: "Antworte innerhalb von 2 Minuten mit 1 zum Ausführen oder 2 zum Verwerfen (Code {1}).",
     yes: "Ausführen",
     no: "Verwerfen",
+    use_button: "Antworte mit dem Knopf der Karte.",
+    finish_first: "Erledige zuerst die wartende Karte (antworte 1 oder 2).",
     expired: "Diese Bestätigung ist abgelaufen oder schon benutzt. Schick den Befehl noch einmal.",
     e_decided: "Diese Aufgabe wurde schon anderswo entschieden; nichts wurde geändert.",
     dropped: "Verworfen. Nichts wurde getan.",
@@ -1072,6 +1175,8 @@ const PT: Words = Words {
     confirm_how: "Responda 1 para seguir ou 2 para descartar, em até 2 minutos (código {1}).",
     yes: "Seguir",
     no: "Descartar",
+    use_button: "Responda com o botão do cartão.",
+    finish_first: "Resolva primeiro o cartão que já espera (responda 1 ou 2).",
     expired: "Essa confirmação expirou ou já foi usada. Envie o comando de novo.",
     e_decided: "Essa pendência já foi decidida em outro lugar; nada foi alterado.",
     dropped: "Descartado. Nada foi feito.",

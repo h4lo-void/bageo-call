@@ -250,6 +250,243 @@ async fn a_call_is_checked_before_it_is_offered_and_counts_against_the_hourly_li
     assert!(out.buttons.is_empty());
 }
 
+/// "/errand <date time> …": the confirmation says the day (with its weekday),
+/// the time and the line picked for it; a yes schedules it; with every line
+/// held then, the reply names the errand holding it.
+#[tokio::test]
+async fn a_call_can_be_scheduled_from_a_chat_on_a_line_free_at_that_time() {
+    let rig = Rig::with_env_bot();
+    rig.set(json!({"call_notify": false, "country_code": "886"}));
+    let (sink, _phone) = crate::callback::test_socket::phone_socket().await;
+    rig.state.control.register_client("pixel-chat-plan".into(), sink).await;
+    rig.state.errands.sims.note("pixel-chat-plan", 1, "tw");
+    rig.state.errands.sims.note("pixel-chat-plan", 2, "tw");
+    let c = rig.controller();
+    let day = chrono::Local::now().date_naive() + chrono::Duration::days(3);
+    let at = day.and_hms_opt(8, 0, 0).unwrap();
+    let label = crate::errand_plan::when_label(crate::locale::notify_lang(), at, chrono::Local::now().naive_local());
+    let ask = c.handle(&owner(&format!("/errand {} 08:00 0223459801 訂4位", day.format("%Y-%m-%d")))).await.unwrap();
+    assert_eq!(ask.buttons.len(), 2, "{}", ask.text);
+    assert!(ask.text.contains(&label), "{label}: {}", ask.text);
+    assert!(ask.text.contains(&crate::notify::device_label("pixel-chat-plan")), "{}", ask.text);
+    let done = c.handle(&press(&ask.buttons[0].data)).await.unwrap();
+    let e = rig.state.errands.list().into_iter().find(|e| e.number == "0223459801").unwrap_or_else(|| panic!("{}", done.text));
+    assert_eq!((e.status.as_str(), e.redial, e.sub_id_asked), (crate::errands::SCHEDULED, true, Some(1)));
+    assert_eq!(e.scheduled().map(|t| t.with_timezone(&chrono::Local).naive_local()), Some(at));
+    assert!(done.text.contains(&label), "{}", done.text);
+    // The whole phone is held then, its other SIM too: the reply names the errand holding it.
+    let held = c.handle(&owner(&format!("/errand {} 08:10 0223459803 訂4位", day.format("%Y-%m-%d")))).await.unwrap();
+    assert!(held.buttons.is_empty(), "{}", held.text);
+    assert!(held.text.contains("0223459801"), "{}", held.text);
+    // A time already past is said at once.
+    let past = c.handle(&owner("/errand 2020-01-01 08:00 0223459804 訂位")).await.unwrap();
+    assert!(past.buttons.is_empty(), "{}", past.text);
+}
+
+/// The chat model's time to call stands; a time is read from the message
+/// itself only when the model gave none and the message says it plainly.
+#[test]
+fn the_models_time_to_call_stands_and_a_plain_one_fills_in() {
+    let errand = |when: &str| Action::Errand { target: "0223456789".into(), task: "訂4位".into(), when: when.into(), grab_min: None };
+    let read = |a: Action| match a {
+        Action::Errand { when, .. } => when,
+        other => panic!("{other:?}"),
+    };
+    // The model's reading wins over the words.
+    assert_eq!(read(with_call_time(errand("2026-12-05T09:00"), "12/1 8點幫我打給 0223456789 訂4位")), "2026-12-05T09:00");
+    // None from the model: a plain date and time before the call is used…
+    let year = chrono::Datelike::year(&chrono::Local::now()) + 1;
+    assert_eq!(read(with_call_time(errand(""), &format!("{year}-12-01 08:00 打給 0223456789 訂4位"))), format!("{year}-12-01T08:00"));
+    // …but not a weekday, a booking's own time, or a day in words.
+    for text in [
+        "Next Saturday at 8am call 0223456789",
+        "下週六晚上8點打給 0223456789",
+        "Book a table for 4 at 7pm tomorrow, call 0223456789",
+        "幫我訂明天晚上七點兩位，打給鼎泰豐",
+        "El sábado a las 8 llama al 0223456789",
+    ] {
+        assert_eq!(read(with_call_time(errand(""), text)), "", "{text}");
+    }
+}
+
+/// A scheduled call asked for through MCP waits for the owner's yes even
+/// with `direct`: nothing is set without it.
+#[tokio::test]
+async fn a_scheduled_call_from_mcp_always_waits_for_the_owner() {
+    let rig = Rig::with_env_bot();
+    rig.set(json!({"call_notify": false, "country_code": "886"}));
+    let (sink, _phone) = crate::callback::test_socket::phone_socket().await;
+    rig.state.control.register_client("pixel-mcp-plan".into(), sink).await;
+    rig.state.errands.sims.note("pixel-mcp-plan", 1, "tw");
+    let c = rig.controller();
+    let rt = rig.state.settings_store.snapshot();
+    let when = (chrono::Local::now() + chrono::Duration::days(2)).format("%Y-%m-%dT%H:%M").to_string();
+    let o = c.request_errand(&rt, crate::mcp::MCP_CHAT, "0223459861", "訂4位", &when, None, true, 10).await;
+    assert!(!matches!(o, Outcome::ErrandStarted { .. }), "{o:?}");
+    assert!(rig.state.errands.list().is_empty(), "nothing set without the owner's yes");
+}
+
+/// What an MCP client is told of a scheduled call names the phone only: the
+/// number of the owner's SIM is on the owner's card, never in the answer.
+#[tokio::test]
+async fn an_mcp_client_is_never_told_the_number_of_the_owners_sim() {
+    let rig = Rig::with_env_bot();
+    rig.set(json!({"call_notify": false, "country_code": "886"}));
+    let (sink, _phone) = crate::callback::test_socket::phone_socket().await;
+    rig.state.control.register_client("pixel-mcp-line".into(), sink).await;
+    rig.state.errands.sims.note_list("pixel-mcp-line", &json!([{"sub_id": 1, "country": "tw", "number": "0912345678"}]));
+    let c = rig.controller();
+    let mut cards = c.subscribe();
+    let rt = rig.state.settings_store.snapshot();
+    let when = (chrono::Local::now() + chrono::Duration::days(2)).format("%Y-%m-%dT%H:%M").to_string();
+    let o = c.request_errand(&rt, crate::mcp::MCP_CHAT, "0223459884", "問營業時間", &when, None, false, 10).await;
+    let Outcome::Confirm { summary, .. } = &o else { panic!("{o:?}") };
+    assert!(!summary.contains("0912345678"), "{summary}");
+    assert!(summary.contains(&crate::notify::device_label("pixel-mcp-line")), "{summary}");
+    let told = crate::mcp::call_tool(&c, &rt, "request_call", &json!({"target": "0223459884", "task": "問營業時間", "at": when})).await;
+    assert!(!told.to_string().contains("0912345678"), "{told}");
+    // The owner's card still names the line with its number.
+    let card = cards.try_recv().expect("the owner's card");
+    assert!(card.out.text.contains("0912345678"), "{}", card.out.text);
+}
+
+/// A reply to the questions on a scheduled call's card never sets it, "yes"
+/// in it or not, in any language: the card comes again with the answer under
+/// the task, and only a yes there sets it.
+#[tokio::test]
+async fn a_reply_to_a_scheduled_cards_questions_brings_the_card_again_for_a_yes() {
+    let rig = Rig::with_env_bot();
+    rig.set(json!({"call_notify": false, "country_code": "886", "control_errands_per_hour": 10}));
+    let (sink, _phone) = crate::callback::test_socket::phone_socket().await;
+    rig.state.control.register_client("pixel-chat-gaps".into(), sink).await;
+    rig.state.errands.sims.note("pixel-chat-gaps", 1, "tw");
+    let c = rig.controller();
+    let day = (chrono::Local::now().date_naive() + chrono::Duration::days(3)).format("%Y-%m-%d").to_string();
+    let reply = |text: &str| {
+        let mut m = owner(text);
+        m.reply_to_bot = true;
+        m
+    };
+    let answers = [
+        ("08:00", "0223459881", "Yes, 2 adults, phone 0912345678"),
+        ("10:00", "0223459882", "はい、2名です。電話は0912345678"),
+        ("12:00", "0223459883", "Sí, somos 2, teléfono 0912345678"),
+    ];
+    for (at, number, answer) in answers {
+        let set = |rig: &Rig| rig.state.errands.list().into_iter().find(|e| e.number == number);
+        let ask = c.handle(&owner(&format!("/errand {day} {at} {number} 訂餐廳 7 點半，不行就 8 點半"))).await.unwrap();
+        assert_eq!(ask.buttons.len(), 2, "{}", ask.text);
+        let again = c.handle(&reply(answer)).await.unwrap();
+        assert!(set(&rig).is_none(), "{answer}: set on a reply");
+        assert_eq!(again.buttons.len(), 2, "{answer}: {}", again.text);
+        assert_ne!(again.buttons[0].data, ask.buttons[0].data, "{answer}: a new card");
+        let shown = again.text.contains(answer) || again.text.contains(&crate::locale::for_owner_in(Lang::ZhTw, answer));
+        assert!(shown && again.text.contains("訂餐廳"), "{answer}: {}", again.text);
+        // The old card's button is gone; another reply sets nothing either.
+        let stale = c.handle(&press(&ask.buttons[0].data)).await.unwrap();
+        assert!(reads_as(&stale.text, |w| w.expired.to_string()), "{}", stale.text);
+        c.handle(&reply("OK")).await;
+        assert!(set(&rig).is_none(), "{answer}: set on a second reply");
+        // The yes on the new card sets it, the answer with it.
+        let done = c.handle(&press(&again.buttons[0].data)).await.unwrap();
+        let e = set(&rig).unwrap_or_else(|| panic!("{answer}: {}", done.text));
+        assert_eq!(e.status, crate::errands::SCHEDULED);
+        assert!(e.answers.get("note").is_some_and(|n| n.contains("0912345678")), "{answer}: {:?}", e.answers);
+    }
+}
+
+/// The text holds `pick`'s words in some language (other tests may switch the notification language).
+fn says(text: &str, pick: impl Fn(Lang) -> String) -> bool {
+    crate::locale::ALL.iter().any(|l| text.contains(&crate::locale::for_owner_in(*l, &pick(*l))))
+}
+
+fn grab_line(min: u32) -> impl Fn(Lang) -> String {
+    move |l| crate::errand_plan::fill_grab(crate::errand_plan::words(l).grab, min)
+}
+
+/// A scheduled call from a chat redials for the minutes the owner wrote
+/// ("打 10 分鐘", "keep calling for 45 minutes"), else 30: the card says
+/// them, and only the yes sets them. Minutes out of range are said at once.
+/// Its questions' card says a reply brings it back for a yes.
+#[tokio::test]
+async fn a_scheduled_call_from_a_chat_redials_for_the_minutes_the_owner_wrote_once_confirmed() {
+    let rig = Rig::with_env_bot();
+    rig.set(json!({"call_notify": false, "country_code": "886", "control_errands_per_hour": 10}));
+    let (sink, _phone) = crate::callback::test_socket::phone_socket().await;
+    rig.state.control.register_client("pixel-chat-grab".into(), sink).await;
+    rig.state.errands.sims.note("pixel-chat-grab", 1, "tw");
+    let c = rig.controller();
+    let day = (chrono::Local::now().date_naive() + chrono::Duration::days(4)).format("%Y-%m-%d").to_string();
+    for (at, number, words, min) in [
+        ("08:00", "0223459971", "問營業時間，打 10 分鐘", 10),
+        ("10:00", "0223459972", "ask the opening hours, keep calling for 45 minutes", 45),
+        ("12:00", "0223459973", "問營業時間", 30),
+    ] {
+        let set = |rig: &Rig| rig.state.errands.list().into_iter().find(|e| e.number == number);
+        let ask = c.handle(&owner(&format!("/errand {day} {at} {number} {words}"))).await.unwrap();
+        assert_eq!(ask.buttons.len(), 2, "{}", ask.text);
+        assert!(says(&ask.text, grab_line(min)), "{min}: {}", ask.text);
+        assert!(set(&rig).is_none(), "{min}: nothing set before the yes");
+        let done = c.handle(&press(&ask.buttons[0].data)).await.unwrap();
+        let e = set(&rig).unwrap_or_else(|| panic!("{min}: {}", done.text));
+        assert_eq!((e.status.as_str(), e.redial, e.grab_min), (crate::errands::SCHEDULED, true, min));
+    }
+    // Minutes out of range: said at once, no card.
+    let out = c.handle(&owner(&format!("/errand {day} 14:00 0223459974 問營業時間，打 200 分鐘"))).await.unwrap();
+    assert!(out.buttons.is_empty(), "{}", out.text);
+    assert!(says(&out.text, |l| crate::errand_plan::error_text(l, "bad_grab_min").unwrap()), "{}", out.text);
+    // A scheduled call with questions: its card says the reply comes back for a yes.
+    let gaps = c.handle(&owner(&format!("/errand {day} 16:00 0223459975 訂餐廳 7 點半，打 15 分鐘"))).await.unwrap();
+    assert_eq!(gaps.buttons.len(), 2, "{}", gaps.text);
+    let tail = |l: Lang| crate::preflight::card_text_for(l, &[], true).lines().last().unwrap().to_string();
+    assert!(says(&gaps.text, tail), "{}", gaps.text);
+    assert!(says(&gaps.text, grab_line(15)), "{}", gaps.text);
+    // A call now's card with questions says the reply sends it.
+    let now_tail = |l: Lang| crate::preflight::card_text_for(l, &[], false).lines().last().unwrap().to_string();
+    let now = c.handle(&owner("/errand 0223459976 訂餐廳 7 點半")).await.unwrap();
+    assert!(says(&now.text, now_tail) && !says(&now.text, tail), "{}", now.text);
+}
+
+/// MCP's request_call takes `grab_minutes` with `at`: a whole number from 1
+/// to 120 (else `bad_grab_min`), never without a time (`grab_needs_time`);
+/// the owner's card says them and the yes sets them.
+#[tokio::test]
+async fn mcp_grab_minutes_are_checked_shown_on_the_card_and_set_on_the_yes() {
+    let rig = Rig::with_env_bot();
+    rig.set(json!({"call_notify": false, "country_code": "886", "mcp_calls": "confirm", "mcp_errands_per_hour": 20, "control_errands_per_hour": 10}));
+    let (sink, _phone) = crate::callback::test_socket::phone_socket().await;
+    rig.state.control.register_client("pixel-mcp-grab".into(), sink).await;
+    rig.state.errands.sims.note("pixel-mcp-grab", 1, "tw");
+    let c = rig.controller();
+    let mut cards = c.subscribe();
+    let rt = rig.state.settings_store.snapshot();
+    let when = (chrono::Local::now() + chrono::Duration::days(5)).format("%Y-%m-%dT%H:%M").to_string();
+    let call = |args: Value| {
+        let (c, rt) = (c.clone(), rt.clone());
+        async move { crate::mcp::call_tool(&c, &rt, "request_call", &args).await }
+    };
+    for bad in [json!(0), json!(121), json!(10.5), json!("30"), json!(-5)] {
+        let r = call(json!({"target": "0223459981", "task": "問營業時間", "at": when, "grab_minutes": bad})).await;
+        assert_eq!((r["isError"].clone(), r["structuredContent"]["code"].clone()), (json!(true), json!("bad_grab_min")), "{bad}");
+    }
+    let r = call(json!({"target": "0223459981", "task": "問營業時間", "grab_minutes": 30})).await;
+    assert_eq!(r["structuredContent"]["code"], "grab_needs_time");
+    assert!(cards.try_recv().is_err(), "no card for a refused request");
+    let r = call(json!({"target": "0223459981", "task": "問營業時間", "at": when, "grab_minutes": 45})).await;
+    assert_eq!(r["structuredContent"]["kind"], "confirm", "{r}");
+    assert!(says(r["structuredContent"]["summary"].as_str().unwrap_or(""), grab_line(45)), "{r}");
+    let card = cards.try_recv().expect("the owner's card");
+    assert!(says(&card.out.text, grab_line(45)), "{}", card.out.text);
+    assert!(rig.state.errands.list().is_empty(), "nothing set before the yes");
+    c.handle(&press(&card.out.buttons[0].data)).await.unwrap();
+    let e = rig.state.errands.list().into_iter().find(|e| e.number == "0223459981").expect("set on the yes");
+    assert_eq!((e.status.as_str(), e.grab_min), (crate::errands::SCHEDULED, 45));
+    // The tool says what it takes.
+    let tools = crate::mcp::tools(&rt);
+    let rc = tools.iter().find(|t| t["name"] == "request_call").unwrap();
+    assert_eq!(rc["inputSchema"]["properties"]["grab_minutes"]["maximum"], 120);
+}
+
 #[tokio::test]
 async fn a_to_do_is_decided_only_after_one_yes_from_the_one_who_asked() {
     let rig = Rig::with_env_bot();
@@ -574,4 +811,224 @@ fn the_status_texts_say_bageo_and_not_the_agent() {
 #[test]
 fn words_fmt_does_not_reexpand_placeholders_inside_earlier_arguments() {
     assert_eq!(words::fmt("{1}: {2}", &["literal {2}", "real"]), "literal {2}: real");
+}
+
+/// Nine languages, each in its own words, and none of them a longer sentence.
+#[test]
+fn every_language_asks_for_the_button_and_yes_no_are_whole_words() {
+    let mut seen = std::collections::HashSet::new();
+    for lang in crate::locale::ALL {
+        let w = words(lang);
+        assert!(!w.use_button.trim().is_empty() && w.use_button.chars().count() <= 80, "{lang:?}: {}", w.use_button);
+        assert!(!w.finish_first.trim().is_empty() && w.finish_first.chars().count() <= 80, "{lang:?}: {}", w.finish_first);
+        let low = format!("{} {}", w.use_button, w.finish_first).to_lowercase();
+        assert!(!low.contains("mcp"), "{lang:?}: {low}");
+        assert!(seen.insert(w.use_button), "same words twice: {}", w.use_button);
+        assert!(seen.insert(w.finish_first), "same words twice: {}", w.finish_first);
+    }
+    assert_eq!(words::typed_yes_no("1"), Some(true));
+    assert_eq!(words::typed_yes_no("２"), Some(false));
+    assert_eq!(words::typed_yes_no("是"), Some(true));
+    assert_eq!(words::typed_yes_no("否"), Some(false));
+    assert_eq!(words::typed_yes_no("はい"), Some(true));
+    assert_eq!(words::typed_yes_no("Sí"), Some(true));
+    assert_eq!(words::typed_yes_no("Nein"), Some(false));
+    assert_eq!(words::typed_yes_no("Oui"), Some(true));
+    assert_eq!(words::typed_yes_no("não"), Some(false));
+    assert_eq!(words::typed_yes_no("Go ahead"), Some(true));
+    assert_eq!(words::typed_yes_no("是的，兩位"), None);
+    assert_eq!(words::typed_yes_no("Yes, 2 adults"), None);
+}
+
+/// 是／否, and the same kind of word in Japanese and Spanish, settle the one
+/// card the owner asked for. A longer sentence does not.
+#[tokio::test]
+async fn a_typed_yes_or_no_in_chinese_japanese_and_spanish_settles_the_only_owners_card() {
+    let rig = Rig::with_env_bot();
+    let c = rig.controller();
+    for (id, word, goes) in [
+        ("task-yes-zh", "是", true),
+        ("task-yes-ja", "はい", true),
+        ("task-yes-es", "sí", true),
+        ("task-no-zh", "否", false),
+        ("task-no-de", "nein", false),
+    ] {
+        let id = rig.task(id, "王小明想改約時間").await;
+        let ask = c.handle(&owner(&format!("/ignore {id}"))).await.unwrap();
+        assert_eq!(ask.buttons.len(), 2, "{word}: {}", ask.text);
+        let out = c.handle(&owner(word)).await.unwrap();
+        let status = rig.task_status(&id).await;
+        if goes {
+            assert!(matches!(status, TaskStatus::Ignored), "{word}: {} ({out:?})", out.text);
+        } else {
+            assert!(reads_as(&out.text, |w| w.dropped.to_string()), "{word}: {}", out.text);
+            assert!(matches!(status, TaskStatus::Pending), "{word}");
+        }
+    }
+    let id = rig.task("task-not-a-yes", "回電給王小明").await;
+    c.handle(&owner(&format!("/ignore {id}"))).await.unwrap();
+    let sentence = c.handle(&owner("是的，兩位")).await.unwrap();
+    assert!(reads_as(&sentence.text, |w| w.hint.to_string()), "{}", sentence.text);
+    assert!(matches!(rig.task_status(&id).await, TaskStatus::Pending));
+    let done = c.handle(&owner("1")).await.unwrap();
+    assert!(matches!(rig.task_status(&id).await, TaskStatus::Ignored), "{}", done.text);
+}
+
+/// Two cards in one chat: typing 1 asks for the button and leaves both.
+/// Each button, carrying the whole code, settles only its own card.
+/// Discord and Slack still put that whole code on the button.
+#[tokio::test]
+async fn typing_one_next_to_an_mcp_card_asks_for_the_button_and_each_button_still_works() {
+    let rig = Rig::with_env_bot();
+    let c = rig.controller();
+    let owner_id = rig.task("task-owner-card", "回電給王小明").await;
+    let mcp_id = rig.task("task-mcp-card", "王小明想改約時間").await;
+    let ask = c.handle(&owner(&format!("/ignore {owner_id}"))).await.unwrap();
+    let owner_yes = ask.buttons[0].data.clone();
+    assert!(owner_yes.starts_with("k:") && owner_yes.ends_with(":y") && owner_yes.len() == 36, "{owner_yes}");
+    let chat = access::chat_key(ENV_TELEGRAM, "42");
+    let mcp_code = c.confirms.ask(&chat, confirm::ANY_SENDER, Job::Decide { task_id: mcp_id.clone(), confirm: false }).unwrap();
+    let typed = c.handle(&owner("1")).await.unwrap();
+    assert!(reads_as(&typed.text, |w| w.use_button.to_string()), "{}", typed.text);
+    assert!(typed.buttons.is_empty());
+    assert!(matches!(rig.task_status(&owner_id).await, TaskStatus::Pending));
+    assert!(matches!(rig.task_status(&mcp_id).await, TaskStatus::Pending));
+    let done = c.handle(&press(&owner_yes)).await.unwrap();
+    assert!(matches!(rig.task_status(&owner_id).await, TaskStatus::Ignored), "{}", done.text);
+    assert!(matches!(rig.task_status(&mcp_id).await, TaskStatus::Pending));
+    let mcp_yes = format!("k:{mcp_code}:y");
+    assert!(mcp_yes.len() <= BUTTON_DATA_MAX);
+    let mcp_done = c.handle(&press(&mcp_yes)).await.unwrap();
+    assert!(matches!(rig.task_status(&mcp_id).await, TaskStatus::Ignored), "{}", mcp_done.text);
+    let buttons = [
+        Button { label: "執行".into(), data: owner_yes },
+        Button { label: "執行".into(), data: mcp_yes.clone() },
+    ];
+    assert!(discord::components(&buttons).to_string().contains(&mcp_yes));
+    assert!(slack::actions(&buttons).expect("slack keeps the button").to_string().contains(&mcp_yes));
+}
+
+/// A reply to a scheduled card that asked questions brings that card back
+/// for a yes, and does not take or replace an MCP card waiting beside it.
+#[tokio::test]
+async fn a_scheduled_cards_reply_brings_it_back_and_leaves_the_mcp_card() {
+    let rig = Rig::with_env_bot();
+    let c = rig.controller();
+    let chat = access::chat_key(ENV_TELEGRAM, "42");
+    c.confirms
+        .ask(
+            &chat,
+            "42",
+            Job::Errand {
+                body: json!({
+                    "number": "0912345678",
+                    "task": "訂餐廳",
+                    "preflight_gaps": true,
+                    "scheduled_at": "2026-12-01T19:30:00+08:00",
+                    "card": ["讓 AI 打給 0912345678：\n訂餐廳", ""]
+                }),
+            },
+        )
+        .unwrap();
+    let mcp = c.confirms.ask(&chat, confirm::ANY_SENDER, Job::Decide { task_id: "mcp-stay".into(), confirm: true }).unwrap();
+    let mut reply_msg = owner("兩位，七點半可以");
+    reply_msg.reply_to_bot = true;
+    let again = c.handle(&reply_msg).await.unwrap();
+    assert_eq!(again.buttons.len(), 2, "{}", again.text);
+    assert!(again.text.contains("兩位，七點半可以"), "{}", again.text);
+    assert_ne!(&again.buttons[0].data, &format!("k:{mcp}:y"));
+    assert_eq!(c.confirms.take(&chat, "7", Some(&mcp)).map(|j| matches!(j, Job::Decide { .. })), Some(true));
+    assert!(c.confirms.waiting(&chat), "the card brought back is still waiting");
+}
+
+/// 取消 / 不要 / no, and the same whole word in the other languages, drop the
+/// one card the owner asked for. Someone else in the chat saying no does not.
+#[tokio::test]
+async fn a_whole_no_in_every_language_drops_only_the_card_its_owner_asked_for() {
+    let rig = Rig::with_env_bot();
+    rig.set(json!({"control_commands_per_minute": 80}));
+    let c = rig.controller();
+    let id = rig.task("task-other-no", "回電給王小明").await;
+    c.handle(&owner(&format!("/ignore {id}"))).await.unwrap();
+    let other = c.handle(&from(ENV_TELEGRAM, "42", "43", Body::Text("no".into()))).await.unwrap();
+    assert!(reads_as(&other.text, |w| w.expired.to_string()), "{}", other.text);
+    assert!(matches!(rig.task_status(&id).await, TaskStatus::Pending));
+    let owner_no = c.handle(&owner("no")).await.unwrap();
+    assert!(reads_as(&owner_no.text, |w| w.dropped.to_string()), "{}", owner_no.text);
+    assert!(matches!(rig.task_status(&id).await, TaskStatus::Pending));
+
+    for (n, word) in [
+        "drop", "取消", "不要", "否", "取り消し", "いいえ", "취소", "아니요", "descartar", "abandonner", "non", "verwerfen", "nein", "não", "nao",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let id = rig.task(&format!("task-no-{n}"), "王小明想改約時間").await;
+        let ask = c.handle(&owner(&format!("/ignore {id}"))).await.unwrap();
+        assert_eq!(ask.buttons.len(), 2, "{word}");
+        let out = c.handle(&owner(word)).await.unwrap();
+        assert!(reads_as(&out.text, |w| w.dropped.to_string()), "{word}: {}", out.text);
+        assert!(matches!(rig.task_status(&id).await, TaskStatus::Pending), "{word}");
+    }
+}
+
+fn matrix_in(channel: &str, text: &str) -> Inbound {
+    let mut m = from(channel, "!room:example.org", "@lee:example.org", Body::Text(text.to_string()));
+    m.platform = "matrix".into();
+    m.direct = true;
+    m
+}
+
+/// Matrix has no buttons. A second card is not opened; 1 still settles the one
+/// already waiting. An MCP card is not pushed there, and with only that chat
+/// the call is refused.
+#[tokio::test]
+async fn a_matrix_chat_finishes_the_open_card_and_an_mcp_card_is_not_pushed_there() {
+    let rig = Rig::new();
+    rig.set(json!({
+        "call_notify": false,
+        "country_code": "886",
+        "notify_channels": [{
+            "kind": "matrix",
+            "enabled": true,
+            "url": "https://matrix.example.org",
+            "token": "test-token-matrix",
+            "target": "!room:example.org",
+            "control": true
+        }]
+    }));
+    let channel = rig.state.settings_store.snapshot().notify_channels[0].id.clone();
+    let c = rig.controller();
+    let first = rig.task("task-matrix-1", "回電給王小明").await;
+    let ask = c.handle(&matrix_in(&channel, &format!("/ignore {first}"))).await.unwrap();
+    assert_eq!(ask.buttons.len(), 2, "{}", ask.text);
+    let second = rig.task("task-matrix-2", "王小明想改約時間").await;
+    let blocked = c.handle(&matrix_in(&channel, &format!("/ignore {second}"))).await.unwrap();
+    assert!(reads_as(&blocked.text, |w| w.finish_first.to_string()), "{}", blocked.text);
+    assert!(blocked.buttons.is_empty());
+    assert!(matches!(rig.task_status(&second).await, TaskStatus::Pending));
+    let done = c.handle(&matrix_in(&channel, "1")).await.unwrap();
+    assert!(matches!(rig.task_status(&first).await, TaskStatus::Ignored), "{}", done.text);
+    assert!(matches!(rig.task_status(&second).await, TaskStatus::Pending));
+
+    let (sink, _phone) = crate::callback::test_socket::phone_socket().await;
+    rig.state.control.register_client("pixel-mcp-matrix".into(), sink).await;
+    rig.state.errands.sims.note("pixel-mcp-matrix", 1, "tw");
+    let mut cards = c.subscribe();
+    let rt = rig.state.settings_store.snapshot();
+    let refused = c.request_errand(&rt, crate::mcp::MCP_CHAT, "0223459891", "問營業時間", "", None, false, 10).await;
+    assert!(matches!(refused, Outcome::Failed { ref code } if code == "no_button_chat"), "{refused:?}");
+    assert!(cards.try_recv().is_err(), "nothing was pushed");
+    let matrix_key = access::chat_key(&channel, "!room:example.org");
+    assert!(!c.confirms.waiting(&matrix_key));
+
+    rig.set(json!({"telegram_bot_token": "123:TESTTOKEN", "telegram_chat_id": "42", "telegram_control": true}));
+    let rt = rig.state.settings_store.snapshot();
+    let o = c.request_errand(&rt, crate::mcp::MCP_CHAT, "0223459892", "問營業時間", "", None, false, 10).await;
+    assert!(matches!(o, Outcome::Confirm { .. }), "{o:?}");
+    let push = cards.try_recv().expect("the card goes to the chat that has buttons");
+    assert_eq!((push.channel_id.as_str(), push.chat_id.as_str()), (ENV_TELEGRAM, "42"));
+    assert!(cards.try_recv().is_err(), "the Matrix room was not offered the card");
+    assert!(!c.confirms.waiting(&matrix_key));
+    assert!(c.confirms.waiting(&access::chat_key(ENV_TELEGRAM, "42")));
 }

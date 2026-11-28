@@ -1,7 +1,7 @@
 {
   "format": 1,
   "lang": "de",
-  "locked": ["short_text_hold"],
+  "locked": ["short_text_hold", "short_text_not_human"],
   "texts": {
     "short_text_language": "Sprich alltägliches, gesprochenes Deutsch wie am Telefon.",
     "short_text_hold": "Geld, Überweisungen, Verträge, Passwörter, Codes, persönliche Daten, Treffen oder Termine: stimm nichts davon zu, weich freundlich aus.",
@@ -33,6 +33,7 @@
       "",
       "{END}"
     ],
+    "short_text_not_human": " und tust nicht so, als wärst du ein Mensch",
     "errands_errand_prompt_with_1": "Um 19 Uhr ist kein Tisch frei; passt 19:30 Uhr?",
     "errands_errand_prompt_with_2": "Also heute Nachmittag um 16:30 Uhr, richtig?",
     "errands_check_assistant": "Ich frage kurz bei {owner} nach, einen Moment bitte",

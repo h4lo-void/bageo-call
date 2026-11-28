@@ -43,13 +43,18 @@ fn the_builtin_files_read_and_their_locked_keys_exist() {
     let b = builtin_book();
     assert!(b.errors.is_empty(), "{:?}", b.errors);
     assert_eq!(b.langs.len(), BUILTIN_FILES.len());
-    let hold = ["short_text_hold"];
+    let hold = ["short_text_hold", "short_text_not_human"];
     for (lang, keys) in [
         (
             "zh-TW",
             &[
                 "live_persona_guard",
                 "guard_assistant",
+                "ai_identity_assistant",
+                "ai_identity_stall",
+                "assistant_not_human",
+                "live_persona_stall_head",
+                "live_persona_stall_block",
                 "injection_guard",
                 "live_persona_hold_off_default",
                 "live_persona_hold_off_line",
@@ -65,10 +70,16 @@ fn the_builtin_files_read_and_their_locked_keys_exist() {
             &[
                 "guard_persona",
                 "guard_assistant",
+                "ai_identity_assistant",
+                "ai_identity_stall",
+                "stall_head",
+                "stall_block",
+                "stall_script_en_compact_block",
                 "injection_guard",
                 "hold_off_line",
                 "hold_off_stall",
                 "short_text_hold",
+                "short_text_not_human",
                 "sys",
                 "errands_ai_disclosure",
                 "contacts_caller_block_self",

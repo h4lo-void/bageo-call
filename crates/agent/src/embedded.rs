@@ -503,16 +503,22 @@ pub async fn run_embedded(cfg: Arc<EmbeddedControl>) -> Result<()> {
 pub fn sms_notify_labels(lang: locale::Lang) -> (&'static str, &'static str, &'static str) {
     // (title, to_label, text_label)
     match lang {
-        locale::Lang::ZhTw => ("新簡訊", "收件號碼", "內容"),
-        locale::Lang::ZhCn => ("新短信", "接收号码", "内容"),
-        locale::Lang::Ja => ("新着SMS", "宛先", "本文"),
-        locale::Lang::Ko => ("새 문자", "받은 번호", "내용"),
-        locale::Lang::Es => ("Nuevo SMS", "Para", "Mensaje"),
-        locale::Lang::Fr => ("Nouveau SMS", "À", "Message"),
-        locale::Lang::De => ("Neue SMS", "An", "Nachricht"),
-        locale::Lang::Pt => ("Novo SMS", "Para", "Mensagem"),
-        locale::Lang::En | locale::Lang::Ext(_) => ("New SMS", "To", "Message"),
+        locale::Lang::ZhTw => ("新簡訊", "收件號碼", "簡訊原文"),
+        locale::Lang::ZhCn => ("新短信", "接收号码", "短信原文"),
+        locale::Lang::Ja => ("新着SMS", "宛先", "SMS原文"),
+        locale::Lang::Ko => ("새 문자", "받은 번호", "문자 원문"),
+        locale::Lang::Es => ("Nuevo SMS", "Para", "SMS original"),
+        locale::Lang::Fr => ("Nouveau SMS", "À", "SMS d'origine"),
+        locale::Lang::De => ("Neue SMS", "An", "Original-SMS"),
+        locale::Lang::Pt => ("Novo SMS", "Para", "SMS original"),
+        locale::Lang::En | locale::Lang::Ext(_) => ("New SMS", "To", "Original SMS"),
     }
+}
+
+/// One line: the words of a sender, number or device come from outside and must
+/// not start a line of their own.
+fn one_line(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Format an incoming SMS notification in `locale::notify_lang()` without emojis.
@@ -527,19 +533,21 @@ pub fn format_incoming_sms_notification(
     let sep = &w.sep;
     let (title, to_lbl, text_lbl) = sms_notify_labels(lang);
 
-    let sender = if from.trim().is_empty() {
-        w.n_unknown.as_str()
-    } else {
-        from.trim()
-    };
+    let (from, to, device) = (one_line(from), one_line(to), one_line(device));
+    let sender = if from.is_empty() { w.n_unknown.as_str() } else { from.as_str() };
     let mut lines = vec![format!("{}{sep}{sender}", w.n_number)];
-    if !to.trim().is_empty() {
-        lines.push(format!("{to_lbl}{sep}{}", to.trim()));
+    if !to.is_empty() {
+        lines.push(format!("{to_lbl}{sep}{to}"));
     }
-    if !device.trim().is_empty() {
-        lines.push(format!("{}{sep}{}", w.n_phone, device.trim()));
+    if !device.is_empty() {
+        lines.push(format!("{}{sep}{device}", w.n_phone));
     }
-    lines.push(format!("{text_lbl}{sep}{}", text.trim()));
+    // The text keeps its lines; every line after the first carries a bar, so none
+    // of it can pass for a label of ours.
+    let text = text.trim().replace("\r\n", "\n");
+    let mut text_lines = text.split(['\n', '\r', '\u{b}', '\u{c}', '\u{85}', '\u{2028}', '\u{2029}']);
+    lines.push(format!("{text_lbl}{sep}{}", text_lines.next().unwrap_or("")));
+    lines.extend(text_lines.map(|l| format!("│ {l}")));
     (title.to_string(), lines.join("\n"))
 }
 
@@ -768,6 +776,40 @@ mod tests {
         assert!(body.contains("0912345678"));
         assert!(body.contains("Phone A"));
         assert!(body.contains("Code 123456"));
+    }
+
+    #[test]
+    fn the_sms_text_is_labelled_original_in_every_language() {
+        let want = [
+            (locale::Lang::En, "Original SMS"),
+            (locale::Lang::ZhTw, "簡訊原文"),
+            (locale::Lang::ZhCn, "短信原文"),
+            (locale::Lang::Ja, "SMS原文"),
+            (locale::Lang::Ko, "문자 원문"),
+            (locale::Lang::Es, "SMS original"),
+            (locale::Lang::Fr, "SMS d'origine"),
+            (locale::Lang::De, "Original-SMS"),
+            (locale::Lang::Pt, "SMS original"),
+        ];
+        for (lang, label) in want {
+            assert_eq!(sms_notify_labels(lang).2, label, "{}", lang.code());
+        }
+    }
+
+    #[test]
+    fn words_from_outside_cannot_pass_for_labels_in_an_sms_notice() {
+        let (_, body) = format_incoming_sms_notification(
+            "0912345678\nPhone: x",
+            "SIM 1\r\nTo: y",
+            "Pixel\u{2028}Number: z",
+            "hi\nPhone: Pixel\r\nNumber: 0900000000\n\nlast",
+        );
+        let lines: Vec<&str> = body.lines().collect();
+        assert_eq!(lines.len(), 8, "{body}");
+        assert!(lines[0].ends_with("0912345678 Phone: x"), "{body}");
+        assert!(lines[1].ends_with("SIM 1 To: y") && lines[2].ends_with("Pixel Number: z"), "{body}");
+        assert!(lines[3].ends_with("hi"), "{body}");
+        assert_eq!(&lines[4..], ["│ Phone: Pixel", "│ Number: 0900000000", "│ ", "│ last"]);
     }
 
     #[tokio::test]

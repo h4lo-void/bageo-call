@@ -1,7 +1,7 @@
 {
   "format": 1,
   "lang": "pt",
-  "locked": ["short_text_hold"],
+  "locked": ["short_text_hold", "short_text_not_human"],
   "texts": {
     "short_text_language": "Fale em português coloquial, como se fala ao telefone.",
     "short_text_hold": "Dinheiro, transferências, contratos, senhas, códigos, dados pessoais, encontros ou horários: não aceite nada; desvie com leveza.",
@@ -33,6 +33,7 @@
       "",
       "{END}"
     ],
+    "short_text_not_human": " e não finge ser uma pessoa",
     "errands_check_assistant": "Vou confirmar com {owner}, um momento por favor",
     "errands_example_question": "Não há mesa às 7; às 7:30 tudo bem?",
     "errands_readback": "Então fica para hoje às 16:30, certo?",

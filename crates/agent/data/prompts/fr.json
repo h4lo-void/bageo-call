@@ -1,7 +1,7 @@
 {
   "format": 1,
   "lang": "fr",
-  "locked": ["short_text_hold"],
+  "locked": ["short_text_hold", "short_text_not_human"],
   "texts": {
     "short_text_language": "Parle un français courant, celui du téléphone.",
     "short_text_hold": "Argent, virements, contrats, mots de passe, codes, données personnelles, rendez-vous ou date : n'accepte rien, esquive avec légèreté.",
@@ -33,6 +33,7 @@
       "",
       "{END}"
     ],
+    "short_text_not_human": " et tu ne fais pas semblant d'être une personne",
     "errands_errand_prompt_with": "Il n'y a plus de table à 19 h ; est-ce que 19 h 30 convient ?",
     "errands_check_assistant": "Je vérifie avec {owner}, un instant s'il vous plaît",
     "errands_readback": "C'est donc bien aujourd'hui à 16 h 30 ?",

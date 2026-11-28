@@ -30,10 +30,10 @@ jobs:
         if: env.HUB_USER == '' || env.HUB_TOKEN == ''
         run: echo "::warning::DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not set; Docker Hub description not updated"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         if: env.HUB_USER != '' && env.HUB_TOKEN != ''
 
-      - uses: peter-evans/dockerhub-description@v4
+      - uses: peter-evans/dockerhub-description@432a30c9e07499fd01da9f8a49f0faf9e0ca5b77 # v4
         if: env.HUB_USER != '' && env.HUB_TOKEN != ''
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
