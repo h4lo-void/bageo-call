@@ -1410,6 +1410,8 @@
     "sl_region_none": "Nenhuma",
     "sl_second1": "Idioma secundário 1",
     "sl_second2": "Idioma secundário 2",
-    "sl_second_none": "Nenhum"
+    "sl_second_none": "Nenhum",
+    "err_mcp_token_too_short": "O token deve ter pelo menos 24 caracteres.",
+    "mcp_tok_short": "Este token é curto e fácil de adivinhar. Troque-o por um com pelo menos 24 caracteres."
   }
 }

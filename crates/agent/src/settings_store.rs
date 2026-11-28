@@ -973,7 +973,7 @@ fn read_overrides_from(path: Option<&Path>, text: &str) -> serde_json::Result<(O
             }
         }
     }
-    let had_plain = crate::secret_seal::unseal_overrides_json(path, &mut v, &CREDENTIAL_FIELDS);
+    let had_plain = crate::secret_seal::unseal_overrides_json(path, &mut v, &SEALED_FIELDS);
     let overrides = match serde_json::from_value::<Overrides>(v.clone()) {
         Ok(o) => o,
         Err(e) => match v {
@@ -1005,7 +1005,7 @@ fn write_overrides(path: &Path, ov: &Overrides) -> Result<()> {
         std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
     }
     let mut val = serde_json::to_value(ov)?;
-    crate::secret_seal::seal_overrides_json(path, &mut val, &CREDENTIAL_FIELDS)?;
+    crate::secret_seal::seal_overrides_json(path, &mut val, &SEALED_FIELDS)?;
     let data = serde_json::to_vec_pretty(&val)?;
     let tmp = path.with_extension("json.tmp");
     {
@@ -1051,6 +1051,27 @@ pub const CREDENTIAL_FIELDS: [&str; 15] = [
     "summary_api_key",
     "deepseek_api_key",
     "backup_password",
+];
+
+/// The settings kept sealed in `settings.json` ([`crate::secret_seal`]): the
+/// credentials, and the notification gateway address, which can carry a token.
+const SEALED_FIELDS: [&str; 16] = [
+    "openrouter_api_key",
+    "telegram_bot_token",
+    "gmail_app_password",
+    "openclaw_token",
+    "mcp_token",
+    "ui_password",
+    "trtc_secret_key",
+    "trtc_secret_id",
+    "trtc_cloud_secret_key",
+    "trtc_llm_config",
+    "trtc_tts_config",
+    "gemini_api_key",
+    "summary_api_key",
+    "deepseek_api_key",
+    "backup_password",
+    "notify_gateway_url",
 ];
 
 /// Where data goes and who may operate Bageo from outside: the other half of
@@ -2907,6 +2928,16 @@ pub fn ui_password_too_short(pw: &str) -> bool {
     !pw.is_empty() && pw.chars().count() < MIN_UI_PASSWORD_CHARS
 }
 
+/// The fewest characters a new MCP token may have.
+pub const MIN_MCP_TOKEN_CHARS: usize = 24;
+
+/// A new MCP token that is too short. Empty is not: it keeps the saved one
+/// (one already saved stays usable however short; the console warns about it).
+pub fn mcp_token_too_short(token: &str) -> bool {
+    let t = token.trim();
+    !t.is_empty() && t.chars().count() < MIN_MCP_TOKEN_CHARS
+}
+
 /// The active console password (`ui_password` from settings if set, else `env_token`).
 pub fn active_ui_token(env_token: &str) -> String {
     let pw = ACTIVE_UI_PASSWORD
@@ -2925,7 +2956,8 @@ fn set_active_ui_password(pw: &str) {
         .unwrap_or_else(|e| e.into_inner()) = pw.trim().to_string();
 }
 
-const SECRET_FIELDS: [&str; 14] = [
+const SECRET_FIELDS: [&str; 15] = [
+    "notify_gateway_url",
     "openrouter_api_key",
     "telegram_bot_token",
     "gmail_app_password",
@@ -2954,6 +2986,10 @@ fn masked(rt: &RuntimeSettings) -> Value {
         m.insert(key.to_string(), json!(mask_secret(&raw)));
         m.insert(format!("{key}_set"), json!(!raw.trim().is_empty()));
     }
+    m.insert(
+        "mcp_token_short".into(),
+        json!(!rt.mcp_token.trim().is_empty() && mcp_token_too_short(&rt.mcp_token)),
+    );
     // Fulfill readiness (no secrets) — UI Settings tab + offline units.
     m.insert("talk_style_suggested".into(), json!(crate::prompts::talk_style_suggested(&rt.about_callers)));
     m.insert("gmail_configured".into(), json!(rt.gmail_configured()));
@@ -3247,7 +3283,7 @@ fn patch_overrides(ov: &mut Overrides, patch: &Value) {
     p_bool(patch, "ai_live_enabled", &mut ov.ai_live_enabled);
     p_secret(patch, "telegram_bot_token", &mut ov.telegram_bot_token);
     p_string(patch, "telegram_chat_id", &mut ov.telegram_chat_id);
-    p_string(patch, "notify_gateway_url", &mut ov.notify_gateway_url);
+    p_secret(patch, "notify_gateway_url", &mut ov.notify_gateway_url);
     p_string(patch, "notify_gateway_tag", &mut ov.notify_gateway_tag);
     p_bool(patch, "call_notify", &mut ov.call_notify);
     p_string(patch, "gmail_user", &mut ov.gmail_user);
@@ -5848,6 +5884,73 @@ mod review_t4_tests {
         let upgraded_disk = std::fs::read_to_string(&legacy_file).unwrap();
         assert!(!upgraded_disk.contains("legacy-plain-secret-xyz"), "{upgraded_disk}");
         assert!(upgraded_disk.contains(crate::secret_seal::PREFIX));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_notification_gateway_address_is_sealed_and_masked() {
+        const GATEWAY: &str = "https://gateway.example/notify/test-fake-gateway-key-1234";
+        let dir = std::env::temp_dir().join(format!("bageo-gateway-seal-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base.clone());
+        store.apply_patch(&json!({"notify_gateway_url": GATEWAY})).unwrap();
+        let file = dir.join("config").join("settings.json");
+        let on_disk = std::fs::read_to_string(&file).unwrap();
+        assert!(!on_disk.contains("test-fake-gateway-key"), "plaintext on disk");
+        let disk_json: Value = serde_json::from_str(&on_disk).unwrap();
+        assert!(disk_json["notify_gateway_url"].as_str().unwrap().starts_with(crate::secret_seal::PREFIX));
+        let page = store.masked_json().to_string();
+        assert!(!page.contains("test-fake-gateway-key"), "settings page shows it");
+        assert_eq!(store.masked_json()["notify_gateway_url_set"], json!(true));
+        assert_eq!(SettingsStore::load(base.clone()).snapshot().notify_gateway_url, GATEWAY);
+        // Empty keeps it; the clear flag removes it.
+        store.apply_patch(&json!({"notify_gateway_url": ""})).unwrap();
+        assert_eq!(store.snapshot().notify_gateway_url, GATEWAY);
+        store.apply_patch(&json!({"notify_gateway_url_clear": true})).unwrap();
+        assert!(store.snapshot().notify_gateway_url.is_empty());
+
+        // An older file with it in plain text is read, and sealed at once.
+        let legacy = dir.join("legacy");
+        std::fs::create_dir_all(legacy.join("config")).unwrap();
+        let legacy_file = legacy.join("config").join("settings.json");
+        std::fs::write(&legacy_file, format!(r#"{{"owner_name":"Alex","notify_gateway_url":"{GATEWAY}"}}"#)).unwrap();
+        let mut legacy_base = Settings::from_env();
+        legacy_base.calls_data_dir = legacy.to_string_lossy().to_string();
+        assert_eq!(SettingsStore::load(legacy_base).snapshot().notify_gateway_url, GATEWAY);
+        assert!(!std::fs::read_to_string(&legacy_file).unwrap().contains("test-fake-gateway-key"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn everything_sealed_at_rest_covers_the_credentials() {
+        for f in CREDENTIAL_FIELDS {
+            assert!(SEALED_FIELDS.contains(&f), "{f}");
+        }
+        for f in SECRET_FIELDS {
+            assert!(SEALED_FIELDS.contains(&f), "{f}");
+        }
+    }
+
+    #[test]
+    fn a_new_mcp_token_needs_24_characters_and_a_saved_short_one_is_flagged() {
+        assert!(mcp_token_too_short(&"a".repeat(MIN_MCP_TOKEN_CHARS - 1)));
+        assert!(mcp_token_too_short(" short "));
+        assert!(!mcp_token_too_short(&"a".repeat(MIN_MCP_TOKEN_CHARS)));
+        assert!(!mcp_token_too_short(""), "empty keeps the saved one");
+        assert!(!mcp_token_too_short("   "));
+        let dir = std::env::temp_dir().join(format!("bageo-mcp-short-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut base = Settings::from_env();
+        base.calls_data_dir = dir.to_string_lossy().to_string();
+        let store = SettingsStore::load(base);
+        assert_eq!(store.masked_json()["mcp_token_short"], json!(false));
+        store.apply_patch(&json!({"mcp_token": "old-short-token"})).unwrap();
+        assert_eq!(store.snapshot().mcp_token, "old-short-token", "a saved short token still works");
+        assert_eq!(store.masked_json()["mcp_token_short"], json!(true));
+        store.apply_patch(&json!({"mcp_token": "x".repeat(MIN_MCP_TOKEN_CHARS)})).unwrap();
+        assert_eq!(store.masked_json()["mcp_token_short"], json!(false));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

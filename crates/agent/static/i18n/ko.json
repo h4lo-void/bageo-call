@@ -1410,6 +1410,8 @@
     "sl_region_none": "지정 안 함",
     "sl_second1": "부 언어 1",
     "sl_second2": "부 언어 2",
-    "sl_second_none": "없음"
+    "sl_second_none": "없음",
+    "err_mcp_token_too_short": "토큰은 24자 이상이어야 합니다.",
+    "mcp_tok_short": "이 토큰은 짧아서 추측하기 쉽습니다. 24자 이상으로 바꿔 주세요."
   }
 }

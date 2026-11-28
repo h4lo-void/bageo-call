@@ -1410,6 +1410,8 @@
     "sl_region_none": "不指定",
     "sl_second1": "副語言 1",
     "sl_second2": "副語言 2",
-    "sl_second_none": "不用"
+    "sl_second_none": "不用",
+    "err_mcp_token_too_short": "Token 至少要 24 個字。",
+    "mcp_tok_short": "這組 Token 太短，容易被猜到。請換成至少 24 個字的。"
   }
 }

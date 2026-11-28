@@ -1410,6 +1410,8 @@
     "sl_region_none": "指定しない",
     "sl_second1": "副言語 1",
     "sl_second2": "副言語 2",
-    "sl_second_none": "なし"
+    "sl_second_none": "なし",
+    "err_mcp_token_too_short": "トークンは 24 文字以上にしてください。",
+    "mcp_tok_short": "このトークンは短くて推測されやすいです。24 文字以上のものに替えてください。"
   }
 }

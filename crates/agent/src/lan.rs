@@ -410,6 +410,11 @@ const SLOW_ANSWER: Duration = Duration::from_secs(1);
 const _: () = assert!(FREE_TRIES < MAX_TRIES);
 /// Addresses kept at most (older ones are dropped first when they are done).
 const MAX_ADDRESSES: usize = 4096;
+/// Wrong passwords from all addresses together within [`TRY_WINDOW`] after
+/// which every answer to a request with a password is a second late, so
+/// changing address does not make guessing faster. A right password is
+/// never held back.
+pub const MAX_WRONG_ALL: u32 = 30;
 
 #[derive(Debug, Clone, Copy)]
 struct TryEntry {
@@ -419,15 +424,19 @@ struct TryEntry {
     locked_until: Option<Instant>,
 }
 
-/// Wrong-password counts per address ([`throttle`]).
+/// Wrong-password counts per address ([`throttle`]); an IPv6 address counts
+/// as its /64 network, and all addresses together have a limit too.
 #[derive(Debug, Default)]
 pub struct Tries {
     map: HashMap<IpAddr, TryEntry>,
+    all_since: Option<Instant>,
+    all_wrong: u32,
 }
 
 impl Tries {
     /// How long `ip` must still wait, while it is locked out.
     pub fn locked(&mut self, ip: IpAddr, now: Instant) -> Option<Duration> {
+        let ip = crate::phone_wifi::source_key(ip);
         let until = self.map.get(&ip)?.locked_until?;
         if now < until {
             return Some(until - now);
@@ -438,9 +447,11 @@ impl Tries {
 
     /// A wrong password (`wrong`: a fingerprint of it) from `ip`: the count so far.
     pub fn failed(&mut self, ip: IpAddr, wrong: u64, now: Instant) -> u32 {
+        let ip = crate::phone_wifi::source_key(ip);
         if self.map.len() >= MAX_ADDRESSES && !self.map.contains_key(&ip) {
             self.map.retain(|_, e| e.locked_until.is_some_and(|u| now < u) || now.duration_since(e.since) < TRY_WINDOW);
             if self.map.len() >= MAX_ADDRESSES {
+                self.count_all(now);
                 return 0;
             }
         }
@@ -456,12 +467,29 @@ impl Tries {
         if e.fails >= MAX_TRIES {
             e.locked_until = Some(now + TRY_LOCK);
         }
-        e.fails
+        let fails = e.fails;
+        self.count_all(now);
+        fails
+    }
+
+    fn count_all(&mut self, now: Instant) {
+        match self.all_since {
+            Some(s) if now.duration_since(s) < TRY_WINDOW => self.all_wrong += 1,
+            _ => {
+                self.all_since = Some(now);
+                self.all_wrong = 1;
+            }
+        }
+    }
+
+    /// Whether all addresses together made too many wrong passwords lately.
+    pub fn too_many_all(&self, now: Instant) -> bool {
+        self.all_since.is_some_and(|s| now.duration_since(s) < TRY_WINDOW) && self.all_wrong >= MAX_WRONG_ALL
     }
 
     /// A right password from `ip`: its count starts over.
     pub fn succeeded(&mut self, ip: IpAddr) {
-        self.map.remove(&ip);
+        self.map.remove(&crate::phone_wifi::source_key(ip));
     }
 }
 
@@ -608,11 +636,16 @@ pub fn throttle(router: Router, settings: Settings) -> Router {
                 None if res.status() != StatusCode::UNAUTHORIZED => return res,
                 None => {}
             }
-            let fails = tries.lock().unwrap_or_else(|e| e.into_inner()).failed(ip, wrong, Instant::now());
+            let (fails, slow_all) = {
+                let mut t = tries.lock().unwrap_or_else(|e| e.into_inner());
+                let now = Instant::now();
+                let fails = t.failed(ip, wrong, now);
+                (fails, t.too_many_all(now))
+            };
             if fails >= MAX_TRIES {
                 warn!("{ip}: {fails} wrong passwords within a minute; it waits a minute now");
             }
-            if fails > FREE_TRIES {
+            if fails > FREE_TRIES || slow_all {
                 tokio::time::sleep(SLOW_ANSWER).await;
             }
             res
@@ -692,6 +725,9 @@ fn page(lang: Lang, title: &str, detail: &str) -> Response {
     res.headers_mut()
         .insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
     res.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    res.headers_mut().insert("x-frame-options", HeaderValue::from_static("DENY"));
+    res.headers_mut()
+        .insert("content-security-policy", HeaderValue::from_static("frame-ancestors 'none'"));
     res
 }
 
@@ -918,6 +954,43 @@ mod tests {
         t.failed(a, 100, t1 + TRY_WINDOW);
         t.succeeded(a);
         assert_eq!(t.failed(a, 101, t1 + TRY_WINDOW), 1);
+    }
+
+    #[test]
+    fn the_refusal_page_cannot_be_framed() {
+        let res = need_password_page(Lang::En);
+        assert_eq!(res.headers().get("x-frame-options").unwrap(), "DENY");
+        assert_eq!(res.headers().get("content-security-policy").unwrap(), "frame-ancestors 'none'");
+    }
+
+    #[test]
+    fn ipv6_wrong_passwords_count_per_network_not_per_address() {
+        let t0 = Instant::now();
+        let mut t = Tries::default();
+        for n in 1..MAX_TRIES {
+            let a = ip(&format!("2001:db8:1:2::{n:x}"));
+            assert_eq!(t.failed(a, u64::from(n), t0), n);
+        }
+        let last = ip("2001:db8:1:2:aaaa:bbbb:cccc:dddd");
+        assert_eq!(t.failed(last, 1000, t0), MAX_TRIES);
+        assert!(t.locked(ip("2001:db8:1:2::ffff"), t0).is_some());
+        assert_eq!(t.locked(ip("2001:db8:1:3::1"), t0), None);
+        t.succeeded(ip("2001:db8:1:2::77"));
+        assert_eq!(t.locked(last, t0), None);
+    }
+
+    #[test]
+    fn many_wrong_passwords_from_many_addresses_slow_everyone_down() {
+        let t0 = Instant::now();
+        let mut t = Tries::default();
+        for n in 0..MAX_WRONG_ALL {
+            assert!(!t.too_many_all(t0), "{n}");
+            t.failed(ip(&format!("198.51.100.{}", n + 1)), 1, t0);
+        }
+        assert!(t.too_many_all(t0));
+        assert!(!t.too_many_all(t0 + TRY_WINDOW));
+        t.failed(ip("198.51.100.200"), 1, t0 + TRY_WINDOW);
+        assert!(!t.too_many_all(t0 + TRY_WINDOW));
     }
 
     #[test]

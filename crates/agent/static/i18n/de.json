@@ -1410,6 +1410,8 @@
     "sl_region_none": "Keine",
     "sl_second1": "Zweitsprache 1",
     "sl_second2": "Zweitsprache 2",
-    "sl_second_none": "Keine"
+    "sl_second_none": "Keine",
+    "err_mcp_token_too_short": "Das Token muss mindestens 24 Zeichen lang sein.",
+    "mcp_tok_short": "Dieses Token ist kurz und leicht zu erraten. Ersetze es durch eines mit mindestens 24 Zeichen."
   }
 }

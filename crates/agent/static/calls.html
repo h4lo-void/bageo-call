@@ -1755,7 +1755,8 @@ html[data-embed="android"] .brand .word{display:none}
             <div class="two">
               <div class="field"><label for="f-mcp_token"><span data-i18n="mcp_tok"></span><span class="tag" data-flag="mcp_token"></span></label>
                 <div data-secret="mcp_token"></div>
-                <div class="help" data-i18n="mcp_tok_h"></div></div>
+                <div class="help" data-i18n="mcp_tok_h"></div>
+                <div class="help bad" id="mcpTokShort" data-i18n="mcp_tok_short" hidden></div></div>
               <div class="field"><label for="f-mcp_calls" data-i18n="mcp_calls"></label>
                 <select id="f-mcp_calls" data-k="mcp_calls" data-t="text">
                   <option value="off" data-i18n="mcp_c_off"></option>
@@ -4404,6 +4405,7 @@ function refreshSecret(key) {
   input.disabled = clearing;
   removeBtn.hidden = !set || clearing;
   pending.hidden = !clearing;
+  if (key === "mcp_token") $("mcpTokShort").hidden = !(S.mcp_token_short && !clearing);
   const flag = document.querySelector(`[data-flag="${key}"]`);
   if (flag) {
     flag.className = "tag " + (set ? "ok" : "");
