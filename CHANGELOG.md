@@ -12,9 +12,9 @@
 - **A confirmation card is never pushed out.** A chat keeps every open confirmation card, and a card from an MCP client can no longer replace one you are waiting on. A chat also stops stacking cards it cannot answer.
 - **確認卡不會被覆蓋。** 同一個聊天室裡每張未處理的確認卡都會保留，MCP 客戶端送來的卡片也不會蓋掉你正在等的那一張，聊天室不再堆出無法回答的卡片。
 - **确认卡不会被覆盖。** 同一个聊天室里每张未处理的确认卡都会保留，MCP 客户端送来的卡片也不会盖掉你正在等的那一张，聊天室不再堆出无法回答的卡片。
-- **The AI no longer admits to being an AI while stalling.** On normal calls the AI says it is an AI when asked seriously, but while keeping a scammer busy it never does, as before. See [Prompts](docs/en/PROMPTS.md).
-- **陪聊時 AI 不會承認自己是 AI。** 一般通話被認真問到時 AI 會承認，但陪聊詐騙來電時一律不承認，和以前一樣。見[提示詞](docs/zh-TW/PROMPTS.md)。
-- **陪聊时 AI 不会承认自己是 AI。** 一般通话被认真问到时 AI 会承认，但陪聊诈骗来电时一律不承认，和以前一样。见[提示词](docs/zh-CN/PROMPTS.md)。
+- **The AI no longer admits to being an AI while stalling.** In the AI assistant style it still says so on a normal call when asked seriously; "As me" speaks as you, as before. While keeping a sales or scam caller busy, neither style admits it. See [Prompts](docs/en/PROMPTS.md).
+- **陪聊時 AI 不會承認自己是 AI。** 「AI 助理」在一般通話被認真問到時仍會承認；「本人」照舊以你的身分講話。陪推銷或詐騙電話聊時，兩種都不承認。見[提示詞](docs/zh-TW/PROMPTS.md)。
+- **陪聊时 AI 不会承认自己是 AI。** 「AI 助理」在一般通话被认真问到时仍会承认；「本人」照旧以你的身份讲话。陪推销或诈骗电话聊时，两种都不承认。见[提示词](docs/zh-CN/PROMPTS.md)。
 - **An incoming call is never told what an outgoing dial was for.** If a call comes in while Bageo is about to dial out, the caller is not given the errand's content, and a to-do callback is held until the line is free. Phones still on the 2.2.0 app keep getting their callback script.
 - **撥出時有來電，不會把代打內容講給來電者聽。** Bageo 正要撥出時若剛好有電話打進來，來電者不會聽到代打的內容，待辦的回電會等線路空了再撥。還在用 2.2.0 App 的手機仍可收到回電的說明。
 - **拨出时有来电，不会把代打内容讲给来电者听。** Bageo 正要拨出时若刚好有电话打进来，来电者不会听到代打的内容，待办的回电会等线路空了再拨。还在用 2.2.0 应用的手机仍可收到回电的说明。

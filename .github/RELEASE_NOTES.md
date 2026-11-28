@@ -6,7 +6,7 @@
 - **Schedule AI errands.** Pick a date and time, and Bageo keeps redialing to get through for 1 to 120 minutes (30 by default).
 - **Phones and computers check each other, Wi-Fi is always encrypted.** Update the computer first, then the phone app; an old unencrypted pairing must be paired again.
 - **Stronger protection.** Limits on password guesses for the console, private data files, notifications that cannot disguise a fake link, and confirmation cards that are never pushed out.
-- **The AI does not admit to being an AI while stalling.** On normal calls it still says so when asked seriously.
+- **The AI does not admit to being an AI while stalling.** In the AI assistant style it still says so on a normal call when asked seriously.
 - **An incoming call during an outgoing dial never hears the errand.** Your to-do callback waits until the line is free.
 
 ## 繁體中文
@@ -17,7 +17,7 @@
 - **AI 代打可以排時間。** 選好日期與時間，Bageo 會在 1 到 120 分鐘內（預設 30 分鐘）持續重撥，直到撥通。
 - **手機與電腦互相驗證，Wi-Fi 一律加密。** 請先更新電腦端，再更新手機 App；舊的未加密配對要重新配對。
 - **防護加強。** 控制台限制猜密碼的次數、資料檔只有你能讀、通知不會被假連結偽裝、確認卡不會被覆蓋。
-- **陪聊時 AI 不會承認自己是 AI。** 一般通話被認真問到時仍會承認。
+- **陪聊時 AI 不會承認自己是 AI。** 「AI 助理」在一般通話被認真問到時仍會承認。
 - **撥出時有來電，來電者不會聽到代打的內容。** 你的待辦回電會等線路空了再撥。
 
 Full notes / 完整說明：[CHANGELOG.md](https://github.com/h4lo-void/bageo-call/blob/v2.3.0/CHANGELOG.md)
