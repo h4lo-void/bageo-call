@@ -113,6 +113,18 @@ fn breaks_smtp_line(c: char) -> bool {
     c.is_control() || c.is_whitespace() || c == '<' || c == '>'
 }
 
+/// An address for a log line: first character of the name and the domain
+/// (`a***@example.com`).
+fn mask_address(addr: &str) -> String {
+    match addr.trim().rsplit_once('@') {
+        Some((name, domain)) => {
+            let first: String = name.chars().take(1).collect();
+            format!("{first}***@{domain}")
+        }
+        None => "***".to_string(),
+    }
+}
+
 /// Send a plain-text reply through Gmail SMTP.
 ///
 /// `http` is reserved for a future OAuth/API path; SMTP uses the credential args only.
@@ -133,9 +145,9 @@ pub async fn send_mail(
 
     let message = format_rfc822(from_name.trim(), &user, &to, subject.trim(), body)?;
     info!(
-        gmail_user = %user,
-        to = %to,
-        subject = subject.trim(),
+        gmail_user = %mask_address(&user),
+        to = %mask_address(&to),
+        subject = %crate::log_text::Said(subject.trim()),
         bytes = message.len(),
         "gmail: sending via SMTP STARTTLS"
     );
@@ -173,7 +185,7 @@ pub async fn send_mail_via(
         smtp_host = %server.host,
         smtp_port = server.port,
         implicit_tls = server.implicit_tls,
-        to = %to,
+        to = %mask_address(to),
         bytes = message.len(),
         "smtp: sending"
     );
@@ -562,6 +574,14 @@ fn auth_reply_error(reply: &str) -> Option<anyhow::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn log_addresses_are_masked() {
+        assert_eq!(mask_address("owner.name@example.com"), "o***@example.com");
+        assert_eq!(mask_address(" 王小明@example.com "), "王***@example.com");
+        assert_eq!(mask_address("no-at-sign"), "***");
+        assert!(!mask_address("owner.name@example.com").contains("owner"));
+    }
 
     #[test]
     fn format_rfc822_basic_headers() {
