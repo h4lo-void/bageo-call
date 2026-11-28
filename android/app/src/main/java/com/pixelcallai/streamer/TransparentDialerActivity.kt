@@ -5,6 +5,7 @@ package com.pixelcallai.streamer
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.telecom.TelecomManager
 import android.util.Log
@@ -70,27 +71,49 @@ class TransparentDialerActivity : Activity() {
         } catch (_: Exception) {
             null
         }
-        val source = intent
-        val number = source?.data?.schemeSpecificPart
-            ?: source?.getStringExtra(Intent.EXTRA_PHONE_NUMBER)
-            ?: ""
-        if (!dialer.isNullOrBlank() && dialer != packageName && source != null) {
+        // A fresh ACTION_DIAL. The incoming intent's action, extras and flags stay here.
+        val data = intent?.data
+        val number = dialHandOffNumber(data?.scheme, data?.schemeSpecificPart)
+        if (!dialer.isNullOrBlank() && dialer != packageName) {
             try {
-                startActivity(
-                    Intent(source)
-                        .setComponent(null)
-                        .setPackage(dialer)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
+                val out = Intent(DIAL_HAND_OFF_ACTION).setPackage(dialer)
+                if (number != null) out.data = Uri.fromParts("tel", number, null)
+                startActivity(out)
                 return
             } catch (e: Exception) {
                 Log.w(TAG, "forward to $dialer failed: ${e.message}")
             }
         }
-        PhoneModeManager.openSystemPhoneApp(this, number)
+        PhoneModeManager.openSystemPhoneApp(this, number.orEmpty())
     }
 
     companion object {
         private const val TAG = "TransparentDialer"
     }
+}
+
+/** The hand-off is always a dial, never a call. */
+internal const val DIAL_HAND_OFF_ACTION = "android.intent.action.DIAL"
+
+private const val DIAL_HAND_OFF_MAX = 40
+
+/**
+ * Number for the real phone app, taken only from a `tel:` URI.
+ * Visual separators are dropped. Any other character drops the whole number,
+ * and the dial pad opens empty. Null when there is nothing to prefill.
+ */
+internal fun dialHandOffNumber(scheme: String?, schemeSpecificPart: String?): String? {
+    if (!scheme.equals("tel", ignoreCase = true)) return null
+    if (schemeSpecificPart.isNullOrBlank()) return null
+    val out = StringBuilder()
+    for (ch in schemeSpecificPart.trim()) {
+        when {
+            ch in '0'..'9' || ch == '*' || ch == '#' || ch == ',' || ch == ';' -> out.append(ch)
+            ch == '+' && out.isEmpty() -> out.append('+')
+            ch == ' ' || ch == '-' || ch == '(' || ch == ')' || ch == '.' -> {}
+            else -> return null
+        }
+    }
+    if (out.isEmpty() || out.length > DIAL_HAND_OFF_MAX) return null
+    return out.toString()
 }
