@@ -62,8 +62,17 @@ pub struct Pack {
     /// and call end_call; added to an answered persona call's prompt when the
     /// function is declared (never to the stalling one).
     pub end_call_note: String,
+    /// The fixed hard lines, last in every prompt ([`Pack::guard`]): a normal
+    /// call's, which admit to being an AI when seriously asked, and a stalled
+    /// one's (`*_stall`, with [`StallPrompt::Full`]): every other line the
+    /// same, but no admitting it.
     pub guard_persona: String,
     pub guard_assistant: String,
+    pub guard_persona_stall: String,
+    pub guard_assistant_stall: String,
+    /// The words of the built-in AI-assistant prompt that say it does not
+    /// pretend to be a person; the stalling prompt drops them.
+    pub assistant_not_human: String,
     /// `{aliases}` = the owner's other names (setting `owner_aliases`); added
     /// to every prompt when there are any, edited prompts too.
     pub aliases_persona: String,
@@ -109,6 +118,18 @@ pub struct Pack {
     pub announce_system: String,
 }
 
+impl Pack {
+    /// The hard lines that close a prompt of this identity and stage.
+    pub fn guard(&self, assistant: bool, stall: StallPrompt) -> &str {
+        match (assistant, stall == StallPrompt::Full) {
+            (true, false) => &self.guard_assistant,
+            (true, true) => &self.guard_assistant_stall,
+            (false, false) => &self.guard_persona,
+            (false, true) => &self.guard_persona_stall,
+        }
+    }
+}
+
 // The words are in the prompt book (data/prompts/<language>.json); these are their handles.
 crate::prompt_book::prompt_texts! {
     ZH_KICK_OPEN_PERSONA = "zh-TW/kick_open_persona";
@@ -144,6 +165,12 @@ crate::prompt_book::prompt_texts! {
     ZH_INJECTION_GUARD = "zh-TW/injection_guard";
     ZH_SALES_LISTEN_CUSTOM_PREFIX = "zh-TW/sales_listen_custom_prefix";
     ZH_GUARD_ASSISTANT = "zh-TW/guard_assistant";
+    /// `{ai_identity}` of the guards: asked whether it is an AI, a normal call
+    /// says so; a sales / scam call being stalled does not.
+    ZH_AI_IDENTITY_PERSONA = "zh-TW/ai_identity_persona";
+    ZH_AI_IDENTITY_ASSISTANT = "zh-TW/ai_identity_assistant";
+    ZH_AI_IDENTITY_STALL = "zh-TW/ai_identity_stall";
+    ZH_ASSISTANT_NOT_HUMAN = "zh-TW/assistant_not_human";
     ZH_ALIASES_PERSONA = "zh-TW/aliases_persona";
     ZH_ALIASES_ASSISTANT = "zh-TW/aliases_assistant";
     ZH_ASSISTANT_DEFAULT_HEAD = "zh-TW/assistant_default_head";
@@ -168,6 +195,9 @@ crate::prompt_book::prompt_texts! {
     EN_READBACK_NOTE = "en/readback_note";
     EN_GUARD_PERSONA = "en/guard_persona";
     EN_GUARD_ASSISTANT = "en/guard_assistant";
+    EN_AI_IDENTITY_PERSONA = "en/ai_identity_persona";
+    EN_AI_IDENTITY_ASSISTANT = "en/ai_identity_assistant";
+    EN_AI_IDENTITY_STALL = "en/ai_identity_stall";
     EN_ALIASES_PERSONA = "en/aliases_persona";
     EN_ALIASES_ASSISTANT = "en/aliases_assistant";
     EN_INJECTION_GUARD = "en/injection_guard";
@@ -214,42 +244,49 @@ crate::prompt_book::prompt_texts! {
     EN_SHORT_TEXT_END = "en/short_text_end";
     EN_SHORT_TEXT_PERSONA = "en/short_text_persona";
     EN_SHORT_TEXT_ASSISTANT = "en/short_text_assistant";
+    EN_SHORT_TEXT_NOT_HUMAN = "en/short_text_not_human";
     JA_SHORT_TEXT_LANGUAGE = "ja/short_text_language";
     JA_SHORT_TEXT_HOLD = "ja/short_text_hold";
     JA_SHORT_TEXT_SALES = "ja/short_text_sales";
     JA_SHORT_TEXT_END = "ja/short_text_end";
     JA_SHORT_TEXT_PERSONA = "ja/short_text_persona";
     JA_SHORT_TEXT_ASSISTANT = "ja/short_text_assistant";
+    JA_SHORT_TEXT_NOT_HUMAN = "ja/short_text_not_human";
     KO_SHORT_TEXT_LANGUAGE = "ko/short_text_language";
     KO_SHORT_TEXT_HOLD = "ko/short_text_hold";
     KO_SHORT_TEXT_SALES = "ko/short_text_sales";
     KO_SHORT_TEXT_END = "ko/short_text_end";
     KO_SHORT_TEXT_PERSONA = "ko/short_text_persona";
     KO_SHORT_TEXT_ASSISTANT = "ko/short_text_assistant";
+    KO_SHORT_TEXT_NOT_HUMAN = "ko/short_text_not_human";
     ES_SHORT_TEXT_LANGUAGE = "es/short_text_language";
     ES_SHORT_TEXT_HOLD = "es/short_text_hold";
     ES_SHORT_TEXT_SALES = "es/short_text_sales";
     ES_SHORT_TEXT_END = "es/short_text_end";
     ES_SHORT_TEXT_PERSONA = "es/short_text_persona";
     ES_SHORT_TEXT_ASSISTANT = "es/short_text_assistant";
+    ES_SHORT_TEXT_NOT_HUMAN = "es/short_text_not_human";
     FR_SHORT_TEXT_LANGUAGE = "fr/short_text_language";
     FR_SHORT_TEXT_HOLD = "fr/short_text_hold";
     FR_SHORT_TEXT_SALES = "fr/short_text_sales";
     FR_SHORT_TEXT_END = "fr/short_text_end";
     FR_SHORT_TEXT_PERSONA = "fr/short_text_persona";
     FR_SHORT_TEXT_ASSISTANT = "fr/short_text_assistant";
+    FR_SHORT_TEXT_NOT_HUMAN = "fr/short_text_not_human";
     DE_SHORT_TEXT_LANGUAGE = "de/short_text_language";
     DE_SHORT_TEXT_HOLD = "de/short_text_hold";
     DE_SHORT_TEXT_SALES = "de/short_text_sales";
     DE_SHORT_TEXT_END = "de/short_text_end";
     DE_SHORT_TEXT_PERSONA = "de/short_text_persona";
     DE_SHORT_TEXT_ASSISTANT = "de/short_text_assistant";
+    DE_SHORT_TEXT_NOT_HUMAN = "de/short_text_not_human";
     PT_SHORT_TEXT_LANGUAGE = "pt/short_text_language";
     PT_SHORT_TEXT_HOLD = "pt/short_text_hold";
     PT_SHORT_TEXT_SALES = "pt/short_text_sales";
     PT_SHORT_TEXT_END = "pt/short_text_end";
     PT_SHORT_TEXT_PERSONA = "pt/short_text_persona";
     PT_SHORT_TEXT_ASSISTANT = "pt/short_text_assistant";
+    PT_SHORT_TEXT_NOT_HUMAN = "pt/short_text_not_human";
     ZH_CALL_LANGUAGE_NOTE = "zh-TW/prompts_call_language_note";
     EN_CALL_LANGUAGE_NOTE = "en/prompts_call_language_note";
     ZH_OTHER_CALL_LANGUAGE_NOTE = "zh-TW/prompts_other_call_language_note";
@@ -336,8 +373,11 @@ fn zh_tw_pack() -> Pack {
         hello_loop_note: gl::PERSONA_HELLO_LOOP_NOTE.get().to_string(),
         readback_note: gl::PERSONA_READBACK_NOTE.get().to_string(),
         end_call_note: ZH_END_CALL_NOTE.get().to_string(),
-        guard_persona: gl::PERSONA_GUARD.get().to_string(),
-        guard_assistant: ZH_GUARD_ASSISTANT.get().to_string(),
+        guard_persona: gl::PERSONA_GUARD.fill(&[("ai_identity", &ZH_AI_IDENTITY_PERSONA)]),
+        guard_assistant: ZH_GUARD_ASSISTANT.fill(&[("ai_identity", &ZH_AI_IDENTITY_ASSISTANT)]),
+        guard_persona_stall: gl::PERSONA_GUARD.fill(&[("ai_identity", &ZH_AI_IDENTITY_STALL)]),
+        guard_assistant_stall: ZH_GUARD_ASSISTANT.fill(&[("ai_identity", &ZH_AI_IDENTITY_STALL)]),
+        assistant_not_human: ZH_ASSISTANT_NOT_HUMAN.get().to_string(),
         aliases_persona: ZH_ALIASES_PERSONA.get().to_string(),
         aliases_assistant: ZH_ALIASES_ASSISTANT.get().to_string(),
         injection_guard: ZH_INJECTION_GUARD.get().to_string(),
@@ -396,6 +436,9 @@ fn zh_cn_pack() -> Pack {
         end_call_note: to_cn(&p.end_call_note),
         guard_persona: to_cn(&p.guard_persona),
         guard_assistant: to_cn(&p.guard_assistant),
+        guard_persona_stall: to_cn(&p.guard_persona_stall),
+        guard_assistant_stall: to_cn(&p.guard_assistant_stall),
+        assistant_not_human: to_cn(&p.assistant_not_human),
         aliases_persona: to_cn(&p.aliases_persona),
         aliases_assistant: to_cn(&p.aliases_assistant),
         injection_guard: to_cn(&p.injection_guard),
@@ -456,6 +499,8 @@ struct ShortText {
     end: &'static str,
     persona: &'static str,
     assistant: &'static str,
+    /// [Pack::assistant_not_human] in `assistant`.
+    not_human: &'static str,
 }
 
 fn short_text(lang: Lang) -> ShortText {
@@ -467,6 +512,7 @@ fn short_text(lang: Lang) -> ShortText {
             end: EN_SHORT_TEXT_END.get(),
             persona: EN_SHORT_TEXT_PERSONA.get(),
             assistant: EN_SHORT_TEXT_ASSISTANT.get(),
+            not_human: EN_SHORT_TEXT_NOT_HUMAN.get(),
         },
         Lang::Ja => ShortText {
             language: JA_SHORT_TEXT_LANGUAGE.get(),
@@ -475,6 +521,7 @@ fn short_text(lang: Lang) -> ShortText {
             end: JA_SHORT_TEXT_END.get(),
             persona: JA_SHORT_TEXT_PERSONA.get(),
             assistant: JA_SHORT_TEXT_ASSISTANT.get(),
+            not_human: JA_SHORT_TEXT_NOT_HUMAN.get(),
         },
         Lang::Ko => ShortText {
             language: KO_SHORT_TEXT_LANGUAGE.get(),
@@ -483,6 +530,7 @@ fn short_text(lang: Lang) -> ShortText {
             end: KO_SHORT_TEXT_END.get(),
             persona: KO_SHORT_TEXT_PERSONA.get(),
             assistant: KO_SHORT_TEXT_ASSISTANT.get(),
+            not_human: KO_SHORT_TEXT_NOT_HUMAN.get(),
         },
         Lang::Es => ShortText {
             language: ES_SHORT_TEXT_LANGUAGE.get(),
@@ -491,6 +539,7 @@ fn short_text(lang: Lang) -> ShortText {
             end: ES_SHORT_TEXT_END.get(),
             persona: ES_SHORT_TEXT_PERSONA.get(),
             assistant: ES_SHORT_TEXT_ASSISTANT.get(),
+            not_human: ES_SHORT_TEXT_NOT_HUMAN.get(),
         },
         Lang::Fr => ShortText {
             language: FR_SHORT_TEXT_LANGUAGE.get(),
@@ -499,6 +548,7 @@ fn short_text(lang: Lang) -> ShortText {
             end: FR_SHORT_TEXT_END.get(),
             persona: FR_SHORT_TEXT_PERSONA.get(),
             assistant: FR_SHORT_TEXT_ASSISTANT.get(),
+            not_human: FR_SHORT_TEXT_NOT_HUMAN.get(),
         },
         Lang::De => ShortText {
             language: DE_SHORT_TEXT_LANGUAGE.get(),
@@ -507,6 +557,7 @@ fn short_text(lang: Lang) -> ShortText {
             end: DE_SHORT_TEXT_END.get(),
             persona: DE_SHORT_TEXT_PERSONA.get(),
             assistant: DE_SHORT_TEXT_ASSISTANT.get(),
+            not_human: DE_SHORT_TEXT_NOT_HUMAN.get(),
         },
         Lang::Pt => ShortText {
             language: PT_SHORT_TEXT_LANGUAGE.get(),
@@ -515,9 +566,10 @@ fn short_text(lang: Lang) -> ShortText {
             end: PT_SHORT_TEXT_END.get(),
             persona: PT_SHORT_TEXT_PERSONA.get(),
             assistant: PT_SHORT_TEXT_ASSISTANT.get(),
+            not_human: PT_SHORT_TEXT_NOT_HUMAN.get(),
         },
         // The Chinese prompts are written in `zh_tw_pack`.
-        Lang::ZhTw | Lang::ZhCn => ShortText { language: "", hold: "", sales: "", end: "", persona: "", assistant: "" },
+        Lang::ZhTw | Lang::ZhCn => ShortText { language: "", hold: "", sales: "", end: "", persona: "", assistant: "", not_human: "" },
     }
 }
 
@@ -582,8 +634,11 @@ fn generic_pack(lang: Lang) -> Pack {
         hello_loop_note: fill(EN_HELLO_LOOP_NOTE.get()),
         readback_note: fill(EN_READBACK_NOTE.get()),
         end_call_note: fill(EN_END_CALL_NOTE.get()),
-        guard_persona: fill(EN_GUARD_PERSONA.get()),
-        guard_assistant: fill(EN_GUARD_ASSISTANT.get()),
+        guard_persona: fill(&EN_GUARD_PERSONA.fill(&[("ai_identity", &EN_AI_IDENTITY_PERSONA)])),
+        guard_assistant: fill(&EN_GUARD_ASSISTANT.fill(&[("ai_identity", &EN_AI_IDENTITY_ASSISTANT)])),
+        guard_persona_stall: fill(&EN_GUARD_PERSONA.fill(&[("ai_identity", &EN_AI_IDENTITY_STALL)])),
+        guard_assistant_stall: fill(&EN_GUARD_ASSISTANT.fill(&[("ai_identity", &EN_AI_IDENTITY_STALL)])),
+        assistant_not_human: st.not_human.to_string(),
         aliases_persona: fill(EN_ALIASES_PERSONA.get()),
         aliases_assistant: fill(EN_ALIASES_ASSISTANT.get()),
         injection_guard: fill(EN_INJECTION_GUARD.get()),
@@ -1420,7 +1475,14 @@ pub fn build_parts(ctx: &Ctx) -> (String, String) {
         StallPrompt::Full => format!(
             "{}{}",
             p.stall_head,
-            base.replace(&p.sales_reject_line, "")
+            // Asked whether it is an AI, the stalling call does not say so
+            // ([Pack::guard]): the assistant's "not a person" words go.
+            (if ctx.assistant && !p.assistant_not_human.is_empty() {
+                base.replacen(&p.assistant_not_human, "", 1)
+            } else {
+                base
+            })
+            .replace(&p.sales_reject_line, "")
                 .replace(&p.sales_reject_default, "")
                 .replace(&p.ack_line, &p.ack_stall)
                 .replace(&p.hold_off_line, &p.hold_off_stall)
@@ -1474,7 +1536,7 @@ pub fn build_parts(ctx: &Ctx) -> (String, String) {
     let readback = if ctx.stall == StallPrompt::Full { "" } else { p.readback_note.as_str() };
     let auto_language = if ctx.auto_language { p.auto_language_note.as_str() } else { "" };
     let carrier = if ctx.carrier_note { p.carrier_note.as_str() } else { "" };
-    let guard = if ctx.assistant { &p.guard_assistant } else { &p.guard_persona };
+    let guard = p.guard(ctx.assistant, ctx.stall);
     let aliases = alias_list(ctx.lang, ctx.owner, ctx.aliases);
     let alias_block = match (aliases.is_empty(), ctx.assistant) {
         (true, _) => String::new(),
@@ -2012,6 +2074,7 @@ mod tests {
             let assistant = build(&ctx(lang, true, StallPrompt::Off));
             assert!(persona.ends_with(&p.guard_persona.replace("{owner}", "Alex")), "{lang:?}");
             assert!(assistant.ends_with(&p.guard_assistant.replace("{owner}", "Alex")), "{lang:?}");
+            // Answering as the owner, it is no "AI assistant" or "AI voice".
             for ai_mark in ["AI 語音", "AI 语音", "AI voice", "AI 助理", "AI assistant"] {
                 assert!(!p.guard_persona.contains(ai_mark), "{lang:?} persona guard leaked {ai_mark}");
             }
@@ -2019,6 +2082,142 @@ mod tests {
                 p.guard_assistant.contains("AI 助理") || p.guard_assistant.contains("AI assistant"),
                 "{lang:?} assistant guard missing AI disclosure"
             );
+            for assistant in [false, true] {
+                for stall in [StallPrompt::Off, StallPrompt::ListenFirst, StallPrompt::Full] {
+                    let built = build(&ctx(lang, assistant, stall));
+                    let guard = p.guard(assistant, stall).replace("{owner}", "Alex");
+                    assert!(built.ends_with(&guard), "{lang:?} assistant={assistant} {stall:?}");
+                }
+            }
+        }
+    }
+
+    /// The words of a normal call (admit to being an AI when seriously asked)
+    /// and of a stalled sales / scam call (do not admit it), per language.
+    fn ai_identity_marks(lang: Lang) -> (&'static str, &'static str, &'static str) {
+        match lang {
+            Lang::ZhTw => ("被認真問是不是 AI 就承認", "就直接說你是幫Alex接電話的 AI 助理", "不承認是 AI"),
+            Lang::ZhCn => ("被认真问是不是 AI 就承认", "就直接说你是帮Alex接电话的 AI 助理", "不承认是 AI"),
+            _ => (
+                "Seriously asked if you are an AI, say yes",
+                "say plainly that you are an AI assistant answering the phone for Alex",
+                "without admitting it",
+            ),
+        }
+    }
+
+    /// Asked whether it is an AI: a normal call (as the owner or as the
+    /// assistant, before the call is judged too) says so, a stalled sales /
+    /// scam call does not. Each prompt carries one of the two rules, never both.
+    #[test]
+    fn a_normal_call_admits_being_an_ai_and_a_stalled_one_does_not() {
+        let own: &'static str = "You answer the phone for {owner}. Keep it short.";
+        let mut non_chinese = 0;
+        for lang in locale::ALL {
+            if !lang.is_zh() {
+                non_chinese += 1;
+            }
+            let (persona_admits, assistant_admits, stall_denies) = ai_identity_marks(lang);
+            for assistant in [false, true] {
+                let admits = if assistant { assistant_admits } else { persona_admits };
+                for custom in ["", own] {
+                    for stall in [StallPrompt::Off, StallPrompt::ListenFirst, StallPrompt::Full] {
+                        let mut c = ctx(lang, assistant, stall);
+                        c.custom = custom;
+                        let prompt = build(&c);
+                        let case = format!("{lang:?} assistant={assistant} {stall:?} custom={custom:?}");
+                        if stall == StallPrompt::Full {
+                            assert!(prompt.contains(stall_denies), "{case}: {prompt}");
+                            assert!(!prompt.contains(admits), "{case}: {prompt}");
+                            assert_eq!(prompt.matches(stall_denies).count(), 1, "{case}");
+                        } else {
+                            assert!(prompt.contains(admits), "{case}: {prompt}");
+                            assert!(!prompt.contains(stall_denies), "{case}: {prompt}");
+                            assert_eq!(prompt.matches(admits).count(), 1, "{case}");
+                        }
+                    }
+                }
+            }
+        }
+        assert!(non_chinese >= 4, "{non_chinese}");
+    }
+
+    /// The stalling guard is the normal one with only the line on being an AI
+    /// changed: personal details, codes, card checks, no commitment for the
+    /// owner, the injection guard and the stalling ending all stay.
+    #[test]
+    fn the_stalling_guard_keeps_every_other_hard_line() {
+        for lang in locale::ALL {
+            let p = pack(lang);
+            let (persona_admits, assistant_admits, stall_denies) = ai_identity_marks(lang);
+            for assistant in [false, true] {
+                let normal = p.guard(assistant, StallPrompt::Off).replace("{owner}", "Alex");
+                let stalling = p.guard(assistant, StallPrompt::Full).replace("{owner}", "Alex");
+                assert_ne!(normal, stalling, "{lang:?} assistant={assistant}");
+                assert_eq!(p.guard(assistant, StallPrompt::ListenFirst), p.guard(assistant, StallPrompt::Off));
+                // Same start and end: only the middle (the AI line) differs.
+                let head = normal.chars().zip(stalling.chars()).take_while(|(a, b)| a == b).count();
+                let tail = normal.chars().rev().zip(stalling.chars().rev()).take_while(|(a, b)| a == b).count();
+                let admits = if assistant { assistant_admits } else { persona_admits };
+                let middle = |s: &str| -> String { s.chars().skip(head).take(s.chars().count().saturating_sub(head + tail)).collect() };
+                let (changed, now) = (middle(&normal), middle(&stalling));
+                assert!(changed.contains(admits.split("Alex").next().unwrap()), "{lang:?} assistant={assistant}: {changed}");
+                assert!(now.contains(stall_denies), "{lang:?} assistant={assistant}: {now}");
+                let full = build(&ctx(lang, assistant, StallPrompt::Full));
+                let marks: &[&str] = match (lang.is_zh(), assistant) {
+                    (true, false) => &["不要給、也不要編", "驗證碼", "不要答應停卡、掛失", "不要真的答應付錢、轉帳", "不要替Alex做任何承諾"],
+                    (true, true) => &["不要假裝是Alex本人", "人在哪、什麼時候回來", "不要替Alex做任何承諾"],
+                    (false, false) => &["verification code", "do not make them up", "Do not agree to block or cancel the card", "Never commit to anything for Alex"],
+                    (false, true) => &["Never claim to be Alex", "Never make any commitment on Alex's behalf"],
+                };
+                for m in marks {
+                    let m = if lang == Lang::ZhCn { to_cn(m) } else { m.to_string() };
+                    assert!(full.contains(&m), "{lang:?} assistant={assistant}: {m}");
+                }
+                for kept in [&p.injection_guard, &p.end_stall, &p.stall_block] {
+                    assert!(full.contains(kept.replace("{owner}", "Alex").as_str()), "{lang:?} assistant={assistant}");
+                }
+                if !assistant {
+                    assert!(full.contains(p.hold_off_stall.as_str()), "{lang:?}");
+                }
+            }
+        }
+    }
+
+    /// The stalling prompt says how to treat the caller in its own block; it
+    /// no longer claims to outrank every rule (the hard lines at the end hold).
+    #[test]
+    fn the_stalling_prompt_claims_no_rank_over_the_hard_lines() {
+        for lang in locale::ALL {
+            let p = pack(lang);
+            for assistant in [false, true] {
+                let built = build(&ctx(lang, assistant, StallPrompt::Full));
+                // The stall session's prompt, its block made short for the kind of call.
+                let full = format!("{built}{}", crate::stall_script::slim_stall_prompt(&built, "").0);
+                for claim in ["overrides every rule", "優先於下面所有規則", "優先於上面所有規則", "优先于下面所有规则", "优先于上面所有规则"] {
+                    assert!(!full.contains(claim), "{lang:?} assistant={assistant}: {claim}");
+                }
+                assert!(full.starts_with(p.stall_head.as_str()), "{lang:?}");
+                assert!(full.ends_with(&p.guard(assistant, StallPrompt::Full).replace("{owner}", "Alex")), "{lang:?}");
+            }
+        }
+    }
+
+    /// The built-in assistant prompt says it does not pretend to be a person;
+    /// the stalling one leaves that out (its guard says what to do instead).
+    #[test]
+    fn the_stalling_assistant_prompt_drops_its_not_a_person_words() {
+        for lang in locale::ALL {
+            let p = pack(lang);
+            assert!(!p.assistant_not_human.trim().is_empty(), "{lang:?}");
+            assert!(p.assistant_default.contains(&p.assistant_not_human), "{lang:?}: {}", p.assistant_default);
+            let off = build(&ctx(lang, true, StallPrompt::Off));
+            let full = build(&ctx(lang, true, StallPrompt::Full));
+            assert!(off.contains(&p.assistant_not_human), "{lang:?}");
+            assert!(!full.contains(&p.assistant_not_human), "{lang:?}: {full}");
+            // Answering as the owner, nothing is taken out.
+            let persona = build(&ctx(lang, false, StallPrompt::Full));
+            assert!(persona.contains(p.persona_default.lines().next().unwrap().replace("{owner}", "Alex").as_str()), "{lang:?}");
         }
     }
 
@@ -2106,11 +2305,8 @@ mod tests {
                         c.aliases = names;
                         let with = build(&c);
                         let p = pack(l);
-                        let (line, guard) = if assistant {
-                            (&p.aliases_assistant, &p.guard_assistant)
-                        } else {
-                            (&p.aliases_persona, &p.guard_persona)
-                        };
+                        let line = if assistant { &p.aliases_assistant } else { &p.aliases_persona };
+                        let guard = p.guard(assistant, stall);
                         let block = line
                             .replace("{aliases}", &alias_list(l, "Alex", names))
                             .replace("{owner}", "Alex");
