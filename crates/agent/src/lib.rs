@@ -74,6 +74,7 @@ mod place_habits;
 mod secret_seal;
 mod wifi_tls;
 mod preflight;
+mod private_file;
 mod prompt_book;
 mod prompts;
 mod recent_notices;
@@ -4409,7 +4410,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         if !hit.is_product_key() {
                                             info!(
                                                 "IVR reject non-product DTMF digit={} conf={:.3} purity={:.3} serial={serial}",
-                                                hit.digit, hit.confidence, hit.purity
+                                                log_text::Said(&hit.digit.to_string()), hit.confidence, hit.purity
                                             );
                                             continue;
                                         }
@@ -4417,7 +4418,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         if !accept {
                                             info!(
                                                 "IVR reject structure DTMF digit={} conf={:.3} purity={:.3} high_margin={:.2} phase={phase:?} serial={serial}",
-                                                hit.digit, hit.confidence, hit.purity, hit.high_margin
+                                                log_text::Said(&hit.digit.to_string()), hit.confidence, hit.purity, hit.high_margin
                                             );
                                             continue;
                                         }
@@ -4434,7 +4435,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         if !is_action {
                                             info!(
                                                 "IVR ignore non-action DTMF digit={} conf={:.3} serial={serial}",
-                                                hit.digit, hit.confidence
+                                                log_text::Said(&hit.digit.to_string()), hit.confidence
                                             );
                                             continue;
                                         }
@@ -4443,7 +4444,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         deadline = None;
                                         info!(
                                             "IVR DTMF digit={} conf={:.3} purity={:.3} high_margin={:.2} phase={phase:?} remote_only serial={serial}",
-                                            hit.digit, hit.confidence, hit.purity, hit.high_margin
+                                            log_text::Said(&hit.digit.to_string()), hit.confidence, hit.purity, hit.high_margin
                                         );
                                         agent_dbg(
                                             "main.rs:dtmf", "dtmf_received", "H4",
@@ -4537,7 +4538,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         } else {
                                             info!(
                                                 "IVR ignore digit={} (hold={} vm={} end={:?}) serial={serial}",
-                                                hit.digit, hold_key, vm_key, end_keys
+                                                log_text::Said(&hit.digit.to_string()), hold_key, vm_key, end_keys
                                             );
                                         }
                                     }

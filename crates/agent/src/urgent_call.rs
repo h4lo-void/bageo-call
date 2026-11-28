@@ -18,11 +18,13 @@
 
 use crate::locale::Lang;
 use crate::settings_store::RuntimeSettings;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
 // The words are in the prompt book (data/prompts/<language>.json); these are their handles.
@@ -134,35 +136,127 @@ pub fn scam_words_stop_dial(transcript: &str) -> bool {
 /// long; hidden numbers share one allowance. Contacts have no such limit.
 pub const STRANGER_DIAL_EVERY: Duration = Duration::from_secs(30 * 60);
 
-/// When the owner was last dialed for each number not in the contacts (memory only).
+/// All numbers not in the contacts together: the owner is dialed at most this
+/// many times in [`STRANGER_DIAL_WINDOW`], however many numbers call.
+pub const STRANGER_DIAL_MAX: usize = 3;
+pub const STRANGER_DIAL_WINDOW: Duration = Duration::from_secs(60 * 60);
+
+/// Where the times of those calls are kept (in the data folder), so a restart
+/// does not start the count again. It holds times only, no numbers.
+const STRANGER_DIALS_FILE: &str = "urgent_dials.json";
+
+/// When the owner was last dialed for each number not in the contacts (memory
+/// only), and when for all of them together (also on disk).
+#[derive(Debug)]
+pub struct DialLimit {
+    by_number: Mutex<HashMap<String, Instant>>,
+    all: Mutex<AllDials>,
+    /// An instant and the clock time (seconds since 1970) it was read at: how an
+    /// `Instant` is put on the clock the saved times use.
+    epoch: (Instant, u64),
+}
+
 #[derive(Debug, Default)]
-pub struct DialLimit(Mutex<HashMap<String, Instant>>);
+struct AllDials {
+    /// Seconds since 1970 of each call to the owner in the window.
+    at: Vec<u64>,
+    path: Option<PathBuf>,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct AllDialsFile {
+    #[serde(default)]
+    dials: Vec<u64>,
+}
+
+impl AllDials {
+    fn prune(&mut self, now: u64) {
+        let window = STRANGER_DIAL_WINDOW.as_secs();
+        self.at.retain(|t| t.saturating_add(window) > now);
+    }
+
+    fn save(&self) {
+        let Some(path) = &self.path else { return };
+        let Ok(body) = serde_json::to_vec(&AllDialsFile { dials: self.at.clone() }) else { return };
+        let tmp = path.with_file_name(format!(".{STRANGER_DIALS_FILE}.tmp"));
+        if let Err(e) = crate::private_file::write_atomic(path, &tmp, &body) {
+            tracing::warn!("urgent dial log {}: {e}", path.display());
+        }
+    }
+}
+
+impl Default for DialLimit {
+    fn default() -> Self {
+        Self::new(None)
+    }
+}
 
 impl DialLimit {
+    fn new(path: Option<PathBuf>) -> Self {
+        let unix_now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
+        let mut all = AllDials::default();
+        if let Some(p) = &path {
+            if let Ok(bytes) = std::fs::read(p) {
+                // A time ahead of the clock (the clock was set back) counts as now.
+                all.at = serde_json::from_slice::<AllDialsFile>(&bytes)
+                    .map(|f| f.dials)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|t| t.min(unix_now))
+                    .collect();
+                all.prune(unix_now);
+            }
+        }
+        all.path = path;
+        Self { by_number: Mutex::default(), all: Mutex::new(all), epoch: (Instant::now(), unix_now) }
+    }
+
+    /// A limit that keeps the all-numbers count in `dir`.
+    pub fn persisted(dir: &Path) -> Self {
+        Self::new(Some(dir.join(STRANGER_DIALS_FILE)))
+    }
+
+    fn unix_at(&self, now: Instant) -> u64 {
+        self.epoch.1.saturating_add(now.saturating_duration_since(self.epoch.0).as_secs())
+    }
+
     /// The allowance of `key` is free at `now`.
     pub fn free(&self, key: &str, now: Instant) -> bool {
-        let g = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        g.get(key).is_none_or(|t| now.saturating_duration_since(*t) >= STRANGER_DIAL_EVERY)
+        let g = self.by_number.lock().unwrap_or_else(|e| e.into_inner());
+        if g.get(key).is_some_and(|t| now.saturating_duration_since(*t) < STRANGER_DIAL_EVERY) {
+            return false;
+        }
+        let mut all = self.all.lock().unwrap_or_else(|e| e.into_inner());
+        all.prune(self.unix_at(now));
+        all.at.len() < STRANGER_DIAL_MAX
     }
 
     /// Uses the allowance of `key`: false when it was used less than
-    /// [`STRANGER_DIAL_EVERY`] ago.
+    /// [`STRANGER_DIAL_EVERY`] ago, or the owner was already dialed
+    /// [`STRANGER_DIAL_MAX`] times in [`STRANGER_DIAL_WINDOW`] for all numbers.
     pub fn take(&self, key: &str, now: Instant) -> bool {
-        let mut g = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let mut g = self.by_number.lock().unwrap_or_else(|e| e.into_inner());
         if g.get(key).is_some_and(|t| now.saturating_duration_since(*t) < STRANGER_DIAL_EVERY) {
+            return false;
+        }
+        let at = self.unix_at(now);
+        let mut all = self.all.lock().unwrap_or_else(|e| e.into_inner());
+        all.prune(at);
+        if all.at.len() >= STRANGER_DIAL_MAX {
             return false;
         }
         g.retain(|_, t| now.saturating_duration_since(*t) < STRANGER_DIAL_EVERY);
         g.insert(key.to_string(), now);
+        all.at.push(at);
+        all.save();
         true
     }
 }
 
 pub fn stranger_dials() -> &'static DialLimit {
     static L: OnceLock<DialLimit> = OnceLock::new();
-    L.get_or_init(Default::default)
+    L.get_or_init(|| DialLimit::persisted(&crate::config::data_dir()))
 }
-
 /// The key a number not in the contacts is limited under; hidden numbers share one.
 pub fn stranger_key(caller: &str, sim: Option<&str>) -> String {
     crate::scam_db::number_key(caller, sim).unwrap_or_else(|| "hidden".to_string())
@@ -1629,9 +1723,9 @@ mod tests {
             assert!(will_dial(&cfg, &family, &key, &limits, later));
             assert!(will_dial(&cfg, &friend, &key, &limits, later));
         }
-        // 30 minutes on, the number may get the owner dialed again.
-        assert!(will_dial(&cfg, &stranger, &key, &limits, t0 + STRANGER_DIAL_EVERY));
-        assert!(limits.take(&key, t0 + STRANGER_DIAL_EVERY));
+        // An hour on, the number may get the owner dialed again.
+        assert!(will_dial(&cfg, &stranger, &key, &limits, t0 + STRANGER_DIAL_WINDOW));
+        assert!(limits.take(&key, t0 + STRANGER_DIAL_WINDOW));
         // No number: nobody is dialed, the owner is only alerted.
         let off = rt("emergency", "");
         assert!(!will_dial(&off, &family, "", &limits, t0));
@@ -1640,6 +1734,68 @@ mod tests {
         assert_eq!(CallCtl::default().limit_key(), None);
     }
 
+    #[test]
+    fn all_numbers_not_in_the_contacts_share_three_dials_an_hour() {
+        let limits = DialLimit::default();
+        let t0 = Instant::now();
+        let mut cfg = rt("emergency", "+15550001111");
+        cfg.transfer_others = true;
+        let stranger = Transfer { who: TransferWho::Stranger, name: String::new() };
+        let family = Transfer { who: TransferWho::Whitelist, name: "Amy".into() };
+        let keys: Vec<String> = (0..4).map(|i| stranger_key(&format!("+1555555010{i}"), None)).collect();
+        for (i, k) in keys.iter().take(STRANGER_DIAL_MAX).enumerate() {
+            let at = t0 + Duration::from_secs(i as u64 * 60);
+            assert!(will_dial(&cfg, &stranger, k, &limits, at));
+            assert!(limits.take(k, at));
+        }
+        let soon = t0 + Duration::from_secs(10 * 60);
+        assert!(!will_dial(&cfg, &stranger, &keys[3], &limits, soon), "a fourth number, same hour");
+        assert!(!limits.take(&keys[3], soon));
+        assert!(will_dial(&cfg, &family, &keys[3], &limits, soon), "contacts have no cap");
+        // The first dial leaves the window: one more is allowed, not two.
+        let later = t0 + STRANGER_DIAL_WINDOW + Duration::from_secs(30);
+        assert!(limits.take(&keys[3], later));
+        assert!(!limits.take("another", later));
+    }
+
+    #[test]
+    fn the_dial_count_survives_a_restart_and_the_file_is_private() {
+        let dir = std::env::temp_dir().join(format!("bageo-dials-{}", uuid::Uuid::new_v4().simple()));
+        let limits = DialLimit::persisted(&dir);
+        let t0 = Instant::now();
+        for i in 0..STRANGER_DIAL_MAX {
+            assert!(limits.take(&format!("+1555555020{i}"), t0));
+        }
+        let restarted = DialLimit::persisted(&dir);
+        let now = Instant::now();
+        assert!(!restarted.free("+15555550299", now));
+        assert!(!restarted.take("+15555550299", now));
+        let file = dir.join(STRANGER_DIALS_FILE);
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(!text.contains("555"), "times only, no numbers: {text}");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
+            assert_eq!(std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777, 0o700);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_unreadable_or_stale_dial_file_starts_empty() {
+        let dir = std::env::temp_dir().join(format!("bageo-dials-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join(STRANGER_DIALS_FILE);
+        std::fs::write(&file, b"{ not json").unwrap();
+        assert!(DialLimit::persisted(&dir).take("+15555550300", Instant::now()));
+        std::fs::write(&file, br#"{"dials":[1,2,3]}"#).unwrap();
+        let limits = DialLimit::persisted(&dir);
+        for i in 0..STRANGER_DIAL_MAX {
+            assert!(limits.take(&format!("+1555555031{i}"), Instant::now()), "old times do not count");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
     #[test]
     fn the_owner_sees_a_neutral_name_and_urgent_in_english() {
         let langs = [Lang::ZhTw, Lang::ZhCn, Lang::En, Lang::Ja, Lang::Ko, Lang::Es, Lang::Fr, Lang::De, Lang::Pt];

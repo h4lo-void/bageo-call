@@ -51,13 +51,14 @@ For every phone that `adb devices` lists as `device`, it reads two sources:
   forwarded.
 
 A forwarded message looks like this. The labels follow `SMS_LANG`; the SMS text is
-passed on as it is.
+passed on as it is. A text of several lines gets a bar in front of every line after the
+first, so nothing in it can pass for a label.
 
 ```text
 New SMS
 From: +15555550123
 To: +15555550100
-Message: Your parcel is on its way.
+Original SMS: Your parcel is on its way.
 Device: Pixel 7 (TESTSERIAL0001)
 ```
 

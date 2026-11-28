@@ -209,57 +209,57 @@ SIM_QUERY = ("content query --uri content://telephony/siminfo "
 INBOX_ROW = re.compile(r"^Row: \d+ _id=(\d+), address=(.*?), date=(\d+), sub_id=(-?\d+|NULL), body=", re.M)
 SIM_ROW = re.compile(r"^Row: \d+ _id=(\d+), sim_id=(-?\d+), icc_id=(.*?), number=(.*?), carrier_name=(.*)$", re.M)
 
-# Labels of the forwarded message. The SMS text itself is never translated.
+# Labels of the forwarded message. The SMS text itself is never translated; its label says it is the sender's own words.
 TEXTS: dict[str, dict[str, str]] = {
     "en": {
-        "title": "New SMS", "sep": ": ", "from": "From", "to": "To", "text": "Message",
+        "title": "New SMS", "sep": ": ", "from": "From", "to": "To", "text": "Original SMS",
         "received": "Received", "late": "forwarded late", "device": "Device",
         "unknown": "(unknown)", "truncated": "(truncated)", "flood_title": "SMS forwarder",
         "flood": "{device}: {count} messages that were never forwarded appeared in the inbox "
                  "at once. They were skipped; a backlog is not forwarded.",
     },
     "zh-TW": {
-        "title": "新簡訊", "sep": "：", "from": "寄件人", "to": "收件號碼", "text": "內容",
+        "title": "新簡訊", "sep": "：", "from": "寄件人", "to": "收件號碼", "text": "簡訊原文",
         "received": "收到時間", "late": "延遲轉發", "device": "裝置",
         "unknown": "（不明）", "truncated": "（已截斷）", "flood_title": "簡訊轉發",
         "flood": "{device}：收件匣一次出現 {count} 則尚未轉發的簡訊，已略過，不會補發。",
     },
     "zh-CN": {
-        "title": "新短信", "sep": "：", "from": "发件人", "to": "接收号码", "text": "内容",
+        "title": "新短信", "sep": "：", "from": "发件人", "to": "接收号码", "text": "短信原文",
         "received": "接收时间", "late": "延迟转发", "device": "设备",
         "unknown": "（未知）", "truncated": "（已截断）", "flood_title": "短信转发",
         "flood": "{device}：收件箱一次出现 {count} 条尚未转发的短信，已跳过，不会补发。",
     },
     "ja": {
-        "title": "新着SMS", "sep": "：", "from": "差出人", "to": "宛先", "text": "本文",
+        "title": "新着SMS", "sep": "：", "from": "差出人", "to": "宛先", "text": "SMS原文",
         "received": "受信日時", "late": "遅れて転送", "device": "端末",
         "unknown": "（不明）", "truncated": "（省略）", "flood_title": "SMS転送",
         "flood": "{device}：未転送のSMSが受信トレイに一度に{count}件見つかりました。"
                  "これらは転送せずにスキップしました。",
     },
     "ko": {
-        "title": "새 문자", "sep": ": ", "from": "보낸 사람", "to": "받은 번호", "text": "내용",
+        "title": "새 문자", "sep": ": ", "from": "보낸 사람", "to": "받은 번호", "text": "문자 원문",
         "received": "수신 시각", "late": "지연 전달", "device": "기기",
         "unknown": "(알 수 없음)", "truncated": "(잘림)", "flood_title": "문자 전달",
         "flood": "{device}: 받은편지함에 전달되지 않은 문자 {count}건이 한꺼번에 나타났습니다. "
                  "건너뛰었으며 나중에 전달하지 않습니다.",
     },
     "es": {
-        "title": "Nuevo SMS", "sep": ": ", "from": "De", "to": "Para", "text": "Mensaje",
+        "title": "Nuevo SMS", "sep": ": ", "from": "De", "to": "Para", "text": "SMS original",
         "received": "Recibido", "late": "reenviado con retraso", "device": "Dispositivo",
         "unknown": "(desconocido)", "truncated": "(truncado)", "flood_title": "Reenvío de SMS",
         "flood": "{device}: aparecieron a la vez {count} mensajes sin reenviar en la bandeja de "
                  "entrada. Se omitieron; los mensajes atrasados no se reenvían.",
     },
     "fr": {
-        "title": "Nouveau SMS", "sep": " : ", "from": "De", "to": "À", "text": "Message",
+        "title": "Nouveau SMS", "sep": " : ", "from": "De", "to": "À", "text": "SMS d'origine",
         "received": "Reçu", "late": "transféré en retard", "device": "Appareil",
         "unknown": "(inconnu)", "truncated": "(tronqué)", "flood_title": "Transfert de SMS",
         "flood": "{device} : {count} messages non transférés sont apparus d'un coup dans la boîte "
                  "de réception. Ils ont été ignorés ; les anciens messages ne sont pas transférés.",
     },
     "de": {
-        "title": "Neue SMS", "sep": ": ", "from": "Von", "to": "An", "text": "Nachricht",
+        "title": "Neue SMS", "sep": ": ", "from": "Von", "to": "An", "text": "Original-SMS",
         "received": "Empfangen", "late": "verspätet weitergeleitet", "device": "Gerät",
         "unknown": "(unbekannt)", "truncated": "(gekürzt)", "flood_title": "SMS-Weiterleitung",
         "flood": "{device}: {count} nicht weitergeleitete Nachrichten sind auf einmal im "
@@ -267,7 +267,7 @@ TEXTS: dict[str, dict[str, str]] = {
                  "nicht nachträglich weitergeleitet.",
     },
     "pt": {
-        "title": "Novo SMS", "sep": ": ", "from": "De", "to": "Para", "text": "Mensagem",
+        "title": "Novo SMS", "sep": ": ", "from": "De", "to": "Para", "text": "SMS original",
         "received": "Recebido", "late": "encaminhado com atraso", "device": "Dispositivo",
         "unknown": "(desconhecido)", "truncated": "(truncado)", "flood_title": "Encaminhamento de SMS",
         "flood": "{device}: {count} mensagens não encaminhadas apareceram de uma só vez na caixa "
@@ -797,10 +797,15 @@ def format_sms(lang: str, sender: str, line: str, body: str, serial: str, model:
     sep = t["sep"]
     if len(body) > BODY_MAX:
         body = body[:BODY_MAX] + "… " + t["truncated"]
+    # The sender, the numbers and the text come from outside: one line each, and the lines of
+    # the text carry a bar, so none of it can pass for a label of ours.
+    sender, line, model, serial = (" ".join(x.split()) for x in (sender, line, model, serial))
+    first, *more = body.splitlines() or [""]
     out = [f"{t['from']}{sep}{sender or t['unknown']}"]
     if line:
         out.append(f"{t['to']}{sep}{line}")
-    out.append(f"{t['text']}{sep}{body}")
+    out.append(f"{t['text']}{sep}{first}")
+    out.extend(f"│ {x}" for x in more)
     if received_ms and now - received_ms / 1000 > LATE_SEC:
         stamp = format_stamp(received_ms / 1000, tz)
         out.append(f"{t['received']}{sep}{stamp} ({t['late']})")
