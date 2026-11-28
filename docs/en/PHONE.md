@@ -209,7 +209,9 @@ Bageo must be on the same network, and **Phones can also connect over Wi-Fi**
 must be on. A new code replaces the old one, and five wrong codes void it.
 **Pair phones again** also disconnects phones paired this way; pair them again
 with a new code. Pairing by IP address needs the latest Bageo app: older apps
-sent the code unencrypted and are refused.
+sent the code unencrypted and are refused. The pairing also gives the app the
+link key, so it checks that Bageo the same way as one paired over USB. A
+pairing from an older app (unencrypted) is forgotten: pair again.
 
 **Entering the address by hand.** Use this when the phone cannot be cabled to
 the computer at all.

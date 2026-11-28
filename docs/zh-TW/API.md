@@ -769,7 +769,7 @@ Content-Type: application/json
 | `PUT /calls/api/devices/{serial}/sim-number` | Body `{"sub_id": <整數>, "number": "..."}`。設定（空白代表清除）這支手機某張 SIM 的門號，讓來電與 AI 代打直接顯示並依門號挑選：`{ok, serial, sims}`。 |
 | `POST /calls/api/phone-pairing/renew` | 更換 Wi-Fi 配對金鑰（`phone-pairing.key`）並中斷透過 Wi-Fi 連線的手機，每支手機重新插上 USB 一次即可取得新金鑰：`{ok: true}`（失敗回傳 HTTP 500 `save_failed`）。金鑰本身不會回傳。 |
 | `POST /calls/api/phone-pairing/code` | Body `{}`（JSON）。產生 6 位數配對碼，10 分鐘內有效，讓手機不用 USB，輸入 IP 位址和配對碼就能配對；新的碼會取代前一個：`{ok, code, expires_in, port, lan_ips, in_container}`。沒設控制台密碼時，只有 Bageo 那台電腦能要（否則 HTTP 403 `need_password`）；「手機也能用 Wi-Fi 連」關閉時回 HTTP 409 `phone_wifi_off`。 |
-| `POST /api/phone-pairing/claim` | 不在 `/calls/api/` 底下，也不用密碼：配對碼就是憑證。Body `{"code": "123456"}`（JSON）。只回答一次 `{ok: true, token, path: "/ws"}`（走 Wi-Fi 入口埠時另有 `ws_port`）：`token` 就是配對金鑰，手機接著用 `/ws?token=<金鑰>` 連線。錯誤都帶 `code`：`bad_request`、`phone_wifi_off`、`no_code`（沒有可用的碼、已過期或已用過）、`wrong_code`、`too_many_tries`（HTTP 429；輸錯的次數依來源計算，請等一分鐘）。 |
+| `POST /api/phone-pairing/claim` | 不在 `/calls/api/` 底下，也不用密碼：配對碼就是憑證。只接受 HTTPS，Body `{"cnonce": "...", "code_mac": "..."}`（JSON；配對碼跟憑證綁在一起，見 `wifi_tls.rs`）。只回答一次 `{ok: true, token, path: "/ws", link_key, tls_pin, wss, proof}`（走 Wi-Fi 入口埠時另有 `ws_port`）：`token` 就是配對金鑰，手機接著用 `wss://…/ws?token=<金鑰>&pin=<sha256>` 連線；`link_key` 是連線驗證用的金鑰。舊版 App 的明碼 `{"code": "123456"}` 或沒走 TLS 的請求會收到 `old_app`（HTTP 410）。錯誤都帶 `code`：`bad_request`、`phone_wifi_off`、`no_code`（沒有可用的碼、已過期或已用過）、`wrong_code`、`too_many_tries`（HTTP 429；輸錯的次數依來源計算，請等一分鐘）。 |
 | `GET /health` | 排查問題用的大型 JSON 物件：版本、語言、哪些東西已設定、已連線的手機、進行中的通話；不含金鑰或密碼。完整內容要帶控制台密碼；沒設密碼時，只有 Bageo 那台電腦拿得到，其他來源拿短版（見下方說明最後一點）。 |
 | `GET /calls/api/health` | 控制台用，內容和 `/health` 的完整版相同。跟其他 `/calls/api/` 路由一樣：有設密碼而沒帶回 HTTP 401，沒設密碼就開放。 |
 
