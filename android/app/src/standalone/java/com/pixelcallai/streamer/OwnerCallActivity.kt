@@ -156,7 +156,7 @@ class OwnerCallActivity : Activity() {
         reason = i.getStringExtra("reason").orEmpty()
         urgentId = i.getStringExtra("urgent_id").orEmpty()
         aiMissed = i.getBooleanExtra("ai_missed", false)
-        val dialPrefill = i.getStringExtra("dial_number").orEmpty()
+        val dialPrefill = dialableNumber(i.getStringExtra("dial_number"))
         if (currentMode == MODE_DIALER && dialPrefill.isNotBlank()) {
             dialInput.setText(dialPrefill)
             dialInput.setSelection(dialPrefill.length)
