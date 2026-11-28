@@ -329,13 +329,17 @@ fn drop_one(open: &mut Open, chat: &str, code: &str) {
 }
 
 /// Expired cards in this chat are gone. True when one more card fits.
-/// At the limit, the oldest card the chat asked for is dropped. A chat
-/// that holds only MCP cards has no room for another of those.
+/// At the limit, a card from an MCP client gets no room (it never pushes
+/// out a card the owner is waiting on); one the chat asked for pushes out
+/// the oldest such card, else the oldest card.
 fn room_for(open: &mut Open, chat: &str, ttl: Duration, mcp_new: bool) -> bool {
     purge_expired(open, chat, ttl);
     let len = open.get(chat).map(|cards| cards.len()).unwrap_or(0);
     if len < MAX_PER_CHAT {
         return true;
+    }
+    if mcp_new {
+        return false;
     }
     let oldest_owner = open.get(chat).and_then(|cards| {
         cards.iter().filter(|(_, p)| !is_mcp(p)).min_by_key(|(_, p)| p.seq).map(|(code, _)| code.clone())
@@ -343,9 +347,6 @@ fn room_for(open: &mut Open, chat: &str, ttl: Duration, mcp_new: bool) -> bool {
     if let Some(code) = oldest_owner {
         drop_one(open, chat, &code);
         return true;
-    }
-    if mcp_new {
-        return false;
     }
     let oldest = open.get(chat).and_then(|cards| cards.iter().min_by_key(|(_, p)| p.seq).map(|(code, _)| code.clone()));
     if let Some(code) = oldest {
@@ -553,5 +554,15 @@ mod tests {
         assert_eq!(c.take("packed", "1", Some(&packed[0])), None, "the oldest MCP card made room for the chat's own");
         assert_eq!(c.take("packed", "42", Some(&owner)), Some(job()));
         assert!(c.take("packed", "1", Some(&packed[1])).is_some());
+
+        // A full chat with one owner card: a new MCP card is refused and never pushes it out.
+        let mut mixed = Vec::new();
+        for i in 0..MAX_PER_CHAT - 1 {
+            mixed.push(c.ask("mixed", ANY_SENDER, Job::Decide { task_id: format!("x{i}"), confirm: true }).unwrap());
+        }
+        let waiting = c.ask("mixed", "42", job()).unwrap();
+        assert!(c.ask("mixed", ANY_SENDER, Job::Decide { task_id: "late".into(), confirm: true }).is_none());
+        assert_eq!(c.take("mixed", "42", Some(&waiting)), Some(job()), "the owner's card is still there");
+        assert!(c.take("mixed", "1", Some(&mixed[0])).is_some());
     }
 }
