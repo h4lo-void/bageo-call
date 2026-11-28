@@ -2999,6 +2999,16 @@
     "who": "the owner",
     "placeholders": []
   },
+  "err_mcp_token_too_short": {
+    "where": "an error the console shows. English: The token needs at least 24 characters.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "mcp_tok_short": {
+    "where": "a warning under the MCP token field, shown when the saved token is short. English: This token is short and easy to guess. Replace it with one of at least 24 characters.",
+    "who": "the owner",
+    "placeholders": []
+  },
   "err_password_too_short": {
     "where": "an error the console shows. English: The password needs at least 8 characters.",
     "who": "the owner",

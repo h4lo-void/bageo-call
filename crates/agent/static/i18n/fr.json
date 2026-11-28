@@ -1411,6 +1411,8 @@
     "sl_second1": "Langue secondaire 1",
     "sl_second2": "Langue secondaire 2",
     "sl_second_none": "Aucune",
+    "err_mcp_token_too_short": "Le token doit contenir au moins 24 caractères.",
+    "mcp_tok_short": "Ce token est court et facile à deviner. Remplacez-le par un token d'au moins 24 caractères.",
     "er_when": "Quand appeler",
     "er_when_now": "Maintenant",
     "er_when_later": "À une date et une heure",

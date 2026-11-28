@@ -1411,6 +1411,8 @@
     "sl_second1": "副言語 1",
     "sl_second2": "副言語 2",
     "sl_second_none": "なし",
+    "err_mcp_token_too_short": "トークンは 24 文字以上にしてください。",
+    "mcp_tok_short": "このトークンは短くて推測されやすいです。24 文字以上のものに替えてください。",
     "er_when": "いつかけるか",
     "er_when_now": "今すぐ",
     "er_when_later": "日時を指定",
