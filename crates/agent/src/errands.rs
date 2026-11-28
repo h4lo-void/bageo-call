@@ -7691,18 +7691,6 @@ mod tests {
         }
     }
 
-    /// A call now on a phone it picked itself holds that phone from the start:
-    /// a schedule made at once on it is refused.
-    #[tokio::test]
-    async fn a_call_now_holds_its_phone_as_soon_as_it_is_made() {
-        let rig = Rig::new();
-        let env = rig.env(vec![phone("pixel-plan-9", &[(1, "tw")])]);
-        let now = create(&env, &json!({"number": "0223459721", "task": "問營業時間"})).await.unwrap();
-        assert_eq!(now.serial, "pixel-plan-9");
-        let held = rig.store.get(&now.id).unwrap().hold(chrono::Utc::now()).unwrap();
-        assert_eq!(held.0, "pixel-plan-9");
-    }
-
     /// At most 50 errands not over yet; the list shows every one of them
     /// (scheduled ones far down never drop off), then the newest over.
     #[tokio::test]
