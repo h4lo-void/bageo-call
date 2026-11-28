@@ -821,8 +821,9 @@ async fn hello_is_outbound_with(
     parsed: &Value,
 ) -> bool {
     let claim = appointments::hello_claim_of(parsed);
-    // A hello that names direction or call_id is one call: the script and the
-    // outbound route apply only when it says this dial, and the id matches.
+    // A hello that names direction or call_id, or this build's app with neither,
+    // is one call: the script and the outbound route apply only when it says
+    // this dial, and the id matches. This build without those fields is incoming.
     if claim.has_fields {
         if !claim.outbound {
             return false;
@@ -3385,6 +3386,11 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         .control
                                         .register_client(serial.clone(), sink.clone())
                                         .await;
+                                    // The hello's in_call, when the app sends it, replaces a
+                                    // mark that a dropped connection never cleared.
+                                    if appointments::note_control_hello(&serial, &parsed) {
+                                        appointment_retry_held(&state).await;
+                                    }
                                     let fit_notice = state.phones.connected(&serial, sink.clone(), &parsed);
                                     tell_owner_about_call_audio(&state, &serial, fit_notice);
                                     state.phones.set_wifi(&serial, link.wifi);
@@ -14225,6 +14231,51 @@ mod audit_a_tests {
         let _ = std::fs::remove_file(&errands_path);
         let _ = std::fs::remove_file(&sims_path);
         let _ = std::fs::remove_dir_all(&tasks_path);
+    }
+
+    #[tokio::test]
+    async fn a_current_app_hello_without_direction_is_not_outbound() {
+        let control = callback::ControlRegistry::new();
+        let (sink, _sock) = callback::test_socket::phone_socket().await;
+        let serial = "phone-h6-lib-ver";
+        control.register_client(serial.into(), sink).await;
+        let (errands_path, sims_path, errands) = h6_errands("h6-ver");
+        assert!(control
+            .try_dispatch_phone_callback("task-h6-lib-ver", "0912000713", serial, &["0912000713".to_string()])
+            .await
+            .unwrap());
+        let call_id = control.callback_session_for("task-h6-lib-ver", "").await.unwrap().call_id;
+        assert!(!hello_is_outbound_with(
+            &control,
+            &errands,
+            serial,
+            "0912000713",
+            &json!({"type": "hello", "app_version": env!("CARGO_PKG_VERSION"), "task_id": "task-h6-lib-ver"}),
+        )
+        .await);
+        assert!(hello_is_outbound_with(
+            &control,
+            &errands,
+            serial,
+            "",
+            &json!({
+                "type": "hello",
+                "app_version": env!("CARGO_PKG_VERSION"),
+                "direction": "outbound",
+                "call_id": call_id,
+            }),
+        )
+        .await);
+        assert!(hello_is_outbound_with(
+            &control,
+            &errands,
+            serial,
+            "0912000713",
+            &json!({"type": "hello", "app_version": "0.9.0", "task_id": "task-h6-lib-ver"}),
+        )
+        .await);
+        let _ = std::fs::remove_file(&errands_path);
+        let _ = std::fs::remove_file(&sims_path);
     }
 
     #[tokio::test]

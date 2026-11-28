@@ -28,7 +28,7 @@
 //!
 //! Times are the machine's local time (`TZ`), written `YYYY-MM-DDTHH:MM`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -2337,7 +2337,7 @@ async fn dispatch_callback(control: &ControlRegistry, cb: &PendingCallback) -> (
     let only_this_number = [cb.number.clone()];
     // An errand goes out on the phone and SIM it was given, never another.
     let placed = match cb.kind {
-        CallbackKind::Appointment => {
+        CallbackKind::Appointment | CallbackKind::Voicemail => {
             control
                 .try_dispatch_phone_callback(&cb.task_id, &cb.number, &cb.serial, &only_this_number)
                 .await
@@ -2381,13 +2381,15 @@ enum CallbackStage {
     Ended,
 }
 
-/// What an outbound call is for: an appointment's answer (its task), or an
-/// errand the owner gave the AI ([`crate::errands`]; its id in `task_id`). Both
-/// share one queue per number and the phone's reports.
+/// What an outbound call is for: an appointment's answer (its task), an
+/// errand the owner gave the AI ([`crate::errands`]; its id in `task_id`), or
+/// a to-do's phone call-back ([`crate::fulfill`]). They share one queue per
+/// number and the phone's reports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CallbackKind {
     Appointment,
     Errand,
+    Voicemail,
 }
 
 /// A call-back with an appointment's answer, from the decision until it ended.
@@ -2574,6 +2576,35 @@ fn callbacks_add(cb: PendingCallback) -> bool {
     callbacks_try_add(cb) == Added::Dial
 }
 
+/// A to-do's call-back already went to the phone ([`crate::fulfill`]). It joins
+/// this book so an incoming call can hold it and dial it again, with the same
+/// ten-minute limit as an appointment's call-back. `call_id` is the `place_call`
+/// the phone was just given.
+pub(crate) fn track_voicemail_dial(
+    task_id: &str,
+    number: &str,
+    serial: &str,
+    script: String,
+    lang: Option<Lang>,
+    call_id: &str,
+) {
+    let mut cb = PendingCallback::new(task_id, number, serial, script);
+    cb.kind = CallbackKind::Voicemail;
+    cb.lang = lang;
+    cb.call_id = call_id.trim().to_string();
+    if callbacks_try_add(cb) == Added::AlreadyOut {
+        callbacks_set_call_id(task_id, call_id);
+    }
+}
+
+/// The to-do call-back `task_id` is still in this book (held, dialing, or on
+/// the call). Its script stays in the to-do book until this entry is gone.
+pub(crate) fn voicemail_callback_tracked(task_id: &str) -> bool {
+    callbacks()
+        .iter()
+        .any(|c| c.task_id == task_id && c.kind == CallbackKind::Voicemail && !c.dropped)
+}
+
 fn callbacks_stage(task_id: &str) -> Option<CallbackStage> {
     callbacks().iter().find(|c| c.task_id == task_id).map(|c| c.stage)
 }
@@ -2703,10 +2734,9 @@ fn take_ready_callback(serial: &str, caller_id: &str) -> Option<CallbackCall> {
             .position(|c| ready(c) && !c.dropped && same_callback_number(c, caller_id, serial))
             .or_else(|| list.iter().position(|c| ready(c) && same_callback_number(c, caller_id, serial)))?
     };
-    let c = &mut list[i];
-    c.stage = CallbackStage::OnCall;
-    c.since = std::time::Instant::now();
-    Some(CallbackCall { task_id: c.task_id.clone(), script: c.script.clone(), lang: c.lang, errand: c.kind == CallbackKind::Errand })
+    let (call, voicemail) = handed_callback(&mut list[i]);
+    drop(list);
+    Some(release_voicemail_script(call, voicemail))
 }
 
 /// The ready call-back whose `place_call` id is `call_id` on this phone.
@@ -2723,10 +2753,33 @@ fn take_ready_for_call_id(serial: &str, call_id: &str) -> Option<CallbackCall> {
             && c.serial.eq_ignore_ascii_case(serial.trim())
             && c.since.elapsed() < CALLBACK_READY_WINDOW
     })?;
-    let c = &mut list[i];
+    let (call, voicemail) = handed_callback(&mut list[i]);
+    drop(list);
+    Some(release_voicemail_script(call, voicemail))
+}
+
+/// Mark the call-back on the call, and drop the to-do book's copy so that book
+/// cannot hand the same script to another session.
+fn handed_callback(c: &mut PendingCallback) -> (CallbackCall, bool) {
     c.stage = CallbackStage::OnCall;
     c.since = std::time::Instant::now();
-    Some(CallbackCall { task_id: c.task_id.clone(), script: c.script.clone(), lang: c.lang, errand: c.kind == CallbackKind::Errand })
+    let voicemail = c.kind == CallbackKind::Voicemail;
+    (
+        CallbackCall {
+            task_id: c.task_id.clone(),
+            script: c.script.clone(),
+            lang: c.lang,
+            errand: c.kind == CallbackKind::Errand,
+        },
+        voicemail,
+    )
+}
+
+fn release_voicemail_script(call: CallbackCall, voicemail: bool) -> CallbackCall {
+    if voicemail {
+        crate::fulfill::forget_voicemail_callback(&call.task_id);
+    }
+    call
 }
 
 /// A call-back is dialing on `serial` to this number (its `outbound_ready`
@@ -2998,9 +3051,19 @@ pub struct CallbackCtx<'a> {
     pub errands: Option<&'a crate::errands::ErrandStore>,
 }
 
-/// A phone reported an incoming call (`incoming`) that has not been cancelled.
+/// How long a phone's incoming or in-call mark is trusted when the phone never
+/// sends the matching clear (the control connection dropped on IDLE, and
+/// `reportCallState` does not repeat a state it already sent).
+const PHONE_MARK_TTL: Duration = Duration::from_secs(120);
+
+fn mark_open(marks: &HashMap<String, std::time::Instant>, key: &str) -> bool {
+    marks.get(key).is_some_and(|at| at.elapsed() < PHONE_MARK_TTL)
+}
+
+/// A phone reported an incoming call (`incoming`) that has not been cancelled
+/// and is not older than [`PHONE_MARK_TTL`].
 pub(crate) fn note_phone_incoming(serial: &str) {
-    phone_marks().incoming.insert(phone_key(serial));
+    phone_marks().incoming.insert(phone_key(serial), std::time::Instant::now());
 }
 
 pub(crate) fn clear_phone_incoming(serial: &str) {
@@ -3008,28 +3071,52 @@ pub(crate) fn clear_phone_incoming(serial: &str) {
 }
 
 pub(crate) fn phone_incoming_open(serial: &str) -> bool {
-    phone_marks().incoming.contains(&phone_key(serial))
+    let marks = phone_marks();
+    mark_open(&marks.incoming, &phone_key(serial))
 }
 
 /// The phone's own `in_call` (from `status`), or true while a held dial must
-/// not go out again during the call that interrupted it.
+/// not go out again during the call that interrupted it. A repeated true
+/// refreshes an incoming mark that is still open; it does not open a new one.
 pub(crate) fn note_phone_in_call(serial: &str, in_call: bool) {
     let key = phone_key(serial);
     let mut marks = phone_marks();
     if in_call {
-        marks.in_call.insert(key);
+        let now = std::time::Instant::now();
+        marks.in_call.insert(key.clone(), now);
+        if marks.incoming.get(&key).is_some_and(|at| at.elapsed() < PHONE_MARK_TTL) {
+            marks.incoming.insert(key, now);
+        }
     } else {
         marks.in_call.remove(&key);
     }
 }
 
 fn phone_in_call(serial: &str) -> bool {
-    phone_marks().in_call.contains(&phone_key(serial))
+    let marks = phone_marks();
+    mark_open(&marks.in_call, &phone_key(serial))
+}
+
+/// A control connection's `hello` (`mode` CONTROL_IDLE). When it carries
+/// `in_call`, that value replaces the marks: false also clears an incoming
+/// mark and the caller should retry a held dial. A hello without the key
+/// (an older app) changes nothing.
+pub(crate) fn note_control_hello(serial: &str, parsed: &Value) -> bool {
+    let Some(in_call) = parsed.get("in_call").and_then(Value::as_bool) else {
+        return false;
+    };
+    note_phone_in_call(serial, in_call);
+    if in_call {
+        return false;
+    }
+    clear_phone_incoming(serial);
+    true
 }
 
 /// What a media `hello` says about whose call this is. `has_fields` is set when
-/// `direction` or `call_id` is present, so an older app (neither key) is told
-/// apart from one that always sends both.
+/// `direction` or `call_id` is present, and when this build's app sends neither
+/// (it always sends both; a hello without them is an incoming call). An older
+/// app, or a hello with no `app_version`, is told apart and keeps the old path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HelloClaim {
     pub has_fields: bool,
@@ -3038,11 +3125,31 @@ pub(crate) struct HelloClaim {
     pub call_id: String,
 }
 
+/// `app` is this version or a later one (`2.2.0` >= `2.2.0`). Empty is not.
+/// A `-` / `+` suffix is ignored, the same way a backup's version is compared.
+fn version_at_least(app: &str, than: &str) -> bool {
+    fn parts(v: &str) -> Vec<u64> {
+        let core = v.trim().trim_start_matches('v').split(['-', '+']).next().unwrap_or("");
+        core.split('.').map(|p| p.parse().unwrap_or(0)).collect()
+    }
+    if app.trim().is_empty() {
+        return false;
+    }
+    let (mut x, mut y) = (parts(app), parts(than));
+    let n = x.len().max(y.len());
+    x.resize(n, 0);
+    y.resize(n, 0);
+    x >= y
+}
+
 pub(crate) fn hello_claim_of(parsed: &Value) -> HelloClaim {
-    let has_fields = parsed.get("direction").is_some() || parsed.get("call_id").is_some();
+    let has_keys = parsed.get("direction").is_some() || parsed.get("call_id").is_some();
+    let app_version = parsed.get("app_version").and_then(Value::as_str).unwrap_or("");
+    let current_without_fields = !has_keys && version_at_least(app_version, env!("CARGO_PKG_VERSION"));
+    let has_fields = has_keys || current_without_fields;
     let direction = parsed.get("direction").and_then(Value::as_str).unwrap_or("").trim();
     let call_id = parsed.get("call_id").and_then(Value::as_str).unwrap_or("").trim().to_string();
-    let outbound = direction.eq_ignore_ascii_case("outbound") && !call_id.is_empty();
+    let outbound = !current_without_fields && direction.eq_ignore_ascii_case("outbound") && !call_id.is_empty();
     HelloClaim { has_fields, outbound, call_id }
 }
 
@@ -3079,8 +3186,8 @@ fn phone_key(serial: &str) -> String {
 }
 
 struct PhoneMarks {
-    incoming: HashSet<String>,
-    in_call: HashSet<String>,
+    incoming: HashMap<String, std::time::Instant>,
+    in_call: HashMap<String, std::time::Instant>,
     hello: HashMap<String, HelloClaim>,
 }
 
@@ -3089,8 +3196,8 @@ fn phone_marks() -> std::sync::MutexGuard<'static, PhoneMarks> {
     MARKS
         .get_or_init(|| {
             std::sync::Mutex::new(PhoneMarks {
-                incoming: HashSet::new(),
-                in_call: HashSet::new(),
+                incoming: HashMap::new(),
+                in_call: HashMap::new(),
                 hello: HashMap::new(),
             })
         })
@@ -3137,7 +3244,14 @@ pub async fn on_callback_event(ctx: &CallbackCtx<'_>, serial: &str, msg: &Value)
                 warn!("appointment call-back task_id={task_id}: outbound_ready from serial={serial} does not match the call asked for — not used");
             }
         }
-        "place_call_ack" => clear_incoming_hold(&task_id),
+        // A late ack after `place_call_failed(incoming_call)` must not drop the
+        // hold: the dial is `Queued` then, and only a `Dialing` ack means the
+        // phone accepted the place_call that is going out now.
+        "place_call_ack" => {
+            if callbacks_stage(&task_id) == Some(CallbackStage::Dialing) {
+                clear_incoming_hold(&task_id);
+            }
+        }
         // The phone was on a call: an errand waits for it again. An incoming
         // call before the dial started is the same wait, not a failed errand.
         "place_call_failed" => {
@@ -3212,8 +3326,9 @@ fn clear_incoming_hold(task_id: &str) {
     }
 }
 
-/// Put an appointment's dial back in the queue. The ten minutes start the
-/// first time it is held and are not reset when a too-early busy holds it again.
+/// Put an appointment's or a to-do's dial back in the queue. The ten minutes
+/// start the first time it is held and are not reset when a too-early busy
+/// holds it again.
 fn hold_callback_for_incoming(task_id: &str) {
     let mut list = callbacks();
     let Some(c) = list.iter_mut().find(|c| c.task_id == task_id) else {
@@ -3226,16 +3341,20 @@ fn hold_callback_for_incoming(task_id: &str) {
     c.stage = CallbackStage::Queued;
 }
 
-/// Dial appointment call-backs that an incoming call put back in the queue,
-/// once that phone is idle. One still waiting after [`crate::errands::QUEUE_LIMIT`]
-/// is `failed`. A dial that does not go out stays queued.
+/// Dial appointment and to-do call-backs that an incoming call put back in
+/// the queue, once that phone is idle. One still waiting after
+/// [`crate::errands::QUEUE_LIMIT`] is `failed`. A dial that does not go out
+/// stays queued.
 pub async fn retry_held_callbacks(ctx: &CallbackCtx<'_>) {
     let mut expired = Vec::new();
     let mut due = Vec::new();
     {
         let list = callbacks();
         for c in list.iter() {
-            if c.kind != CallbackKind::Appointment || !c.incoming_hold || c.stage != CallbackStage::Queued {
+            if !matches!(c.kind, CallbackKind::Appointment | CallbackKind::Voicemail)
+                || !c.incoming_hold
+                || c.stage != CallbackStage::Queued
+            {
                 continue;
             }
             if c.since.elapsed() >= crate::errands::QUEUE_LIMIT {
@@ -3282,8 +3401,43 @@ pub async fn retry_held_callbacks(ctx: &CallbackCtx<'_>) {
             }) {
                 c.stage = CallbackStage::Queued;
             }
+        } else if cb.kind == CallbackKind::Voicemail {
+            note_voicemail_dialing(ctx, &id).await;
         }
     }
+}
+
+/// The to-do call-back went out again: the owner sees the dial, not the hold.
+async fn note_voicemail_dialing(ctx: &CallbackCtx<'_>, task_id: &str) {
+    let _ = ctx.tasks.push_event(task_id, "callback_dialing").await;
+    let _ = ctx
+        .tasks
+        .patch(
+            task_id,
+            TaskPatch {
+                fulfill_error: Some(None),
+                ..Default::default()
+            },
+        )
+        .await;
+}
+
+/// The to-do call-back will not be dialed again. The owner sees the failure,
+/// and the script book forgets it.
+async fn note_voicemail_failed(ctx: &CallbackCtx<'_>, task_id: &str) {
+    crate::fulfill::forget_voicemail_callback(task_id);
+    let _ = ctx.tasks.push_event(task_id, "callback_place_call_failed").await;
+    let _ = ctx
+        .tasks
+        .patch(
+            task_id,
+            TaskPatch {
+                fulfill_error: Some(Some("callback: failed".to_string())),
+                ..Default::default()
+            },
+        )
+        .await;
+    let _ = ctx.tasks.update_status(task_id, TaskStatus::Failed).await;
 }
 
 /// A call-back is over (`code`, [`Appointment::call`]): kept on its task,
@@ -3304,6 +3458,13 @@ async fn finish_callback(ctx: &CallbackCtx<'_>, task_id: &str, code: &str) {
         CallbackKind::Errand => {
             if let Some(store) = ctx.errands {
                 crate::errands::outbound_over(ctx, store, task_id, code).await;
+            }
+        }
+        CallbackKind::Voicemail => {
+            if matches!(code, "failed" | "no_phone" | "send_failed") {
+                note_voicemail_failed(ctx, task_id).await;
+            } else {
+                crate::fulfill::forget_voicemail_callback(task_id);
             }
         }
     }
@@ -3329,6 +3490,8 @@ async fn advance_queue(ctx: &CallbackCtx<'_>, key: &str) {
                 if let Some(store) = ctx.errands {
                     crate::errands::outbound_dialing(store, &next.task_id).await;
                 }
+            } else if next.kind == CallbackKind::Voicemail {
+                note_voicemail_dialing(ctx, &next.task_id).await;
             }
             break;
         }
@@ -3340,6 +3503,7 @@ async fn advance_queue(ctx: &CallbackCtx<'_>, key: &str) {
                     crate::errands::outbound_over(ctx, store, &next.task_id, &c).await;
                 }
             }
+            CallbackKind::Voicemail => note_voicemail_failed(ctx, &next.task_id).await,
         }
     }
 }
@@ -4952,10 +5116,18 @@ mod tests {
         callbacks_remove("t-h6-old-ok");
     }
 
+    /// `retry_held_callbacks` walks the one shared book. These tests hold that
+    /// book for the whole run so one of them cannot dial or finish another's.
+    fn callback_tests() -> &'static tokio::sync::Semaphore {
+        static LOCK: std::sync::OnceLock<tokio::sync::Semaphore> = std::sync::OnceLock::new();
+        LOCK.get_or_init(|| tokio::sync::Semaphore::new(1))
+    }
+
     #[tokio::test]
     async fn an_incoming_call_holds_an_appointment_callback_for_another_dial() {
         use crate::callback::test_socket::{next_json, phone_socket};
         use std::time::Duration;
+        let _book = callback_tests().acquire().await.unwrap();
         let (root, store, _calls) = stores();
         let mut settings = crate::config::Settings::from_env();
         settings.call_notify = false;
@@ -5040,6 +5212,290 @@ mod tests {
         clear_phone_incoming(serial);
         note_phone_in_call(serial, false);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn an_incoming_call_holds_a_todo_callback_and_the_owner_sees_the_wait() {
+        use crate::callback::test_socket::{next_json, phone_socket};
+        use std::time::Duration;
+        let _book = callback_tests().acquire().await.unwrap();
+        let (root, store, _calls) = stores();
+        let mut settings = crate::config::Settings::from_env();
+        settings.call_notify = false;
+        let http = Client::new();
+        let control = ControlRegistry::default();
+        let ctx = CallbackCtx {
+            http: &http,
+            settings: &settings,
+            tasks: store.as_ref(),
+            control: &control,
+            errands: None,
+        };
+        let serial = "phone-h6-vm";
+        let number = "0912000708";
+        let task = store
+            .create(TaskRecord {
+                id: "task-h6-vm".into(),
+                created_at: String::new(),
+                updated_at: String::new(),
+                call_id: String::new(),
+                serial: serial.into(),
+                caller_id: number.into(),
+                status: TaskStatus::Confirmed,
+                intent: TaskIntent::Callback,
+                summary: "call them back".into(),
+                transcript: String::new(),
+                datetime_hint: None,
+                reply_method: ReplyMethod::Phone,
+                reply_contact: None,
+                contact_verified: false,
+                voicemail_path: None,
+                calendar_event_id: None,
+                fulfill_error: None,
+                openclaw_ref: None,
+                events: Vec::new(),
+                appointment: None,
+            })
+            .await
+            .unwrap();
+        let (sink, mut phone) = phone_socket().await;
+        control.register_client(serial.into(), sink).await;
+        crate::fulfill::register_voicemail_callback(&task.id, number, serial, "SCRIPT-VM".into(), Some(Lang::En));
+        track_voicemail_dial(&task.id, number, serial, "SCRIPT-VM".into(), Some(Lang::En), "");
+        let pending = {
+            let list = callbacks();
+            list.iter().find(|c| c.task_id == task.id).unwrap().clone()
+        };
+        let (code, _) = dispatch_callback(&control, &pending).await;
+        assert_eq!(code, "dialing");
+        let first = next_json(&mut phone, Duration::from_secs(2)).await.expect("place_call");
+        let call_id = first["call_id"].as_str().unwrap().to_string();
+        let failed = json!({
+            "type": "place_call_failed",
+            "reason": "incoming_call",
+            "call_id": call_id,
+            "task_id": task.id,
+            "number": number,
+        });
+        control.handle_phone_event(&failed, store.as_ref()).await;
+        on_callback_event(&ctx, serial, &failed).await;
+        assert_eq!(callbacks_stage(&task.id), Some(CallbackStage::Queued));
+        assert!(callback_is_held(&task.id));
+        let held = store.get(&task.id).await.unwrap();
+        assert_eq!(held.fulfill_error.as_deref(), Some("callback: incoming_call"));
+        assert!(held.events.iter().any(|e| e == "callback_place_call_deferred"));
+        assert!(!held.events.iter().any(|e| e == "callback_place_call_failed"));
+        assert!(crate::fulfill::voicemail_callback_for_call(&control, serial, number).await.is_none());
+        assert!(crate::fulfill::voicemail_callback_pending(serial), "the script stays while the dial is held");
+        retry_held_callbacks(&ctx).await;
+        assert_eq!(callbacks_stage(&task.id), Some(CallbackStage::Queued));
+        assert!(next_json(&mut phone, Duration::from_millis(200)).await.is_none());
+        note_phone_in_call(serial, false);
+        clear_phone_incoming(serial);
+        retry_held_callbacks(&ctx).await;
+        assert_eq!(callbacks_stage(&task.id), Some(CallbackStage::Dialing));
+        assert!(callback_is_held(&task.id));
+        let again = store.get(&task.id).await.unwrap();
+        assert!(again.fulfill_error.is_none());
+        assert!(again.events.iter().any(|e| e == "callback_dialing"));
+        let second = next_json(&mut phone, Duration::from_secs(2)).await.expect("redial");
+        assert_eq!(second["type"].as_str(), Some("place_call"));
+        assert_ne!(second["call_id"].as_str(), Some(call_id.as_str()));
+        // The redial is still held. Put it back in the queue; with no phone it stays there.
+        hold_callback_for_incoming(&task.id);
+        control.unregister_client(serial).await;
+        note_phone_in_call(serial, false);
+        retry_held_callbacks(&ctx).await;
+        assert_eq!(callbacks_stage(&task.id), Some(CallbackStage::Queued));
+        let back = std::time::Instant::now()
+            .checked_sub(Duration::from_secs(11 * 60))
+            .expect("monotonic clock");
+        callbacks().iter_mut().find(|c| c.task_id == task.id).unwrap().since = back;
+        retry_held_callbacks(&ctx).await;
+        assert!(callbacks_stage(&task.id).is_none());
+        let failed_task = store.get(&task.id).await.unwrap();
+        assert_eq!(failed_task.status, TaskStatus::Failed);
+        assert_eq!(failed_task.fulfill_error.as_deref(), Some("callback: failed"));
+        assert!(failed_task.events.iter().any(|e| e == "callback_place_call_failed"));
+        assert!(!crate::fulfill::voicemail_callback_pending(serial));
+        clear_phone_incoming(serial);
+        note_phone_in_call(serial, false);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_late_place_call_ack_does_not_clear_a_held_callback() {
+        use crate::callback::test_socket::{next_json, phone_socket};
+        use std::time::Duration;
+        let _book = callback_tests().acquire().await.unwrap();
+        let (root, store, _calls) = stores();
+        let mut settings = crate::config::Settings::from_env();
+        settings.call_notify = false;
+        let http = Client::new();
+        let control = ControlRegistry::default();
+        let ctx = CallbackCtx {
+            http: &http,
+            settings: &settings,
+            tasks: store.as_ref(),
+            control: &control,
+            errands: None,
+        };
+        let serial = "phone-h6-ack";
+        let number = "0912000709";
+        let a = appt(&later(3, 15), &later(3, 16), "看房");
+        let task = store.create(TaskRecord { id: String::new(), ..task_for(number, &a) }).await.unwrap();
+        let (sink, mut phone) = phone_socket().await;
+        control.register_client(serial.into(), sink).await;
+        assert!(callbacks_add(PendingCallback::new(&task.id, number, serial, "SCRIPT-ACK".into())));
+        let pending = {
+            let list = callbacks();
+            list.iter().find(|c| c.task_id == task.id).unwrap().clone()
+        };
+        let (code, _) = dispatch_callback(&control, &pending).await;
+        assert_eq!(code, "dialing");
+        let first = next_json(&mut phone, Duration::from_secs(2)).await.expect("place_call");
+        let call_id = first["call_id"].as_str().unwrap().to_string();
+        {
+            let mut list = callbacks();
+            list.iter_mut().find(|c| c.task_id == task.id).unwrap().incoming_hold = true;
+        }
+        let ack = json!({
+            "type": "place_call_ack",
+            "call_id": call_id,
+            "task_id": task.id,
+        });
+        on_callback_event(&ctx, serial, &ack).await;
+        assert!(!callback_is_held(&task.id), "an ack while Dialing clears the hold");
+        assert_eq!(callbacks_stage(&task.id), Some(CallbackStage::Dialing));
+        let failed = json!({
+            "type": "place_call_failed",
+            "reason": "incoming_call",
+            "call_id": call_id,
+            "task_id": task.id,
+            "number": number,
+        });
+        control.handle_phone_event(&failed, store.as_ref()).await;
+        on_callback_event(&ctx, serial, &failed).await;
+        assert_eq!(callbacks_stage(&task.id), Some(CallbackStage::Queued));
+        assert!(callback_is_held(&task.id));
+        control.handle_phone_event(&ack, store.as_ref()).await;
+        on_callback_event(&ctx, serial, &ack).await;
+        assert_eq!(callbacks_stage(&task.id), Some(CallbackStage::Queued));
+        assert!(callback_is_held(&task.id), "a late ack leaves the held dial queued");
+        note_phone_in_call(serial, false);
+        clear_phone_incoming(serial);
+        retry_held_callbacks(&ctx).await;
+        assert_eq!(callbacks_stage(&task.id), Some(CallbackStage::Dialing));
+        let second = next_json(&mut phone, Duration::from_secs(2)).await.expect("redial");
+        assert_eq!(second["type"].as_str(), Some("place_call"));
+        assert_ne!(second["call_id"].as_str(), Some(call_id.as_str()));
+        callbacks_remove(&task.id);
+        clear_phone_incoming(serial);
+        note_phone_in_call(serial, false);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn phone_marks_expire_and_a_control_hello_resets_them() {
+        use crate::callback::test_socket::{next_json, phone_socket};
+        use std::time::Duration;
+        let _book = callback_tests().acquire().await.unwrap();
+        let serial = "phone-h6-marks";
+        clear_phone_incoming(serial);
+        note_phone_in_call(serial, false);
+        note_phone_incoming(serial);
+        note_phone_in_call(serial, true);
+        let key = phone_key(serial);
+        let mid = std::time::Instant::now().checked_sub(Duration::from_secs(60)).expect("monotonic clock");
+        {
+            let mut marks = phone_marks();
+            marks.incoming.insert(key.clone(), mid);
+            marks.in_call.insert(key.clone(), mid);
+        }
+        assert!(phone_incoming_open(serial));
+        assert!(!note_control_hello(serial, &json!({"type": "hello"})));
+        assert!(phone_marks().incoming.get(&key).unwrap().elapsed() >= Duration::from_secs(50));
+        assert!(!note_control_hello(serial, &json!({"in_call": true})));
+        assert!(phone_marks().incoming.get(&key).unwrap().elapsed() < Duration::from_secs(5));
+        assert!(phone_in_call(serial));
+        assert!(note_control_hello(serial, &json!({"in_call": false})));
+        assert!(!phone_incoming_open(serial));
+        assert!(!phone_in_call(serial));
+        let old = std::time::Instant::now().checked_sub(Duration::from_secs(121)).expect("monotonic clock");
+        {
+            let mut marks = phone_marks();
+            marks.incoming.insert(key.clone(), old);
+            marks.in_call.insert(key, old);
+        }
+        assert!(!phone_incoming_open(serial));
+        assert!(!phone_in_call(serial));
+        assert!(!note_control_hello(serial, &json!({"in_call": true})));
+        assert!(!phone_incoming_open(serial), "an expired incoming mark is not revived");
+        assert!(phone_in_call(serial));
+        // A held dial whose in_call clear was lost is tried again once the mark is old.
+        let (root, store, _calls) = stores();
+        let mut settings = crate::config::Settings::from_env();
+        settings.call_notify = false;
+        let http = Client::new();
+        let control = ControlRegistry::default();
+        let ctx = CallbackCtx {
+            http: &http,
+            settings: &settings,
+            tasks: store.as_ref(),
+            control: &control,
+            errands: None,
+        };
+        let number = "0912000710";
+        let a = appt(&later(4, 15), &later(4, 16), "看房");
+        let task = store.create(TaskRecord { id: String::new(), ..task_for(number, &a) }).await.unwrap();
+        let (sink, mut phone) = phone_socket().await;
+        control.register_client(serial.into(), sink).await;
+        let mut cb = PendingCallback::new(&task.id, number, serial, "SCRIPT-MARK".into());
+        cb.incoming_hold = true;
+        cb.stage = CallbackStage::Queued;
+        cb.since = std::time::Instant::now();
+        callbacks().push(cb);
+        {
+            let mut marks = phone_marks();
+            marks.in_call.insert(phone_key(serial), old);
+        }
+        assert!(!phone_in_call(serial));
+        retry_held_callbacks(&ctx).await;
+        assert_eq!(callbacks_stage(&task.id), Some(CallbackStage::Dialing));
+        let sent = next_json(&mut phone, Duration::from_secs(2)).await.expect("redial after the mark expired");
+        assert_eq!(sent["type"].as_str(), Some("place_call"));
+        callbacks_remove(&task.id);
+        clear_phone_incoming(serial);
+        note_phone_in_call(serial, false);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_current_app_hello_without_direction_is_an_incoming_call() {
+        let serial = "phone-h6-ver";
+        let older = "phone-h6-ver-old";
+        clear_phone_incoming(serial);
+        clear_phone_incoming(older);
+        ready_on("t-h6-ver", "0912000711", serial, "cid-h6-ver", "SCRIPT-VER");
+        note_hello_gate(serial, &json!({"type": "hello", "app_version": env!("CARGO_PKG_VERSION")}));
+        assert!(take_ready_callback(serial, "").is_none());
+        assert!(take_ready_callback(serial, "0912000711").is_none());
+        assert_eq!(callbacks_stage("t-h6-ver"), Some(CallbackStage::Ready));
+        note_hello_gate(
+            serial,
+            &json!({
+                "type": "hello",
+                "app_version": env!("CARGO_PKG_VERSION"),
+                "direction": "outbound",
+                "call_id": "cid-h6-ver",
+            }),
+        );
+        assert_eq!(take_ready_callback(serial, "").map(|c| c.task_id).as_deref(), Some("t-h6-ver"));
+        callbacks_remove("t-h6-ver");
+        ready_on("t-h6-ver-old", "0912000712", older, "cid-h6-ver-old", "SCRIPT-OLD-VER");
+        note_hello_gate(older, &json!({"type": "hello", "app_version": "0.9.0"}));
+        assert_eq!(take_ready_callback(older, "").map(|c| c.task_id).as_deref(), Some("t-h6-ver-old"));
+        callbacks_remove("t-h6-ver-old");
     }
 
     #[test]

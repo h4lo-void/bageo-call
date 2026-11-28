@@ -963,9 +963,22 @@ impl ControlRegistry {
                     .unwrap_or("dial failed");
                 // The old place_call id must not match a later hello. The dial
                 // itself is queued again by the appointment book, not failed here.
+                // A to-do call-back is in that book too, and the owner sees the wait.
                 let deferred = reason == "incoming_call";
                 drop(sessions);
-                if write_task && !deferred {
+                let voicemail = deferred && crate::fulfill::voicemail_callback_known(&task_id);
+                if write_task && deferred && voicemail {
+                    let _ = store.push_event(&task_id, "callback_place_call_deferred").await;
+                    let _ = store
+                        .patch(
+                            &task_id,
+                            crate::tasks::TaskPatch {
+                                fulfill_error: Some(Some("callback: incoming_call".to_string())),
+                                ..Default::default()
+                            },
+                        )
+                        .await;
+                } else if write_task && !deferred {
                     let _ = store
                         .push_event(&task_id, "callback_place_call_failed")
                         .await;

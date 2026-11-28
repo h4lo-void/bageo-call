@@ -216,7 +216,17 @@ async fn fulfill_builtin(
                         if let Some(s) = ctrl.callback_session_for(task_id, "").await {
                             let spoken = infer_voicemail_callback_lang(rt, &number, &s.serial, task);
                             let script = voicemail_callback_script(&locale::active(), spoken, task);
-                            register_voicemail_callback(task_id, &number, &s.serial, script, spoken);
+                            register_voicemail_callback(task_id, &number, &s.serial, script.clone(), spoken);
+                            // Same hold and retry as an appointment's call-back when an
+                            // incoming call cancels this dial.
+                            crate::appointments::track_voicemail_dial(
+                                task_id,
+                                &number,
+                                &s.serial,
+                                script,
+                                spoken,
+                                &s.call_id,
+                            );
                         }
                         // Clear prior waiting hint once dial command is on the wire.
                         store
@@ -491,7 +501,7 @@ fn infer_voicemail_callback_lang(
     }
 }
 
-fn register_voicemail_callback(task_id: &str, number: &str, serial: &str, script: String, lang: Option<Lang>) {
+pub(crate) fn register_voicemail_callback(task_id: &str, number: &str, serial: &str, script: String, lang: Option<Lang>) {
     let (key, region) = number_key_for(serial, number, None);
     let mut list = call_backs();
     list.retain(|c| c.task_id != task_id && c.since.elapsed() < CALL_BACK_MAX_AGE);
@@ -539,6 +549,19 @@ fn take_call_back(task_id: &str) -> Option<PendingCallBack> {
     Some(list.remove(i))
 }
 
+/// The to-do call-back is in the script book (an incoming call can hold it).
+pub(crate) fn voicemail_callback_known(task_id: &str) -> bool {
+    call_backs()
+        .iter()
+        .any(|c| c.task_id == task_id && c.since.elapsed() < CALL_BACK_MAX_AGE)
+}
+
+/// Drop a to-do call-back's script. The appointment book took it, or the dial
+/// will not be tried again.
+pub(crate) fn forget_voicemail_callback(task_id: &str) {
+    take_call_back(task_id);
+}
+
 /// Whether the Live session starting on `serial` for `caller_id` is a to-do's
 /// phone call-back, and its script (as an appointment's call-back is, see
 /// [`crate::appointments::callback_for_call`]). Only once the phone reported
@@ -565,7 +588,13 @@ pub async fn voicemail_callback_for_call(
                 });
             }
             Some(CallbackPhase::Queued | CallbackPhase::Dialing) => {}
-            // Failed, over, or gone: not this call, and not any later one.
+            // Failed or over, but the dial is held (or still in the book) to be
+            // tried again: keep the script. Gone from that book: not this call.
+            Some(CallbackPhase::Failed | CallbackPhase::Done)
+                if crate::appointments::voicemail_callback_tracked(&task_id) =>
+            {
+                return None;
+            }
             _ => {
                 take_call_back(&task_id);
                 return None;
