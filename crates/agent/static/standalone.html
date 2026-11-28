@@ -983,7 +983,7 @@ input[type=text],input[type=search],input[type=password],input[type=url],input[t
       </div>
 
       <label class="sw" style="margin-top:6px">
-        <span><b data-i18n="er_redial"></b><small data-i18n="er_redial_h"></small></span>
+        <span><b data-i18n="er_redial"></b><small id="erRedialH"></small></span>
         <input type="checkbox" id="erRedial" />
       </label>
 
@@ -4180,7 +4180,7 @@ $("ctImpGo").addEventListener("click", async () => {
 
 // ---------------------------------------------------------------- AI Errands (Single-Phone)
 const ER_ACTIVE = ["dialing", "on_call"];
-const ER_OPEN = ["queued", "dialing", "on_call"];
+const ER_OPEN = ["scheduled", "queued", "dialing", "on_call"];
 const ER_RETRY = ["no_answer", "failed", "cancelled"];
 const ER_ST_TAG = { dialing: "info", on_call: "accent", done: "ok", no_answer: "warn", failed: "bad" };
 const ER_OC_TAG = { done: "ok", partial: "warn", not_done: "bad", need_owner: "warn", no_answer: "warn", voicemail: "warn", failed: "bad" };
@@ -4224,6 +4224,7 @@ async function loadErrands() {
     const d = await erApi("");
     if (seq !== er.seq) return;
     er.list = Array.isArray(d.errands) ? d.errands : [];
+    if (d.grab) er.grab = d.grab;
     er.state = "ok";
   } catch (e) {
     if (seq !== er.seq || er.state === "ok") return;
@@ -4261,6 +4262,19 @@ function erIdentity() {
   return r ? r.value : erDefaultIdentity();
 }
 function erSetIdentity(v) { document.querySelectorAll('input[name="er_identity"]').forEach((r) => { r.checked = r.value === v; }); }
+// A scheduled errand's time with its weekday, and how long until then.
+function erSchLine(at) {
+  const d = parseStamp(at);
+  if (!d) return "";
+  let when = "", left = "";
+  try { when = new Intl.DateTimeFormat(loc(), { weekday: "short", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d); } catch (_) { when = d.toLocaleString(); }
+  const sec = Math.round((d.getTime() - Date.now()) / 1000), a = Math.abs(sec);
+  try {
+    const rtf = new Intl.RelativeTimeFormat(loc(), { numeric: "auto" });
+    left = a >= 86400 ? rtf.format(Math.round(sec / 86400), "day") : a >= 3600 ? rtf.format(Math.round(sec / 3600), "hour") : a >= 60 ? rtf.format(Math.round(sec / 60), "minute") : rtf.format(sec, "second");
+  } catch (_) { left = ""; }
+  return t("er_sch_at", { when, left });
+}
 function renderErrandForm() {
   const name = String((S && S.owner_name) || "").trim();
   $("erIdAssistant").textContent = name ? t("er_id_assistant", { name }) : t("er_id_assistant_anon");
@@ -4268,6 +4282,8 @@ function renderErrandForm() {
   if (!erIdTouched) erSetIdentity(erDefaultIdentity());
   erRenderSimField();
   erRenderPick();
+  // Grab mode's numbers come with the errands list.
+  $("erRedialH").textContent = er.grab ? t("er_redial_h", { gap: er.grab.gap_s, min: er.grab.window_min }) : "";
 }
 function erRenderPick() {
   const box = clear($("erPick"));
@@ -4524,7 +4540,7 @@ function errandCard(e) {
     h("div", { class: "sub" },
       String(e.name || "").trim() && e.number ? h("span", { class: "mono", text: e.number }) : null,
       h("span", { class: "tag", text: t(e.identity === "owner" ? "er_as_owner" : "er_as_assistant") }),
-      e.redial ? h("span", { class: "tag", text: t("er_redial") }) : null,
+      e.redial ? h("span", { class: "tag", text: t("er_redial_min", { min: Number(e.grab_min) || (er.grab && Number(er.grab.window_min)) || 30 }) }) : null,
       simBadge ? h("span", { class: "tag", text: simBadge }) : null,
       h("span", { text: fmtWhen(e.created_at) }))));
   const task = String(e.task || "");
@@ -4534,6 +4550,7 @@ function errandCard(e) {
   if (long) {
     card.append(h("button", { type: "button", class: "btn xs ghost", text: t(open ? "er_less" : "er_more"), onclick: () => { if (open) erExpanded.delete(e.id); else erExpanded.add(e.id); renderErrands(); } }));
   }
+  if (e.status === "scheduled") card.append(h("p", { class: "small", text: erSchLine(e.scheduled_at) }));
   if (active) card.append(erLiveBox(e));
   if (!erOpen(e)) {
     const res = erResult(e);
@@ -4679,7 +4696,7 @@ function erActions(e, busy) {
   if (ER_ACTIVE.includes(st)) row.append(h("button", { type: "button", class: "btn sm danger", disabled: busy, onclick: async () => {
     if (await ask({ title: t("er_hangup_t"), body: t("er_hangup_b"), ok: t("er_hangup"), danger: true })) erAct(e, "/cancel", "er_hung_up");
   }, text: t("er_hangup") }));
-  if (st === "queued") row.append(h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => erAct(e, "/cancel", "er_cancelled"), text: t("er_cancel_q") }));
+  if (st === "queued" || st === "scheduled") row.append(h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => erAct(e, "/cancel", "er_cancelled"), text: t("er_cancel_q") }));
   if (ER_RETRY.includes(st) || (st === "done" && ["no_answer", "voicemail", "failed"].includes(oc))) {
     row.append(h("button", { type: "button", class: "btn sm primary", disabled: busy, onclick: () => erAct(e, "/retry", "er_retried"), text: t("er_retry") }));
   }

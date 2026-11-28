@@ -55,6 +55,7 @@ pub fn request_body(text: &str, today: NaiveDate, strict: bool) -> Value {
                 "ref": {"type": "STRING"},
                 "target": {"type": "STRING"},
                 "task": {"type": "STRING"},
+                "when": {"type": "STRING"},
                 "text": {"type": "STRING"},
                 "phone": {"type": "STRING"},
                 "mode": {"type": "STRING"},
@@ -158,7 +159,7 @@ mod tests {
         let errand = json!({"action": "errand", "target": "0912345678", "task": "訂明天晚上七點兩位", "ref": ""});
         assert_eq!(
             parse_answer(&answer(&errand)),
-            Some(Action::Errand { target: "0912345678".into(), task: "訂明天晚上七點兩位".into() })
+            Some(Action::Errand { target: "0912345678".into(), task: "訂明天晚上七點兩位".into(), when: String::new(), grab_min: None })
         );
         let calls = json!({"action": "calls", "day": "yesterday"});
         assert_eq!(parse_answer(&answer(&calls)), Some(Action::Calls(CallQuery { day: Some(Day::Yesterday), ..Default::default() })));

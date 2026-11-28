@@ -182,7 +182,11 @@ pub fn error_text(w: &Words, code: &str) -> String {
         "busy" => w.e_busy.to_string(),
         "question_closed" => w.closed.to_string(),
         "already_decided" => w.e_decided.to_string(),
-        other => fmt(w.failed, &[other]),
+        other => match crate::errand_plan::error_text(crate::locale::notify_lang(), other) {
+            // The errand holding the line comes with LineHeld; without it, a dash.
+            Some(text) => text.replace("{who}", "—").replace("{when}", "—"),
+            None => fmt(w.failed, &[other]),
+        },
     }
 }
 
@@ -300,6 +304,10 @@ pub fn render(o: &Outcome, w: &Words) -> String {
                 _ => fmt(w.list_unblocked, &[&who]),
             }
         }
+        Outcome::LineHeld { code, who, when } => match crate::errand_plan::error_text(crate::locale::notify_lang(), code) {
+            Some(text) => text.replace("{who}", who).replace("{when}", when),
+            None => error_text(w, code),
+        },
         Outcome::Failed { code } => error_text(w, code),
     }
 }

@@ -3021,6 +3021,38 @@ fn released_talk_limits(persona: bool, persona_max_secs: u64, elapsed_secs: u64)
     talk_limits(persona, persona_max_secs.max(elapsed_secs + 60))
 }
 
+/// An errand call held by a queue's recording: its limits grow by the queue's
+/// wait once per call, and when the queue ends (a person came on) they shrink
+/// back to the original limits plus the time really spent in line.
+#[derive(Debug, Default, Clone, Copy)]
+struct ErrandQueueTime {
+    /// The extension in force: seconds added, and the call's age then.
+    open: Option<(u64, u64)>,
+    used: bool,
+}
+
+impl ErrandQueueTime {
+    /// A queue starts `at_s` into the call: the seconds to add to each limit,
+    /// or `None` once this call already had its extension.
+    fn start(&mut self, at_s: u64, extra: u64) -> Option<u64> {
+        if self.used {
+            return None;
+        }
+        self.used = true;
+        self.open = Some((extra, at_s));
+        Some(extra)
+    }
+
+    /// The queue ended `at_s` into the call: the seconds to take back off each
+    /// limit (the part of the extension not spent in line).
+    fn end(&mut self, at_s: u64) -> u64 {
+        match self.open.take() {
+            Some((extra, from)) => extra.saturating_sub(at_s.saturating_sub(from)),
+            None => 0,
+        }
+    }
+}
+
 /// Persona: caller speech after a closing this long is either a farewell or new
 /// content — their words / the model's next turn decide which.
 const PERSONA_POST_ARM_VOICE_MS: u32 = 600;
@@ -7404,6 +7436,11 @@ pub async fn run_session(
     let mut errand_carrier: Option<String> = None;
     // "Redial until answered": voicemail picked up (hung up, no message).
     let mut errand_voicemail = false;
+    // "Redial until answered": a queue's recording (hold, music, your place in
+    // line): the AI stays on the line for a person (errand_menu_since times it).
+    let mut errand_queue = false;
+    let mut errand_queue_wait = Duration::ZERO;
+    let mut errand_queue_time = ErrandQueueTime::default();
     // Testing only: rotate once after N s so it is testable without ~8 min.
     let test_rotate_after: Option<u64> = std::env::var("GEMINI_TEST_ROTATE_AFTER_SECS")
         .ok()
@@ -7627,8 +7664,24 @@ pub async fn run_session(
             if let Some(t0) = errand_menu_since {
                 if audio_chunks_out > errand_menu_chunks {
                     errand_menu_since = None;
+                    errand_queue = false;
+                    let back = errand_queue_time.end(session_start.elapsed().as_secs());
+                    wrap_secs = wrap_secs.saturating_sub(back);
+                    wrap_force_secs = wrap_force_secs.saturating_sub(back);
+                    max_secs = max_secs.saturating_sub(back);
                     e.note_menu(false);
-                    info!("Errand call: the AI talks after the voice menu (a person came on) serial={serial}");
+                    info!("Errand call: the AI talks after the voice menu (a person came on) serial={serial} cap_s={max_secs}");
+                } else if errand_queue {
+                    if t0.elapsed() >= errand_queue_wait {
+                        e.note_queue();
+                        end_reason = SessionEndReason::IvrHangup;
+                        signal_force_hangup(&mut hangup_signaled);
+                        info!(
+                            "Errand call: queue, no person within {}s serial={serial} — hang up",
+                            errand_queue_wait.as_secs()
+                        );
+                        break;
+                    }
                 } else if t0.elapsed() >= crate::errands::MENU_WAIT {
                     end_reason = SessionEndReason::IvrHangup;
                     signal_force_hangup(&mut hangup_signaled);
@@ -7641,7 +7694,8 @@ pub async fn run_session(
             }
         }
         // An errand's question waits for the owner: the line is not idle.
-        let errand_asking = errand.as_ref().is_some_and(|e| e.question_open()) || !ask_waiting.is_empty();
+        // In a queue too: no nudge and no idle hang-up while it plays.
+        let errand_asking = errand.as_ref().is_some_and(|e| e.question_open()) || !ask_waiting.is_empty() || errand_queue;
 
         // The second look says sales / scam: the AI starts stalling (stalling off:
         // the call is only marked so, and the AI goes on as it was).
@@ -9681,6 +9735,32 @@ pub async fn run_session(
                                             } else if crate::errands::busy_message(&in_tx_window) {
                                                 errand_carrier = Some(in_tx_window.clone());
                                             }
+                                        }
+                                        // …while a queue's recording keeps it on the line: its
+                                        // place is lost on hanging up. The call may run that long.
+                                        // Only before the AI spoke, or on a voice menu: a person's
+                                        // "one moment" later in the call is no queue.
+                                        if !errand_queue
+                                            && errand_carrier.is_none()
+                                            && !errand_voicemail
+                                            && (first_downlink_at.is_none() || errand_menu_since.is_some())
+                                            && e.redial()
+                                            && crate::errands::queue_message(&in_tx_window)
+                                        {
+                                            errand_queue = true;
+                                            errand_queue_wait = e.queue_wait();
+                                            e.note_menu(false);
+                                            errand_menu_since = Some(tokio::time::Instant::now());
+                                            errand_menu_chunks = audio_chunks_out;
+                                            let wait = errand_queue_wait.as_secs();
+                                            if let Some(extra) =
+                                                errand_queue_time.start(session_start.elapsed().as_secs(), wait)
+                                            {
+                                                wrap_secs += extra;
+                                                wrap_force_secs += extra;
+                                                max_secs += extra;
+                                            }
+                                            info!("Errand call: a queue — the AI stays on the line up to {wait}s for a person serial={serial} cap_s={max_secs}");
                                         }
                                     }
                                     let hold = crate::locale::asks_to_hold(&caller_recent);
@@ -14808,6 +14888,29 @@ mod tests {
         assert!(w < f && f < m && w >= 60, "{w} {f} {m}");
         // Assistant (relay) mode keeps its old cap.
         assert_eq!(talk_limits(false, 30 * 60).2, LIVE_MAX_SECS);
+    }
+
+    #[test]
+    fn an_errand_queue_lengthens_the_call_once_and_gives_back_what_it_did_not_use() {
+        let cap = crate::errands::CALL_MAX_SECS;
+        let mut q = ErrandQueueTime::default();
+        let mut max = cap;
+        // A queue 20 s in: up to 30 minutes more.
+        max += q.start(20, 1800).unwrap();
+        assert_eq!(max, cap + 1800);
+        // A person came on after 2 minutes in line: the original cap plus those 2 minutes.
+        max -= q.end(20 + 120);
+        assert_eq!(max, cap + 120);
+        // A voice menu and another queue later in the same call: nothing more.
+        assert_eq!(q.start(400, 1800), None);
+        assert_eq!(q.end(900), 0);
+        assert_eq!(max, cap + 120);
+        // A queue that ran its whole wait gives nothing back (the call ends then).
+        let mut q = ErrandQueueTime::default();
+        assert_eq!(q.start(0, 600), Some(600));
+        assert_eq!(q.end(700), 0);
+        // No queue: nothing to give back.
+        assert_eq!(ErrandQueueTime::default().end(50), 0);
     }
 
     #[test]
