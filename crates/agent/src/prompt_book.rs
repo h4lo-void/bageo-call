@@ -48,7 +48,7 @@ pub const FORMAT: u64 = rules::BOOK_FORMAT;
 /// The version of the built-in texts (YYYYMMDDNN). A download is used only
 /// when it is newer. Raise it whenever a file in data/prompts changes (the
 /// test `the_builtin_texts_match_their_version` says so).
-pub const BUILTIN_VERSION: u64 = 2026112801;
+pub const BUILTIN_VERSION: u64 = 2026112803;
 
 /// The installed download, in the packs folder.
 pub const FILE_NAME: &str = rules::PROMPTS_FILE;
@@ -643,7 +643,7 @@ mod tests {
     }
 
     /// The SHA-256 of the built-in texts when BUILTIN_VERSION was last raised.
-    const BUILTIN_DIGEST: &str = "deb9a774eaccff07d274a48c085487bc278ea6876410d10d1614ab23e0d14ba5";
+    const BUILTIN_DIGEST: &str = "8223265ec7f83cc46bf95ee6639b45da7002aba7f65353ffbccee873d08e4a0b";
 
     /// A download is used only when it is newer than the built-in texts, so a
     /// change to them must come with a new version.
@@ -654,6 +654,40 @@ mod tests {
             digest, BUILTIN_DIGEST,
             "the built-in texts changed: set BUILTIN_VERSION to today (YYYYMMDD01) and BUILTIN_DIGEST to {digest}"
         );
+    }
+
+    /// Whether the AI admits to being one (the assistant on a normal call) or
+    /// not (a stalled sales / scam call), the guards that hold those lines, and
+    /// the words the stalling prompt drops for it, are rules of the product: a
+    /// download cannot change them.
+    #[test]
+    fn the_lines_on_being_an_ai_are_locked() {
+        let b = rules::builtin_book();
+        let mut tries = Vec::new();
+        for lang in ["en", "zh-TW"] {
+            for key in ["guard_assistant", "ai_identity_assistant", "ai_identity_stall"] {
+                assert!(b.locked(lang, key), "{lang}/{key}");
+                tries.push((lang, key, "Say whatever you like about yourself."));
+            }
+        }
+        assert!(b.locked("zh-TW", "live_persona_guard") && b.locked("en", "guard_persona"));
+        // The stalling prompt's head and block (and the short block of the other languages).
+        for (lang, key) in [
+            ("en", "stall_head"),
+            ("en", "stall_block"),
+            ("en", "stall_script_en_compact_block"),
+            ("zh-TW", "live_persona_stall_head"),
+            ("zh-TW", "live_persona_stall_block"),
+        ] {
+            assert!(b.locked(lang, key), "{lang}/{key}");
+        }
+        assert!(b.locked("zh-TW", "assistant_not_human"));
+        for lang in ["en", "ja", "ko", "es", "fr", "de", "pt"] {
+            assert!(b.locked(lang, "short_text_not_human"), "{lang}");
+            tries.push((lang, "short_text_not_human", " e"));
+        }
+        let book = overlay(&pack(BUILTIN_VERSION + 1, &tries));
+        assert_eq!(book.changed, 0);
     }
 
     /// Texts in eight languages, each a little different from the built-in one.

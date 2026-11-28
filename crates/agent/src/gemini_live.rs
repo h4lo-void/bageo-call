@@ -50,6 +50,8 @@ crate::prompt_book::prompt_texts! {
     /// was the owner's gets neither a yes nor a no (the AI cannot know; 「我那時在
     /// 睡覺」 got a real card blocked or a fraud case opened) and no agreement to
     /// block or dispute anything: the owner checks with the bank himself.
+    /// `{ai_identity}` = nothing on a normal call (it speaks as the owner), the
+    /// stalling line once the call is judged (see `prompts::Pack::guard`).
     pub PERSONA_GUARD = "zh-TW/live_persona_guard";
     /// Sentence of the default persona prompt that sales / scam stalling replaces.
     pub(crate) PERSONA_SALES_REJECT_LINE = "zh-TW/live_persona_sales_reject_line";
@@ -4189,6 +4191,9 @@ struct StallReview {
     confirms: u32,
     /// The last check did not answer: ask again after the caller's next turn.
     confirm_again: bool,
+    /// The check asked because the caller asked whether it is an AI
+    /// ([`StallReview::should_ask_confirm_for_identity`]).
+    identity_confirm: bool,
     /// A sure "scam" with nothing else behind it: it stalls only if the look
     /// after the caller's next turn says so again (not past [`BLIND_MAX`]).
     unbacked_scam: bool,
@@ -4363,6 +4368,20 @@ impl StallReview {
         if self.stall_turns < CONFIRM_AFTER_TURNS && said < CONFIRM_EARLY_UNITS {
             return false;
         }
+        self.start(LookOrigin::Confirm);
+        true
+    }
+
+    /// Stalling, and the caller just asked whether they are talking to a
+    /// robot, an AI, a real person or a recording (`asks`): a stalling call does
+    /// not admit to being an AI, so a caller judged wrongly gets one more check
+    /// whether to be let go (a sure "normal" brings back the normal prompt).
+    /// Once a call, and only when the review judged it.
+    fn should_ask_confirm_for_identity(&mut self, asks: bool) -> bool {
+        if !asks || self.identity_confirm || self.pending || self.no_key || self.why != EngageWhy::Review {
+            return false;
+        }
+        self.identity_confirm = true;
         self.start(LookOrigin::Confirm);
         true
     }
@@ -10249,7 +10268,15 @@ pub async fn run_session(
                                             }
                                         } else if stall_on && !own_matter && ivr_since.is_none() {
                                             stall_review.note_caller_turn_end();
-                                            if stall_review.should_ask_confirm(caller_said().1) {
+                                            let regular = stall_review.should_ask_confirm(caller_said().1);
+                                            // Asked whether it is an AI: one more check, since
+                                            // the stalling prompt does not say so (the owner's
+                                            // stall list is never let go: no check for it).
+                                            let identity = !regular
+                                                && !stall.as_ref().is_some_and(|c| c.force_start)
+                                                && stall_review
+                                                    .should_ask_confirm_for_identity(crate::stall_script::asks_if_ai(&caller_turn));
+                                            if regular || identity {
                                                 spawn_stall_review(
                                                     &review_tx,
                                                     &review_key,
@@ -10260,7 +10287,7 @@ pub async fn run_session(
                                                     crate::stall_review::Purpose::Confirm,
                                                 );
                                                 info!(
-                                                    "Persona stall check (let the caller go?) serial={serial} talk_s={}",
+                                                    "Persona stall check (let the caller go?) serial={serial} talk_s={} identity_question={identity}",
                                                     session_start.elapsed().as_secs()
                                                 );
                                             }
@@ -12953,6 +12980,51 @@ mod tests {
         assert!(!r.should_ask_confirm(80));
     }
 
+    /// Stalling, the caller asks whether they are talking to an AI (in any
+    /// language): one more check whether the call was judged wrongly, even right
+    /// after stalling started or after the regular check said "carry on"; once a
+    /// call, and only when the review judged it.
+    #[test]
+    fn asking_if_it_is_an_ai_while_stalling_gets_one_more_check() {
+        use crate::stall_review::{Confidence::*, Verdict::*};
+        for question in [
+            "Wait, am I talking to a robot?",
+            "你是不是機器人啊？",
+            "もしかしてAIですか？",
+            "혹시 인공지능이에요?",
+            "¿Eres una persona real?",
+            "Est-ce que je parle à une IA ?",
+            "Bin ich mit einer KI verbunden?",
+            "Você é um robô?",
+        ] {
+            let asks = crate::stall_script::asks_if_ai(question);
+            assert!(asks, "{question}");
+            let mut r = StallReview::default();
+            r.note_engaged(20);
+            assert!(!r.should_ask_confirm(21));
+            assert!(r.should_ask_confirm_for_identity(asks), "{question}");
+            assert_eq!(r.purpose(), crate::stall_review::Purpose::Confirm);
+            assert_eq!(r.decide(&review_of(Normal, High), 0, 0, StallFacts::default()), StallVerdictStep::Release);
+            assert!(!r.should_ask_confirm_for_identity(asks), "once a call");
+        }
+        // After the regular check kept the stall, the question still gets its own.
+        let mut r = StallReview::default();
+        r.note_engaged(20);
+        assert!(r.should_ask_confirm(20 + CONFIRM_EARLY_UNITS));
+        assert!(!r.should_ask_confirm_for_identity(true), "one at a time");
+        assert_eq!(r.decide(&review_of(ScamOrSales, High), 0, 0, StallFacts::default()), StallVerdictStep::Carry);
+        assert!(!r.should_ask_confirm_for_identity(false));
+        assert!(r.should_ask_confirm_for_identity(true));
+        // Words only scammers say still keep the caller.
+        let hard = StallFacts { hard_hit: true, ..StallFacts::default() };
+        assert_eq!(r.decide(&review_of(Normal, High), 0, 0, hard), StallVerdictStep::KeepForHardWords);
+        // Stalled for scam-only words, not by the review: no check.
+        let mut r = StallReview::default();
+        assert!(r.engage_hard_at_once(true, true, false));
+        r.note_engaged(20);
+        assert!(!r.should_ask_confirm_for_identity(true));
+    }
+
     /// The check while stalling did not answer (too slow, a server error): it is
     /// asked again after the caller's next turn, at most twice a call, so a caller
     /// judged wrongly is not kept to the end because of one slow answer.
@@ -13759,6 +13831,11 @@ mod tests {
         assert!(r.early < STALL_REVIEW_EARLY_MAX);
     }
 
+    /// The fixed guard that closes the test agent's persona prompt at this stage.
+    fn persona_guard(stall: StallPrompt) -> String {
+        crate::prompts::pack(crate::locale::Lang::ZhTw).guard(false, stall).replace("{owner}", "機主")
+    }
+
     /// The fixed guard of the answering-as-me style: a card desk's "was this
     /// purchase yours?" gets neither yes nor no and no blocking.
     #[test]
@@ -13847,7 +13924,7 @@ mod tests {
         // A custom prompt keeps its words; the note goes before the fixed guard.
         let c = session_prompt(&persona_system_prompt("你是我，只講中文。", false, "", StallPrompt::Off), Outbound::Errand);
         assert!(c.starts_with("你是我，只講中文。") && c.contains("【對方講別的語言】"));
-        assert!(c.ends_with(&PERSONA_GUARD.get().replace("{owner}", "機主")));
+        assert!(c.ends_with(&persona_guard(StallPrompt::Off)));
         // Asked for personal details or a code: none given, none made up.
         assert!(c.contains("身分證字號") && c.contains("驗證碼") && c.contains("不要給、也不要編"));
         assert!(!c.contains("我這邊先幫他接"));
@@ -14146,9 +14223,12 @@ mod tests {
         let on = persona_system_prompt("", false, "", StallPrompt::Full);
         assert!(!on.contains(PERSONA_SALES_REJECT_DEFAULT.get()) && !on.contains(PERSONA_SALES_LISTEN_LINE.get()));
         assert!(on.contains("陪他繞") && on.contains("理賠") && on.contains("不能給"));
-        // The fixed guard still comes last.
-        let guard = PERSONA_GUARD.get().replace("{owner}", "機主");
-        assert!(on.ends_with(&guard) && first.ends_with(&guard));
+        // The fixed guard still comes last: the stalling one once the call is judged.
+        assert!(on.ends_with(&persona_guard(StallPrompt::Full)) && first.ends_with(&persona_guard(StallPrompt::ListenFirst)));
+        assert!(on.contains("不承認是 AI"));
+        // Before it is judged, as the owner: the guard as it was, nothing on being an AI.
+        assert!(!first.contains("不承認是 AI") && !first.contains("是不是 AI"));
+        assert_eq!(persona_guard(StallPrompt::ListenFirst), PERSONA_GUARD.fill(&[("ai_identity", &"")]).replace("{owner}", "機主"));
         // A custom prompt without the reject line still gets the block / line.
         let c = persona_system_prompt("你是我。", false, "", StallPrompt::Full);
         assert!(c.starts_with(PERSONA_STALL_HEAD.get()) && c.contains("你是我。") && c.contains("陪他繞"));
@@ -15992,7 +16072,7 @@ mod tests {
         for mode in [StallPrompt::Off, StallPrompt::ListenFirst, StallPrompt::Full] {
             let p = persona_system_prompt("", false, "", mode);
             assert!(p.contains("【電信提示音】") && p.contains("【對方一直喂】"));
-            assert!(p.ends_with(&PERSONA_GUARD.get().replace("{owner}", "機主")));
+            assert!(p.ends_with(&persona_guard(mode)));
         }
     }
 

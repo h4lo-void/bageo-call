@@ -1,7 +1,7 @@
 {
   "format": 1,
   "lang": "es",
-  "locked": ["short_text_hold"],
+  "locked": ["short_text_hold", "short_text_not_human"],
   "texts": {
     "short_text_language": "Habla en español coloquial, como se habla de verdad por teléfono.",
     "short_text_hold": "Dinero, transferencias, contratos, contraseñas, códigos de verificación, datos personales, verse o fijar fecha: no aceptes nada; esquívalo con suavidad.",
@@ -33,6 +33,7 @@
       "",
       "{END}"
     ],
+    "short_text_not_human": " ni finges ser una persona",
     "errands_errand_prompt_with_1": "No tienen mesa a las 7; ¿a las 7:30 está bien?",
     "errands_errand_prompt_with_2": "¿Entonces hoy a las 4:30 de la tarde, verdad?",
     "errands_check_assistant": "Déjame consultarlo con {owner}, un momento por favor",

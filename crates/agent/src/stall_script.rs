@@ -617,9 +617,102 @@ pub fn client_note(text: &str) -> String {
     .to_string()
 }
 
+/// Words of a caller asking whether they talk to a robot, an AI, a real person
+/// or a recording that stand alone (a letter next to one makes it part of
+/// another word: "said", "Kita"), lower-cased.
+const AI_WORDS: &[&str] = &["bot", "chatbot", "robot", "robô", "roboter", "бот", "робот"];
+
+/// The same for "AI" as written in capitals, the case kept: lower-cased they
+/// are everyday words ("j'ai", Portuguese "ia" for "was going").
+const AI_ACRONYMS: &[&str] = &["AI", "A.I.", "IA", "I.A.", "KI", "K.I.", "ИИ"];
+
+/// The same as phrases, found anywhere in the turn (lower-cased).
+const AI_PHRASES: &[&str] = &[
+    "real person", "a human", "human being", "a machine", "artificial intelligence", "a recording", "recorded message",
+    "機器人", "机器人", "人工智慧", "人工智能", "真人", "錄音", "录音",
+    "ロボット", "人工知能", "本物の人", "人間ですか", "録音",
+    "로봇", "인공지능", "진짜 사람", "사람이에요", "사람인가요", "녹음",
+    "persona real", "inteligencia artificial", "una grabación", "una máquina", "un humano",
+    "vraie personne", "intelligence artificielle", "un enregistrement", "une machine", "un humain",
+    "echter mensch", "echte person", "künstliche intelligenz", "bandansage", "eine aufnahme", "eine maschine",
+    "pessoa real", "inteligência artificial", "uma gravação", "uma máquina", "um humano",
+    "persona vera", "persona reale", "intelligenza artificiale", "una registrazione",
+    "живой человек", "искусственный интеллект", "автоответчик",
+    "orang sungguhan", "kecerdasan buatan", "rekaman",
+    "หุ่นยนต์", "ปัญญาประดิษฐ์", "คนจริง", "เอไอ",
+    "người máy", "người thật", "trí tuệ nhân tạo", "ghi âm",
+    "रोबोट", "असली इंसान", "एआई", "रिकॉर्डिंग",
+    "روبوت", "ذكاء اصطناعي", "شخص حقيقي",
+];
+
+/// A letter of a word written with spaces around it (not Chinese, kana, hangul or Thai).
+fn word_char(c: char) -> bool {
+    c.is_alphanumeric() && !is_wide(c) && !matches!(c as u32, 0x0E00..=0x0E7F)
+}
+
+/// `word` stands alone in `text` somewhere.
+fn has_word(text: &str, word: &str) -> bool {
+    text.match_indices(word).any(|(at, w)| {
+        let before = text[..at].chars().next_back();
+        let after = text[at + w.len()..].chars().next();
+        !before.is_some_and(word_char) && !after.is_some_and(word_char)
+    })
+}
+
+/// The caller's turn asks (or says) something about talking to a robot, an AI,
+/// a real person or a recording, in any of the languages Bageo speaks. While
+/// stalling, that gets the call one more check whether it was judged wrongly
+/// (the stalling prompt does not admit to being an AI).
+pub(crate) fn asks_if_ai(text: &str) -> bool {
+    let t = text.to_lowercase();
+    AI_ACRONYMS.iter().any(|w| has_word(text, w))
+        || AI_WORDS.iter().any(|w| has_word(&t, w))
+        || AI_PHRASES.iter().any(|p| t.contains(p))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_caller_asking_if_it_is_an_ai_is_heard_in_every_language() {
+        for asks in [
+            "Hang on, am I talking to a robot?",
+            "Is this a real person or a recording?",
+            "你是不是機器人啊？",
+            "你是AI吗？",
+            "もしかしてAIですか？",
+            "혹시 로봇이에요?",
+            "¿Eres una persona real?",
+            "Est-ce que je parle à une IA ?",
+            "Je parle à l'IA, là ?",
+            "Bin ich mit einer KI verbunden?",
+            "Você é um robô?",
+            "Sto parlando con una persona vera?",
+            "Это робот?",
+            "Apakah ini rekaman?",
+            "คุณเป็นหุ่นยนต์หรือเปล่า",
+            "Bạn là người thật không?",
+            "क्या आप रोबोट हैं?",
+            "هل أنت روبوت؟",
+        ] {
+            assert!(asks_if_ai(asks), "{asks}");
+        }
+        for not in [
+            "I'm calling about your car insurance, it said the premium went up.",
+            "我們是銀行信用卡中心，跟你確認一筆交易。",
+            "保険のご案内でお電話しました。",
+            "대출 상품 안내 전화드렸습니다.",
+            "Quiero hablarle del robo de su tarjeta, es por los medios de pago.",
+            "Il faut payer les frais de dossier aujourd'hui, j'ai déjà envoyé le lien.",
+            "Eu ia te ligar ontem sobre o seguro.",
+            "Kita bisa bantu pinjaman cepat.",
+            "Hai detto che il pacco è arrivato?",
+            "Ihre Kiste wird morgen geliefert.",
+        ] {
+            assert!(!asks_if_ai(not), "{not}");
+        }
+    }
 
     const ALL_FAMILIES: [Family; 6] = [
         Family::Investment,
