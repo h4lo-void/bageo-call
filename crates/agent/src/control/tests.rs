@@ -326,6 +326,75 @@ async fn a_scheduled_call_from_mcp_always_waits_for_the_owner() {
     assert!(rig.state.errands.list().is_empty(), "nothing set without the owner's yes");
 }
 
+/// What an MCP client is told of a scheduled call names the phone only: the
+/// number of the owner's SIM is on the owner's card, never in the answer.
+#[tokio::test]
+async fn an_mcp_client_is_never_told_the_number_of_the_owners_sim() {
+    let rig = Rig::with_env_bot();
+    rig.set(json!({"call_notify": false, "country_code": "886"}));
+    let (sink, _phone) = crate::callback::test_socket::phone_socket().await;
+    rig.state.control.register_client("pixel-mcp-line".into(), sink).await;
+    rig.state.errands.sims.note_list("pixel-mcp-line", &json!([{"sub_id": 1, "country": "tw", "number": "0912345678"}]));
+    let c = rig.controller();
+    let mut cards = c.subscribe();
+    let rt = rig.state.settings_store.snapshot();
+    let when = (chrono::Local::now() + chrono::Duration::days(2)).format("%Y-%m-%dT%H:%M").to_string();
+    let o = c.request_errand(&rt, crate::mcp::MCP_CHAT, "0223459884", "問營業時間", &when, false, 10).await;
+    let Outcome::Confirm { summary, .. } = &o else { panic!("{o:?}") };
+    assert!(!summary.contains("0912345678"), "{summary}");
+    assert!(summary.contains(&crate::notify::device_label("pixel-mcp-line")), "{summary}");
+    let told = crate::mcp::call_tool(&c, &rt, "request_call", &json!({"target": "0223459884", "task": "問營業時間", "at": when})).await;
+    assert!(!told.to_string().contains("0912345678"), "{told}");
+    // The owner's card still names the line with its number.
+    let card = cards.try_recv().expect("the owner's card");
+    assert!(card.out.text.contains("0912345678"), "{}", card.out.text);
+}
+
+/// A reply to the questions on a scheduled call's card never sets it, "yes"
+/// in it or not, in any language: the card comes again with the answer under
+/// the task, and only a yes there sets it.
+#[tokio::test]
+async fn a_reply_to_a_scheduled_cards_questions_brings_the_card_again_for_a_yes() {
+    let rig = Rig::with_env_bot();
+    rig.set(json!({"call_notify": false, "country_code": "886", "control_errands_per_hour": 10}));
+    let (sink, _phone) = crate::callback::test_socket::phone_socket().await;
+    rig.state.control.register_client("pixel-chat-gaps".into(), sink).await;
+    rig.state.errands.sims.note("pixel-chat-gaps", 1, "tw");
+    let c = rig.controller();
+    let day = (chrono::Local::now().date_naive() + chrono::Duration::days(3)).format("%Y-%m-%d").to_string();
+    let reply = |text: &str| {
+        let mut m = owner(text);
+        m.reply_to_bot = true;
+        m
+    };
+    let answers = [
+        ("08:00", "0223459881", "Yes, 2 adults, phone 0912345678"),
+        ("10:00", "0223459882", "はい、2名です。電話は0912345678"),
+        ("12:00", "0223459883", "Sí, somos 2, teléfono 0912345678"),
+    ];
+    for (at, number, answer) in answers {
+        let set = |rig: &Rig| rig.state.errands.list().into_iter().find(|e| e.number == number);
+        let ask = c.handle(&owner(&format!("/errand {day} {at} {number} 訂餐廳 7 點半，不行就 8 點半"))).await.unwrap();
+        assert_eq!(ask.buttons.len(), 2, "{}", ask.text);
+        let again = c.handle(&reply(answer)).await.unwrap();
+        assert!(set(&rig).is_none(), "{answer}: set on a reply");
+        assert_eq!(again.buttons.len(), 2, "{answer}: {}", again.text);
+        assert_ne!(again.buttons[0].data, ask.buttons[0].data, "{answer}: a new card");
+        let shown = again.text.contains(answer) || again.text.contains(&crate::locale::for_owner_in(Lang::ZhTw, answer));
+        assert!(shown && again.text.contains("訂餐廳"), "{answer}: {}", again.text);
+        // The old card's button is gone; another reply sets nothing either.
+        let stale = c.handle(&press(&ask.buttons[0].data)).await.unwrap();
+        assert!(reads_as(&stale.text, |w| w.expired.to_string()), "{}", stale.text);
+        c.handle(&reply("OK")).await;
+        assert!(set(&rig).is_none(), "{answer}: set on a second reply");
+        // The yes on the new card sets it, the answer with it.
+        let done = c.handle(&press(&again.buttons[0].data)).await.unwrap();
+        let e = set(&rig).unwrap_or_else(|| panic!("{answer}: {}", done.text));
+        assert_eq!(e.status, crate::errands::SCHEDULED);
+        assert!(e.answers.get("note").is_some_and(|n| n.contains("0912345678")), "{answer}: {:?}", e.answers);
+    }
+}
+
 #[tokio::test]
 async fn a_to_do_is_decided_only_after_one_yes_from_the_one_who_asked() {
     let rig = Rig::with_env_bot();

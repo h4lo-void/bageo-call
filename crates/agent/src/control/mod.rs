@@ -446,6 +446,22 @@ fn reply(o: &Outcome, w: &Words) -> Outbound {
     Outbound { text: words::render(o, w), ..Default::default() }
 }
 
+/// A confirmation card: the summary, its code, yes / no buttons.
+fn confirm_card(code: &str, summary: String, w: &Words) -> Outbound {
+    Outbound {
+        text: words::render(&Outcome::Confirm { code: code.to_string(), summary }, w),
+        buttons: vec![
+            Button { label: w.yes.to_string(), data: format!("k:{code}:y") },
+            Button { label: w.no.to_string(), data: format!("k:{code}:n") },
+        ],
+        edit: None,
+    }
+}
+
+/// In an errand card's job that asked questions: the card's text without
+/// them ([the task line, what follows it]), to show it again once answered.
+const CARD_KEY: &str = "card";
+
 /// The kind of an action, for the log (its text stays out of the log).
 fn action_kind(a: &Action) -> &'static str {
     match a {
@@ -634,6 +650,11 @@ impl Controller {
         if !text.starts_with('/') && m.reply_to_bot {
             if let Some(Job::Errand { mut body }) = self.confirms.take_gapped_errand(chat, &m.sender_id) {
                 body["answers"] = json!({ "note": text });
+                // A scheduled call never goes ahead on a reply: its card comes
+                // again with the answer in it, for the owner's yes.
+                if body.get("scheduled_at").and_then(Value::as_str).is_some_and(|s| !s.trim().is_empty()) {
+                    return Some(self.card_again(chat, &m.sender_id, body, text, w));
+                }
                 return Some(reply(&self.execute(rt, chat, Job::Errand { body }).await, w));
             }
         }
@@ -699,17 +720,25 @@ impl Controller {
         match self.prepare(rt, chat, action, w).await {
             Ok((job, summary)) => {
                 let code = self.confirms.ask(chat, sender, job);
-                Outbound {
-                    text: words::render(&Outcome::Confirm { code: code.clone(), summary }, w),
-                    buttons: vec![
-                        Button { label: w.yes.to_string(), data: format!("k:{code}:y") },
-                        Button { label: w.no.to_string(), data: format!("k:{code}:n") },
-                    ],
-                    edit: None,
-                }
+                confirm_card(&code, summary, w)
             }
             Err(o) => reply(&o, w),
         }
+    }
+
+    /// The owner answered the questions on a scheduled call's card: the card
+    /// again, the answer under the task and the questions gone, waiting for
+    /// a yes (1 or the button) like any other.
+    fn card_again(&self, chat: &str, sender: &str, mut body: Value, answer: &str, w: &Words) -> Outbound {
+        let part = |i: usize| body.get(CARD_KEY).and_then(|c| c.get(i)).and_then(Value::as_str).unwrap_or("").to_string();
+        let (ask, rest) = (part(0), part(1));
+        if let Some(o) = body.as_object_mut() {
+            o.remove("preflight_gaps");
+            o.remove(CARD_KEY);
+        }
+        let code = self.confirms.ask(chat, sender, Job::Errand { body });
+        info!(chat, "scheduled errand card answered: shown again for a yes");
+        confirm_card(&code, format!("{ask}\n{}{rest}", answer.trim()), w)
     }
 
     /// The owner's yes or no to the confirmation waiting in the chat.
@@ -1139,9 +1168,11 @@ impl Controller {
     /// A call to `number` scheduled for `when`: the time is read and checked,
     /// and a line free at that time picked, all into the create `body`
     /// (grab mode on). The lines for the confirmation: the date and time with
-    /// its weekday, the line, what grab mode does. Err: said at once.
+    /// its weekday, the line, what grab mode does: the owner's (the line with
+    /// its SIM's number) and an MCP client's (the phone's name only, never the
+    /// owner's number). Err: said at once.
     #[allow(clippy::result_large_err)]
-    fn plan_errand(&self, now: &errands::Now, number: &str, when: &str, body: &mut Value) -> Result<String, Outcome> {
+    fn plan_errand(&self, now: &errands::Now, number: &str, when: &str, body: &mut Value) -> Result<(String, String), Outcome> {
         let lang = locale::notify_lang();
         let naive = crate::errand_plan::resolve_when(when, chrono::Local::now().naive_local(), lang).ok_or_else(|| error_outcome("bad_time"))?;
         let at = crate::errand_plan::local_of(naive).ok_or_else(|| error_outcome("time_skipped"))?;
@@ -1155,8 +1186,11 @@ impl Controller {
         let pw = crate::errand_plan::words(lang);
         let sep = locale::words(lang).sep.as_str();
         let label = crate::errand_plan::when_label(lang, at.naive_local(), chrono::Local::now().naive_local());
-        let line = pw.line_auto.replace("{line}", &self.state.errands.line_label(&pick.serial, pick.sub_id));
-        Ok(format!("{}{sep}{label}\n{}{sep}{line}\n{}", pw.when, pw.line, crate::errand_plan::fill_grab(pw.grab)))
+        let lines = |line: &str| {
+            let line = pw.line_auto.replace("{line}", line);
+            format!("{}{sep}{label}\n{}{sep}{line}\n{}", pw.when, pw.line, crate::errand_plan::fill_grab(pw.grab))
+        };
+        Ok((lines(&self.state.errands.line_label(&pick.serial, pick.sub_id)), lines(&crate::notify::device_label(&pick.serial))))
     }
 
     /// Resolve an action that needs a confirmation into its job and the
@@ -1174,22 +1208,19 @@ impl Controller {
                 let now = errands::now_of(&self.state).await;
                 errands::pick_phone(&now.phones, &number, "", &errands::home_region(&now.rt)).map_err(error_outcome)?;
                 body["task"] = json!(task);
-                let mut summary = words::ask_errand(w, &who, &number, &task);
-                if !when.is_empty() {
-                    summary = format!("{summary}\n\n{}", self.plan_errand(&now, &number, &when, &mut body)?);
-                }
+                let ask = words::ask_errand(w, &who, &number, &task);
+                let planned = if when.is_empty() { String::new() } else { format!("\n\n{}", self.plan_errand(&now, &number, &when, &mut body)?.0) };
                 let known = errand_known(&now.rt, &number);
                 let gaps = crate::preflight::local_with(&task, &known).missing;
-                if !gaps.is_empty() {
-                    summary = format!("{summary}\n\n{}", crate::preflight::card_text(locale::notify_lang(), &gaps));
-                    body["preflight_gaps"] = json!(true);
-                }
+                let asked = if gaps.is_empty() { String::new() } else { format!("\n\n{}", crate::preflight::card_text(locale::notify_lang(), &gaps)) };
                 // What such places there are like, before the owner confirms.
                 let note = crate::preflight::local_note(locale::notify_lang(), &task, &known);
-                if !note.is_empty() {
-                    summary = format!("{summary}\n\n{note}");
+                let note = if note.is_empty() { String::new() } else { format!("\n\n{note}") };
+                if !gaps.is_empty() {
+                    body["preflight_gaps"] = json!(true);
+                    body[CARD_KEY] = json!([ask, format!("{planned}{note}")]);
                 }
-                Ok((Job::Errand { body }, summary))
+                Ok((Job::Errand { body }, format!("{ask}{planned}{asked}{note}")))
             }
             Action::Mode { phone, mode } => {
                 let serial = self.phone_ref(chat, &phone)?;
@@ -1225,10 +1256,13 @@ impl Controller {
         let st = &self.state;
         match job {
             Job::Act { action } => self.perform(rt, chat, action).await,
-            Job::Errand { body } => {
+            Job::Errand { mut body } => {
                 let cap = rt.control_errands_per_hour.min(access::ERRANDS_PER_HOUR_MAX);
                 if !self.limits.errand_room(chat, cap) {
                     return Outcome::TooMany { limit: cap };
+                }
+                if let Some(o) = body.as_object_mut() {
+                    o.remove(CARD_KEY);
                 }
                 let now = errands::now_of(st).await;
                 match errands::create_with(&errands::env_of(st, &now), &body).await {
@@ -1432,8 +1466,8 @@ impl Controller {
             return error_outcome(code);
         }
         body["task"] = json!(task);
-        let planned = if when.is_empty() {
-            String::new()
+        let (planned, planned_told) = if when.is_empty() {
+            (String::new(), String::new())
         } else {
             match self.plan_errand(&now, &number, &when, &mut body) {
                 Ok(lines) => lines,
@@ -1460,25 +1494,26 @@ impl Controller {
         // owner's chats with cards.
         self.limits.note_errand(origin);
         let w = words(locale::notify_lang());
-        let mut summary = words::ask_errand(w, &who, &number, &task);
-        if !planned.is_empty() {
-            summary = format!("{summary}\n\n{planned}");
-        }
+        let ask = words::ask_errand(w, &who, &number, &task);
         let known = errand_known(&now.rt, &number);
         let gaps = crate::preflight::local_with(&task, &known).missing;
-        if !gaps.is_empty() {
-            summary = format!("{summary}\n\n{}", crate::preflight::card_text(locale::notify_lang(), &gaps));
-            body["preflight_gaps"] = json!(true);
-        }
+        let asked = if gaps.is_empty() { String::new() } else { format!("\n\n{}", crate::preflight::card_text(locale::notify_lang(), &gaps)) };
         let note = crate::preflight::local_note(locale::notify_lang(), &task, &known);
-        if !note.is_empty() {
-            summary = format!("{summary}\n\n{note}");
+        let note = if note.is_empty() { String::new() } else { format!("\n\n{note}") };
+        let planned_at = |planned: &str| if planned.is_empty() { String::new() } else { format!("\n\n{planned}") };
+        let with = |planned: &str| format!("{ask}{}{asked}{note}", planned_at(planned));
+        if !gaps.is_empty() {
+            body["preflight_gaps"] = json!(true);
+            body[CARD_KEY] = json!([ask, format!("{}{note}", planned_at(&planned))]);
         }
         let keys: Vec<String> = chats.iter().map(|(c, i)| access::chat_key(c, i)).collect();
         let code = self.confirms.ask_many(&keys, confirm::ANY_SENDER, Job::Errand { body });
-        let confirm = Outcome::Confirm { code: code.clone(), summary };
+        // The owner's card names the line with its SIM's number; the MCP
+        // client is told the phone only.
+        let card_confirm = Outcome::Confirm { code: code.clone(), summary: with(&planned) };
+        let confirm = Outcome::Confirm { code: code.clone(), summary: with(&planned_told) };
         let card = Outbound {
-            text: format!("MCP · {}", words::render(&confirm, w)),
+            text: format!("MCP · {}", words::render(&card_confirm, w)),
             buttons: vec![
                 Button { label: w.yes.to_string(), data: format!("k:{code}:y") },
                 Button { label: w.no.to_string(), data: format!("k:{code}:n") },
