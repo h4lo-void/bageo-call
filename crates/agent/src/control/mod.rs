@@ -431,13 +431,10 @@ fn pick_ref(listed: &[String], known: &[String], r: &str) -> Option<String> {
     None
 }
 
-/// A typed answer to a confirmation: 1 = go ahead, 2 = drop it.
+/// A typed answer to a confirmation: 1 = go ahead, 2 = drop it, and the
+/// same in the nine languages' yes / no words. The whole message only.
 fn yes_no(text: &str) -> Option<bool> {
-    match text.trim() {
-        "1" | "１" => Some(true),
-        "2" | "２" => Some(false),
-        _ => None,
-    }
+    words::typed_yes_no(text)
 }
 
 /// A short reply that means "don't call" (any language), so it is not taken
@@ -459,6 +456,35 @@ fn looks_like_cancel(text: &str) -> bool {
 
 fn reply(o: &Outcome, w: &Words) -> Outbound {
     Outbound { text: words::render(o, w), ..Default::default() }
+}
+
+/// A typed 1 / 2 cannot pick one card. The buttons still can.
+fn use_button(w: &Words) -> Outbound {
+    Outbound { text: w.use_button.to_string(), ..Default::default() }
+}
+
+/// This chat has no buttons, and a card is already waiting.
+fn finish_first(w: &Words) -> Outbound {
+    Outbound { text: w.finish_first.to_string(), ..Default::default() }
+}
+
+/// Telegram, Discord and Slack show the yes / no buttons. Matrix does not,
+/// so a card that can be answered only by its button is not sent there.
+fn channel_has_buttons(rt: &RuntimeSettings, channel_id: &str) -> bool {
+    let kind = if channel_id == ENV_TELEGRAM {
+        "telegram"
+    } else {
+        match rt.notify_channels.iter().find(|c| c.id == channel_id) {
+            Some(c) => c.kind.as_str(),
+            None => return false,
+        }
+    };
+    matches!(kind, "telegram" | "discord" | "slack")
+}
+
+fn chat_has_buttons(rt: &RuntimeSettings, chat: &str) -> bool {
+    let channel = chat.split_once('|').map(|(id, _)| id).unwrap_or(chat);
+    channel_has_buttons(rt, channel)
 }
 
 /// A confirmation card: the summary, its code, yes / no buttons.
@@ -652,17 +678,45 @@ impl Controller {
                 return Some(reply(&self.answer_with(chat, Some(q), text), w));
             }
         }
-        if let Some(yes) = yes_no(text) {
-            if self.confirms.waiting(chat) {
-                return Some(reply(&self.settle(rt, chat, &m.sender_id, None, yes).await, w));
+        // A stateless API call is not a reply in the chat, and it is not a
+        // typed yes or no to a card waiting under that call's own key.
+        if m.platform != "api" {
+            if let Some(yes) = yes_no(text) {
+                match self.confirms.typed(chat) {
+                    confirm::TypedReply::Absent => {}
+                    // Several cards, or the one card is from an MCP client.
+                    confirm::TypedReply::UseButton => {
+                        if !chat_has_buttons(rt, chat) {
+                            if let Some(job) = self.confirms.take_oldest_owner(chat, &m.sender_id) {
+                                let o = if yes { self.execute(rt, chat, job).await } else { Outcome::Dropped };
+                                return Some(reply(&o, w));
+                            }
+                            return Some(finish_first(w));
+                        }
+                        return Some(use_button(w));
+                    }
+                    confirm::TypedReply::One => {
+                        return Some(reply(&self.settle(rt, chat, &m.sender_id, None, yes).await, w));
+                    }
+                }
             }
         }
         // A reply to a card that asked questions is their answer: the call goes ahead with it.
-        // A short "cancel" (取消／不要打了／cancel) to that card drops it instead.
-        if !text.starts_with('/') && m.reply_to_bot && self.confirms.has_gapped_errand(chat) && looks_like_cancel(text) {
-            return Some(reply(&self.settle(rt, chat, &m.sender_id, None, false).await, w));
-        }
+        // A short "cancel" (不要打了／cancel) to that card drops it instead.
+        // An MCP client's card is not one of these, and is not replaced by the new card.
         if !text.starts_with('/') && m.reply_to_bot {
+            let n = self.confirms.live_gapped(chat, &m.sender_id);
+            if looks_like_cancel(text) && self.confirms.has_gapped_errand(chat) {
+                if n > 1 {
+                    return Some(if chat_has_buttons(rt, chat) { use_button(w) } else { finish_first(w) });
+                }
+                let dropped = self.confirms.take_gapped_errand(chat, &m.sender_id).is_some();
+                let o = if dropped { Outcome::Dropped } else { Outcome::Expired };
+                return Some(reply(&o, w));
+            }
+            if n > 1 {
+                return Some(if chat_has_buttons(rt, chat) { use_button(w) } else { finish_first(w) });
+            }
             if let Some(Job::Errand { mut body }) = self.confirms.take_gapped_errand(chat, &m.sender_id) {
                 body["answers"] = json!({ "note": text });
                 // A scheduled call never goes ahead on a reply: its card comes
@@ -735,8 +789,13 @@ impl Controller {
         }
         match self.prepare(rt, chat, action, w).await {
             Ok((job, summary)) => {
-                let code = self.confirms.ask(chat, sender, job);
-                confirm_card(&code, summary, w)
+                if !chat_has_buttons(rt, chat) && self.confirms.has_live_owner(chat) {
+                    return finish_first(w);
+                }
+                match self.confirms.ask(chat, sender, job) {
+                    Some(code) => confirm_card(&code, summary, w),
+                    None => reply(&Outcome::Failed { code: "confirm_full".into() }, w),
+                }
             }
             Err(o) => reply(&o, w),
         }
@@ -744,7 +803,8 @@ impl Controller {
 
     /// The owner answered the questions on a scheduled call's card: the card
     /// again, the answer under the task and the questions gone, waiting for
-    /// a yes (1 or the button) like any other.
+    /// a yes. A typed 1 counts when it is the only card in the chat; the
+    /// button always does. Other cards in the chat stay.
     fn card_again(&self, chat: &str, sender: &str, mut body: Value, answer: &str, w: &Words) -> Outbound {
         let part = |i: usize| body.get(CARD_KEY).and_then(|c| c.get(i)).and_then(Value::as_str).unwrap_or("").to_string();
         let (ask, rest) = (part(0), part(1));
@@ -752,7 +812,9 @@ impl Controller {
             o.remove("preflight_gaps");
             o.remove(CARD_KEY);
         }
-        let code = self.confirms.ask(chat, sender, Job::Errand { body });
+        let Some(code) = self.confirms.ask(chat, sender, Job::Errand { body }) else {
+            return reply(&Outcome::Failed { code: "confirm_full".into() }, w);
+        };
         info!(chat, "scheduled errand card answered: shown again for a yes");
         confirm_card(&code, format!("{ask}\n{}{rest}", answer.trim()), w)
     }
@@ -1510,6 +1572,12 @@ impl Controller {
         if chats.is_empty() || self.pushes.receiver_count() == 0 {
             return Outcome::Failed { code: "no_owner_chat".to_string() };
         }
+        // A card from an MCP client is answered only by its button, so a chat
+        // whose adapter has none (Matrix) is not offered it.
+        let chats: Vec<_> = chats.into_iter().filter(|(id, _)| channel_has_buttons(rt, id)).collect();
+        if chats.is_empty() {
+            return Outcome::Failed { code: "no_button_chat".to_string() };
+        }
         // Each request counts, answered or not: a client cannot flood the
         // owner's chats with cards.
         self.limits.note_errand(origin);
@@ -1527,7 +1595,9 @@ impl Controller {
             body[CARD_KEY] = json!([ask, format!("{}{note}", planned_at(&planned))]);
         }
         let keys: Vec<String> = chats.iter().map(|(c, i)| access::chat_key(c, i)).collect();
-        let code = self.confirms.ask_many(&keys, confirm::ANY_SENDER, Job::Errand { body });
+        let Some(code) = self.confirms.ask_many(&keys, confirm::ANY_SENDER, Job::Errand { body }) else {
+            return Outcome::Failed { code: "confirm_full".to_string() };
+        };
         // The owner's card names the line with its SIM's number; the MCP
         // client is told the phone only.
         let card_confirm = Outcome::Confirm { code: code.clone(), summary: with(&planned) };
@@ -1750,11 +1820,13 @@ mod p1_11_tests {
         }
 
         // Now add a gapped errand confirmation and verify "no" / "cancel" go to an active open_question first.
-        c.confirms.ask(
-            &chat_key,
-            "42",
-            Job::Errand { body: json!({"number": "0912345678", "task": "訂餐廳", "preflight_gaps": true}) },
-        );
+        c.confirms
+            .ask(
+                &chat_key,
+                "42",
+                Job::Errand { body: json!({"number": "0912345678", "task": "訂餐廳", "preflight_gaps": true}) },
+            )
+            .unwrap();
         assert!(c.confirms.has_gapped_errand(&chat_key));
 
         for reply_text in ["no", "cancel"] {
@@ -1797,14 +1869,17 @@ mod p1_11_tests {
         let rig = LocalRig::new();
         let c = Controller::new(rig.state.clone());
         let api_chat = "api|42";
-        c.confirms.ask(
-            api_chat,
-            "42",
-            Job::Errand { body: json!({"number": "0912345678", "task": "訂餐廳", "preflight_gaps": true}) },
-        );
+        c.confirms
+            .ask(
+                api_chat,
+                "42",
+                Job::Errand { body: json!({"number": "0912345678", "task": "訂餐廳", "preflight_gaps": true}) },
+            )
+            .unwrap();
         assert!(c.confirms.has_gapped_errand(api_chat));
 
-        // Stateless follow-up calls must not hijack or cancel the earlier gapped errand via reply_to_bot.
+        // Stateless follow-up calls must not hijack or cancel the earlier gapped errand.
+        // "取消" would be a typed no in the chat. Here it is not a reply, and not an answer to the card.
         let cancel_try = c.handle_external("42", "42", "取消", ApiCaller::Owner).await.unwrap();
         assert!(!cancel_try.text.is_empty());
         assert!(c.confirms.has_gapped_errand(api_chat));
