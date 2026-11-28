@@ -427,6 +427,26 @@ struct TryEntry {
     since: Instant,
     last_wrong: u64,
     locked_until: Option<Instant>,
+    /// Requests with their own token now being handled ([`Tries::admit`]):
+    /// they count as tries until their answer says whether they were wrong.
+    open: u32,
+}
+
+impl TryEntry {
+    fn new(now: Instant) -> Self {
+        TryEntry { fails: 0, since: now, last_wrong: 0, locked_until: None, open: 0 }
+    }
+}
+
+/// What [`Tries::admit`] let through, for [`Tries::settle`] once answered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Admit {
+    /// The right console password.
+    Right,
+    /// A wrong console password, already counted: the count so far.
+    Wrong(u32),
+    /// A password only the route itself can check, counted as open.
+    Open,
 }
 
 /// Wrong-password counts per address ([`throttle`]); an IPv6 address counts
@@ -446,23 +466,88 @@ impl Tries {
         if now < until {
             return Some(until - now);
         }
-        self.map.remove(&ip);
+        // The lock is over, but the source stays one that guessed wrong in
+        // this window ([`Tries::gated`]), with one try spent.
+        if let Some(e) = self.map.get_mut(&ip) {
+            *e = TryEntry { fails: 1, ..TryEntry::new(now) };
+        }
         None
+    }
+
+    /// Before a request carrying a password is handled: refused (Err: how
+    /// long to wait) while `ip` is locked or has used up its tries, counting
+    /// the ones still being handled. A wrong console password (`right` Some(false))
+    /// is counted here at once, and a password only the route can check
+    /// (`right` None) counts as open until [`Tries::settle`]: requests sent all
+    /// at once reach the route at most [`MAX_TRIES`] times a lock.
+    pub fn admit(&mut self, ip: IpAddr, wrong: u64, right: Option<bool>, now: Instant) -> Result<Admit, Duration> {
+        if let Some(wait) = self.locked(ip, now) {
+            return Err(wait);
+        }
+        match right {
+            Some(true) => Ok(Admit::Right),
+            Some(false) => {
+                let fails = self.failed(ip, wrong, now);
+                if fails > MAX_TRIES {
+                    return Err(TRY_LOCK);
+                }
+                Ok(Admit::Wrong(fails))
+            }
+            None => {
+                let key = crate::phone_wifi::source_key(ip);
+                if !self.room_for(key, now) {
+                    // Not told apart from others: the one-at-a-time line holds it.
+                    return Ok(Admit::Open);
+                }
+                let e = self.map.entry(key).or_insert(TryEntry::new(now));
+                // A new window starts clean, open ones too: one dropped before its
+                // answer (the client gave up) is not held against the source for good.
+                if now.duration_since(e.since) >= TRY_WINDOW && e.locked_until.is_none() {
+                    *e = TryEntry::new(now);
+                }
+                if e.fails + e.open >= MAX_TRIES {
+                    return Err(TRY_LOCK);
+                }
+                e.open += 1;
+                Ok(Admit::Open)
+            }
+        }
+    }
+
+    /// After the route answered a request [`Tries::admit`] let through as
+    /// [`Admit::Open`]: no longer open, and counted when the answer was 401.
+    /// The count so far (0 when it was not wrong).
+    pub fn settle(&mut self, ip: IpAddr, wrong: u64, unauthorized: bool, now: Instant) -> u32 {
+        if let Some(e) = self.map.get_mut(&crate::phone_wifi::source_key(ip)) {
+            e.open = e.open.saturating_sub(1);
+        }
+        if unauthorized {
+            self.failed(ip, wrong, now)
+        } else {
+            0
+        }
+    }
+
+    /// Whether `key` has an entry or one can be added (old ones are let go
+    /// first when the table is full).
+    fn room_for(&mut self, key: IpAddr, now: Instant) -> bool {
+        if self.map.len() < MAX_ADDRESSES || self.map.contains_key(&key) {
+            return true;
+        }
+        self.map.retain(|_, e| e.open > 0 || e.locked_until.is_some_and(|u| now < u) || now.duration_since(e.since) < TRY_WINDOW);
+        self.map.len() < MAX_ADDRESSES
     }
 
     /// A wrong password (`wrong`: a fingerprint of it) from `ip`: the count so far.
     pub fn failed(&mut self, ip: IpAddr, wrong: u64, now: Instant) -> u32 {
         let ip = crate::phone_wifi::source_key(ip);
-        if self.map.len() >= MAX_ADDRESSES && !self.map.contains_key(&ip) {
-            self.map.retain(|_, e| e.locked_until.is_some_and(|u| now < u) || now.duration_since(e.since) < TRY_WINDOW);
-            if self.map.len() >= MAX_ADDRESSES {
-                self.count_all(now);
-                return 0;
-            }
+        if !self.room_for(ip, now) {
+            self.count_all(now);
+            return 0;
         }
-        let e = self.map.entry(ip).or_insert(TryEntry { fails: 0, since: now, last_wrong: 0, locked_until: None });
+        let e = self.map.entry(ip).or_insert(TryEntry::new(now));
         if now.duration_since(e.since) >= TRY_WINDOW {
-            *e = TryEntry { fails: 0, since: now, last_wrong: 0, locked_until: None };
+            *e = TryEntry::new(now);
         }
         if e.fails > 0 && e.last_wrong == wrong {
             return e.fails;
@@ -641,20 +726,6 @@ pub fn throttle(router: Router, settings: Settings) -> Router {
             let Some(ip) = try_key(req.extensions(), req.headers()) else {
                 return next.run(req).await;
             };
-            let wait = tries.lock().unwrap_or_else(|e| e.into_inner()).locked(ip, Instant::now());
-            if let Some(wait) = wait {
-                let mut res = api_refusal(StatusCode::TOO_MANY_REQUESTS, "too_many_tries", "too many wrong passwords; try again in a minute");
-                if let Ok(v) = HeaderValue::from_str(&wait.as_secs().max(1).to_string()) {
-                    res.headers_mut().insert(header::RETRY_AFTER, v);
-                }
-                return res;
-            }
-            let gated = tries.lock().unwrap_or_else(|e| e.into_inner()).gated(ip, Instant::now());
-            if gated && !gate_pass(&gate, SLOW_ANSWER, GATE_WAIT).await {
-                let mut res = api_refusal(StatusCode::TOO_MANY_REQUESTS, "too_many_tries", "too many wrong passwords; try again in a minute");
-                res.headers_mut().insert(header::RETRY_AFTER, HeaderValue::from_static("5"));
-                return res;
-            }
             let websocket = req
                 .headers()
                 .get(header::UPGRADE)
@@ -664,20 +735,47 @@ pub fn throttle(router: Router, settings: Settings) -> Router {
             let right = (password_set && !own_token_route(req.uri().path(), websocket)).then(|| {
                 crate::calls_http::token_ok_parts(&settings, req.headers(), query_param(req.uri().query(), "token").as_deref())
             });
+            // Counted before the request is handled, in one step with the lock check:
+            // many requests sent at once are each counted before any is answered.
+            let admitted = tries.lock().unwrap_or_else(|e| e.into_inner()).admit(ip, wrong, right, Instant::now());
+            let admit = match admitted {
+                Ok(a) => a,
+                Err(wait) => {
+                    let mut res = api_refusal(StatusCode::TOO_MANY_REQUESTS, "too_many_tries", "too many wrong passwords; try again in a minute");
+                    if let Ok(v) = HeaderValue::from_str(&wait.as_secs().max(1).to_string()) {
+                        res.headers_mut().insert(header::RETRY_AFTER, v);
+                    }
+                    return res;
+                }
+            };
+            let gated = admit != Admit::Right && tries.lock().unwrap_or_else(|e| e.into_inner()).gated(ip, Instant::now());
+            if gated && !gate_pass(&gate, SLOW_ANSWER, GATE_WAIT).await {
+                if admit == Admit::Open {
+                    tries.lock().unwrap_or_else(|e| e.into_inner()).settle(ip, wrong, false, Instant::now());
+                }
+                let mut res = api_refusal(StatusCode::TOO_MANY_REQUESTS, "too_many_tries", "too many wrong passwords; try again in a minute");
+                res.headers_mut().insert(header::RETRY_AFTER, HeaderValue::from_static("5"));
+                return res;
+            }
             let res = next.run(req).await;
-            match right {
-                Some(true) => {
+            let fails = match admit {
+                Admit::Right => {
                     tries.lock().unwrap_or_else(|e| e.into_inner()).succeeded(ip);
                     return res;
                 }
-                Some(false) => {}
+                Admit::Wrong(fails) => fails,
                 // A route with its own token (or no console password set): only its 401
                 // counts as a wrong password, and nothing it answers starts the count over,
                 // else any other answer (a 404, a 415) would clear it between guesses.
-                None if res.status() != StatusCode::UNAUTHORIZED => return res,
-                None => {}
-            }
-            let fails = tries.lock().unwrap_or_else(|e| e.into_inner()).failed(ip, wrong, Instant::now());
+                Admit::Open => {
+                    let unauthorized = res.status() == StatusCode::UNAUTHORIZED;
+                    let fails = tries.lock().unwrap_or_else(|e| e.into_inner()).settle(ip, wrong, unauthorized, Instant::now());
+                    if !unauthorized {
+                        return res;
+                    }
+                    fails
+                }
+            };
             if fails >= MAX_TRIES {
                 warn!("{ip}: {fails} wrong passwords within a minute; it waits a minute now");
             }
@@ -977,9 +1075,9 @@ mod tests {
         // Another address is not held back.
         assert_eq!(t.locked(b, t0), None);
         assert_eq!(t.failed(b, 1, t0), 1);
-        // After the wait: a fresh start.
+        // After the wait: one try already spent, still a source that guessed wrong.
         assert_eq!(t.locked(a, t0 + TRY_LOCK), None);
-        assert_eq!(t.failed(a, 1, t0 + TRY_LOCK), 1);
+        assert_eq!(t.failed(a, 1, t0 + TRY_LOCK), 2);
         // Tries older than the window are forgotten.
         let t1 = t0 + TRY_LOCK;
         for n in 2..=4 {
@@ -1055,7 +1153,7 @@ mod tests {
         for n in 0..MAX_ADDRESSES {
             t.map.insert(
                 ip(&format!("10.{}.{}.{}", n >> 16, (n >> 8) & 255, n & 255)),
-                TryEntry { fails: 1, since: t0, last_wrong: 1, locked_until: None },
+                TryEntry { fails: 1, since: t0, last_wrong: 1, locked_until: None, open: 0 },
             );
         }
         assert!(!t.gated(ip("203.0.113.5"), t0), "total still low");
@@ -1065,6 +1163,40 @@ mod tests {
         // Its wrong tries are not kept, but still count in the total.
         assert_eq!(t.failed(ip("203.0.113.5"), 1, t0), 0);
         assert!(t.gated(ip("203.0.113.6"), t0));
+    }
+
+    #[test]
+    fn many_guesses_sent_at_once_reach_the_route_at_most_max_tries_times() {
+        let t0 = Instant::now();
+        // Console password: each wrong one is counted before any is answered.
+        let mut t = Tries::default();
+        let a = ip("198.51.100.7");
+        let let_through = (0..50u64).filter(|n| t.admit(a, n + 1, Some(false), t0).is_ok()).count();
+        assert_eq!(let_through, MAX_TRIES as usize);
+        assert!(t.admit(a, 999, Some(true), t0).is_err(), "locked, right password or not");
+        // A route with its own token: the ones still being handled count too.
+        let b = ip("198.51.100.8");
+        let open = (0..50u64).filter(|n| t.admit(b, n + 1, None, t0) == Ok(Admit::Open)).count();
+        assert_eq!(open, MAX_TRIES as usize);
+        // Answered: not 401 frees a place, 401 keeps it as a wrong try.
+        t.settle(b, 1, false, t0);
+        assert_eq!(t.admit(b, 51, None, t0), Ok(Admit::Open));
+        for n in 2..=MAX_TRIES {
+            t.settle(b, u64::from(n), true, t0);
+        }
+        assert!(t.admit(b, 52, None, t0).is_err());
+        // The lock over: still a source that guessed wrong, so the line can hold it.
+        assert!(t.admit(a, 1000, Some(false), t0 + TRY_LOCK).is_ok());
+        t.all_since = Some(t0 + TRY_LOCK);
+        t.all_wrong = MAX_WRONG_ALL;
+        assert!(t.gated(a, t0 + TRY_LOCK));
+        // A new window forgets requests dropped before their answer.
+        let c = ip("198.51.100.9");
+        for n in 0..MAX_TRIES {
+            assert!(t.admit(c, u64::from(n), None, t0).is_ok());
+        }
+        assert!(t.admit(c, 99, None, t0).is_err());
+        assert_eq!(t.admit(c, 99, None, t0 + TRY_WINDOW), Ok(Admit::Open));
     }
 
     #[tokio::test]
