@@ -46,7 +46,7 @@ Claude Code：`claude mcp add --transport http bageo http://bageo.local:8787/mcp
 | `list_tasks` | 等你处理的待处理事项 | 一直有 |
 | `list_errands` | AI 代打的电话和进度 | 一直有 |
 | `find_contacts` | 找符合 `query` 的联系人 | 一直有 |
-| `request_call` | AI 打给 `target`（号码或联系人名字）去办 `task` | `mcp_calls` 是 `confirm` 或 `direct` |
+| `request_call` | AI 打给 `target`（号码或联系人名字）去办 `task`；带 `at`（当地时间 `YYYY-MM-DDTHH:MM`）就在那个时间用空着的号码拨，拨到通为止 | `mcp_calls` 是 `confirm` 或 `direct` |
 | `cancel_call` | 用 `id` 停止 AI 代打 | `mcp_calls` 是 `confirm` 或 `direct` |
 | `say_to_call` | 通话中交代 AI 一句话 | `mcp_calls` 是 `direct` |
 

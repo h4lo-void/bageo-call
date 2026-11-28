@@ -25,6 +25,7 @@ const REF_MAX: usize = 64;
 const TARGET_MAX: usize = 80;
 const QUERY_MAX: usize = 60;
 const PHONE_MAX: usize = 64;
+const WHEN_MAX: usize = 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Only {
@@ -80,8 +81,10 @@ pub enum Action {
     Tasks,
     /// Accept (confirm) or ignore a to-do.
     Decide { r: String, confirm: bool },
-    /// The AI calls the target (a number or a contact's name) to get the task done.
-    Errand { target: String, task: String },
+    /// The AI calls the target (a number or a contact's name) to get the task
+    /// done; `when`: later, at that date and time (as the owner wrote it, or
+    /// `YYYY-MM-DDTHH:MM`; [crate::errand_plan::resolve_when]), empty: now.
+    Errand { target: String, task: String, when: String },
     Errands,
     /// Empty ref: the one AI call under way.
     Cancel { r: String },
@@ -196,9 +199,13 @@ pub fn validate(a: Action) -> Result<Action, &'static str> {
             }
             Action::Answer { text }
         }
-        Action::Errand { target, task } => {
+        Action::Errand { target, task, when } => {
             let target = one_line(&clean(&target));
             let task = clean(&task);
+            let when = one_line(&clean(&when));
+            if when.chars().count() > WHEN_MAX {
+                return Err("bad_time");
+            }
             if target.is_empty() {
                 return Err("no_target");
             }
@@ -211,7 +218,7 @@ pub fn validate(a: Action) -> Result<Action, &'static str> {
             if task.chars().count() > TASK_MAX_CHARS {
                 return Err("task_too_long");
             }
-            Action::Errand { target, task }
+            Action::Errand { target, task, when }
         }
         Action::Mode { phone, mode } => {
             let phone = one_line(&clean(&phone));
@@ -263,16 +270,20 @@ fn digit_count(w: &str) -> usize {
     w.chars().filter(|c| c.is_ascii_digit() || ('０'..='９').contains(c)).count()
 }
 
-/// "/errand <number or contact> <task>". A number may be written in groups
-/// ("02 2345 6789"): groups of three or more digits are joined until it has
-/// ten digits, so the "2" of "0912345678 2 people" stays in the task. A name
-/// with spaces goes in quotes.
+/// "/errand [date time] <number or contact> <task>". A number may be written
+/// in groups ("02 2345 6789"): groups of three or more digits are joined
+/// until it has ten digits, so the "2" of "0912345678 2 people" stays in the
+/// task. A name with spaces goes in quotes. A date and time first
+/// ("/errand 12/1 08:00 …") schedules the call.
 fn parse_errand(args: &str) -> Option<Action> {
-    let args = args.trim();
+    let (when, args) = match crate::errand_plan::leading_when(args.trim()) {
+        Some((when, rest)) => (when.to_string(), rest),
+        None => (String::new(), args.trim()),
+    };
     if let Some(rest) = args.strip_prefix('"').or_else(|| args.strip_prefix('“')) {
         let end = rest.find(['"', '”'])?;
         let task = rest[end..].chars().skip(1).collect::<String>();
-        return Some(Action::Errand { target: rest[..end].to_string(), task });
+        return Some(Action::Errand { target: rest[..end].to_string(), task, when });
     }
     let (first, mut rest) = first_word(args);
     if first.is_empty() {
@@ -291,7 +302,7 @@ fn parse_errand(args: &str) -> Option<Action> {
             rest = after;
         }
     }
-    Some(Action::Errand { target, task: rest.to_string() })
+    Some(Action::Errand { target, task: rest.to_string(), when })
 }
 
 /// A list number ("1", "#2") or an errand id.
@@ -438,7 +449,7 @@ pub fn from_model(v: &Value) -> Option<Action> {
         "tasks" => Action::Tasks,
         "confirm" => Action::Decide { r: s("ref"), confirm: true },
         "ignore" => Action::Decide { r: s("ref"), confirm: false },
-        "errand" => Action::Errand { target: s("target"), task: s("task") },
+        "errand" => Action::Errand { target: s("target"), task: s("task"), when: s("when") },
         "errands" => Action::Errands,
         "cancel" => Action::Cancel { r: s("ref") },
         "say" => Action::Say { r: s("ref"), text: s("text") },
@@ -527,25 +538,28 @@ mod tests {
         assert_eq!(Day::Yesterday.date(NaiveDate::from_ymd_opt(2026, 3, 1).unwrap()), NaiveDate::from_ymd_opt(2026, 2, 28).unwrap());
     }
 
+    fn errand(target: &str, task: &str, when: &str) -> Action {
+        Action::Errand { target: target.into(), task: task.into(), when: when.into() }
+    }
+
     #[test]
     fn an_errand_number_written_in_groups_stays_one_number_and_the_task_keeps_its_digits() {
-        assert_eq!(
-            action("/errand 0912345678 2 people at 7"),
-            Action::Errand { target: "0912345678".into(), task: "2 people at 7".into() }
-        );
-        assert_eq!(
-            action("/errand 02 2345 6789 訂明天晚上七點兩位"),
-            Action::Errand { target: "0223456789".into(), task: "訂明天晚上七點兩位".into() }
-        );
-        assert_eq!(
-            action("/errand +886 912 345 678 問營業時間"),
-            Action::Errand { target: "+886912345678".into(), task: "問營業時間".into() }
-        );
-        assert_eq!(action("/errand 王小明 約週六吃飯"), Action::Errand { target: "王小明".into(), task: "約週六吃飯".into() });
-        assert_eq!(
-            action("/errand \"Wang Xiao Ming\" lunch on Saturday"),
-            Action::Errand { target: "Wang Xiao Ming".into(), task: "lunch on Saturday".into() }
-        );
+        assert_eq!(action("/errand 0912345678 2 people at 7"), errand("0912345678", "2 people at 7", ""));
+        assert_eq!(action("/errand 02 2345 6789 訂明天晚上七點兩位"), errand("0223456789", "訂明天晚上七點兩位", ""));
+        assert_eq!(action("/errand +886 912 345 678 問營業時間"), errand("+886912345678", "問營業時間", ""));
+        assert_eq!(action("/errand 王小明 約週六吃飯"), errand("王小明", "約週六吃飯", ""));
+        assert_eq!(action("/errand \"Wang Xiao Ming\" lunch on Saturday"), errand("Wang Xiao Ming", "lunch on Saturday", ""));
+    }
+
+    #[test]
+    fn an_errand_command_may_start_with_when_to_call() {
+        assert_eq!(action("/errand 12/1 08:00 0912345678 訂4位"), errand("0912345678", "訂4位", "12/1 08:00"));
+        assert_eq!(action("/errand 1/12 20h \"Chez Paul\" réserver pour 4"), errand("Chez Paul", "réserver pour 4", "1/12 20h"));
+        assert_eq!(action("/errand Dec 1 8am 0912345678 book a table for 4"), errand("0912345678", "book a table for 4", "Dec 1 8am"));
+        // The model's time goes through the same checks.
+        let v = json!({"action": "errand", "target": "0912345678", "task": "reservar para 4", "when": "2026-12-01T08:00"});
+        assert_eq!(from_model(&v), Some(errand("0912345678", "reservar para 4", "2026-12-01T08:00")));
+        assert_eq!(from_model(&json!({"action": "errand", "target": "0912345678", "task": "x", "when": "9".repeat(80)})), None);
     }
 
     #[test]
@@ -562,7 +576,7 @@ mod tests {
     #[test]
     fn the_models_answer_passes_the_same_checks_as_a_typed_command() {
         let errand = json!({"action": "errand", "target": "0912345678", "task": "訂明天晚上七點兩位"});
-        assert_eq!(from_model(&errand), Some(Action::Errand { target: "0912345678".into(), task: "訂明天晚上七點兩位".into() }));
+        assert_eq!(from_model(&errand), Some(Action::Errand { target: "0912345678".into(), task: "訂明天晚上七點兩位".into(), when: String::new() }));
         let calls = json!({"action": "calls", "day": "yesterday", "limit": 500, "only": "nonsense"});
         assert_eq!(from_model(&calls), Some(Action::Calls(CallQuery { limit: CALLS_MAX, day: Some(Day::Yesterday), ..Default::default() })));
         // Unknown actions, missing fields, out-of-range values: nothing.

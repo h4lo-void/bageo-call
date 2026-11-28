@@ -465,7 +465,8 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 | 语音菜单 | AI 最多等 90 秒等真人接听；它不能按键（`keypad_menu`）。 |
 | 运营商录音（“您拨打的号码是空号”） | 直接挂断（`carrier_message`）。 |
 | 没人接或失败 | 不会自动重拨：要不要“再打一次”由你决定。打开 `redial` 见下一行。 |
-| “拨到通”（`redial`） | 没人接、占线、对方关机或进语音信箱（不留言）：代打排队（`queued`，`call_code` 是 `redial_wait`，时间在 `redial_at`），一分钟后再拨，总共最多 30 次。有人接起来、拨满 30 次（`no_answer`）、号码不通、语音菜单或手机出问题就停。只在最后通知一次。 |
+| “拨到通”（`redial`） | 没人接、占线、对方关机、进语音信箱（立刻挂、不留言）或对方说“还没开放”：代打排队（`queued`，`call_code` 是 `redial_wait`，时间在 `redial_at`），上一通结束后 3 秒再拨。响铃中不会提早挂。听到排队语音（“请稍候”）就留在线上等，最多 30 分钟。有人接起来、从第一通算起 30 分钟到（`no_answer`）、号码不通、语音菜单或手机出问题就停。另有每分钟最多 10 通的安全上限。只在最后通知一次。 |
+| 指定时间（`scheduled_at`） | 先等着（`scheduled`），时间前 2 秒用你选的号码拨出；默认打开“拨到通”。从那时起占用这个号码 30 分钟（只打一次：12 分钟），这段时间别的代打不能用。Bageo 重启后也还在。那个时间 Bageo 没在运行的话，30 分钟内（只打一次：5 分钟）还是会开始，超过就算失败（`missed`）。 |
 | 拨号中你点了取消 | 手机和号码立刻释放给下一通；万一电话还是接通了，会在 AI 开口前挂断。 |
 
 ### 代打对象
@@ -495,19 +496,21 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 | `task` | 你自己写的交代内容（最多 1,000 字）。 |
 | `identity` | `assistant` 或 `owner`。 |
 | `serial`、`device_label` | 拨出的手机和它的名称。 |
-| `status` | `queued`、`dialing`（电话在响，还没有人出声）、`on_call`（对方接起来出声了）、`done`、`no_answer`、`failed`、`cancelled`。后四个是最终状态。 |
+| `status` | `scheduled`（等指定的时间）、`queued`、`dialing`（电话在响，还没有人出声）、`on_call`（对方接起来出声了）、`done`、`no_answer`、`failed`、`cancelled`。后四个是最终状态。 |
 | `call_code` | 拨号进行到哪一步。值见下方。 |
 | `attempts` | 从 1 开始，每点一次“再打一次”或每重拨一次加 1。 |
 | `redial` | 打开了“拨到通”。没打开就不出现。 |
 | `redial_at` | 下一次什么时候拨（`call_code` 是 `redial_wait` 时）。其他时候不出现。 |
-| `redial_start` | 这一轮重拨从第几次开始（点“再打一次”会重新算 30 次）。是 0 就不出现。 |
+| `redial_start` | 这一轮重拨从第几次开始（点“再打一次”会重新算 30 分钟）。是 0 就不出现。 |
+| `scheduled_at` | 指定时间的代打什么时候拨（带时差的当地时间）。立刻拨的不出现。 |
+| `grab_since`、`dialed_at` | 这一轮重拨从什么时候开始（30 分钟从这里算），以及最近几次拨出的时间。空的就不出现。 |
 | `record_id` | 这一次的通话记录（`GET /calls/api/call/{id}`：文字记录和录音）。 |
 | `follow_up_of` | 这通是接着哪一条之前的代打；那一条最后 20 行文字记录会放进 AI 的脚本。 |
 | `questions` | `[{id, text, options, answer, answered_by, asked_at}]`：AI 问过你的问题，选项最多 4 个。 |
 | `result` | `null` 或 `{outcome, summary, details, follow_up, options, event, unconfirmed}`。字段见下方。 |
 | `history` | 之前几次的尝试，`[{attempt, status, result, record_id, ended_at, questions}]`。 |
 
-`call_code` 的值：`dialing`、`queued`、`answered`、`no_answer`、`failed`、`phone_busy`、`number_busy`、`no_phone`、`send_failed`、`keypad_menu`、`carrier_message`、`wrong_sim`、`agent_restarted`、`cancelled`、`redial_wait`、`voicemail`。
+`call_code` 的值：`scheduled`、`dialing`、`queued`、`answered`、`no_answer`、`failed`、`phone_busy`、`number_busy`、`no_phone`、`send_failed`、`keypad_menu`、`carrier_message`、`wrong_sim`、`agent_restarted`、`cancelled`、`redial_wait`、`voicemail`、`not_open`、`queue_wait`、`missed`。
 
 `questions` 里的 `answered_by`：`owner`（你回答了）、`timeout`（你在看但没来得及回答）、`absent`（没人在看）；还在等时是 `null`。
 
@@ -517,14 +520,16 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 - `event`：`null` 或 `{start, end, title}`（带时差的当地时间；没谈定结束时间就没有 `end`）。
 - `unconfirmed`：`details` 或 `event` 里 AI 复述时对方没有明确确认的时间、日期、号码或名字（最多 8 项）；没有就不出现。
 
-代打保存在数据文件夹的 `errands.json`（保留最新 500 条）。Bageo 重启时还在进行中的代打会变成 `failed`（`call_code` `agent_restarted`）；打开“拨到通”的会接着拨，除非对方已经接起来过。
+代打保存在数据文件夹的 `errands.json`（保留最新 500 条）。Bageo 重启时还在进行中的代打会变成 `failed`（`call_code` `agent_restarted`）；打开“拨到通”的会接着拨，除非对方已经接起来过；指定时间的继续等它的时间。
 
 ### 代打路由
 
 | 方法与路径 | 内容 |
 |---|---|
-| `GET /calls/api/errands` | `{ok, errands}`，最新的在前，最多 200 条。 |
-| `POST /calls/api/errands` | 开始一条。请求体 `{number, name, contact_id, task, identity, serial, follow_up_of, answers, redial}`（`redial` 是 `true` 就打开“拨到通”，默认 `false`），响应 `{ok, errand}`。 |
+| `GET /calls/api/errands` | `{ok, errands, grab}`，最新的在前，最多 200 条；`grab` 是 `{lead_s, gap_s, window_min, max_days}`。 |
+| `POST /calls/api/errands` | 开始一条。请求体 `{number, name, contact_id, task, identity, serial, follow_up_of, answers, redial}`（`redial` 是 `true` 就打开“拨到通”，默认 `false`），响应 `{ok, errand}`。带 `scheduled_at` 就改成指定时间（见下方）。 |
+| `POST /calls/api/errands/{id}/schedule` | 还没开始的指定时间代打：请求体 `{scheduled_at, serial, sub_id, grab}`（只有 `scheduled_at` 必填）。`{ok, errand}`。 |
+| `GET /calls/api/errands/lines?at=&grab=&except=` | 在 `at`（留空：现在）那通电话期间被别的代打占用的号码，`{ok, held: [{serial, sub_id, held_by}], grab}`。`except`：正在改时间的那一条。 |
 | `POST /calls/api/errands/preflight` | 拨出前看这条代打还缺什么。请求体 `{task, lang, number}`，响应 `{ok, kind, type, missing, note, remind, optional, region, ladder, source, ms}`。不会拨号。内容见下方。 |
 | `POST /calls/api/errands/{id}/cancel` | 排队中：取消。拨号中或通话中：挂断。已经结束的原样返回。`{ok, errand}`。 |
 | `POST /calls/api/errands/{id}/retry` | 同一条再打一次（`attempts` 加 1，上一次移到 `history`）。`{ok, errand}`。还在进行中（或上一通还没结束）：400 `busy`；手机相关的代码同新建。 |
@@ -540,6 +545,8 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 - `answers` 可以不带：你回答补问后的内容，格式 `{key: 文字}`。key 就是 `preflight` 在 `missing` 和 `optional` 返回的那些，另有 `note` 放自由文字；每项最多 80 字（`note` 120 字），不认识的 key 会被丢掉。它们会以一小段文字放进这通电话的脚本交给 AI。
 - `place_type` 可以不带：`preflight` 返回的 `type`。没带就由 Bageo 从交办内容判断是哪一类电话。
 - `sub_id` 可以不带：用 `serial` 那台手机的哪张 SIM 拨（也可以把 `serial` 写成 `<serial>:<sub_id>`）。那张 SIM 与 `+` 开头号码的国家不同时，会返回 `sim_other_country`，要带 `"abroad_ok": true` 把同一份内容再发一次（主人同意打国际电话）才会拨。这条代打会记住它，“再打一次”和拨到通重拨都沿用。
+- `scheduled_at` 可以不带：什么时候打，RFC 3339 或当地时间 `YYYY-MM-DDTHH:MM`（Bageo 的 `TZ`），要是之后的时间、最多 60 天内。一定要带 `serial` 和 `sub_id`；`grab`（默认 `true`）就是它的“拨到通”。和现在打一样，先问 `preflight`。现在打的也不会用到指定时间代打在通话期间占用的号码（`line_reserved`；没指定 `serial` 就改用别的空着的号码）。
+- `held_by`（在 `line_taken`、`line_reserved` 和 `lines` 里）：占用号码的那条代打 `{id, name, number, status, scheduled_at}`。
 
 `POST /calls/api/errands/preflight` 的内容：
 
@@ -577,6 +584,11 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 | `sim_other_country` | 新建、再打 | 指定的 SIM（`sub_id`）与号码不是同一个国家。响应另带 `sim_country`、`number_country`（两位国家代码）。带 `"abroad_ok": true` 再发一次就照样拨。 |
 | `not_found` | 新建 | `contact_id` 或 `follow_up_of` 不存在（这里返回 400）。 |
 | `busy` | 再打、删除 | 这条还在拨号或通话中。 |
+| `bad_time`／`past_time`／`too_far` | 新增、改时间、号码 | `scheduled_at` 看不懂／不是之后的时间／超过 60 天。 |
+| `need_line` | 新增 | 指定时间的代打没带 `serial` 和 `sub_id`。 |
+| `line_taken` | 新增、改时间 | 那段时间这个号码已经被别的代打占用；`held_by` 是哪一条。 |
+| `line_reserved` | 新增、再打 | 现在打会撞到这个号码上的指定时间代打（或合适的号码都被占用）；新增时 `held_by` 是哪一条。 |
+| `not_scheduled` | 改时间 | 这条已经开始或结束。 |
 | `not_on_call` | say | 电话不在通话中（或已经结束）。 |
 | `empty_text`／`text_too_long` | say | 没有内容／超过 300 字。 |
 | `question_closed` | say | 那个问题已经回答、超时，或不是正在等的那一个。 |

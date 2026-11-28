@@ -257,6 +257,9 @@ pub enum Outcome {
     NotFound { what: String },
     NoContact { what: String },
     ManyContacts { names: Vec<String> },
+    /// The line a scheduled call needs is held then (`line_taken`), or a call
+    /// now would run into a scheduled one (`line_reserved`): by `who` at `when`.
+    LineHeld { code: String, who: String, when: String },
     Failed { code: String },
 }
 
@@ -275,6 +278,33 @@ pub fn error_outcome(code: &str) -> Outcome {
     match code {
         "question_closed" => Outcome::Closed,
         other => Outcome::Failed { code: other.to_string() },
+    }
+}
+
+/// The model's reading of the owner's `text`, an errand's time to call taken
+/// from the text itself when it says one before the words asking for the call
+/// ([crate::errand_plan::call_time_in]): what the owner wrote wins over the
+/// model's reading of it.
+fn with_call_time(action: Action, text: &str) -> Action {
+    match action {
+        Action::Errand { target, task, when } => {
+            let read = crate::errand_plan::call_time_in(text, chrono::Local::now().naive_local(), locale::notify_lang());
+            let when = read.map(|t| t.format("%Y-%m-%dT%H:%M").to_string()).unwrap_or(when);
+            Action::Errand { target, task, when }
+        }
+        other => other,
+    }
+}
+
+/// An errand refused ([errands::Refusal]), with the errand holding the line when it says one.
+fn refusal_outcome(r: errands::Refusal) -> Outcome {
+    match r.holder {
+        Some(h) => {
+            let who = if h.name.trim().is_empty() { h.number.trim().to_string() } else { h.name.trim().to_string() };
+            let when = crate::errand_plan::stamp_label(locale::notify_lang(), &h.scheduled_at);
+            Outcome::LineHeld { code: r.code.to_string(), who, when }
+        }
+        None => error_outcome(r.code),
     }
 }
 
@@ -653,7 +683,8 @@ impl Controller {
         if key.is_empty() {
             return None;
         }
-        nlu::read(&self.state.http, &self.gemini_base, key, text, chrono::Local::now().date_naive()).await
+        let action = nlu::read(&self.state.http, &self.gemini_base, key, text, chrono::Local::now().date_naive()).await?;
+        Some(with_call_time(action, text))
     }
 
     /// from_model: the action is the model's reading of free text. What it
@@ -795,8 +826,8 @@ impl Controller {
             | Action::Tasks
             | Action::Errands
             | Action::Contacts { .. }) => self.perform(rt, crate::mcp::MCP_CHAT, a).await,
-            Action::Errand { target, task } if calls => {
-                self.request_errand(rt, crate::mcp::MCP_CHAT, &target, &task, mode == "direct", rt.mcp_errands_per_hour).await
+            Action::Errand { target, task, when } if calls => {
+                self.request_errand(rt, crate::mcp::MCP_CHAT, &target, &task, &when, mode == "direct", rt.mcp_errands_per_hour).await
             }
             a @ Action::Cancel { .. } if calls => self.perform(rt, crate::mcp::MCP_CHAT, a).await,
             a @ Action::Say { .. } if mode == "direct" && typed => self.perform(rt, crate::mcp::MCP_CHAT, a).await,
@@ -1104,11 +1135,35 @@ impl Controller {
         Err(Outcome::NotFound { what: r.to_string() })
     }
 
+    /// A call to `number` scheduled for `when`: the time is read and checked,
+    /// and a line free at that time picked, all into the create `body`
+    /// (grab mode on). The lines for the confirmation: the date and time with
+    /// its weekday, the line, what grab mode does. Err: said at once.
+    #[allow(clippy::result_large_err)]
+    fn plan_errand(&self, now: &errands::Now, number: &str, when: &str, body: &mut Value) -> Result<String, Outcome> {
+        let lang = locale::notify_lang();
+        let at = crate::errand_plan::resolve_when(when, chrono::Local::now().naive_local(), lang)
+            .and_then(crate::errand_plan::local_of)
+            .ok_or_else(|| error_outcome("bad_time"))?;
+        let utc = at.with_timezone(&chrono::Utc);
+        crate::errand_plan::check_at(utc, chrono::Utc::now()).map_err(error_outcome)?;
+        let pick = errands::free_line_at(&self.state.errands, &now.phones, number, &errands::home_region(&now.rt), utc, true).map_err(refusal_outcome)?;
+        body["scheduled_at"] = json!(at.to_rfc3339_opts(chrono::SecondsFormat::Secs, false));
+        body["serial"] = json!(pick.serial);
+        body["sub_id"] = json!(pick.sub_id);
+        body["grab"] = json!(true);
+        let pw = crate::errand_plan::words(lang);
+        let sep = locale::words(lang).sep.as_str();
+        let label = crate::errand_plan::when_label(lang, at.naive_local(), chrono::Local::now().naive_local());
+        let line = pw.line_auto.replace("{line}", &self.state.errands.line_label(&pick.serial, pick.sub_id));
+        Ok(format!("{}{sep}{label}\n{}{sep}{line}\n{}", pw.when, pw.line, crate::errand_plan::fill_grab(pw.grab)))
+    }
+
     /// Resolve an action that needs a confirmation into its job and the
     /// summary the owner confirms; Err: why not (said at once).
     async fn prepare(&self, rt: &RuntimeSettings, chat: &str, action: Action, w: &Words) -> Result<(Job, String), Outcome> {
         match action {
-            Action::Errand { target, task } => {
+            Action::Errand { target, task, when } => {
                 let cap = rt.control_errands_per_hour.min(access::ERRANDS_PER_HOUR_MAX);
                 if !self.limits.errand_room(chat, cap) {
                     return Err(Outcome::TooMany { limit: cap });
@@ -1120,6 +1175,9 @@ impl Controller {
                 errands::pick_phone(&now.phones, &number, "", &errands::home_region(&now.rt)).map_err(error_outcome)?;
                 body["task"] = json!(task);
                 let mut summary = words::ask_errand(w, &who, &number, &task);
+                if !when.is_empty() {
+                    summary = format!("{summary}\n\n{}", self.plan_errand(&now, &number, &when, &mut body)?);
+                }
                 let known = errand_known(&now.rt, &number);
                 let gaps = crate::preflight::local_with(&task, &known).missing;
                 if !gaps.is_empty() {
@@ -1173,14 +1231,14 @@ impl Controller {
                     return Outcome::TooMany { limit: cap };
                 }
                 let now = errands::now_of(st).await;
-                match errands::create(&errands::env_of(st, &now), &body).await {
+                match errands::create_with(&errands::env_of(st, &now), &body).await {
                     Ok(e) => {
                         self.limits.note_errand(chat);
                         self.mem(chat, |m| m.errands = vec![e.id.clone()]);
                         info!(errand = e.id.as_str(), chat, "errand created from a chat");
                         Outcome::ErrandStarted { errand: Self::errand_line(&e) }
                     }
-                    Err(code) => error_outcome(code),
+                    Err(r) => refusal_outcome(r),
                 }
             }
             Job::Mode { serial, mode } => {
@@ -1353,9 +1411,11 @@ impl Controller {
     /// gets the summary with yes / no in every command chat an adapter
     /// reaches; the first answer counts, and the call is made only on a yes
     /// (then within that chat's own hourly limit too).
-    pub async fn request_errand(&self, rt: &RuntimeSettings, origin: &str, target: &str, task: &str, direct: bool, cap: u32) -> Outcome {
-        let (target, task) = match command::validate(Action::Errand { target: target.to_string(), task: task.to_string() }) {
-            Ok(Action::Errand { target, task }) => (target, task),
+    #[allow(clippy::too_many_arguments)]
+    pub async fn request_errand(&self, rt: &RuntimeSettings, origin: &str, target: &str, task: &str, when: &str, direct: bool, cap: u32) -> Outcome {
+        let asked = Action::Errand { target: target.to_string(), task: task.to_string(), when: when.to_string() };
+        let (target, task, when) = match command::validate(asked) {
+            Ok(Action::Errand { target, task, when }) => (target, task, when),
             Ok(_) => return Outcome::Failed { code: "bad_request".to_string() },
             Err(code) => return Outcome::Failed { code: code.to_string() },
         };
@@ -1372,15 +1432,23 @@ impl Controller {
             return error_outcome(code);
         }
         body["task"] = json!(task);
+        let planned = if when.is_empty() {
+            String::new()
+        } else {
+            match self.plan_errand(&now, &number, &when, &mut body) {
+                Ok(lines) => lines,
+                Err(o) => return o,
+            }
+        };
         if direct {
-            return match errands::create(&errands::env_of(&self.state, &now), &body).await {
+            return match errands::create_with(&errands::env_of(&self.state, &now), &body).await {
                 Ok(e) => {
                     self.limits.note_errand(origin);
                     self.mem(origin, |m| m.errands = vec![e.id.clone()]);
                     info!(errand = e.id.as_str(), "errand created from MCP");
                     Outcome::ErrandStarted { errand: Self::errand_line(&e) }
                 }
-                Err(code) => error_outcome(code),
+                Err(r) => refusal_outcome(r),
             };
         }
         let chats = self.reached_chats(rt);
@@ -1392,6 +1460,9 @@ impl Controller {
         self.limits.note_errand(origin);
         let w = words(locale::notify_lang());
         let mut summary = words::ask_errand(w, &who, &number, &task);
+        if !planned.is_empty() {
+            summary = format!("{summary}\n\n{planned}");
+        }
         let known = errand_known(&now.rt, &number);
         let gaps = crate::preflight::local_with(&task, &known).missing;
         if !gaps.is_empty() {

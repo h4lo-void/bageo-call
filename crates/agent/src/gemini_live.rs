@@ -7404,6 +7404,9 @@ pub async fn run_session(
     let mut errand_carrier: Option<String> = None;
     // "Redial until answered": voicemail picked up (hung up, no message).
     let mut errand_voicemail = false;
+    // "Redial until answered": a queue's recording (hold, music, your place in
+    // line): the AI stays on the line for a person (errand_menu_since times it).
+    let mut errand_queue = false;
     // Testing only: rotate once after N s so it is testable without ~8 min.
     let test_rotate_after: Option<u64> = std::env::var("GEMINI_TEST_ROTATE_AFTER_SECS")
         .ok()
@@ -7627,8 +7630,20 @@ pub async fn run_session(
             if let Some(t0) = errand_menu_since {
                 if audio_chunks_out > errand_menu_chunks {
                     errand_menu_since = None;
+                    errand_queue = false;
                     e.note_menu(false);
                     info!("Errand call: the AI talks after the voice menu (a person came on) serial={serial}");
+                } else if errand_queue {
+                    if t0.elapsed() >= crate::errand_plan::GRAB.queue_wait {
+                        e.note_queue();
+                        end_reason = SessionEndReason::IvrHangup;
+                        signal_force_hangup(&mut hangup_signaled);
+                        info!(
+                            "Errand call: queue, no person within {}s serial={serial} — hang up, dialed again",
+                            crate::errand_plan::GRAB.queue_wait.as_secs()
+                        );
+                        break;
+                    }
                 } else if t0.elapsed() >= crate::errands::MENU_WAIT {
                     end_reason = SessionEndReason::IvrHangup;
                     signal_force_hangup(&mut hangup_signaled);
@@ -7641,7 +7656,8 @@ pub async fn run_session(
             }
         }
         // An errand's question waits for the owner: the line is not idle.
-        let errand_asking = errand.as_ref().is_some_and(|e| e.question_open()) || !ask_waiting.is_empty();
+        // In a queue too: no nudge and no idle hang-up while it plays.
+        let errand_asking = errand.as_ref().is_some_and(|e| e.question_open()) || !ask_waiting.is_empty() || errand_queue;
 
         // The second look says sales / scam: the AI starts stalling (stalling off:
         // the call is only marked so, and the AI goes on as it was).
@@ -9681,6 +9697,27 @@ pub async fn run_session(
                                             } else if crate::errands::busy_message(&in_tx_window) {
                                                 errand_carrier = Some(in_tx_window.clone());
                                             }
+                                        }
+                                        // …while a queue's recording keeps it on the line: its
+                                        // place is lost on hanging up. The call may run that long.
+                                        // Only before the AI spoke, or on a voice menu: a person's
+                                        // "one moment" later in the call is no queue.
+                                        if !errand_queue
+                                            && errand_carrier.is_none()
+                                            && !errand_voicemail
+                                            && (first_downlink_at.is_none() || errand_menu_since.is_some())
+                                            && e.redial()
+                                            && crate::errands::queue_message(&in_tx_window)
+                                        {
+                                            errand_queue = true;
+                                            e.note_menu(false);
+                                            errand_menu_since = Some(tokio::time::Instant::now());
+                                            errand_menu_chunks = audio_chunks_out;
+                                            let extra = crate::errand_plan::GRAB.queue_wait.as_secs();
+                                            wrap_secs += extra;
+                                            wrap_force_secs += extra;
+                                            max_secs += extra;
+                                            info!("Errand call: a queue — the AI stays on the line up to {extra}s for a person serial={serial}");
                                         }
                                     }
                                     let hold = crate::locale::asks_to_hold(&caller_recent);

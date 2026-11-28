@@ -2007,6 +2007,18 @@
     "who": "the owner",
     "placeholders": []
   },
+  "er_at": {
+    "where": "a label or sentence in the console. English: Date and time",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_at_h": {
+    "where": "a label or sentence in the console. English: In Bageo's time zone, up to {days} days ahead.",
+    "who": "the owner",
+    "placeholders": [
+      "{days}"
+    ]
+  },
   "er_attempt": {
     "where": "a label or sentence in the console. English: Attempt {n}",
     "who": "the owner",
@@ -2074,6 +2086,11 @@
     "who": "the owner",
     "placeholders": []
   },
+  "er_err_bad_time": {
+    "where": "a label or sentence in the console. English: That time isn't clear. Pick it again.",
+    "who": "the owner",
+    "placeholders": []
+  },
   "er_err_busy": {
     "where": "a label or sentence in the console. English: This call is still queued or on the line. Try again after it ends.",
     "who": "the owner",
@@ -2081,6 +2098,32 @@
   },
   "er_err_empty_text": {
     "where": "a label or sentence in the console. English: Write what you want to say.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_err_line_reserved": {
+    "where": "a label or sentence in the console. English: That line is booked soon for “{who}” ({when}). Pick another line.",
+    "who": "the owner",
+    "placeholders": [
+      "{who}",
+      "{when}"
+    ]
+  },
+  "er_err_line_taken": {
+    "where": "a label or sentence in the console. English: That line is already booked then by “{who}” ({when}). Pick another line or time.",
+    "who": "the owner",
+    "placeholders": [
+      "{who}",
+      "{when}"
+    ]
+  },
+  "er_err_need_line": {
+    "where": "a label or sentence in the console. English: A scheduled call needs a line to call from.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_err_need_time": {
+    "where": "a label or sentence in the console. English: Pick the date and time to call.",
     "who": "the owner",
     "placeholders": []
   },
@@ -2096,6 +2139,16 @@
   },
   "er_err_no_sim_for_country": {
     "where": "a label or sentence in the console. English: No phone has a SIM that can call this country's numbers.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_err_not_scheduled": {
+    "where": "a label or sentence in the console. English: This call has already started or ended, so its time can't change.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_err_past_time": {
+    "where": "a label or sentence in the console. English: That time has passed. Pick a later one.",
     "who": "the owner",
     "placeholders": []
   },
@@ -2161,6 +2214,13 @@
     "where": "a label or sentence in the console. English: That's too long. Please shorten it.",
     "who": "the owner",
     "placeholders": []
+  },
+  "er_err_too_far": {
+    "where": "a label or sentence in the console. English: You can schedule up to {days} days ahead.",
+    "who": "the owner",
+    "placeholders": [
+      "{days}"
+    ]
   },
   "er_follow_up": {
     "where": "a label or sentence in the console. English: Next step",
@@ -2272,6 +2332,15 @@
     "who": "the owner",
     "placeholders": []
   },
+  "er_line_held": {
+    "where": "a label or sentence in the console. English: {name} (booked by “{who}”, {when})",
+    "who": "the owner",
+    "placeholders": [
+      "{name}",
+      "{who}",
+      "{when}"
+    ]
+  },
   "er_line_unset": {
     "where": "a label or sentence in the console. English: {name} · {region} (number not set)",
     "who": "the owner",
@@ -2302,6 +2371,21 @@
   },
   "er_more": {
     "where": "a label or sentence in the console. English: Show all",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_move": {
+    "where": "a label or sentence in the console. English: Change time",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_move_save": {
+    "where": "a label or sentence in the console. English: Save",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_moved": {
+    "where": "a label or sentence in the console. English: Time changed",
     "who": "the owner",
     "placeholders": []
   },
@@ -2392,6 +2476,11 @@
       "{name}"
     ]
   },
+  "er_phone_pick": {
+    "where": "a label or sentence in the console. English: Pick a line",
+    "who": "the owner",
+    "placeholders": []
+  },
   "er_pre_d": {
     "where": "a label or sentence in the console. English: Add them so the AI doesn't have to stop and ask during the call.",
     "who": "the owner",
@@ -2470,12 +2559,15 @@
     "placeholders": []
   },
   "er_redial_h": {
-    "where": "a label or sentence in the console. English: If nobody picks up or the line is busy, it calls again every minute, up to 30 times.",
+    "where": "a label or sentence in the console. English: If it doesn't get through (no answer, busy, voicemail), it redials {gap} s later until someone answers, for up to {min} minutes.",
     "who": "the owner",
-    "placeholders": []
+    "placeholders": [
+      "{gap}",
+      "{min}"
+    ]
   },
   "er_redial_wait": {
-    "where": "a label or sentence in the console. English: Redial until answered: try {n} got no answer, calling again at {time}",
+    "where": "a label or sentence in the console. English: Redial until answered: try {n} didn't get through, calling again at {time}",
     "who": "the owner",
     "placeholders": [
       "{n}",
@@ -2499,6 +2591,19 @@
   },
   "er_retry": {
     "where": "a label or sentence in the console. English: Call again",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_sch_at": {
+    "where": "a label or sentence in the console. English: Scheduled for {when} ({left})",
+    "who": "the owner",
+    "placeholders": [
+      "{when}",
+      "{left}"
+    ]
+  },
+  "er_scheduled_ok": {
+    "where": "a label or sentence in the console. English: Scheduled. It dials by itself at that time.",
     "who": "the owner",
     "placeholders": []
   },
@@ -2539,6 +2644,11 @@
   },
   "er_st_queued": {
     "where": "a label or sentence in the console. English: Queued",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_st_scheduled": {
+    "where": "a label or sentence in the console. English: Scheduled",
     "who": "the owner",
     "placeholders": []
   },
@@ -2611,6 +2721,26 @@
   },
   "er_watching": {
     "where": "a label or sentence in the console. English: You're watching: when unsure, the AI asks you first.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_when": {
+    "where": "a label or sentence in the console. English: When to call",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_when_later": {
+    "where": "a label or sentence in the console. English: At a set date and time",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_when_later_d": {
+    "where": "a label or sentence in the console. English: It dials at that time. Pick the line to call from.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_when_now": {
+    "where": "a label or sentence in the console. English: Now",
     "who": "the owner",
     "placeholders": []
   },

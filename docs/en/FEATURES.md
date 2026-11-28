@@ -107,9 +107,16 @@ default) or as **You in person**.
   *Your decision needed*, *No answer*, *Voicemail* or *Failed*, with the
   details, the options offered and any agreed time, ready for your calendar.
 - **Redial until answered.** For a restaurant or shop whose line is always
-  busy, turn this on when you start the errand. If nobody picks up or the line
-  is busy, the AI calls again every minute, up to 30 times. It leaves no
-  voicemail message, and you get one notification at the end.
+  busy, turn this on when you start the errand. If the call doesn't get through
+  (no answer, busy, voicemail, "not open yet"), the AI calls again 3 seconds
+  later, for up to 30 minutes, and stops once someone answers. It waits on the
+  line in a queue, leaves no voicemail message, and you get one notification
+  at the end.
+- **Call at a set time.** Pick **At a set date and time** and a line, and the
+  errand dials by itself then, even after a restart: handy when bookings open
+  at 8:00. You can schedule several, change their time or cancel them. A line
+  booked by one scheduled call can't be picked by another for those 30
+  minutes. From a chat: "12/1 8am call … to book 4".
 - **Safe dialing.** Emergency numbers, short codes, premium-rate numbers and
   numbers written after an international call prefix are refused, so an errand
   never turns into an international call by mistake.

@@ -1062,11 +1062,21 @@ html[data-embed="android"] .brand .word{display:none}
           <label><input type="radio" name="er_identity" value="assistant" checked /><span><b id="erIdAssistant"></b><small data-i18n="er_id_assistant_d"></small></span></label>
           <label><input type="radio" name="er_identity" value="owner" /><span><b id="erIdOwner"></b><small data-i18n="er_id_owner_d"></small></span></label>
         </div></div>
+      <div class="field"><div class="lbl" id="lbl-er-when" data-i18n="er_when"></div>
+        <div class="choice" role="radiogroup" aria-labelledby="lbl-er-when">
+          <label><input type="radio" name="er_when" value="now" checked /><span><b data-i18n="er_when_now"></b></span></label>
+          <label><input type="radio" name="er_when" value="later" /><span><b data-i18n="er_when_later"></b><small data-i18n="er_when_later_d"></small></span></label>
+        </div>
+        <div class="er-at" id="erAtBox" hidden>
+          <label for="erAt" data-i18n="er_at"></label>
+          <input type="datetime-local" id="erAt" step="60" style="max-width:16rem" />
+          <div class="help" id="erAtHelp"></div>
+        </div></div>
       <div class="field"><label for="erPhone" data-i18n="er_phone"></label>
         <select id="erPhone" style="max-width:28rem"></select>
         <div class="help" id="erPhoneHelp" data-i18n="er_phone_h" hidden></div></div>
       <div class="field">
-        <label class="sw"><input type="checkbox" id="erRedial" /><span><b data-i18n="er_redial"></b><small data-i18n="er_redial_h"></small></span></label></div>
+        <label class="sw"><input type="checkbox" id="erRedial" /><span><b data-i18n="er_redial"></b><small id="erRedialH"></small></span></label></div>
       <div class="er-pre" id="erPre" role="group" aria-labelledby="erPreT" hidden>
         <b id="erPreT" data-i18n="er_pre_t"></b>
         <p class="help" id="erPreD" data-i18n="er_pre_d"></p>
@@ -8027,9 +8037,9 @@ function calButton(links, icsPath) {
 // answers, and a box to tell the AI something. Afterwards: what came of it,
 // reply and call again, call again, add to calendar.
 const ER_ACTIVE = ["dialing", "on_call"];
-const ER_OPEN = ["queued", "dialing", "on_call"];
+const ER_OPEN = ["scheduled", "queued", "dialing", "on_call"];
 const ER_RETRY = ["no_answer", "failed", "cancelled"];
-const ER_ST_TAG = { dialing: "info", on_call: "accent", done: "ok", no_answer: "warn", failed: "bad" };
+const ER_ST_TAG = { scheduled: "info", dialing: "info", on_call: "accent", done: "ok", no_answer: "warn", failed: "bad" };
 const ER_OC_TAG = { done: "ok", partial: "warn", not_done: "bad", need_owner: "warn", no_answer: "warn", voicemail: "warn", failed: "bad" };
 const er = { list: [], state: "idle", error: "", seq: 0, busy: new Set(), sending: false };
 const erCards = new Map();  // errand id → { sig, el }: a card is rebuilt only when it changed
@@ -8042,6 +8052,10 @@ let erPhonesSig = "";
 let erPre = null; // the open card before dialing: { body, missing, optional, note, remind }
 let erFormLang = "";
 let erTicks = 0;
+let erHeld = new Map();     // "serial:sub_id" → the errand holding that line at the time picked
+let erHeldSeq = 0;
+let erRedialTouched = false;
+const erMove = new Map();   // scheduled errand id → the new time being typed ("Change time")
 const erOpen = (e) => ER_OPEN.includes(e.status);
 const erPath = (id, tail) => "/" + encodeURIComponent(id) + (tail || "");
 const erTitle = (e) => String(e.name || "").trim() || String(e.number || "") || "—";
@@ -8051,11 +8065,46 @@ async function erApi(path, opts) {
   if (d && d.ok === false) throw new ApiError(String(d.error || ""), 400, String(d.error || ""), d);
   return d;
 }
-// A refused request comes back as {"ok":false,"error":"<code>"}: the code in words.
+// A refused request comes back as {"ok":false,"error":"<code>"}: the code in words
+// (with the errand holding the line, when that is why).
 function erErrText(e) {
   const code = String((e && e.data && (e.data.error || e.data.code)) || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
   const key = "er_err_" + code;
-  return code && (I18N[lang][key] != null || I18N.en[key] != null) ? t(key) : e.message;
+  const hb = e && e.data && e.data.held_by;
+  const vars = { who: hb ? erHolderName(hb) : "—", when: hb ? erFmtAt(hb.scheduled_at) : "—", days: er.grab ? er.grab.max_days : "" };
+  return code && (I18N[lang][key] != null || I18N.en[key] != null) ? t(key, vars) : e.message;
+}
+function erHolderName(hb) { return String((hb && hb.name) || "").trim() || String((hb && hb.number) || "") || "—"; }
+// A scheduled time with its weekday, in the page's language.
+function erFmtAt(s) {
+  const d = parseStamp(s);
+  if (!d) return "";
+  try { return new Intl.DateTimeFormat(loc(), { weekday: "short", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d); } catch (_) { return d.toLocaleString(); }
+}
+// How long until then ("in 3 hours"), in the page's language.
+function erLeft(s) {
+  const d = parseStamp(s);
+  if (!d) return "";
+  const sec = Math.round((d.getTime() - Date.now()) / 1000);
+  const a = Math.abs(sec);
+  try {
+    const rtf = new Intl.RelativeTimeFormat(loc(), { numeric: "auto" });
+    if (a >= 86400) return rtf.format(Math.round(sec / 86400), "day");
+    if (a >= 3600) return rtf.format(Math.round(sec / 3600), "hour");
+    if (a >= 60) return rtf.format(Math.round(sec / 60), "minute");
+    return rtf.format(sec, "second");
+  } catch (_) { return ""; }
+}
+function erSchLine(at) { return t("er_sch_at", { when: erFmtAt(at), left: erLeft(at) }); }
+// A Date as a datetime-local field's value.
+function erLocalValue(d) {
+  if (!d) return "";
+  const p = (x) => String(x).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+function erWhen() {
+  const r = document.querySelector('input[name="er_when"]:checked');
+  return r ? r.value : "now";
 }
 function erPut(x) {
   if (!x || !x.id) return;
@@ -8071,6 +8120,7 @@ async function loadErrands() {
     const d = await erApi("");
     if (seq !== er.seq) return;
     er.list = Array.isArray(d.errands) ? d.errands : [];
+    if (d.grab) er.grab = d.grab;
     er.state = "ok";
   } catch (e) {
     if (seq !== er.seq || er.state === "ok") return; // keep what is shown
@@ -8081,7 +8131,43 @@ async function loadErrands() {
 }
 function showErrands() {
   loadErrands();
-  loadDevices().then(() => erRenderPhones());
+  loadDevices().then(() => erLoadHeld());
+}
+// The lines other errands hold over the call being set up (now, or at the time picked).
+async function erLoadHeld() {
+  const seq = ++erHeldSeq;
+  const later = erWhen() === "later";
+  const at = later ? $("erAt").value : "";
+  if (later && !at) { erHeld = new Map(); erRenderPhones(); return; }
+  try {
+    const q = new URLSearchParams({ at, grab: String($("erRedial").checked) });
+    const d = await erApi("/lines?" + q.toString());
+    if (seq !== erHeldSeq) return;
+    erHeld = new Map((d.held || []).map((x) => [x.serial + ":" + x.sub_id, x.held_by]));
+    if (d.grab) er.grab = d.grab;
+  } catch (_) {
+    if (seq !== erHeldSeq) return;
+    erHeld = new Map();
+  }
+  erRenderPhones();
+  renderErrandHelp();
+}
+// "Now" or "At a set date and time": the date field and a line of its own only for the second.
+function erWhenChanged() {
+  const later = erWhen() === "later";
+  $("erAtBox").hidden = !later;
+  if (!erRedialTouched) $("erRedial").checked = later;
+  const days = er.grab ? Number(er.grab.max_days) || 0 : 0;
+  $("erAt").min = erLocalValue(new Date(Date.now() + 60000));
+  if (days) $("erAt").max = erLocalValue(new Date(Date.now() + days * 86400000));
+  if (erPre) erPreHide();
+  renderErrandHelp();
+  erLoadHeld();
+}
+function renderErrandHelp() {
+  const g = er.grab;
+  $("erRedialH").textContent = g ? t("er_redial_h", { gap: g.gap_s, min: g.window_min }) : "";
+  $("erAtHelp").textContent = g ? t("er_at_h", { days: g.max_days }) : "";
 }
 
 // ---- the form: who, what, as whom, from which phone
@@ -8097,6 +8183,7 @@ function renderErrandForm() {
   $("erIdOwner").textContent = name ? t("er_id_owner", { name }) : t("er_id_owner_anon");
   if (!erIdTouched) erSetIdentity(erDefaultIdentity());
   erRenderPhones();
+  renderErrandHelp();
   if (erFormLang !== lang) { erFormLang = lang; erRenderPick(); erSending(er.sending); erPreHide(); }
 }
 // The connected phones; one in "normal phone" mode is listed but cannot be picked.
@@ -8105,8 +8192,11 @@ function erPhones() {
   const all = new Set([...((devices && devices.connected) || []), ...live.serials]);
   return Array.from(all).map((s) => ({ serial: s, normal: (info.has(s) && info.get(s).mode === "normal") || live.normal.includes(s) }));
 }
+// One option per SIM line (a line another errand holds then can't be picked,
+// and says by which); a scheduled call takes only a named SIM.
 function erLineOptions() {
   const list = erPhones();
+  const later = erWhen() === "later";
   const out = [];
   for (const p of list) {
     const name = devName(p.serial);
@@ -8117,13 +8207,13 @@ function erLineOptions() {
         const eff = String(sim.effective_number || "").trim();
         const region = [String(sim.country || "").toUpperCase(), String(sim.carrier || "").trim()].filter(Boolean).join(" ");
         const base = eff ? `${name} · ${eff}` : t("er_line_unset", { name, region: region || "?" });
-        out.push({
-          value: `${p.serial}:${sim.sub_id}`,
-          normal: p.normal,
-          text: p.normal ? t("er_phone_normal", { name: base }) : base,
-        });
+        const value = `${p.serial}:${sim.sub_id}`;
+        const hb = erHeld.get(value);
+        let text = p.normal ? t("er_phone_normal", { name: base }) : base;
+        if (hb && !p.normal) text = t("er_line_held", { name: base, who: erHolderName(hb), when: erFmtAt(hb.scheduled_at) || "—" });
+        out.push({ value, normal: p.normal || !!hb, text });
       }
-    } else {
+    } else if (!later) {
       const manual = allSims[0] && String(allSims[0].effective_number || "").trim();
       const base = manual ? `${name} · ${manual}` : name;
       out.push({
@@ -8137,12 +8227,13 @@ function erLineOptions() {
 }
 function erRenderPhones() {
   const { phones, opts } = erLineOptions();
-  const sig = JSON.stringify([lang, opts]);
+  const later = erWhen() === "later";
+  const sig = JSON.stringify([lang, later, opts]);
   if (sig === erPhonesSig) return;
   erPhonesSig = sig;
   const sel = $("erPhone");
   const keep = sel.value;
-  clear(sel).append(h("option", { value: "", text: t("er_phone_auto") }));
+  clear(sel).append(later ? h("option", { value: "", disabled: true, text: t("er_phone_pick") }) : h("option", { value: "", text: t("er_phone_auto") }));
   for (const o of opts) sel.append(h("option", { value: o.value, disabled: o.normal, text: o.text }));
   sel.value = opts.some((o) => o.value === keep && !o.normal) ? keep : "";
   $("erPhoneHelp").hidden = !phones.some((p) => p.normal);
@@ -8185,8 +8276,13 @@ function erResetForm() {
   erSetIdentity(erDefaultIdentity());
   $("erPhone").value = "";
   $("erRedial").checked = false;
+  erRedialTouched = false;
+  document.querySelectorAll('input[name="er_when"]').forEach((r) => { r.checked = r.value === "now"; });
+  $("erAt").value = "";
+  $("erAtBox").hidden = true;
   erRenderPick();
   erHideSugg();
+  erLoadHeld();
 }
 
 // "Who to call": a name finds contacts (one line per number), a number is used as typed.
@@ -8255,6 +8351,9 @@ $("erTask").addEventListener("input", erCount);
 // Anything changed after the questions came up: they are asked again on the next start.
 for (const id of ["erTask", "erTo"]) $(id).addEventListener("input", () => { if (erPre) erPreHide(); });
 $("erPhone").addEventListener("change", () => { if (erPre) erPreHide(); });
+document.querySelectorAll('input[name="er_when"]').forEach((r) => r.addEventListener("change", erWhenChanged));
+$("erAt").addEventListener("change", () => { if (erPre) erPreHide(); erLoadHeld(); });
+$("erRedial").addEventListener("change", () => { erRedialTouched = true; erLoadHeld(); });
 document.querySelectorAll('input[name="er_identity"]').forEach((r) => r.addEventListener("change", () => { erIdTouched = true; }));
 $("erRefresh").addEventListener("click", () => loadErrands());
 $("erForm").addEventListener("submit", async (ev) => {
@@ -8271,9 +8370,19 @@ $("erForm").addEventListener("submit", async (ev) => {
   if (!task) return erFormErr(t("er_err_no_task"), $("erTask"));
   body.task = task;
   body.identity = erIdentity();
-  body.redial = $("erRedial").checked;
   const pickedLine = $("erPhone").value;
   const colon = pickedLine.indexOf(":");
+  if (erWhen() === "later") {
+    // A set time: in the future, and a line of its own (checked again by Bageo).
+    const at = $("erAt").value;
+    if (!at) return erFormErr(t("er_err_need_time"), $("erAt"));
+    if (!(new Date(at).getTime() > Date.now())) return erFormErr(t("er_err_past_time"), $("erAt"));
+    if (colon <= 0) return erFormErr(t("er_err_need_line"), $("erPhone"));
+    body.scheduled_at = at;
+    body.grab = $("erRedial").checked;
+  } else {
+    body.redial = $("erRedial").checked;
+  }
   if (colon > 0) {
     body.serial = pickedLine.slice(0, colon);
     const sid = parseInt(pickedLine.slice(colon + 1), 10);
@@ -8312,7 +8421,8 @@ async function erCreate(body, answers) {
     const d = await erApi("", jsonBody("POST", body));
     erPreHide();
     erResetForm();
-    toast(t(d.errand && d.errand.status === "queued" ? "er_queued" : "er_started"));
+    const st = d.errand && d.errand.status;
+    toast(t(st === "scheduled" ? "er_scheduled_ok" : st === "queued" ? "er_queued" : "er_started"));
     if (d.errand) { erPut(d.errand); renderErrands(); erReveal(d.errand.id); }
     loadErrands();
   } catch (e) {
@@ -8438,7 +8548,7 @@ function erReveal(id) {
 
 // ---- the list: one card per errand, kept (with its captions and what is typed) while unchanged
 function erSig(e) {
-  return JSON.stringify([lang, calApp(), e.updated_at, e.status, e.attempts, e.redial, e.redial_at, e.result, e.questions, e.history, e.record_id,
+  return JSON.stringify([lang, calApp(), e.updated_at, e.status, e.attempts, e.redial, e.redial_at, e.scheduled_at, erMove.has(e.id), e.result, e.questions, e.history, e.record_id,
     e.device_label, e.serial, e.sub_id, e.sub_id_asked, e.sim_country, e.name, e.number, e.task, e.identity, er.busy.has(e.id), erExpanded.has(e.id), erFollow.has(e.id),
     phoneLineLabel(e.serial, e.sub_id ?? e.sub_id_asked, e.sim_country)]);
 }
@@ -8459,7 +8569,11 @@ function renderErrands() {
   for (const n of Array.from(box.children)) if (!n.classList.contains("er-card")) n.remove();
   const keep = new Set();
   let prev = null;
-  for (const e of er.list) {
+  // The scheduled ones first, soonest first; then the rest, newest first.
+  const at = (e) => { const d = parseStamp(e.scheduled_at); return d ? d.getTime() : 0; };
+  const sorted = er.list.filter((e) => e.status === "scheduled").sort((a, b) => at(a) - at(b))
+    .concat(er.list.filter((e) => e.status !== "scheduled"));
+  for (const e of sorted) {
     keep.add(e.id);
     const sig = erSig(e);
     let c = erCards.get(e.id);
@@ -8500,7 +8614,7 @@ function errandCard(e) {
     h("div", { class: "er-side" },
       h("span", { class: "tag " + (ER_ST_TAG[st] || "") }, active ? h("span", { class: "pulse" }) : null, h("span", { text: tCode("er_st_", st || "queued") })),
       h("span", { text: fmtWhen(e.created_at) }),
-      Number(e.attempts) > 0 ? h("span", { text: t("er_attempt", { n: e.attempts }) }) : null)));
+      Number(e.attempts) > 0 && st !== "scheduled" ? h("span", { text: t("er_attempt", { n: e.attempts }) }) : null)));
   const task = String(e.task || "");
   const long = task.length > 140 || task.split("\n").length > 3;
   const open = erExpanded.has(e.id);
@@ -8510,6 +8624,10 @@ function errandCard(e) {
       onclick: () => { if (open) erExpanded.delete(e.id); else erExpanded.add(e.id); renderErrands(); } }));
   }
   if (st === "queued" && e.redial_at) card.append(h("p", { class: "small muted", text: erRedialLine(e) }));
+  if (st === "scheduled") {
+    card.append(h("p", { class: "small er-countdown", dataset: { at: e.scheduled_at }, text: erSchLine(e.scheduled_at) }));
+    if (erMove.has(e.id)) card.append(erMoveBox(e));
+  }
   if (active) card.append(erLiveBox(e));
   if (!erOpen(e)) {
     const res = erResult(e);
@@ -8520,6 +8638,34 @@ function errandCard(e) {
   if (Array.isArray(e.history) && e.history.length) card.append(erHistory(e));
   card.append(erActions(e, busy));
   return card;
+}
+// "Change time" on a scheduled errand: the new date and time, saved or dropped.
+function erMoveBox(e) {
+  const input = h("input", { type: "datetime-local", step: 60, "aria-label": t("er_at") });
+  input.value = erMove.get(e.id) || erLocalValue(parseStamp(e.scheduled_at));
+  input.min = erLocalValue(new Date(Date.now() + 60000));
+  input.addEventListener("input", () => erMove.set(e.id, input.value));
+  return h("div", { class: "row er-move", style: "gap:8px;flex-wrap:wrap;margin-top:8px" }, input,
+    h("button", { type: "button", class: "btn sm primary", disabled: er.busy.has(e.id), text: t("er_move_save"), onclick: () => erMoveSave(e, input.value) }),
+    h("button", { type: "button", class: "btn sm ghost", text: t("cancel"), onclick: () => { erMove.delete(e.id); renderErrands(); } }));
+}
+async function erMoveSave(e, value) {
+  if (!value) return toast(t("er_err_need_time"), true);
+  if (er.busy.has(e.id)) return;
+  er.busy.add(e.id);
+  renderErrands();
+  try {
+    const d = await erApi(erPath(e.id, "/schedule"), jsonBody("POST", { scheduled_at: value }));
+    erMove.delete(e.id);
+    if (d.errand) erPut(d.errand);
+    toast(t("er_moved"));
+  } catch (err) {
+    if (err.status !== 401) toast(erErrText(err), true);
+  } finally {
+    er.busy.delete(e.id);
+    renderErrands();
+    loadErrands();
+  }
 }
 // "Redial until answered", waiting: how many tries got no answer and when the next one goes.
 function erRedialLine(e) {
@@ -8673,6 +8819,7 @@ function errandTick() {
   erTicks++;
   for (const e of er.list) if (ER_ACTIVE.includes(e.status) && erLive.has(e.id)) erPoll(e.id);
   for (const st of erLive.values()) erTickQ(st);
+  for (const el of document.querySelectorAll("#erList .er-countdown")) el.textContent = erSchLine(el.dataset.at);
   if (erTicks % 5 === 0 && er.list.some(erOpen)) loadErrands();
 }
 
@@ -8782,12 +8929,15 @@ function erActions(e, busy) {
   const st = e.status;
   const oc = e.result && e.result.outcome;
   if (ER_ACTIVE.includes(st)) row.append(h("button", { type: "button", class: "btn sm danger", disabled: busy, onclick: () => erHangup(e), text: t("er_hangup") }));
-  if (st === "queued") row.append(h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => erAct(e, "/cancel", "er_cancelled"), text: t("er_cancel_q") }));
+  if (st === "scheduled" && !erMove.has(e.id)) {
+    row.append(h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => { erMove.set(e.id, ""); renderErrands(); }, text: t("er_move") }));
+  }
+  if (st === "queued" || st === "scheduled") row.append(h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => erAct(e, "/cancel", "er_cancelled"), text: t("er_cancel_q") }));
   if (ER_RETRY.includes(st) || (st === "done" && ["no_answer", "voicemail", "failed"].includes(oc))) {
     row.append(h("button", { type: "button", class: "btn sm primary", disabled: busy, onclick: () => erAct(e, "/retry", "er_retried"), text: t("er_retry") }));
   }
   if (e.record_id) row.append(h("a", { class: "btn sm", href: "#call=" + encodeURIComponent(e.record_id), text: t("er_open_call") }));
-  if (!erOpen(e)) row.append(h("button", { type: "button", class: "btn sm ghost er-del", disabled: busy, onclick: () => erDelete(e), text: t("er_delete") }));
+  if (!erOpen(e) || st === "scheduled") row.append(h("button", { type: "button", class: "btn sm ghost er-del", disabled: busy, onclick: () => erDelete(e), text: t("er_delete") }));
   if (busy) row.append(h("span", { class: "spin", attr: { "aria-hidden": "true" } }));
   return row;
 }

@@ -250,6 +250,44 @@ async fn a_call_is_checked_before_it_is_offered_and_counts_against_the_hourly_li
     assert!(out.buttons.is_empty());
 }
 
+/// "/errand <date time> …": the confirmation says the day (with its weekday),
+/// the time and the line picked for it; a yes schedules it; with every line
+/// held then, the reply names the errand holding it.
+#[tokio::test]
+async fn a_call_can_be_scheduled_from_a_chat_on_a_line_free_at_that_time() {
+    let rig = Rig::with_env_bot();
+    rig.set(json!({"call_notify": false, "country_code": "886"}));
+    let (sink, _phone) = crate::callback::test_socket::phone_socket().await;
+    rig.state.control.register_client("pixel-chat-plan".into(), sink).await;
+    rig.state.errands.sims.note("pixel-chat-plan", 1, "tw");
+    rig.state.errands.sims.note("pixel-chat-plan", 2, "tw");
+    let c = rig.controller();
+    let day = chrono::Local::now().date_naive() + chrono::Duration::days(3);
+    let at = day.and_hms_opt(8, 0, 0).unwrap();
+    let label = crate::errand_plan::when_label(crate::locale::notify_lang(), at, chrono::Local::now().naive_local());
+    let mut made = Vec::new();
+    for (k, number) in ["0223459801", "0223459802"].iter().enumerate() {
+        let ask = c.handle(&owner(&format!("/errand {} 08:00 {number} 訂4位", day.format("%Y-%m-%d")))).await.unwrap();
+        assert_eq!(ask.buttons.len(), 2, "{}", ask.text);
+        assert!(ask.text.contains(&label), "{label}: {}", ask.text);
+        assert!(ask.text.contains(&crate::notify::device_label("pixel-chat-plan")), "{}", ask.text);
+        let done = c.handle(&press(&ask.buttons[0].data)).await.unwrap();
+        let e = rig.state.errands.list().into_iter().find(|e| e.number == *number).unwrap_or_else(|| panic!("{}", done.text));
+        assert_eq!((e.status.as_str(), e.redial), (crate::errands::SCHEDULED, true));
+        assert_eq!(e.scheduled().map(|t| t.with_timezone(&chrono::Local).naive_local()), Some(at));
+        // The first goes on one SIM, the second on the other: each free at that time.
+        assert_eq!(e.sub_id_asked, Some(if k == 0 { 1 } else { 2 }), "{e:?}");
+        assert!(done.text.contains(&label), "{}", done.text);
+        made.push(e);
+    }
+    let held = c.handle(&owner(&format!("/errand {} 08:10 0223459803 訂4位", day.format("%Y-%m-%d")))).await.unwrap();
+    assert!(held.buttons.is_empty(), "{}", held.text);
+    assert!(held.text.contains("0223459801"), "{}", held.text);
+    // A time already past is said at once.
+    let past = c.handle(&owner("/errand 2020-01-01 08:00 0223459804 訂位")).await.unwrap();
+    assert!(past.buttons.is_empty(), "{}", past.text);
+}
+
 #[tokio::test]
 async fn a_to_do_is_decided_only_after_one_yes_from_the_one_who_asked() {
     let rig = Rig::with_env_bot();

@@ -522,7 +522,8 @@ transfer.
 | A voice menu | The AI waits up to 90 seconds for a person; it cannot press keys (`keypad_menu`). |
 | A carrier recording ("the number you dialed is not in service") | It hangs up at once (`carrier_message`). |
 | No answer or failure | No automatic retries: **Try again** is yours. With `redial` on, see the next row. |
-| **Redial until answered** (`redial`) | No answer, a busy line, the phone off or voicemail (no message left): the errand waits (`queued`, `call_code` `redial_wait`, the time in `redial_at`) and is dialed again a minute later, up to 30 tries in all. It stops once someone picks up, after 30 tries (`no_answer`), or at a number that does not work, a voice menu or a phone problem. One notification, at the end. |
+| **Redial until answered** (`redial`) | No answer, a busy line, the phone off, voicemail (hung up at once, no message left) or "bookings are not open yet": the errand waits (`queued`, `call_code` `redial_wait`, the time in `redial_at`) and is dialed again 3 seconds after the last try ended. A ringing call is never hung up early. A queue's recording ("please hold") keeps the AI on the line, up to 30 minutes. It stops once someone picks up, 30 minutes after the first try (`no_answer`), or at a number that does not work, a voice menu or a phone problem. A safety cap allows at most 10 dials a minute. One notification, at the end. |
+| Scheduled (`scheduled_at`) | It waits (`scheduled`) and its first try goes out 2 seconds before that time, on the line you picked; **Redial until answered** is on unless you turn it off. It holds that line from then for 30 minutes (one call: 12 minutes): no other errand may use it then. A Bageo restart keeps it. If Bageo was not running at that time, it still starts within those 30 minutes (one call: 5), else it fails (`missed`). |
 | You cancel while it dials | The phone and the number are free for the next call at once; if the call still connects, it is hung up before the AI speaks. |
 
 ### The errand object
@@ -552,12 +553,14 @@ transfer.
 | `task` | Your own words (up to 1,000 characters). |
 | `identity` | `assistant` or `owner`. |
 | `serial`, `device_label` | The phone that dials it, and its name. |
-| `status` | `queued`, `dialing` (the line rings, nobody has spoken yet), `on_call` (the other side picked up and spoke), `done`, `no_answer`, `failed`, `cancelled`. The last four are final. |
-| `call_code` | Where the dial stands: `dialing`, `queued`, `answered`, `no_answer`, `failed`, `phone_busy`, `number_busy`, `no_phone`, `send_failed`, `keypad_menu`, `carrier_message`, `wrong_sim`, `agent_restarted`, `cancelled`, `redial_wait`, `voicemail`. |
+| `status` | `scheduled` (waits for its time), `queued`, `dialing` (the line rings, nobody has spoken yet), `on_call` (the other side picked up and spoke), `done`, `no_answer`, `failed`, `cancelled`. The last four are final. |
+| `call_code` | Where the dial stands: `scheduled`, `dialing`, `queued`, `answered`, `no_answer`, `failed`, `phone_busy`, `number_busy`, `no_phone`, `send_failed`, `keypad_menu`, `carrier_message`, `wrong_sim`, `agent_restarted`, `cancelled`, `redial_wait`, `voicemail`, `not_open`, `queue_wait`, `missed`. |
 | `attempts` | 1, plus one per **Try again** and per redial. |
 | `redial` | **Redial until answered** is on. Left out when off. |
 | `redial_at` | When the next try is dialed (while `call_code` is `redial_wait`). Left out otherwise. |
-| `redial_start` | The try the current run of redials started at (**Try again** starts a new run of 30). Left out when 0. |
+| `redial_start` | The try the current run of redials started at (**Try again** starts a new run of 30 minutes). Left out when 0. |
+| `scheduled_at` | When a scheduled errand dials (local time with its offset). Left out for one made to call at once. |
+| `grab_since`, `dialed_at` | When this run of redials started (its 30 minutes count from here) and its latest dial times. Left out when empty. |
 | `record_id` | The call record of this try (`GET /calls/api/call/{id}`: transcript and recording). |
 | `follow_up_of` | An earlier errand this call follows up; its last 20 transcript lines go into the AI's script. |
 | `questions` | `[{id, text, options, answer, answered_by, asked_at}]`: what the AI asked you, with up to 4 options. |
@@ -572,14 +575,16 @@ transfer.
 Errands are kept in `errands.json` in the data folder (the newest 500). An
 errand still under way when Bageo restarts becomes `failed` (`call_code`
 `agent_restarted`). A redialing errand goes on instead, unless the other side
-had already picked up.
+had already picked up; a scheduled one keeps waiting for its time.
 
 ### Errand routes
 
 | Method and path | What |
 |---|---|
-| `GET /calls/api/errands` | `{ok, errands}`, newest first, at most 200. |
-| `POST /calls/api/errands` | Start one. Body `{number, name, contact_id, task, identity, serial, follow_up_of, answers, redial}` (`redial`: `true` for **Redial until answered**, default `false`). Answer `{ok, errand}` with status `dialing`, or `queued` when the phone or the number is busy. |
+| `GET /calls/api/errands` | `{ok, errands, grab}`, newest first, at most 200; `grab` is `{lead_s, gap_s, window_min, max_days}`. |
+| `POST /calls/api/errands` | Start one. Body `{number, name, contact_id, task, identity, serial, follow_up_of, answers, redial}` (`redial`: `true` for **Redial until answered**, default `false`). Answer `{ok, errand}` with status `dialing`, or `queued` when the phone or the number is busy. With `scheduled_at` it is scheduled instead (see below). |
+| `POST /calls/api/errands/{id}/schedule` | A scheduled errand that has not started: body `{scheduled_at, serial, sub_id, grab}` (only `scheduled_at` required). `{ok, errand}`. |
+| `GET /calls/api/errands/lines?at=&grab=&except=` | The lines another errand holds over a call at `at` (empty: now), `{ok, held: [{serial, sub_id, held_by}], grab}`. `except`: the errand being moved. |
 | `POST /calls/api/errands/preflight` | What the errand still lacks before it dials. Body `{task, lang, number}`; answer `{ok, kind, type, missing, note, remind, optional, region, ladder, source, ms}`. Nothing is dialed. Details are below the table. |
 | `POST /calls/api/errands/{id}/cancel` | Waiting: dropped. Dialing or on the call: hung up. An errand already over comes back unchanged. `{ok, errand}`. |
 | `POST /calls/api/errands/{id}/retry` | The same errand once more (`attempts` + 1, the last try moved to `history`). `{ok, errand}`. Still under way (or its last call not ended yet): 400 `busy`; the phone codes as for a new errand. |
@@ -593,6 +598,8 @@ Details for these routes:
 - `answers` is optional: what you added after the questions, as `{key: text}`. The keys are the ones `preflight` returns in `missing` and `optional`, plus `note` for free text; up to 80 characters each (`note`: 120). Unknown keys are dropped. They reach the AI as a short block in the call's script.
 - `place_type` is optional: the `type` that `preflight` returned. Without it, Bageo reads the kind of call from the task.
 - `sub_id` is optional: the SIM to dial from on the `serial` phone (or write `serial` as `<serial>:<sub_id>`). When that SIM is of another country than a number written with `+`, the errand is refused with `sim_other_country` until you send the same body again with `"abroad_ok": true` (the owner agreed to an international call). The errand keeps it for **Try again** and redials.
+- `scheduled_at` is optional: when to call, RFC 3339 or local `YYYY-MM-DDTHH:MM` (Bageo's `TZ`), in the future and at most 60 days ahead. It needs `serial` and `sub_id`; `grab` (default `true`) is **Redial until answered** for it. Ask `preflight` before, as for a call now. A call now does not take a line a scheduled errand holds during it either (`line_reserved`; with no `serial` another free line is used).
+- `held_by` (on `line_taken`, `line_reserved` and in `lines`): `{id, name, number, status, scheduled_at}` of the errand holding the line.
 - `lines`: the captions after `seq`, `[{seq, who, text, at}]`, with `who` `ai`, `callee`, `owner` or `system`. The newest 400 are kept; a line is complete after 1.2 s without more words.
 - `question`: `null` or `{id, text, options, asked_at, expires_at}`, the question waiting for you.
 - `watching`: whether you count as watching. Each read marks you as watching for 6 seconds, so poll every few seconds while you follow the call.
@@ -627,6 +634,11 @@ Error codes (HTTP 400 `{ok: false, error, code}`, the same word in both):
 | `not_on_call` | say | The call is not (or no longer) running. |
 | `empty_text` / `text_too_long` | say | Nothing to say / over 300 characters. |
 | `question_closed` | say | That question was answered, timed out, or is not the one waiting. |
+| `bad_time` / `past_time` / `too_far` | create, schedule, lines | `scheduled_at` unreadable / not in the future / over 60 days ahead. |
+| `need_line` | create | A scheduled errand without `serial` and `sub_id`. |
+| `line_taken` | create, schedule | Another errand holds that line then; `held_by` names it. |
+| `line_reserved` | create, retry | A call now would run into a scheduled errand on that line (or every fitting line is held); on create, `held_by` names it. |
+| `not_scheduled` | schedule | The errand has started or ended. |
 | `bad_request` | all `POST` | No `Content-Type: application/json`, or the body is not a JSON object. |
 
 On every `…/errands/{id}…` path, an unknown or malformed errand id is HTTP 404

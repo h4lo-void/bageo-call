@@ -983,7 +983,7 @@ input[type=text],input[type=search],input[type=password],input[type=url],input[t
       </div>
 
       <label class="sw" style="margin-top:6px">
-        <span><b data-i18n="er_redial"></b><small data-i18n="er_redial_h"></small></span>
+        <span><b data-i18n="er_redial"></b><small id="erRedialH"></small></span>
         <input type="checkbox" id="erRedial" />
       </label>
 
@@ -4180,7 +4180,7 @@ $("ctImpGo").addEventListener("click", async () => {
 
 // ---------------------------------------------------------------- AI Errands (Single-Phone)
 const ER_ACTIVE = ["dialing", "on_call"];
-const ER_OPEN = ["queued", "dialing", "on_call"];
+const ER_OPEN = ["scheduled", "queued", "dialing", "on_call"];
 const ER_RETRY = ["no_answer", "failed", "cancelled"];
 const ER_ST_TAG = { dialing: "info", on_call: "accent", done: "ok", no_answer: "warn", failed: "bad" };
 const ER_OC_TAG = { done: "ok", partial: "warn", not_done: "bad", need_owner: "warn", no_answer: "warn", voicemail: "warn", failed: "bad" };
@@ -4224,6 +4224,7 @@ async function loadErrands() {
     const d = await erApi("");
     if (seq !== er.seq) return;
     er.list = Array.isArray(d.errands) ? d.errands : [];
+    if (d.grab) er.grab = d.grab;
     er.state = "ok";
   } catch (e) {
     if (seq !== er.seq || er.state === "ok") return;
@@ -4268,6 +4269,8 @@ function renderErrandForm() {
   if (!erIdTouched) erSetIdentity(erDefaultIdentity());
   erRenderSimField();
   erRenderPick();
+  // Grab mode's numbers come with the errands list.
+  $("erRedialH").textContent = er.grab ? t("er_redial_h", { gap: er.grab.gap_s, min: er.grab.window_min }) : "";
 }
 function erRenderPick() {
   const box = clear($("erPick"));
@@ -4679,7 +4682,7 @@ function erActions(e, busy) {
   if (ER_ACTIVE.includes(st)) row.append(h("button", { type: "button", class: "btn sm danger", disabled: busy, onclick: async () => {
     if (await ask({ title: t("er_hangup_t"), body: t("er_hangup_b"), ok: t("er_hangup"), danger: true })) erAct(e, "/cancel", "er_hung_up");
   }, text: t("er_hangup") }));
-  if (st === "queued") row.append(h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => erAct(e, "/cancel", "er_cancelled"), text: t("er_cancel_q") }));
+  if (st === "queued" || st === "scheduled") row.append(h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => erAct(e, "/cancel", "er_cancelled"), text: t("er_cancel_q") }));
   if (ER_RETRY.includes(st) || (st === "done" && ["no_answer", "voicemail", "failed"].includes(oc))) {
     row.append(h("button", { type: "button", class: "btn sm primary", disabled: busy, onclick: () => erAct(e, "/retry", "er_retried"), text: t("er_retry") }));
   }
