@@ -16,23 +16,23 @@ This page covers:
 Building the app, its permissions and its protocol are covered in
 [`android/README.md`](../../android/README.md).
 
-This page describes **Bageo 2.2**: the root module `v2.2.0` (versionCode 32) with
-the app `2.2.0` (versionCode 40) inside, installed from
-`bageo-phone-module-2.2.0.zip` (**Bageo Uplink**, for pairing with Bageo on a
+This page describes **Bageo 2.3**: the root module `v2.3.0` (versionCode 33) with
+the app `2.3.0` (versionCode 41) inside, installed from
+`bageo-phone-module-2.3.0.zip` (**Bageo Uplink**, for pairing with Bageo on a
 computer or NAS) or
-`bageo-phone-standalone-2.2.0.zip` (**Bageo AI Call Agent**, the phone-only
+`bageo-phone-standalone-2.3.0.zip` (**Bageo AI Call Agent**, the phone-only
 edition: runs the full Bageo engine and console inside the phone with no computer
 needed). The app shows its version under *Advanced*, and the console under
 *System → Phones*.
 
 | Install file | What it is | Module ID |
 |---|---|---|
-| `bageo-phone-standalone-2.2.0.zip` | **Bageo AI Call Agent**: phone-only, no computer. All of Bageo runs on the phone. | `bageo_ai_call_agent` (shown as **Bageo AI Call Agent**) |
-| `bageo-phone-module-2.2.0.zip` | For Bageo on a computer: use it with the Windows, macOS or Linux installer, or Docker. | `pixelcallai_uplink` (shown as **Bageo Uplink (for Bageo on a computer)**) |
+| `bageo-phone-standalone-2.3.0.zip` | **Bageo AI Call Agent**: phone-only, no computer. All of Bageo runs on the phone. | `bageo_ai_call_agent` (shown as **Bageo AI Call Agent**) |
+| `bageo-phone-module-2.3.0.zip` | For Bageo on a computer: use it with the Windows, macOS or Linux installer, or Docker. | `pixelcallai_uplink` (shown as **Bageo Uplink (for Bageo on a computer)**) |
 
 Install only one of the two. When you install one, the other is removed automatically at the next reboot.
 
-> **Want phone-only with no computer?** Flash `bageo-phone-standalone-2.2.0.zip`
+> **Want phone-only with no computer?** Flash `bageo-phone-standalone-2.3.0.zip`
 > instead. With a free Gemini key from Google AI Studio you pay no API fees; in
 > our own tests the free quota covered 10 or more calls a day (Google sets the
 > free limit, and it can change). The two editions have different module IDs:
@@ -102,7 +102,7 @@ handset. All of this can be switched off from the app or the console (see
 1. **Root** the phone with Magisk or KernelSU (not covered here).
 2. If you ever installed the app as a plain APK, uninstall it. Never have both.
 3. Copy `bageo-phone-module-<version>.zip` to the phone (for this release
-   `bageo-phone-module-2.2.0.zip`). In the Magisk or KernelSU app: *Modules →
+   `bageo-phone-module-2.3.0.zip`). In the Magisk or KernelSU app: *Modules →
    Install from storage* → pick the zip → reboot.
 4. Open **Bageo**. The card at the top says in one sentence what the phone is
    doing right now. Below it, **Setup steps** lists what is still missing,

@@ -12,18 +12,18 @@
 
 建置 App、它的權限與通訊協定，寫在 [`android/README.md`](../../android/README.md)（英文）。
 
-這一頁說明的是 **Bageo 2.2**：root 模組 `v2.2.0`（versionCode 32），裡面的 App 是 `2.2.0`（versionCode 40）。
+這一頁說明的是 **Bageo 2.3**：root 模組 `v2.3.0`（versionCode 33），裡面的 App 是 `2.3.0`（versionCode 41）。
 
-安裝檔有兩個：`bageo-phone-module-2.2.0.zip`（電腦連動版 **Bageo Uplink**，配合電腦或 NAS 使用）與 `bageo-phone-standalone-2.2.0.zip`（手機獨立版 **Bageo AI Call Agent**，不需要電腦，把完整 Bageo 與控制台裝在手機裡）。App 的版本在「進階」畫面看得到，控制台則在「系統 → 手機」。
+安裝檔有兩個：`bageo-phone-module-2.3.0.zip`（電腦連動版 **Bageo Uplink**，配合電腦或 NAS 使用）與 `bageo-phone-standalone-2.3.0.zip`（手機獨立版 **Bageo AI Call Agent**，不需要電腦，把完整 Bageo 與控制台裝在手機裡）。App 的版本在「進階」畫面看得到，控制台則在「系統 → 手機」。
 
 | 安裝檔 | 用途 | 模組 ID |
 |---|---|---|
-| `bageo-phone-standalone-2.2.0.zip` | **Bageo AI Call Agent**（手機獨立版）：不用電腦，整個 Bageo 在手機上。 | `bageo_ai_call_agent`（管理器顯示 Bageo AI Call Agent） |
-| `bageo-phone-module-2.2.0.zip` | 配電腦用：搭配 Windows、macOS、Linux 安裝檔或 Docker。 | `pixelcallai_uplink`（管理器顯示 **Bageo Uplink (for Bageo on a computer)**） |
+| `bageo-phone-standalone-2.3.0.zip` | **Bageo AI Call Agent**（手機獨立版）：不用電腦，整個 Bageo 在手機上。 | `bageo_ai_call_agent`（管理器顯示 Bageo AI Call Agent） |
+| `bageo-phone-module-2.3.0.zip` | 配電腦用：搭配 Windows、macOS、Linux 安裝檔或 Docker。 | `pixelcallai_uplink`（管理器顯示 **Bageo Uplink (for Bageo on a computer)**） |
 
 兩個只能裝一個；裝其中一個，另一個會在下次重新開機自動移除。
 
-> **想完全不靠電腦？** 直接改刷 `bageo-phone-standalone-2.2.0.zip` 即可。用 Google AI Studio 的免費 Gemini 金鑰就不用付 API 費用；我們實測免費額度每天 10 通以上夠用（免費額度的上限由 Google 決定，可能會變）。兩個版本的模組 ID 不同：手機獨立版是 `bageo_ai_call_agent`（管理器裡顯示 Bageo AI Call Agent），電腦連動版是 `pixelcallai_uplink`（顯示 Bageo Uplink (for Bageo on a computer)）。裝其中一版時，另一版會在下次重新開機自動移除，App 與設定都會保留。手機獨立版的控制台只能在手機上的 Bageo App 裡開啟，其他手機或電腦都打不開。
+> **想完全不靠電腦？** 直接改刷 `bageo-phone-standalone-2.3.0.zip` 即可。用 Google AI Studio 的免費 Gemini 金鑰就不用付 API 費用；我們實測免費額度每天 10 通以上夠用（免費額度的上限由 Google 決定，可能會變）。兩個版本的模組 ID 不同：手機獨立版是 `bageo_ai_call_agent`（管理器裡顯示 Bageo AI Call Agent），電腦連動版是 `pixelcallai_uplink`（顯示 Bageo Uplink (for Bageo on a computer)）。裝其中一版時，另一版會在下次重新開機自動移除，App 與設定都會保留。手機獨立版的控制台只能在手機上的 Bageo App 裡開啟，其他手機或電腦都打不開。
 
 ## 手機會做哪些事
 
@@ -66,7 +66,7 @@
 
 1. 用 Magisk 或 KernelSU 把手機 **root**（這裡不說明）。
 2. 如果你曾經把這個 App 當一般 APK 安裝過，請先解除安裝。兩種絕對不要同時存在。
-3. 把 `bageo-phone-module-<version>.zip` 複製到手機（這一版是 `bageo-phone-module-2.2.0.zip`）。在 Magisk 或 KernelSU App 裡：「模組」（Modules）→「從本機安裝」（Install from storage）→ 選那個 zip → 重新開機。
+3. 把 `bageo-phone-module-<version>.zip` 複製到手機（這一版是 `bageo-phone-module-2.3.0.zip`）。在 Magisk 或 KernelSU App 裡：「模組」（Modules）→「從本機安裝」（Install from storage）→ 選那個 zip → 重新開機。
 4. 打開 **Bageo**。最上面的卡片用一句話說明手機現在的狀態。下面的「**設定步驟**」列出還沒完成的事，每一步都有按鈕：
 
    | 步驟 | 要做什麼 |
