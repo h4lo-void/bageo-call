@@ -431,13 +431,10 @@ fn pick_ref(listed: &[String], known: &[String], r: &str) -> Option<String> {
     None
 }
 
-/// A typed answer to a confirmation: 1 = go ahead, 2 = drop it.
+/// A typed answer to a confirmation: 1 = go ahead, 2 = drop it, and the
+/// same in the nine languages' yes / no words. The whole message only.
 fn yes_no(text: &str) -> Option<bool> {
-    match text.trim() {
-        "1" | "１" => Some(true),
-        "2" | "２" => Some(false),
-        _ => None,
-    }
+    words::typed_yes_no(text)
 }
 
 /// A short reply that means "don't call" (any language), so it is not taken
@@ -459,6 +456,11 @@ fn looks_like_cancel(text: &str) -> bool {
 
 fn reply(o: &Outcome, w: &Words) -> Outbound {
     Outbound { text: words::render(o, w), ..Default::default() }
+}
+
+/// A typed 1 / 2 cannot pick one card. The buttons still can.
+fn use_button(w: &Words) -> Outbound {
+    Outbound { text: w.use_button.to_string(), ..Default::default() }
 }
 
 /// A confirmation card: the summary, its code, yes / no buttons.
@@ -653,16 +655,31 @@ impl Controller {
             }
         }
         if let Some(yes) = yes_no(text) {
-            if self.confirms.waiting(chat) {
-                return Some(reply(&self.settle(rt, chat, &m.sender_id, None, yes).await, w));
+            match self.confirms.typed(chat) {
+                confirm::TypedReply::Absent => {}
+                // Several cards, or the one card is from an MCP client.
+                confirm::TypedReply::UseButton => return Some(use_button(w)),
+                confirm::TypedReply::One => {
+                    return Some(reply(&self.settle(rt, chat, &m.sender_id, None, yes).await, w));
+                }
             }
         }
         // A reply to a card that asked questions is their answer: the call goes ahead with it.
-        // A short "cancel" (取消／不要打了／cancel) to that card drops it instead.
-        if !text.starts_with('/') && m.reply_to_bot && self.confirms.has_gapped_errand(chat) && looks_like_cancel(text) {
-            return Some(reply(&self.settle(rt, chat, &m.sender_id, None, false).await, w));
-        }
+        // A short "cancel" (不要打了／cancel) to that card drops it instead.
+        // An MCP client's card is not one of these, and is not replaced by the new card.
         if !text.starts_with('/') && m.reply_to_bot {
+            let n = self.confirms.live_gapped(chat, &m.sender_id);
+            if looks_like_cancel(text) && self.confirms.has_gapped_errand(chat) {
+                if n > 1 {
+                    return Some(use_button(w));
+                }
+                let dropped = self.confirms.take_gapped_errand(chat, &m.sender_id).is_some();
+                let o = if dropped { Outcome::Dropped } else { Outcome::Expired };
+                return Some(reply(&o, w));
+            }
+            if n > 1 {
+                return Some(use_button(w));
+            }
             if let Some(Job::Errand { mut body }) = self.confirms.take_gapped_errand(chat, &m.sender_id) {
                 body["answers"] = json!({ "note": text });
                 // A scheduled call never goes ahead on a reply: its card comes
@@ -744,7 +761,8 @@ impl Controller {
 
     /// The owner answered the questions on a scheduled call's card: the card
     /// again, the answer under the task and the questions gone, waiting for
-    /// a yes (1 or the button) like any other.
+    /// a yes. A typed 1 counts when it is the only card in the chat; the
+    /// button always does. Other cards in the chat stay.
     fn card_again(&self, chat: &str, sender: &str, mut body: Value, answer: &str, w: &Words) -> Outbound {
         let part = |i: usize| body.get(CARD_KEY).and_then(|c| c.get(i)).and_then(Value::as_str).unwrap_or("").to_string();
         let (ask, rest) = (part(0), part(1));
@@ -1805,7 +1823,8 @@ mod p1_11_tests {
         assert!(c.confirms.has_gapped_errand(api_chat));
 
         // Stateless follow-up calls must not hijack or cancel the earlier gapped errand via reply_to_bot.
-        let cancel_try = c.handle_external("42", "42", "取消", ApiCaller::Owner).await.unwrap();
+        // "不要打了" only drops that card when it is a reply to it. A bare 否 word is a typed answer.
+        let cancel_try = c.handle_external("42", "42", "不要打了", ApiCaller::Owner).await.unwrap();
         assert!(!cancel_try.text.is_empty());
         assert!(c.confirms.has_gapped_errand(api_chat));
 

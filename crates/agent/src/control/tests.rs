@@ -812,3 +812,127 @@ fn the_status_texts_say_bageo_and_not_the_agent() {
 fn words_fmt_does_not_reexpand_placeholders_inside_earlier_arguments() {
     assert_eq!(words::fmt("{1}: {2}", &["literal {2}", "real"]), "literal {2}: real");
 }
+
+/// Nine languages, each in its own words, and none of them a longer sentence.
+#[test]
+fn every_language_asks_for_the_button_and_yes_no_are_whole_words() {
+    let mut seen = std::collections::HashSet::new();
+    for lang in crate::locale::ALL {
+        let w = words(lang);
+        assert!(!w.use_button.trim().is_empty() && w.use_button.chars().count() <= 80, "{lang:?}: {}", w.use_button);
+        let low = w.use_button.to_lowercase();
+        assert!(!low.contains("mcp"), "{lang:?}: {}", w.use_button);
+        assert!(seen.insert(w.use_button), "same words twice: {}", w.use_button);
+    }
+    assert_eq!(words::typed_yes_no("1"), Some(true));
+    assert_eq!(words::typed_yes_no("２"), Some(false));
+    assert_eq!(words::typed_yes_no("是"), Some(true));
+    assert_eq!(words::typed_yes_no("否"), Some(false));
+    assert_eq!(words::typed_yes_no("はい"), Some(true));
+    assert_eq!(words::typed_yes_no("Sí"), Some(true));
+    assert_eq!(words::typed_yes_no("Nein"), Some(false));
+    assert_eq!(words::typed_yes_no("Oui"), Some(true));
+    assert_eq!(words::typed_yes_no("não"), Some(false));
+    assert_eq!(words::typed_yes_no("Go ahead"), Some(true));
+    assert_eq!(words::typed_yes_no("是的，兩位"), None);
+    assert_eq!(words::typed_yes_no("Yes, 2 adults"), None);
+}
+
+/// 是／否, and the same kind of word in Japanese and Spanish, settle the one
+/// card the owner asked for. A longer sentence does not.
+#[tokio::test]
+async fn a_typed_yes_or_no_in_chinese_japanese_and_spanish_settles_the_only_owners_card() {
+    let rig = Rig::with_env_bot();
+    let c = rig.controller();
+    for (id, word, goes) in [
+        ("task-yes-zh", "是", true),
+        ("task-yes-ja", "はい", true),
+        ("task-yes-es", "sí", true),
+        ("task-no-zh", "否", false),
+        ("task-no-de", "nein", false),
+    ] {
+        let id = rig.task(id, "王小明想改約時間").await;
+        let ask = c.handle(&owner(&format!("/ignore {id}"))).await.unwrap();
+        assert_eq!(ask.buttons.len(), 2, "{word}: {}", ask.text);
+        let out = c.handle(&owner(word)).await.unwrap();
+        let status = rig.task_status(&id).await;
+        if goes {
+            assert!(matches!(status, TaskStatus::Ignored), "{word}: {} ({out:?})", out.text);
+        } else {
+            assert!(reads_as(&out.text, |w| w.dropped.to_string()), "{word}: {}", out.text);
+            assert!(matches!(status, TaskStatus::Pending), "{word}");
+        }
+    }
+    let id = rig.task("task-not-a-yes", "回電給王小明").await;
+    c.handle(&owner(&format!("/ignore {id}"))).await.unwrap();
+    let sentence = c.handle(&owner("是的，兩位")).await.unwrap();
+    assert!(reads_as(&sentence.text, |w| w.hint.to_string()), "{}", sentence.text);
+    assert!(matches!(rig.task_status(&id).await, TaskStatus::Pending));
+    let done = c.handle(&owner("1")).await.unwrap();
+    assert!(matches!(rig.task_status(&id).await, TaskStatus::Ignored), "{}", done.text);
+}
+
+/// Two cards in one chat: typing 1 asks for the button and leaves both.
+/// Each button, carrying the whole code, settles only its own card.
+/// Discord and Slack still put that whole code on the button.
+#[tokio::test]
+async fn typing_one_next_to_an_mcp_card_asks_for_the_button_and_each_button_still_works() {
+    let rig = Rig::with_env_bot();
+    let c = rig.controller();
+    let owner_id = rig.task("task-owner-card", "回電給王小明").await;
+    let mcp_id = rig.task("task-mcp-card", "王小明想改約時間").await;
+    let ask = c.handle(&owner(&format!("/ignore {owner_id}"))).await.unwrap();
+    let owner_yes = ask.buttons[0].data.clone();
+    assert!(owner_yes.starts_with("k:") && owner_yes.ends_with(":y") && owner_yes.len() == 36, "{owner_yes}");
+    let chat = access::chat_key(ENV_TELEGRAM, "42");
+    let mcp_code = c.confirms.ask(&chat, confirm::ANY_SENDER, Job::Decide { task_id: mcp_id.clone(), confirm: false });
+    let typed = c.handle(&owner("1")).await.unwrap();
+    assert!(reads_as(&typed.text, |w| w.use_button.to_string()), "{}", typed.text);
+    assert!(typed.buttons.is_empty());
+    assert!(matches!(rig.task_status(&owner_id).await, TaskStatus::Pending));
+    assert!(matches!(rig.task_status(&mcp_id).await, TaskStatus::Pending));
+    let done = c.handle(&press(&owner_yes)).await.unwrap();
+    assert!(matches!(rig.task_status(&owner_id).await, TaskStatus::Ignored), "{}", done.text);
+    assert!(matches!(rig.task_status(&mcp_id).await, TaskStatus::Pending));
+    let mcp_yes = format!("k:{mcp_code}:y");
+    assert!(mcp_yes.len() <= BUTTON_DATA_MAX);
+    let mcp_done = c.handle(&press(&mcp_yes)).await.unwrap();
+    assert!(matches!(rig.task_status(&mcp_id).await, TaskStatus::Ignored), "{}", mcp_done.text);
+    let buttons = [
+        Button { label: "執行".into(), data: owner_yes },
+        Button { label: "執行".into(), data: mcp_yes.clone() },
+    ];
+    assert!(discord::components(&buttons).to_string().contains(&mcp_yes));
+    assert!(slack::actions(&buttons).expect("slack keeps the button").to_string().contains(&mcp_yes));
+}
+
+/// A reply to a scheduled card that asked questions brings that card back
+/// for a yes, and does not take or replace an MCP card waiting beside it.
+#[tokio::test]
+async fn a_scheduled_cards_reply_brings_it_back_and_leaves_the_mcp_card() {
+    let rig = Rig::with_env_bot();
+    let c = rig.controller();
+    let chat = access::chat_key(ENV_TELEGRAM, "42");
+    c.confirms.ask(
+        &chat,
+        "42",
+        Job::Errand {
+            body: json!({
+                "number": "0912345678",
+                "task": "訂餐廳",
+                "preflight_gaps": true,
+                "scheduled_at": "2026-12-01T19:30:00+08:00",
+                "card": ["讓 AI 打給 0912345678：\n訂餐廳", ""]
+            }),
+        },
+    );
+    let mcp = c.confirms.ask(&chat, confirm::ANY_SENDER, Job::Decide { task_id: "mcp-stay".into(), confirm: true });
+    let mut reply_msg = owner("兩位，七點半可以");
+    reply_msg.reply_to_bot = true;
+    let again = c.handle(&reply_msg).await.unwrap();
+    assert_eq!(again.buttons.len(), 2, "{}", again.text);
+    assert!(again.text.contains("兩位，七點半可以"), "{}", again.text);
+    assert_ne!(&again.buttons[0].data, &format!("k:{mcp}:y"));
+    assert_eq!(c.confirms.take(&chat, "7", Some(&mcp)).map(|j| matches!(j, Job::Decide { .. })), Some(true));
+    assert!(c.confirms.waiting(&chat), "the card brought back is still waiting");
+}
