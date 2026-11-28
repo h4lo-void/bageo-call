@@ -7,7 +7,6 @@ import android.content.Context
 import android.util.Log
 import org.json.JSONObject
 import java.io.File
-import java.net.URI
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -16,8 +15,8 @@ import java.nio.ByteOrder
  *
  * The agent opens no console port: the app hands it each console request with [http].
  * Its only socket is the phone bridge on loopback ([BuildConfig.BRIDGE_WS_URL]), which
- * takes a connection only with [bridgeKey] in [BRIDGE_KEY_HEADER] ([bridgeHeaders]).
- * Text crosses JNI as UTF-8 bytes.
+ * takes a connection only with the link check ([PhoneLinkAuth]) on [bridgeKey]; the key
+ * itself never goes over the socket ([linkPlan]). Text crosses JNI as UTF-8 bytes.
  *
  * Keeps all calls guarded by [BuildConfig.STANDALONE] so the lightweight `bridge` flavor
  * never attempts to load a native library.
@@ -30,9 +29,6 @@ object EmbeddedAgent {
         "/data/adb/modules/bageo_ai_call_agent/bageo_assets",
         "/data/adb/modules/pixelcallai_uplink/bageo_assets",
     )
-
-    /** Header the phone bridge checks on every connection. */
-    const val BRIDGE_KEY_HEADER = "x-bageo-bridge-key"
 
     data class Status(
         val running: Boolean,
@@ -155,7 +151,10 @@ object EmbeddedAgent {
         }
     }
 
-    /** The phone bridge key of the running agent (empty when none). Changes on each start. */
+    /**
+     * The phone bridge key of the running agent: empty until its bridge listens (so the
+     * app never talks to whatever holds the port before that). Changes on each start.
+     */
     fun bridgeKey(): String {
         if (!BuildConfig.STANDALONE || !libraryLoaded) return ""
         return try {
@@ -167,26 +166,16 @@ object EmbeddedAgent {
     }
 
     /**
-     * Headers for a WebSocket to [url]: the bridge key when [url] is the standalone phone
-     * bridge on loopback, else null (the `bridge` flavor and other addresses send none).
+     * How a WebSocket to Bageo runs the link check ([PhoneLinkAuth.plan]): standalone with
+     * this start's [bridgeKey] (no connection while it is empty), the `bridge` flavor with
+     * [storedKey], the key Bageo handed over USB.
      */
-    fun bridgeHeaders(url: String): Map<String, String>? {
-        if (!BuildConfig.STANDALONE) return null
-        val (host, port) = try {
-            val u = URI(url.trim())
-            (u.host.orEmpty().lowercase()) to u.port
-        } catch (_: Exception) {
-            return null
-        }
-        val bridge = try {
-            URI(BuildConfig.BRIDGE_WS_URL).port
-        } catch (_: Exception) {
-            return null
-        }
-        if (port != bridge || (host != "127.0.0.1" && host != "localhost")) return null
-        val key = bridgeKey()
-        return if (key.isEmpty()) null else mapOf(BRIDGE_KEY_HEADER to key)
-    }
+    fun linkPlan(storedKey: String?): PhoneLinkAuth.Plan =
+        PhoneLinkAuth.plan(
+            standalone = BuildConfig.STANDALONE,
+            bridgeKey = if (BuildConfig.STANDALONE) bridgeKey() else null,
+            storedKey = storedKey,
+        )
 
     /**
      * One console request handled inside the app, with no network: [target] is the path

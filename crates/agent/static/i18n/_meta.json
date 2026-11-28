@@ -7497,5 +7497,15 @@
     "where": "line on a phone's card and on the phone app's main screen after the owner said they heard no AI voice on a phone that cannot switch call audio settings (Google Pixel): the report is only kept, no other settings are tried, so it must not say settings were changed. English: Noted: this phone's call audio has a problem",
     "who": "the owner",
     "placeholders": []
+  },
+  "ippair_new_app": {
+    "where": "a help line under the pairing code in the console. English: The phone needs the latest Bageo app to pair.",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "ph_link_unchecked": {
+    "where": "a line under a connected phone in the console's System view. English: Connection not verified: update the Bageo app on this phone",
+    "who": "the owner",
+    "placeholders": []
   }
 }

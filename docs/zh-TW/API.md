@@ -786,7 +786,7 @@ Content-Type: application/json
 | `PUT /calls/api/devices/{serial}/sim-number` | Body `{"sub_id": <整數>, "number": "..."}`。設定（空白代表清除）這支手機某張 SIM 的門號，讓來電與 AI 代打直接顯示並依門號挑選：`{ok, serial, sims}`。 |
 | `POST /calls/api/phone-pairing/renew` | 更換 Wi-Fi 配對金鑰（`phone-pairing.key`）並中斷透過 Wi-Fi 連線的手機，每支手機重新插上 USB 一次即可取得新金鑰：`{ok: true}`（失敗回傳 HTTP 500 `save_failed`）。金鑰本身不會回傳。 |
 | `POST /calls/api/phone-pairing/code` | Body `{}`（JSON）。產生 6 位數配對碼，10 分鐘內有效，讓手機不用 USB，輸入 IP 位址和配對碼就能配對；新的碼會取代前一個：`{ok, code, expires_in, port, lan_ips, in_container}`。沒設控制台密碼時，只有 Bageo 那台電腦能要（否則 HTTP 403 `need_password`）；「手機也能用 Wi-Fi 連」關閉時回 HTTP 409 `phone_wifi_off`。 |
-| `POST /api/phone-pairing/claim` | 不在 `/calls/api/` 底下，也不用密碼：配對碼就是憑證。Body `{"code": "123456"}`（JSON）。只回答一次 `{ok: true, token, path: "/ws"}`（走 Wi-Fi 入口埠時另有 `ws_port`）：`token` 就是配對金鑰，手機接著用 `/ws?token=<金鑰>` 連線。錯誤都帶 `code`：`bad_request`、`phone_wifi_off`、`no_code`（沒有可用的碼、已過期或已用過）、`wrong_code`、`too_many_tries`（HTTP 429；輸錯的次數依來源計算，請等一分鐘）。 |
+| `POST /api/phone-pairing/claim` | 不在 `/calls/api/` 底下，也不用密碼：配對碼就是憑證。只接受 HTTPS，Body `{"cnonce": "...", "code_mac": "..."}`（JSON；配對碼跟憑證綁在一起，見 `wifi_tls.rs`）。只回答一次 `{ok: true, token, path: "/ws", link_key, tls_pin, wss, proof}`（走 Wi-Fi 入口埠時另有 `ws_port`）：`token` 就是配對金鑰，手機接著用 `wss://…/ws?token=<金鑰>&pin=<sha256>` 連線；`link_key` 是連線驗證用的金鑰。舊版 App 的明碼 `{"code": "123456"}` 或沒走 TLS 的請求會收到 `old_app`（HTTP 410）。錯誤都帶 `code`：`bad_request`、`phone_wifi_off`、`no_code`（沒有可用的碼、已過期或已用過）、`wrong_code`、`too_many_tries`（HTTP 429；輸錯的次數依來源計算，請等一分鐘）。 |
 | `GET /health` | 排查問題用的大型 JSON 物件：版本、語言、哪些東西已設定、已連線的手機、進行中的通話；不含金鑰或密碼。完整內容要帶控制台密碼；沒設密碼時，只有 Bageo 那台電腦拿得到，其他來源拿短版（見下方說明最後一點）。 |
 | `GET /calls/api/health` | 控制台用，內容和 `/health` 的完整版相同。跟其他 `/calls/api/` 路由一樣：有設密碼而沒帶回 HTTP 401，沒設密碼就開放。 |
 
@@ -834,7 +834,8 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/devices/pixel-12345/mode" \
 
 - 每支手機維持一條長期的 *control* 連線，每通電話另開一條 *media* 連線。
 - 兩種連線都雙向傳送 JSON 文字訊框和原始的 16 kHz 單聲道 16 位元小端序 PCM 二進位訊框（手機每 60 ms 送一框）。
-- 從這台電腦本身來的連線（USB 通道）不需 Token 一律接受；Wi-Fi 連線可連 `PHONE_WIFI_PORT`（預設 `8788`，僅提供 `/ws`）並帶上 USB 配對時發放的 `phone-pairing.key` 或 `DEVICE_TOKEN`，或連到主連接埠並在有設定 `DEVICE_TOKEN` 時帶上 `?token=<DEVICE_TOKEN>`。
+- 從這台電腦本身來的連線（USB 通道）不需 Token 一律接受；Wi-Fi 連線可連 `PHONE_WIFI_PORT`（預設 `8788`，僅提供 `/ws`）並帶上 USB 配對時發放的 `phone-pairing.key` 或 `DEVICE_TOKEN`，或連到主連接埠並在有設定 `DEVICE_TOKEN` 時帶上 `?token=<DEVICE_TOKEN>`。配對金鑰只接受走 TLS（`wss://`）的連線，除非設了 `PHONE_WIFI_ALLOW_PLAIN=true`。
+- **連線驗證：** 從這台電腦本身來的連線不再自動算可信。App 送 `x-bageo-link: 1` 和 `x-bageo-link-cnonce`（32 位元組隨機值，hex）；101 回應帶 `x-bageo-link-snonce` 與 `x-bageo-link-proof`（用連線金鑰 `phone-link.key` 算的 HMAC-SHA256，Bageo 透過 USB 啟動 App 服務時交給 App）；App 的 `hello` 帶 `link_proof`。不符就關線。`PHONE_LINK_AUTH=compat`（預設）時沒做驗證的舊 App 仍可連，但拿不到 Wi-Fi 位址；`required` 一律拒絕。
 
 逐欄位的完整訊息列表在 [`android/README.md`](../../android/README.md#websocket-protocol)（英文）。任何會講這個通訊協定的程式都能代替手機，所以要加上 SIP 或軟體電話前端，完全不用動通話邏輯。雙方都會忽略不認得的東西，所以舊 App、舊版 Bageo照樣能用。
 
@@ -850,7 +851,7 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/devices/pixel-12345/mode" \
 | Bageo → 手機 | `answer_plan` | `{delay_ms, prewarm, reject}`：響多久再接，或 `reject: true` 響鈴中直接拒接（`reject_mode` 為 `decline` 的黑名單號碼）。 |
 | 手機 → Bageo | `call_waiting_rejected` | `{serial, caller_id, sim_country, sim_sub_id}`：通話中又有第二通打進來，手機立刻拒接（AI 模式）。會留下通話紀錄並送出「通話中插播未接」通知。 |
 | Bageo → 手機／手機 → Bageo | `set_mode`／`set_mode_result` | `{mode, id}`／`{id, ok, mode, error}`：遠端切換模式；`error` 用上面的代碼。 |
-| Bageo → 手機 | `agent_info` | `{console_url}` 給 App 的「**打開網頁控制台**」按鈕用（`public_url` 或區網網址）；透過受信任的 USB 通道時另附 `wifi: {urls: [...]}` 提供 Wi-Fi 配對網址（`ws://<區網-IP>:<PHONE_WIFI_PORT>/ws?token=<key>`，開啟區網名稱時另附 `ws://<名稱>.local:<PHONE_WIFI_PORT>/ws?token=<key>`）。 |
+| Bageo → 手機 | `agent_info` | `{console_url}` 給 App 的「**打開網頁控制台**」按鈕用（`public_url` 或區網網址）；透過受信任的連線時另附 `wifi: {urls: [...]}` 提供 Wi-Fi 配對網址（`wss://<區網-IP>:<PHONE_WIFI_PORT>/ws?token=<key>&pin=<sha256>`，開啟區網名稱時另附 `<名稱>.local` 的同樣網址；`ws://` 只在 `PHONE_WIFI_ALLOW_PLAIN=true` 時給）。App 只收通過連線驗證的連線送來、在區網內且有憑證指紋的 `wss://` 網址。 |
 | Bageo → 手機 | `place_call` | `{number, call_id, task_id, sub_id}`：撥出電話（AI 回電或 AI 代打），用 subscription id 為 `sub_id` 的 SIM 撥（找不到就用手機預設的）。忙線時見下方。 |
 | 手機 → Bageo | `place_call_ack`、`place_call_failed`、`outbound_ready`、`call_end` | 撥出的電話已撥號／撥不出去／接通／結束。 |
 | Bageo → 手機 | `send_sms` | `{id, to, text, sub_id}`：傳簡訊給來電者（行程預約）。欄位限制見下方。 |

@@ -274,6 +274,8 @@ class CallAudioService : Service() {
                 EmbeddedAgent.ensureStarted(this)
             }
         }
+        // Bageo over USB hands its link key with the start (never logged).
+        intent?.getStringExtra(PhoneLinkAuth.EXTRA_LINK_KEY)?.let { onLinkKey(it) }
         intent?.getStringExtra(EXTRA_CALLER_ID)?.trim()?.takeIf { it.isNotEmpty() }?.let {
             val instanceId = intent?.getLongExtra(EXTRA_CALL_INSTANCE_ID, NO_CALL_INSTANCE) ?: NO_CALL_INSTANCE
             if (!acceptsCallerIdFor(instanceId)) {
@@ -1621,9 +1623,17 @@ class CallAudioService : Service() {
                 startOk
             }
 
+            val mediaCandidates = Prefs.connectionCandidates(this@CallAudioService)
+            val mediaKey = Prefs.linkKey(this@CallAudioService)
             val client = BridgeClient(
-                // The address the control connection got through on (USB or Wi-Fi).
-                url = AgentControlClient.activeUrl(Prefs.connectionCandidates(this@CallAudioService)),
+                // The address the control connection got through on (USB or Wi-Fi); without a
+                // link key, a pinned one rather than an unchecked USB one.
+                url = PhoneLinkAuth.mediaUrl(
+                    AgentControlClient.activeUrl(mediaCandidates),
+                    mediaCandidates,
+                    BuildConfig.STANDALONE || PhoneLinkAuth.normalizeKey(mediaKey) != null,
+                ),
+                candidates = mediaCandidates,
                 onBinary = { pcm ->
                     if (!isSessionCurrent(generation, callInstanceId)) return@BridgeClient
                     if (BuildConfig.STANDALONE && ownerHandlingCallFlag) return@BridgeClient
@@ -1634,6 +1644,7 @@ class CallAudioService : Service() {
                 onText = { msg -> handleBridgeText(msg, generation, callInstanceId, inj) },
                 pcmDumpDir = File(dumpRoot, "tts_pcm"),
                 onDisconnected = { reason -> onMediaConnectionLost(generation, callInstanceId, smoke, reason) },
+                linkKey = mediaKey,
             )
             if (!mutateCurrentSession(generation, callInstanceId) {
                     bridge = client
@@ -1819,6 +1830,7 @@ class CallAudioService : Service() {
                 // Text message results the agent may have missed while disconnected.
                 smsSender?.replay()
             },
+            linkKey = { Prefs.linkKey(this) },
         )
         controlClient = client
         client.connect(deviceSerial())
@@ -1831,6 +1843,27 @@ class CallAudioService : Service() {
     private fun stopControlClient() {
         controlClient?.close()
         controlClient = null
+    }
+
+    /**
+     * The link key from Bageo's start of this service ([PhoneLinkAuth]): kept in
+     * device-protected storage; a new one restarts the control connection with the check
+     * (not during a call: the next reconnect uses it).
+     */
+    private fun onLinkKey(raw: String) {
+        if (BuildConfig.STANDALONE) return
+        if (!Prefs.setLinkKey(this, raw)) return
+        Log.i(TAG, "link key from Bageo stored")
+        if (!isCallBusy()) controlClient?.reconnectNow()
+    }
+
+    /** Country (ISO, lowercase) of the SIM [subId], else of the default SIM; "" when unknown. */
+    private fun simCountryFor(subId: Int?): String = try {
+        val tm = getSystemService(TelephonyManager::class.java)
+        val t = if (subId != null) tm?.createForSubscriptionId(subId) else tm
+        t?.simCountryIso.orEmpty().trim().lowercase()
+    } catch (_: Exception) {
+        ""
     }
 
     /**
@@ -2172,6 +2205,11 @@ class CallAudioService : Service() {
             return
         }
         val subId = SimSubscriptions.fromCommand(obj)
+        // Never emergency, short, premium-rate or abroad-by-prefix numbers, whoever asks.
+        DialRules.check(number, simCountryFor(subId))?.let { why ->
+            fail(why)
+            return
+        }
         anyCallBusy = true
         if (normalPhoneLink) {
             registerPhoneCallbacks()
@@ -2436,6 +2474,10 @@ class CallAudioService : Service() {
         }
         if (id.isEmpty() || number.isEmpty()) {
             report("failed", "missing_id_or_number")
+            return
+        }
+        DialRules.check(number, simCountryFor(Prefs.lastSimSubId(this)))?.let { why ->
+            report("failed", why)
             return
         }
         mainHandler.post { SilentInCallService.startAddCall(this, id, number, answerTimeoutMs, report) }

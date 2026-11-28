@@ -1411,6 +1411,8 @@
     "sl_second1": "副言語 1",
     "sl_second2": "副言語 2",
     "sl_second_none": "なし",
+    "ippair_new_app": "ペアリングには最新の Bageo アプリが必要です。",
+    "ph_link_unchecked": "接続が確認されていません：このスマホの Bageo アプリを更新してください",
     "err_mcp_token_too_short": "トークンは 24 文字以上にしてください。",
     "mcp_tok_short": "このトークンは短くて推測されやすいです。24 文字以上のものに替えてください。",
     "er_when": "いつかけるか",

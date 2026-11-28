@@ -838,7 +838,7 @@ Details:
 | `PUT /calls/api/devices/{serial}/sim-number` | Body `{"sub_id": <int>, "number": "..."}`. Saves (or clears when empty) the phone number for a SIM on that phone so calls and AI errands show and pick by number: `{ok, serial, sims}`. |
 | `POST /calls/api/phone-pairing/renew` | Rotates the Wi-Fi pairing key (`phone-pairing.key`) and disconnects Wi-Fi-paired phones so each must plug in via USB once more to get the new key: `{ok: true}` (or HTTP 500 `save_failed`). The key is never returned. |
 | `POST /calls/api/phone-pairing/code` | Body `{}` (JSON). Makes a 6-digit pairing code, good for 10 minutes, so a phone can pair by IP address and code without USB; a new code replaces the one before: `{ok, code, expires_in, port, lan_ips, in_container}`. With no console password set, only the computer Bageo runs on may ask (HTTP 403 `need_password`); HTTP 409 `phone_wifi_off` when *Phones can also connect over Wi-Fi* is off. |
-| `POST /api/phone-pairing/claim` | Not under `/calls/api/` and without a password: the code is the proof. Body `{"code": "123456"}` (JSON). Answers once `{ok: true, token, path: "/ws"}` (and `ws_port` on the Wi-Fi entry port): `token` is the pairing key the phone then opens `/ws?token=<key>` with. Errors carry a `code`: `bad_request`, `phone_wifi_off`, `no_code` (none in use, expired or already used), `wrong_code`, `too_many_tries` (HTTP 429; wrong codes are counted per source, so wait a minute). |
+| `POST /api/phone-pairing/claim` | Not under `/calls/api/` and without a password: the code is the proof. Over HTTPS only, body `{"cnonce": "...", "code_mac": "..."}` (JSON; the code bound to the certificate, see `wifi_tls.rs`). Answers once `{ok: true, token, path: "/ws", link_key, tls_pin, wss, proof}` (and `ws_port` on the Wi-Fi entry port): `token` is the pairing key the phone then opens `wss://…/ws?token=<key>&pin=<sha256>` with, `link_key` the key of the link check. The plain `{"code": "123456"}` of older apps, or a request without TLS, gets `old_app` (HTTP 410). Errors carry a `code`: `bad_request`, `phone_wifi_off`, `no_code` (none in use, expired or already used), `wrong_code`, `too_many_tries` (HTTP 429; wrong codes are counted per source, so wait a minute). |
 | `GET /health` | A large flat JSON object for troubleshooting: version, language, what is configured, connected phones, calls in progress; no keys or tokens. The full JSON needs the console password; with none set, only the computer Bageo runs on gets it, and everyone else gets a short version (see the last point below the table). Details are below the table. |
 | `GET /calls/api/health` | The same full JSON as `/health`, for the console. Like the other `/calls/api/` routes: HTTP 401 without the password when one is set, open when none is set. |
 
@@ -887,7 +887,17 @@ frames in both directions (the phone sends 60 ms frames).
 A connection from the computer itself (the USB tunnel) is accepted without a
 token. Wireless connections use `PHONE_WIFI_PORT` (default `8788`, serving
 `/ws` only) with the `phone-pairing.key` pushed over USB or `DEVICE_TOKEN`, or
-the main port with `?token=<DEVICE_TOKEN>` when set.
+the main port with `?token=<DEVICE_TOKEN>` when set. The pairing key is taken
+over TLS (`wss://`) only, unless `PHONE_WIFI_ALLOW_PLAIN=true`.
+
+**Link check.** Coming from the computer itself no longer makes a phone
+trusted. The app sends `x-bageo-link: 1` and `x-bageo-link-cnonce` (32 random
+bytes, hex); the 101 answer carries `x-bageo-link-snonce` and
+`x-bageo-link-proof`, an HMAC-SHA256 with the link key (`phone-link.key`,
+handed to the app when Bageo starts its service over USB); the app's `hello`
+carries `link_proof`. A wrong proof closes the connection. With
+`PHONE_LINK_AUTH=compat` (default) an app without the check still connects but
+gets no Wi-Fi addresses; `required` refuses it.
 
 The complete message list, field by field, is in
 [`android/README.md`](../../android/README.md#websocket-protocol).
@@ -908,7 +918,7 @@ ignore what they do not know, so old apps and older Bageo versions keep working.
 | Bageo → phone | `answer_plan` | `{delay_ms, prewarm, reject}`: how long to ring before answering, or `reject: true` to decline the ringing call (Blacklist numbers with `reject_mode` `decline`). |
 | phone → Bageo | `call_waiting_rejected` | `{serial, caller_id, sim_country, sim_sub_id}`: a second call rang during a call and the phone declined it at once (AI mode). Becomes a call record and a "Missed while on a call" notification. |
 | Bageo → phone / phone → Bageo | `set_mode` / `set_mode_result` | `{mode, id}` / `{id, ok, mode, error}`: the remote mode switch; `error` uses the codes above. |
-| Bageo → phone | `agent_info` | `{console_url}` for the app's **Open the web console** button (`public_url` or the LAN address), plus `wifi: {urls: [...]}` over a trusted USB connection (`ws://<lan-ip>:<PHONE_WIFI_PORT>/ws?token=<key>`, and `ws://<name>.local:<PHONE_WIFI_PORT>/ws?token=<key>` when the network name is enabled). |
+| Bageo → phone | `agent_info` | `{console_url}` for the app's **Open the web console** button (`public_url` or the LAN address), plus `wifi: {urls: [...]}` over a trusted connection (`wss://<lan-ip>:<PHONE_WIFI_PORT>/ws?token=<key>&pin=<sha256>`, and the same with `<name>.local` when the network name is enabled; `ws://` ones only with `PHONE_WIFI_ALLOW_PLAIN=true`). The app keeps only pinned `wss://` addresses on the local network, and only from a connection that passed the link check. |
 | Bageo → phone | `place_call` | `{number, call_id, task_id, sub_id}`: dial out for an AI call-back or an AI errand, from the SIM with subscription id `sub_id` (the phone's default when that SIM is not found). While a call rings or is up, the phone does not dial and answers `place_call_failed` with `reason` `busy`. |
 | phone → Bageo | `place_call_ack`, `place_call_failed`, `outbound_ready`, `call_end` | The outgoing call was dialed / could not be dialed / connected / ended. |
 | Bageo → phone | `send_sms` | `{id, to, text, sub_id}`: text a caller (appointments). An id already sent is answered again and never texted twice. |

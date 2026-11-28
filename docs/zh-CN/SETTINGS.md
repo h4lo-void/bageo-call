@@ -440,6 +440,8 @@ Bageo 可以自己定期备份设置、让你随时手动备份，也能把全�
 | `PUBLIC_URL` | *（空）* | 等同[通知](#通知)里的“通知里的地址”；以网页控制台里的值为准。留空 = 自动（见[高级](#高级)）。 |
 | `MDNS_NAME` | `bageo` | 等同“局域网名称”：用 `http://<这个值>.local/` 打开控制台。以网页控制台里的值为准。 |
 | `PHONE_WIFI_PORT` | `AGENT_PORT` + 1（`8788`） | 手机走 Wi-Fi 时连接的端口。只在没设 `AGENT_HOST` 或设成 `127.0.0.1` 时另外在所有网络接口上打开；只给手机连接用（打不开控制台），一定要带配对码或 `DEVICE_TOKEN`。`0` = 不打开。 |
+| `PHONE_LINK_AUTH` | `compat` | 插 USB 的手机和 Bageo 先互相确认身份才通信。`compat`：旧版应用还能连接，但拿不到 Wi-Fi 地址，“系统”页会提醒更新。`required`：旧版应用一律不让连接。 |
+| `PHONE_WIFI_ALLOW_PLAIN` | *（关）* | `true` = 手机走 Wi-Fi 也能用没加密的 `ws://`（只给不能用 `wss://` 的应用）。关：Wi-Fi 地址只给 `wss://`。 |
 
 走 USB 的手机不受 `DEVICE_TOKEN` 限制，因为 USB 通道的终点就是这台电脑本身。
 

@@ -1847,6 +1847,7 @@ html[data-embed="android"] .brand .word{display:none}
             <div class="ippair-row"><span class="muted" data-i18n="ippair_addr"></span><span id="ipPairAddr"></span></div>
             <div class="ippair-row"><span class="muted" data-i18n="ippair_code"></span><b class="ippair-code" id="ipPairCode"></b></div>
             <div class="help" data-i18n="ippair_valid"></div>
+            <div class="help" data-i18n="ippair_new_app"></div>
           </div>
         </div>
         <div class="card pad">
@@ -7603,6 +7604,9 @@ function phoneItem(s, call, ph) {
     }
   }
   if (ph && ph.link) lines.push(t(ph.link === "wifi" ? "ph_link_wifi" : "ph_link_usb"));
+  if (ph && ph.link_checked === false) {
+    lines.push(h("div", { class: "d" }, h("span", { style: "color:var(--warn)", text: t("ph_link_unchecked") })));
+  }
   if (ph && !ph.supports_mode) lines.push(t("ph_need_update"));
   lines.push(...phoneFitLines(s, ph, normal));
   if (modeErr[s] === "timeout") lines.push(t("pm_err_timeout"));

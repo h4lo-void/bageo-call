@@ -1411,6 +1411,8 @@
     "sl_second1": "Second language 1",
     "sl_second2": "Second language 2",
     "sl_second_none": "None",
+    "ippair_new_app": "The phone needs the latest Bageo app to pair.",
+    "ph_link_unchecked": "Connection not verified: update the Bageo app on this phone",
     "err_mcp_token_too_short": "The token needs at least 24 characters.",
     "mcp_tok_short": "This token is short and easy to guess. Replace it with one of at least 24 characters.",
     "er_when": "When to call",
