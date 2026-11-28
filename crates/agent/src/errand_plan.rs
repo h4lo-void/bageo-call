@@ -723,24 +723,71 @@ fn when_token(tok: &str) -> bool {
         || AM.contains(&s.as_str())
         || MONTHS.iter().any(|(m, _)| s.trim_end_matches(['.', ',']) == *m)
         || (digits && s.trim_end_matches([',', '.', 'º', '°']).chars().all(|c| c.is_ascii_digit()) && s.len() <= 2)
-        // A zone after the time ("UTC", "+0800") stays with it, so the time is refused, never read as local.
-        || zone_word(tok.trim_end_matches([',', '.']))
-        || offset_token(tok.trim_end_matches([',', '.']))
+        // A zone after the time ("UTC", "+0800", "(UTC)", "Z", "Asia/Taipei") stays with it, so the
+        // time is refused, never read as local.
+        || zone_token(&fold_wide(tok))
 }
 
-/// An offset written alone: `+HH`, `+HMM` or `+HHMM` (`-` too: "+08",
-/// "+530", "-0500"), hours up to 14 and minutes under 60. A country code
-/// ("+886", "+44") is none, so a number written after the time stays the number.
-fn offset_token(tok: &str) -> bool {
-    let Some(d) = tok.strip_prefix(['+', '-', '\u{2212}']) else {
+/// A word that names a zone on its own, brackets and a trailing comma or
+/// full stop aside: a zone name ([zone_word]), `Z`, an IANA name
+/// ("Asia/Taipei"), an offset with a colon ("+08:00") or one alone ([offset_token]).
+fn zone_token(word: &str) -> bool {
+    let bare = word.trim_end_matches([',', '.', ';']).trim_matches(['(', ')', '[', ']']).trim_end_matches([',', '.', ';']);
+    !bare.is_empty() && (zone_word(bare) || bare.eq_ignore_ascii_case("z") || iana_zone(bare) || colon_offset(bare) || offset_token(bare))
+}
+
+/// A zone named as "Area/City" ("Asia/Taipei", "America/New_York").
+fn iana_zone(word: &str) -> bool {
+    let parts: Vec<&str> = word.split('/').collect();
+    parts.len() >= 2
+        && parts.iter().all(|p| {
+            p.chars().next().is_some_and(|c| c.is_ascii_uppercase()) && p.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '+'))
+        })
+        && parts.iter().any(|p| p.chars().any(|c| c.is_ascii_lowercase()))
+}
+
+/// An offset with a colon: `+8:00`, `+08:00`, `-05:30`.
+fn colon_offset(word: &str) -> bool {
+    let Some(d) = word.strip_prefix(['+', '-', '\u{2212}']) else {
         return false;
     };
-    if !(2..=4).contains(&d.len()) || !d.chars().all(|c| c.is_ascii_digit()) {
+    let Some((h, m)) = d.split_once(':') else {
+        return false;
+    };
+    (1..=2).contains(&h.len()) && m.len() == 2 && h.chars().chain(m.chars()).all(|c| c.is_ascii_digit())
+}
+
+/// Full-width letters, digits and signs ("８：００", "ＵＴＣ") as their ASCII
+/// ones, and the ideographic space as a space.
+fn fold_wide(text: &str) -> String {
+    text.chars()
+        .map(|c| match c {
+            '\u{FF01}'..='\u{FF5E}' => char::from_u32(c as u32 - 0xFEE0).unwrap_or(c),
+            '\u{3000}' => ' ',
+            _ => c,
+        })
+        .collect()
+}
+
+/// An offset written alone: `+H`, `+HH`, `+HMM` or `+HHMM` (`-` too: "+8",
+/// "+08", "+530", "-0500"), hours up to 14, minutes 00, 30 or 45. A country
+/// code ("+1", "+7", "+886", "+44", "+353") is none, so a number written after
+/// the time stays the number.
+fn offset_token(tok: &str) -> bool {
+    let (sign, d) = match tok.chars().next() {
+        Some(c @ ('+' | '-' | '\u{2212}')) => (c, &tok[c.len_utf8()..]),
+        _ => return false,
+    };
+    if !(1..=4).contains(&d.len()) || !d.chars().all(|c| c.is_ascii_digit()) {
         return false;
     }
-    let (h, m) = d.split_at(d.len() - if d.len() == 2 { 0 } else { 2 });
+    // "+1" and "+7" start numbers in North America and Russia.
+    if d.len() == 1 && sign == '+' && matches!(d, "1" | "7") {
+        return false;
+    }
+    let (h, m) = d.split_at(d.len() - if d.len() <= 2 { 0 } else { 2 });
     let (h, m): (u32, u32) = (h.parse().unwrap_or(99), m.parse().unwrap_or(0));
-    h <= 14 && m < 60
+    h <= 14 && matches!(m, 0 | 30 | 45)
 }
 
 /// The date and time a chat command starts with ("12/1 08:00 0912345678 …"),
@@ -803,7 +850,20 @@ fn zone_word(word: &str) -> bool {
     if !(rest.is_empty() || rest.starts_with(['+', '-'])) {
         return false;
     }
-    ["utc", "gmt"].contains(&name.to_ascii_lowercase().as_str()) || ZONE_NAMES.contains(&name.as_str())
+    let lower = name.to_ascii_lowercase();
+    ["utc", "gmt", "mez", "mesz", "pacific", "eastern"].contains(&lower.as_str()) || ZONE_NAMES.contains(&name.as_str())
+}
+
+/// Whether any word of `text` names a zone, wherever it stands ("UTC 12/1
+/// 08:00", "12/1 08:00 (UTC)", "… Asia/Taipei"): a zone name, `Z`, an IANA
+/// name or an offset with a colon; an offset alone only in brackets ("(+0800)").
+fn mentions_zone(text: &str) -> bool {
+    text.split(char::is_whitespace).any(|raw| {
+        let bare = raw.trim_end_matches([',', '.', ';']).trim_matches(['(', ')', '[', ']']).trim_end_matches([',', '.', ';']);
+        let bracketed = bare.len() != raw.trim_end_matches([',', '.', ';']).len();
+        !bare.is_empty()
+            && (zone_word(bare) || bare.eq_ignore_ascii_case("z") || iana_zone(bare) || colon_offset(bare) || (bracketed && offset_token(bare)))
+    })
 }
 
 /// The words that end a time as [find_time] reads it ("8 pm", "8點半",
@@ -844,6 +904,10 @@ fn word_before(t: &[char], i: usize) -> String {
 /// it (am/pm, h, Uhr, o'clock, heures, horas, 點, 點半, 點30分, 시 30분: [TIME_ENDS])
 /// or after the words a bare hour follows ("at 8", "a las 8": [TIME_BEFORE]).
 pub fn has_zone(text: &str) -> bool {
+    let text = fold_wide(text);
+    if mentions_zone(&text) {
+        return true;
+    }
     let t: Vec<char> = text.chars().collect();
     let mut i = 0;
     while i < t.len() {
@@ -1745,6 +1809,58 @@ mod tests {
             assert!(offset_token(t), "{t}");
         }
         for t in ["+886", "+44", "+1", "+81", "+08000", "0800", "+1599"] {
+            assert!(!offset_token(t), "{t}");
+        }
+    }
+
+    #[test]
+    fn a_zone_written_wide_before_the_time_in_brackets_or_by_its_area_is_refused() {
+        let now = at(2026, 11, 28, 10, 0);
+        for (zoned, lang) in [
+            ("12/1 ８：００ UTC", Lang::ZhTw),
+            ("12/1 20:00 ＵＴＣ", Lang::ZhTw),
+            ("UTC 12/1 08:00", Lang::En),
+            ("UTC+8 12/1 08:00", Lang::En),
+            ("12/1 UTC 08:00", Lang::En),
+            ("12/1 UTC 8點", Lang::ZhTw),
+            ("12/1 08:00 (UTC)", Lang::En),
+            ("12/1 08:00 (+08:00)", Lang::En),
+            ("12/1 08:00 （+0800）", Lang::ZhTw),
+            ("12/1 08:00 z", Lang::En),
+            ("12/1 08:00 Asia/Taipei", Lang::En),
+            ("12/1 08:00 America/New_York", Lang::En),
+            ("1/12 8 Uhr MEZ", Lang::De),
+            ("12/1 8 PM Pacific", Lang::En),
+            ("12/1 8:00 +8", Lang::En),
+        ] {
+            assert!(has_zone(zoned), "{zoned}");
+            assert_eq!(resolve_when(zoned, now, lang), None, "{zoned}");
+        }
+        // The same without a zone still reads; full-width digits too.
+        assert_eq!(resolve_when("12/1 ８：００", now, Lang::ZhTw), Some(at(2026, 12, 1, 8, 0)));
+        assert_eq!(resolve_when("12/1 08:00", now, Lang::En), Some(at(2026, 12, 1, 8, 0)));
+        assert!(!has_zone("Le 1/12 à 20h est parfait"));
+        // A chat command keeps a lone Z, a bracketed offset and a one-digit
+        // offset with the time, so the time is refused.
+        for (cmd, when) in [
+            ("12/1 08:00 Z 0912345678 訂位", "12/1 08:00 Z"),
+            ("12/1 08:00 (+0800) 0912345678 訂位", "12/1 08:00 (+0800)"),
+            ("12/1 08:00 +8 0912345678 訂位", "12/1 08:00 +8"),
+            ("12/1 ８：００ UTC 0912345678 訂位", "12/1 ８：００ UTC"),
+        ] {
+            let (w, rest) = leading_when(cmd).unwrap();
+            assert_eq!((w, rest), (when, "0912345678 訂位"), "{cmd}");
+            assert_eq!(resolve_when(w, now, Lang::ZhTw), None, "{cmd}");
+        }
+        // A country code after the time stays the number's: +1, +7 and three digits.
+        for cmd in ["12/1 08:00 +1 650 555 0164 book", "12/1 08:00 +7 495 123 4567 book", "12/1 08:00 +353 1 234 5678 book"] {
+            let (w, _) = leading_when(cmd).unwrap();
+            assert_eq!(w, "12/1 08:00", "{cmd}");
+        }
+        for t in ["+8", "-5", "+0545", "+1245"] {
+            assert!(offset_token(t), "{t}");
+        }
+        for t in ["+1", "+7", "+353", "+420", "+358", "+1242"] {
             assert!(!offset_token(t), "{t}");
         }
     }
