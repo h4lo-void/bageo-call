@@ -355,6 +355,11 @@ pub struct Errand {
     /// a scheduled errand: its time).
     #[serde(skip_serializing_if = "String::is_empty")]
     pub grab_since: String,
+    /// How many minutes each run of grab mode goes on, as the owner set it
+    /// ([plan::GRAB_MIN_LOW] to [plan::GRAB_MIN_HIGH]); 0: not set (saved
+    /// before it could be), [plan::GRAB_MIN_DEFAULT]. See [`Errand::grab_minutes`].
+    #[serde(skip_serializing_if = "is_zero")]
+    pub grab_min: u32,
     /// When this run's latest tries were dialed (the per-minute safety cap).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub dialed_at: Vec<String>,
@@ -378,6 +383,25 @@ impl Errand {
         utc_of(&self.scheduled_at)
     }
 
+    /// How many minutes a run of grab mode goes on for it: its own, or
+    /// [plan::GRAB_MIN_DEFAULT] when it has none (saved before it could be set).
+    pub fn grab_minutes(&self) -> u32 {
+        match self.grab_min {
+            0 => plan::GRAB_MIN_DEFAULT,
+            m => m.min(plan::GRAB_MIN_HIGH),
+        }
+    }
+
+    /// Grab mode's rules with this errand's window.
+    fn grab_rules(&self) -> plan::GrabRules {
+        plan::GRAB.for_minutes(self.grab_minutes())
+    }
+
+    /// Its minutes of grab mode when that is on (for [plan::hold]).
+    fn grab(&self) -> Option<u32> {
+        self.redial.then(|| self.grab_minutes())
+    }
+
     /// When grab mode tries this errand next, the last try having ended
     /// `ended`; None: its window is over.
     fn grab_next(&self, ended: chrono::DateTime<chrono::Utc>) -> Option<chrono::DateTime<chrono::Utc>> {
@@ -389,12 +413,12 @@ impl Errand {
     /// every errand calling it) under the per-minute cap.
     fn grab_next_after(&self, dials: &[chrono::DateTime<chrono::Utc>], ended: chrono::DateTime<chrono::Utc>) -> Option<chrono::DateTime<chrono::Utc>> {
         let since = utc_of(&self.grab_since).unwrap_or(ended);
-        plan::grab_next_at(&plan::GRAB, since, dials, ended)
+        plan::grab_next_at(&self.grab_rules(), since, dials, ended)
     }
 
     /// The run's window is over: no try may start any more.
     fn grab_over(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
-        utc_of(&self.grab_since).is_some_and(|since| now >= since + plan::span(plan::GRAB.window))
+        utc_of(&self.grab_since).is_some_and(|since| now >= since + plan::span(self.grab_rules().window))
     }
 
     /// The phone this errand holds and from when to when: a scheduled one
@@ -406,12 +430,12 @@ impl Errand {
         }
         if self.status == SCHEDULED {
             let at = self.scheduled()?;
-            return Some((self.phone_asked.clone(), plan::hold(at, self.redial)));
+            return Some((self.phone_asked.clone(), plan::hold(at, self.grab())));
         }
         // No phone yet: it holds none (the span still counts for its number).
         let serial = if self.serial.is_empty() { self.phone_asked.clone() } else { self.serial.clone() };
         let end = if self.redial {
-            utc_of(&self.grab_since).unwrap_or(now) + plan::span(plan::GRAB.window)
+            utc_of(&self.grab_since).unwrap_or(now) + plan::span(self.grab_rules().window)
         } else {
             now + plan::span(plan::PLAIN_HOLD)
         };
@@ -944,9 +968,9 @@ fn pick_lines(phones: &[PhoneView], number: &str, asked: &str, asked_sub_id: Opt
 
 /// The line a call to `number` scheduled at `at` would take when the owner
 /// names none: one that fits the number ([`pick_phone`]) on a phone no errand
-/// holds then ([`Errand::hold`]). Err `line_taken` with the holder when every
-/// such phone is held.
-pub fn free_line_at(store: &ErrandStore, phones: &[PhoneView], number: &str, home: &str, at: chrono::DateTime<chrono::Utc>, grab: bool) -> Result<Pick, Refusal> {
+/// holds then ([`Errand::hold`]; `grab`: its minutes of grab mode, as for
+/// [plan::hold]). Err `line_taken` with the holder when every such phone is held.
+pub fn free_line_at(store: &ErrandStore, phones: &[PhoneView], number: &str, home: &str, at: chrono::DateTime<chrono::Utc>, grab: Option<u32>) -> Result<Pick, Refusal> {
     let first = pick_phone(phones, number, "", home)?;
     let picks = pick_lines(phones, number, "", None, home, false).unwrap_or_else(|_| vec![first.clone()]);
     free_line(store, picks, plan::hold(at, grab), "", false).map_err(|holder| Refusal { code: "line_taken", holder, cross: None })
@@ -2437,8 +2461,10 @@ impl CallHooks {
     /// [plan::GrabRules::queue_wait], never past the run's window.
     pub fn queue_wait(&self) -> Duration {
         let now = chrono::Utc::now();
-        let since = self.store.get(&self.errand_id).and_then(|e| utc_of(&e.grab_since)).unwrap_or(now);
-        plan::queue_wait_left(&plan::GRAB, since, now)
+        let e = self.store.get(&self.errand_id);
+        let since = e.as_ref().and_then(|e| utc_of(&e.grab_since)).unwrap_or(now);
+        let rules = e.map_or(plan::GRAB, |e| e.grab_rules());
+        plan::queue_wait_left(&rules, since, now)
     }
 
     /// A queue held the line past its wait and nobody came on: hung up, and
@@ -3753,7 +3779,7 @@ async fn last_try(store: &ErrandStore, id: &str, mut result: Outcome, code: &str
         }
         let w = words(locale::notify_lang());
         let last = result.summary.trim().to_string();
-        let minutes = (plan::GRAB.window.as_secs() / 60).to_string();
+        let minutes = e.grab_minutes().to_string();
         result = Outcome {
             outcome: "no_answer".into(),
             summary: redial_words(locale::notify_lang()).gave_up.replace("{n}", &e.redial_try().to_string()).replace("{min}", &minutes),
@@ -4004,7 +4030,7 @@ fn plan_notice_body(lang: Lang, e: &Errand, line: &str, settings: &Settings, sta
         (if started { w.started } else { w.scheduled }).to_string(),
         format!("{}{sep}{}", w.when, plan::stamp_label(lang, &e.scheduled_at)),
         format!("{}{sep}{line}", w.line),
-        plan::fill_grab(if e.redial { w.grab } else { w.once }),
+        plan::fill_grab(if e.redial { w.grab } else { w.once }, e.grab_minutes()),
     ];
     let link = errands_url(settings);
     if !link.is_empty() {
@@ -4061,6 +4087,13 @@ impl Env<'_> {
 /// `place_call`, and only while it is still wanted: one errand never goes out
 /// twice, nor after it was cancelled or deleted.
 async fn dial(env: &Env<'_>, id: &str, pick: &Pick) -> Option<Errand> {
+    dial_sent(env, id, pick).await.0
+}
+
+/// [`dial`], and whether the phone was really asked to dial (false: the
+/// phone busy, the per-minute cap, cancelled before the dial, or the dial
+/// waits behind an earlier call to the number or could not be sent).
+async fn dial_sent(env: &Env<'_>, id: &str, pick: &Pick) -> (Option<Errand>, bool) {
     let w = words(locale::notify_lang());
     let label = crate::notify::device_label(&pick.serial);
     let aim = |e: &mut Errand| {
@@ -4102,7 +4135,7 @@ async fn dial(env: &Env<'_>, id: &str, pick: &Pick) -> Option<Errand> {
                 info!(errand = id, serial = pick.serial.as_str(), "errand waits for its phone");
             }
         }
-        return env.store.get(id);
+        return (env.store.get(id), false);
     }
     // "Redial until answered": a first dial (a new errand, "Call again") also
     // keeps to the per-minute cap over every dial to the number.
@@ -4122,8 +4155,9 @@ async fn dial(env: &Env<'_>, id: &str, pick: &Pick) -> Option<Errand> {
             env.store.wake();
             info!(errand = id, "errand waits for the per-minute cap");
         }
-        return env.store.get(id);
+        return (env.store.get(id), false);
     }
+    let stamp = now_stamp();
     let claimed = env.store.update_if(
         id,
         |e| e.status == QUEUED,
@@ -4134,11 +4168,10 @@ async fn dial(env: &Env<'_>, id: &str, pick: &Pick) -> Option<Errand> {
             e.queued_at.clear();
             e.redial_at.clear();
             // Every dial is kept: grab mode's per-minute cap counts all dials to a number.
-            let now = now_stamp();
             if e.redial && e.grab_since.is_empty() {
-                e.grab_since = now.clone();
+                e.grab_since = stamp.clone();
             }
-            e.dialed_at.push(now);
+            e.dialed_at.push(stamp.clone());
             let keep = plan::GRAB.per_minute_cap.max(1);
             if e.dialed_at.len() > keep {
                 e.dialed_at.drain(..e.dialed_at.len() - keep);
@@ -4147,16 +4180,23 @@ async fn dial(env: &Env<'_>, id: &str, pick: &Pick) -> Option<Errand> {
     );
     let Some(placed) = claimed else {
         // Another dial has it, or it is no longer waiting.
-        return env.store.get(id);
+        return (env.store.get(id), false);
     };
     let script = build_script(env, &placed, &pick.country).await;
     if !env.store.call_allowed(id) {
+        // Not placed: this dial does not count against the per-minute cap.
+        env.store.update(id, |e| {
+            if e.dialed_at.last() == Some(&stamp) {
+                e.dialed_at.pop();
+            }
+        });
         info!(errand = id, "errand cancelled before its dial: not placed");
-        return env.store.get(id);
+        return (env.store.get(id), false);
     }
     // The checked E.164 number: what the owner wrote may not dial as it is.
     let code = appointments::place_errand_call(env.control, id, &pick.e164, &pick.serial, pick.sub_id, script).await;
     info!(errand = id, serial = pick.serial.as_str(), sub_id = ?pick.sub_id, code = code.as_str(), "errand dial");
+    let sent = code == "dialing";
     let wanted = env.store.call_allowed(id);
     match code.as_str() {
         // Cancelled while it was sent: its call is hung up as it starts.
@@ -4187,11 +4227,21 @@ async fn dial(env: &Env<'_>, id: &str, pick: &Pick) -> Option<Errand> {
         }
         other => fail(&env.cb(), env.store, id, other).await,
     }
-    env.store.get(id)
+    (env.store.get(id), sent)
 }
 
 fn body_str(body: &Value, key: &str) -> String {
     body.get(key).and_then(Value::as_str).unwrap_or("").to_string()
+}
+
+/// `grab_min` of a request body: a whole number of minutes from
+/// [plan::GRAB_MIN_LOW] to [plan::GRAB_MIN_HIGH]; None when not given. Err
+/// `bad_grab_min` for anything else (never changed into a value that fits).
+fn grab_min_of(body: &Value) -> Result<Option<u32>, &'static str> {
+    match body.get("grab_min") {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v.as_u64().filter(|m| plan::grab_min_ok(*m)).map(|m| Some(m as u32)).ok_or("bad_grab_min"),
+    }
 }
 
 /// Why an errand was not made or changed: its 400 code, and the details
@@ -4222,6 +4272,9 @@ pub async fn create(env: &Env<'_>, body: &Value) -> Result<Errand, &'static str>
 /// errand may hold then ([`Errand::hold`]); `grab` (default on) is "Redial
 /// until answered" for it. Without, it dials now from a line no scheduled
 /// errand holds over its call (`line_reserved` when the one asked for is).
+/// `grab_min`: how many minutes grab mode goes on ([plan::GRAB_MIN_DEFAULT]
+/// when not given; `bad_grab_min` outside [plan::GRAB_MIN_LOW] to
+/// [plan::GRAB_MIN_HIGH] or not a whole number).
 pub async fn create_with(env: &Env<'_>, body: &Value) -> Result<Errand, Refusal> {
     let follow_up_of = body_str(body, "follow_up_of").trim().to_string();
     let earlier = if follow_up_of.is_empty() {
@@ -4292,11 +4345,13 @@ pub async fn create_with(env: &Env<'_>, body: &Value) -> Result<Errand, Refusal>
         Some(Value::String(s)) => Some(plan::parse_at(s)?.with_timezone(&chrono::Utc)),
         Some(_) => return Err("bad_time".into()),
     };
+    let grab_min = grab_min_of(body)?.unwrap_or(plan::GRAB_MIN_DEFAULT);
     let now = chrono::Utc::now();
     let redial = match schedule {
         Some(_) => body.get("grab").or_else(|| body.get("redial")).and_then(Value::as_bool).unwrap_or(true),
         None => body.get("redial").and_then(Value::as_bool).unwrap_or(false),
     };
+    let grab = redial.then_some(grab_min);
     if let Some(at) = schedule {
         plan::check_at(at, now)?;
         if asked.is_empty() || asked_sub_id.is_none() {
@@ -4312,8 +4367,8 @@ pub async fn create_with(env: &Env<'_>, body: &Value) -> Result<Errand, Refusal>
         }
     };
     let span = match schedule {
-        Some(at) => plan::hold(at, redial),
-        None => (now, now + plan::span(if redial { plan::GRAB.window } else { plan::PLAIN_HOLD })),
+        Some(at) => plan::hold(at, grab),
+        None => (now, now + plan::span(grab.map_or(plan::PLAIN_HOLD, plan::grab_window))),
     };
     let picks = pick_lines(&env.phones, &number, &asked, asked_sub_id, &home, abroad_ok).unwrap_or_else(|_| vec![first.clone()]);
     let pick = free_line(env.store, picks, span, "", schedule.is_none()).map_err(|holder| Refusal {
@@ -4338,6 +4393,7 @@ pub async fn create_with(env: &Env<'_>, body: &Value) -> Result<Errand, Refusal>
         sub_id_asked: asked_sub_id,
         abroad_ok,
         redial,
+        grab_min,
         answers,
         place_type: crate::place_habits::clean_type(&body_str(body, "place_type")),
         ..Default::default()
@@ -4359,11 +4415,11 @@ pub async fn create_with(env: &Env<'_>, body: &Value) -> Result<Errand, Refusal>
         env.store.insert_checked(e.clone(), &pick.serial, span)?;
         env.store.persist().await;
         env.store.wake();
-        info!(errand = id.as_str(), serial = pick.serial.as_str(), at = e.scheduled_at.as_str(), grab = redial, "errand scheduled");
+        info!(errand = id.as_str(), serial = pick.serial.as_str(), at = e.scheduled_at.as_str(), grab = redial, grab_min, "errand scheduled");
         notify_plan(env, &e, false);
         return Ok(e);
     }
-    // A call now's run of redials counts its 30 minutes from now, restart or not.
+    // A call now's run of redials counts its minutes from now, restart or not.
     if redial {
         e.grab_since = now_stamp();
     }
@@ -4379,9 +4435,9 @@ pub async fn create_with(env: &Env<'_>, body: &Value) -> Result<Errand, Refusal>
 }
 
 /// `POST …/{id}/schedule`: a scheduled errand that has not started gets a new
-/// time (`scheduled_at`), and may change its line (`serial`, `sub_id`) and
-/// grab mode (`grab`), with the checks of [`create_with`]. Err `not_scheduled`
-/// once it has started or ended.
+/// time (`scheduled_at`), and may change its line (`serial`, `sub_id`), grab
+/// mode (`grab`) and its minutes (`grab_min`), with the checks of
+/// [`create_with`]. Err `not_scheduled` once it has started or ended.
 pub async fn reschedule(env: &Env<'_>, id: &str, body: &Value) -> Result<Errand, Refusal> {
     let e = env.store.get(id).ok_or("not_found")?;
     if e.status != SCHEDULED {
@@ -4398,7 +4454,9 @@ pub async fn reschedule(env: &Env<'_>, id: &str, body: &Value) -> Result<Errand,
         _ => return Err("no_phone".into()),
     };
     let sub_id = body.get("sub_id").and_then(Value::as_i64).filter(|n| *n >= 0).or(e.sub_id_asked);
-    let grab = body.get("grab").and_then(Value::as_bool).unwrap_or(e.redial);
+    let redial = body.get("grab").and_then(Value::as_bool).unwrap_or(e.redial);
+    let grab_min = grab_min_of(body)?.unwrap_or_else(|| e.grab_minutes());
+    let grab = redial.then_some(grab_min);
     // A call abroad confirmed for one SIM is not confirmed for another: a new
     // line needs the owner's confirmation again (`abroad_ok`).
     let asked_ok = body.get("abroad_ok").and_then(Value::as_bool).unwrap_or(false);
@@ -4414,10 +4472,11 @@ pub async fn reschedule(env: &Env<'_>, id: &str, body: &Value) -> Result<Errand,
     let span = plan::hold(at, grab);
     let stamp = stamp_of(at);
     let label = crate::notify::device_label(&pick.serial);
-    let changed = env.store.update_if_free(id, span, &pick.serial, grab, |e| {
+    let changed = env.store.update_if_free(id, span, &pick.serial, redial, |e| {
         e.scheduled_at = stamp.clone();
         e.grab_since = stamp.clone();
-        e.redial = grab;
+        e.redial = redial;
+        e.grab_min = grab_min;
         e.serial = pick.serial.clone();
         e.sub_id = pick.sub_id;
         e.sim_country = pick.country.clone();
@@ -4499,7 +4558,7 @@ pub async fn retry_with(env: &Env<'_>, id: &str, abroad_ok: bool) -> Result<Erra
     };
     // A call now: not on a phone a scheduled errand holds over it.
     let now = chrono::Utc::now();
-    let span = (now, now + plan::span(if e.redial { plan::GRAB.window } else { plan::PLAIN_HOLD }));
+    let span = (now, now + plan::span(e.grab().map_or(plan::PLAIN_HOLD, plan::grab_window)));
     let picks = pick_lines(&env.phones, &e.number, &e.phone_asked, e.sub_id_asked, &home, abroad_ok).unwrap_or_else(|_| vec![first.clone()]);
     let pick = free_line(env.store, picks, span, id, true).map_err(|holder| Refusal { code: "line_reserved", holder, cross: None })?;
     let stamp = now_stamp();
@@ -4520,7 +4579,7 @@ pub async fn retry_with(env: &Env<'_>, id: &str, abroad_ok: bool) -> Result<Erra
         e.serial = pick.serial.clone();
         e.sub_id = pick.sub_id;
         e.sim_country = pick.country.clone();
-        // "Redial until answered": a new run of tries, its 30 minutes from now.
+        // "Redial until answered": a new run of tries, its minutes from now.
         e.redial_at.clear();
         e.grab_since.clear();
         if e.redial {
@@ -4610,7 +4669,7 @@ pub async fn sweep(env: &Env<'_>) {
     for e in env.store.all().into_iter().filter(|e| e.status == QUEUED && !e.queued_at.is_empty()) {
         let behind = appointments::errand_call_known(&e.id);
         // A scheduled errand waits for its phone as long as grab mode's window.
-        let phone_limit = if e.scheduled_at.is_empty() { QUEUE_LIMIT } else { plan::GRAB.window };
+        let phone_limit = if e.scheduled_at.is_empty() { QUEUE_LIMIT } else { e.grab_rules().window };
         let (limit, code) = if behind { (SAME_NUMBER_LIMIT, "number_busy") } else { (phone_limit, "phone_busy") };
         if age(&e.queued_at).is_some_and(|a| a >= limit) {
             // Its turn may have just come: then its call is out, not given up.
@@ -4637,10 +4696,13 @@ pub async fn sweep(env: &Env<'_>) {
 /// "Redial until answered": errands whose next try is due are dialed (a busy
 /// phone: looked at again a second later). One whose last call is not over
 /// yet waits for it. Once its window is over (no phone could dial, the phone
-/// stayed busy, or Bageo was off meanwhile) it ends with its one notification.
-async fn redial_due(env: &Env<'_>, home: &str) {
+/// stayed busy, or Bageo was off meanwhile) it ends with its one notification,
+/// sent in the background. The errands whose next try really went out to the
+/// phone (the only ones logged as dialed again).
+async fn redial_due(env: &Env<'_>, home: &str) -> Vec<String> {
     let now = chrono::Utc::now();
     let w = words(locale::notify_lang());
+    let mut dialed = Vec::new();
     for e in env.store.all().into_iter().filter(Errand::redial_waits) {
         let due = chrono::DateTime::parse_from_rfc3339(e.redial_at.trim()).map(|t| t.with_timezone(&chrono::Utc)).unwrap_or(now);
         if due > now || appointments::errand_call_known(&e.id) {
@@ -4660,9 +4722,9 @@ async fn redial_due(env: &Env<'_>, home: &str) {
         match pick_phone_abroad(&env.phones, &e.number, &e.phone_asked, e.sub_id_asked, home, e.abroad_ok) {
             Ok(pick) => {
                 // Logged only for a dial really sent: a busy phone is looked at every second.
-                let last = e.dialed_at.last();
-                if dial(env, &e.id, &pick).await.is_some_and(|x| x.dialed_at.last() != last) {
+                if dial_sent(env, &e.id, &pick).await.1 {
                     info!(errand = e.id.as_str(), next_try = e.redial_try(), "errand: dialed again");
+                    dialed.push(e.id.clone());
                 }
             }
             Err(code) => {
@@ -4675,6 +4737,7 @@ async fn redial_due(env: &Env<'_>, home: &str) {
             }
         }
     }
+    dialed
 }
 
 /// What is due now, run by the timer at [`ErrandStore::next_due`] (to the
@@ -4717,7 +4780,7 @@ fn due_state(e: &Errand, now: chrono::DateTime<chrono::Utc>) -> Due {
     };
     if now < at - plan::span(plan::GRAB.lead) {
         Due::Not
-    } else if now >= plan::start_by(at, e.redial) {
+    } else if now >= plan::start_by(at, e.grab()) {
         Due::Missed
     } else {
         Due::Start
@@ -4788,9 +4851,11 @@ async fn start_scheduled(env: &Env<'_>, id: &str) {
 struct ApiQuery {
     token: Option<String>,
     after: Option<u64>,
-    /// `…/lines`: the time of the call (empty: now), grab mode, the errand being moved.
+    /// `…/lines`: the time of the call (empty: now), grab mode and its
+    /// minutes, the errand being moved.
     at: Option<String>,
     grab: Option<bool>,
+    grab_min: Option<String>,
     except: Option<String>,
 }
 
@@ -4879,12 +4944,15 @@ fn errand_answer(r: Result<Errand, &'static str>) -> Response {
     }
 }
 
-/// Grab mode's numbers as the console shows them.
+/// Grab mode's numbers as the console shows them (`window_min`: the minutes
+/// a new errand gets unless the owner sets others, from `min_low` to `min_high`).
 fn grab_json() -> Value {
     json!({
         "lead_s": plan::GRAB.lead.as_secs(),
         "gap_s": plan::GRAB.gap.as_secs(),
-        "window_min": plan::GRAB.window.as_secs() / 60,
+        "window_min": plan::GRAB_MIN_DEFAULT,
+        "min_low": plan::GRAB_MIN_LOW,
+        "min_high": plan::GRAB_MIN_HIGH,
         "max_days": plan::MAX_DAYS,
         "max_open": plan::OPEN_MAX,
         "tz": plan::zone_name(),
@@ -4955,21 +5023,29 @@ async fn schedule_errand(State(state): State<CallsState>, headers: HeaderMap, Qu
     }
 }
 
-/// `GET …/errands/lines?at=&grab=&except=`: the lines another errand holds
-/// over a call at `at` (empty: now) with grab mode on or off, and by which
-/// one: the console greys them out. `except`: the errand being moved.
+/// `GET …/errands/lines?at=&grab=&grab_min=&except=`: the lines another
+/// errand holds over a call at `at` (empty: now) with grab mode on (for
+/// `grab_min` minutes, default 30) or off, and by which one: the console
+/// greys them out. `except`: the errand being moved.
 async fn errand_lines(State(state): State<CallsState>, headers: HeaderMap, Query(q): Query<ApiQuery>) -> Response {
     if let Some(r) = refused(&state, &headers, &q, None) {
         return r;
     }
-    let grab = q.grab.unwrap_or(false);
+    let grab_min = match q.grab_min.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        None => plan::GRAB_MIN_DEFAULT,
+        Some(s) => match s.parse::<u64>().ok().filter(|m| plan::grab_min_ok(*m)) {
+            Some(m) => m as u32,
+            None => return bad("bad_grab_min"),
+        },
+    };
+    let grab = q.grab.unwrap_or(false).then_some(grab_min);
     let now = chrono::Utc::now();
     let span = match q.at.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         Some(s) => match plan::parse_at(s) {
             Ok(at) => plan::hold(at.with_timezone(&chrono::Utc), grab),
             Err(code) => return bad(code),
         },
-        None => (now, now + plan::span(if grab { plan::GRAB.window } else { plan::PLAIN_HOLD })),
+        None => (now, now + plan::span(grab.map_or(plan::PLAIN_HOLD, plan::grab_window))),
     };
     let except = q.except.clone().unwrap_or_default();
     // A call now only keeps off lines held for a schedule (it may wait behind another call now).
@@ -7463,14 +7539,14 @@ mod tests {
         let other = create(&env, &scheduled_body("0223459204", "pixel-plan-2b", 5, &in_minutes(60))).await.unwrap();
         assert_eq!((after.status.as_str(), other.status.as_str()), (SCHEDULED, SCHEDULED));
         // What the console asks: who holds the phone then; the errand being moved holds nothing for itself.
-        let span = plan::hold(a.scheduled().unwrap(), true);
+        let span = plan::hold(a.scheduled().unwrap(), Some(30));
         assert_eq!(rig.store.holder("pixel-plan-2", span, "", false).map(|h| h.id), Some(a.id.clone()));
         assert_eq!(rig.store.holder("pixel-plan-2", span, &a.id, false), None);
         // The chat's pick for that time: a phone nobody holds, else line_taken.
         let at = a.scheduled().unwrap();
-        let busy_all = free_line_at(&rig.store, &phones, "0223459205", "tw", at, true).unwrap_err();
+        let busy_all = free_line_at(&rig.store, &phones, "0223459205", "tw", at, Some(30)).unwrap_err();
         assert_eq!(busy_all.code, "line_taken");
-        let free = free_line_at(&rig.store, &phones, "0223459205", "tw", at + chrono::Duration::minutes(65), true).unwrap();
+        let free = free_line_at(&rig.store, &phones, "0223459205", "tw", at + chrono::Duration::minutes(65), Some(30)).unwrap();
         assert_eq!(free.serial, "pixel-plan-2");
     }
 
@@ -7538,7 +7614,7 @@ mod tests {
         // Cancelled: it never dials, and holds no phone.
         let c = cancel(&env, &b.id).await.unwrap();
         assert_eq!(c.status, CANCELLED);
-        assert_eq!(rig.store.holder("pixel-plan-4", plan::hold(b.scheduled().unwrap(), true), "", false), None);
+        assert_eq!(rig.store.holder("pixel-plan-4", plan::hold(b.scheduled().unwrap(), Some(30)), "", false), None);
         assert_eq!(reschedule(&env, &b.id, &json!({"scheduled_at": in_minutes(30)})).await.unwrap_err().code, "not_scheduled");
         // Deleted while waiting.
         delete(&env, &a.id).await.unwrap();
@@ -7564,7 +7640,7 @@ mod tests {
         once["grab"] = json!(false);
         let e = create(&env, &once).await.unwrap();
         assert!(!e.redial);
-        let span = plan::hold(e.scheduled().unwrap(), false);
+        let span = plan::hold(e.scheduled().unwrap(), None);
         assert_eq!(span.1 - span.0, chrono::Duration::minutes(12) + chrono::Duration::seconds(2));
         // Local times without an offset are the owner's.
         let local = (chrono::Local::now() + chrono::Duration::days(2)).format("%Y-%m-%dT%H:%M").to_string();
@@ -8009,5 +8085,258 @@ mod tests {
         // Confirmed for the new line: moved, and that confirmation kept.
         let moved = reschedule(&env, &e.id, &json!({"scheduled_at": in_minutes(120), "serial": "pixel-plan-16b", "sub_id": 3, "abroad_ok": true})).await.unwrap();
         assert_eq!((moved.phone_asked.as_str(), moved.sub_id_asked, moved.abroad_ok), ("pixel-plan-16b", Some(3), true));
+    }
+
+    /// "Keep redialing for": a whole number of minutes from 1 to 120, 30
+    /// when not given; anything else is refused (`bad_grab_min`), never
+    /// changed into a value that fits, for a schedule and a call now alike.
+    #[tokio::test]
+    async fn grab_minutes_must_be_a_whole_number_from_1_to_120() {
+        let rig = Rig::new();
+        let env = rig.env(vec![phone("pixel-grab-1", &[(1, "tw")])]);
+        for bad in [json!(0), json!(121), json!(10.5), json!("30"), json!(-1), json!(true)] {
+            let mut body = scheduled_body("0223459901", "pixel-grab-1", 1, &in_minutes(60));
+            body["grab_min"] = bad.clone();
+            assert_eq!(create(&env, &body).await.map(|e| e.id), Err("bad_grab_min"), "{bad}");
+            let now = json!({"number": "0223459902", "task": "問營業時間", "redial": true, "grab_min": bad});
+            assert_eq!(create(&env, &now).await.map(|e| e.id), Err("bad_grab_min"), "now {}", now["grab_min"]);
+        }
+        assert!(rig.store.list().is_empty(), "nothing made");
+        for (min, mins) in [(1u32, 60i64), (120, 300)] {
+            let mut body = scheduled_body("0223459903", "pixel-grab-1", 1, &in_minutes(mins));
+            body["grab_min"] = json!(min);
+            let e = create(&env, &body).await.unwrap();
+            assert_eq!((e.grab_min, e.grab_minutes()), (min, min));
+        }
+        // Not given: 30.
+        let e = create(&env, &scheduled_body("0223459904", "pixel-grab-1", 1, &in_minutes(24 * 60))).await.unwrap();
+        assert_eq!((e.grab_min, e.grab_minutes()), (30, 30));
+        assert_eq!(serde_json::to_value(&e).unwrap()["grab_min"], 30);
+    }
+
+    /// The phone and the number are held for each schedule's own minutes:
+    /// a short run leaves room right after it, a long one keeps both longer.
+    #[tokio::test]
+    async fn a_schedule_holds_its_phone_and_number_for_its_own_minutes() {
+        let rig = Rig::new();
+        let phones = vec![phone("pixel-grab-2", &[(1, "tw"), (2, "tw")]), phone("pixel-grab-2b", &[(3, "tw")])];
+        let env = rig.env(phones.clone());
+        let with_min = |number: &str, serial: &str, sub: i64, mins: i64, min: u32| {
+            let mut body = scheduled_body(number, serial, sub, &in_minutes(mins));
+            body["grab_min"] = json!(min);
+            body
+        };
+        // A: 10 minutes from +60. B at +71 on that phone: free (it would clash with 30 minutes).
+        let a = create(&env, &with_min("0223459911", "pixel-grab-2", 1, 60, 10)).await.unwrap();
+        let b = create(&env, &with_min("0223459912", "pixel-grab-2", 2, 71, 30)).await.unwrap();
+        assert_eq!(b.status, SCHEDULED);
+        // C: 90 minutes from +200. D at +260 on that phone: refused, C named; at +291: free.
+        let c = create(&env, &with_min("0223459913", "pixel-grab-2", 1, 200, 90)).await.unwrap();
+        let r = create_with(&env, &with_min("0223459914", "pixel-grab-2", 2, 260, 5)).await.unwrap_err();
+        assert_eq!((r.code, r.holder.map(|h| h.id)), ("line_taken", Some(c.id.clone())));
+        create(&env, &with_min("0223459914", "pixel-grab-2", 2, 291, 5)).await.unwrap();
+        // The same number on another phone within C's 90 minutes: number_taken.
+        let r = create_with(&env, &with_min("0223459913", "pixel-grab-2b", 3, 280, 5)).await.unwrap_err();
+        assert_eq!((r.code, r.holder.map(|h| h.id)), ("number_taken", Some(c.id.clone())));
+        // What the errand says it holds, and the chat's pick for a time, follow the minutes too.
+        let (_, held) = rig.store.get(&a.id).unwrap().hold(chrono::Utc::now()).unwrap();
+        assert_eq!(held.1 - held.0, chrono::Duration::minutes(10) + chrono::Duration::seconds(2));
+        let at = c.scheduled().unwrap() + chrono::Duration::minutes(60);
+        assert_eq!(free_line_at(&rig.store, &phones, "0223459915", "tw", at, Some(10)).unwrap().serial, "pixel-grab-2b");
+        // A call now redialing for 20 minutes holds its phone 20 minutes: a schedule in 15 minutes there is refused, in 25 is not.
+        let now_call = create(&rig.env(vec![phone("pixel-grab-2c", &[(4, "tw")])]), &json!({"number": "0223459916", "task": "問營業時間", "redial": true, "grab_min": 20})).await.unwrap();
+        assert_eq!(now_call.grab_min, 20);
+        let env_c = rig.env(vec![phone("pixel-grab-2c", &[(4, "tw")])]);
+        let r = create_with(&env_c, &with_min("0223459917", "pixel-grab-2c", 4, 15, 5)).await.unwrap_err();
+        assert_eq!((r.code, r.holder.map(|h| h.id)), ("line_taken", Some(now_call.id.clone())));
+        create(&env_c, &with_min("0223459917", "pixel-grab-2c", 4, 25, 5)).await.unwrap();
+    }
+
+    /// Redialing stops once the errand's own minutes are over (7 here, not
+    /// 30): the notice says those minutes; within them it goes on. The timer
+    /// ends one whose minutes ran out while its phone stayed busy.
+    #[tokio::test]
+    async fn redial_stops_when_its_own_minutes_are_over() {
+        let rig = Rig::new();
+        let cb_env = rig.env(vec![]);
+        let cb = cb_env.cb();
+        let ago = |s: i64| stamp_of(chrono::Utc::now() - chrono::Duration::seconds(s));
+        redialing(&rig, "e-grab-7", "0223459921");
+        rig.store.update("e-grab-7", |e| {
+            e.grab_min = 7;
+            e.grab_since = ago(4 * 60);
+        });
+        after_call(&cb, &rig.store, "e-grab-7", "rec-e-grab-7", "", "", false).await;
+        assert_eq!(rig.store.get("e-grab-7").unwrap().status, QUEUED, "within its 7 minutes");
+        rig.store.update("e-grab-7", |e| {
+            e.status = DIALING.into();
+            e.redial_at.clear();
+            e.grab_since = ago(7 * 60 - 2);
+        });
+        after_call(&cb, &rig.store, "e-grab-7", "rec-e-grab-7", "", "", false).await;
+        let e = rig.store.get("e-grab-7").unwrap();
+        assert_eq!((e.status.as_str(), e.call_code.as_str()), (NO_ANSWER, "no_answer"));
+        let summary = e.result.unwrap().summary;
+        assert!(summary.contains('7') && !summary.contains("30"), "{summary}");
+        assert_eq!(notices("e-grab-7"), 1);
+        // The same errand set to 30 would still go on.
+        redialing(&rig, "e-grab-30", "0223459922");
+        rig.store.update("e-grab-30", |e| e.grab_since = ago(7 * 60 - 2));
+        after_call(&cb, &rig.store, "e-grab-30", "rec-e-grab-30", "", "", false).await;
+        assert_eq!(rig.store.get("e-grab-30").unwrap().status, QUEUED);
+        // Waiting for a busy phone past its 5 minutes: the timer ends it.
+        let mut busy = phone("pixel-grab-3", &[(1, "tw")]);
+        busy.busy = true;
+        let w = create(&rig.env(vec![busy.clone()]), &json!({"number": "0223459923", "task": "訂位", "redial": true, "grab_min": 5})).await.unwrap();
+        assert_eq!(w.call_code, "phone_busy");
+        rig.store.update(&w.id, |x| {
+            x.grab_since = ago(5 * 60 + 1);
+            x.redial_at = ago(1);
+        });
+        due(&rig.env(vec![busy])).await;
+        assert_eq!(rig.store.get(&w.id).unwrap().status, NO_ANSWER);
+    }
+
+    /// An errand saved before it had its own minutes redials for 30, also
+    /// over a restart; one saved with its minutes keeps them over a restart.
+    #[tokio::test]
+    async fn errands_saved_without_minutes_redial_for_thirty_and_a_restart_keeps_each_ones_minutes() {
+        let mut rig = Rig::new();
+        std::fs::create_dir_all(&rig.root).unwrap();
+        let ago = |mins: i64| stamp_of(chrono::Utc::now() - chrono::Duration::minutes(mins));
+        let waiting = |id: &str, number: &str, since: String| {
+            json!({"id": id, "number": number, "task": "訂位", "status": QUEUED, "call_code": REDIAL_WAIT, "attempts": 2, "redial": true,
+                "redial_at": ago(0), "grab_since": since, "created_at": ago(60)})
+        };
+        // Saved without grab_min: 25 minutes in, still going; 31 minutes in, over.
+        let old_going = waiting("e-grab-old-1", "0223459931", ago(25));
+        let old_over = waiting("e-grab-old-2", "0223459932", ago(31));
+        // Saved with its minutes: 10 (11 minutes in, over) and 60 (45 minutes in, going).
+        let mut short = waiting("e-grab-new-1", "0223459933", ago(11));
+        short["grab_min"] = json!(10);
+        let mut long = waiting("e-grab-new-2", "0223459934", ago(45));
+        long["grab_min"] = json!(60);
+        let path = rig.root.join("grab-restart.json");
+        std::fs::write(&path, serde_json::to_vec(&json!({"errands": [old_going, old_over, short, long]})).unwrap()).unwrap();
+        rig.store = ErrandStore::open(path, SimBook::in_memory());
+        let old = rig.store.get("e-grab-old-1").unwrap();
+        assert_eq!((old.grab_min, old.grab_minutes()), (0, 30));
+        assert!(serde_json::to_value(&old).unwrap().get("grab_min").is_none(), "an old one is saved as it was");
+        assert_eq!(rig.store.get("e-grab-new-2").unwrap().grab_minutes(), 60);
+        due(&rig.env(vec![])).await;
+        for (id, over) in [("e-grab-old-1", false), ("e-grab-old-2", true), ("e-grab-new-1", true), ("e-grab-new-2", false)] {
+            let e = rig.store.get(id).unwrap();
+            assert_eq!(e.status == NO_ANSWER, over, "{id}: {}", e.status);
+            assert_eq!(notices(id), usize::from(over), "{id}");
+        }
+        // An old scheduled one holds its line 30 minutes.
+        let at = stamp_of(chrono::Utc::now() + chrono::Duration::hours(3));
+        let sched = json!({"id": "e-grab-old-3", "number": "0223459935", "task": "訂位", "status": SCHEDULED, "redial": true, "phone_asked": "pixel-grab-4",
+            "sub_id_asked": 1, "scheduled_at": at, "grab_since": at});
+        let path = rig.root.join("grab-restart-2.json");
+        std::fs::write(&path, serde_json::to_vec(&json!({"errands": [sched]})).unwrap()).unwrap();
+        rig.store = ErrandStore::open(path, SimBook::in_memory());
+        let (_, held) = rig.store.get("e-grab-old-3").unwrap().hold(chrono::Utc::now()).unwrap();
+        assert_eq!(held.1 - held.0, chrono::Duration::minutes(30) + chrono::Duration::seconds(2));
+    }
+
+    /// Moving a schedule may change its minutes, with the same check, and
+    /// the line is looked at again for the new minutes; without them it
+    /// keeps its own.
+    #[tokio::test]
+    async fn moving_a_schedule_can_change_its_minutes_and_checks_the_line_again() {
+        let rig = Rig::new();
+        let env = rig.env(vec![phone("pixel-grab-5", &[(1, "tw")])]);
+        let mut body = scheduled_body("0223459941", "pixel-grab-5", 1, &in_minutes(60));
+        body["grab_min"] = json!(10);
+        let a = create(&env, &body).await.unwrap();
+        let b = create(&env, &scheduled_body("0223459942", "pixel-grab-5", 1, &in_minutes(100))).await.unwrap();
+        // A new time only: its 10 minutes stay.
+        let moved = reschedule(&env, &a.id, &json!({"scheduled_at": in_minutes(65)})).await.unwrap();
+        assert_eq!(moved.grab_min, 10);
+        // New minutes: checked like a new errand, nothing changed when refused.
+        for bad in [json!(0), json!(121), json!(2.5), json!("15")] {
+            let r = reschedule(&env, &a.id, &json!({"scheduled_at": in_minutes(65), "grab_min": bad})).await.unwrap_err();
+            assert_eq!(r.code, "bad_grab_min", "{bad}");
+        }
+        assert_eq!(rig.store.get(&a.id).unwrap().grab_min, 10);
+        // 45 minutes from +65 reaches B at +100: refused, B named; 30 fits.
+        let r = reschedule(&env, &a.id, &json!({"scheduled_at": in_minutes(65), "grab_min": 45})).await.unwrap_err();
+        assert_eq!((r.code, r.holder.map(|h| h.id)), ("line_taken", Some(b.id.clone())));
+        assert_eq!(rig.store.get(&a.id).unwrap().grab_min, 10);
+        let longer = reschedule(&env, &a.id, &json!({"scheduled_at": in_minutes(65), "grab_min": 30})).await.unwrap();
+        assert_eq!((longer.grab_min, longer.grab_minutes()), (30, 30));
+        let (_, held) = longer.hold(chrono::Utc::now()).unwrap();
+        assert_eq!(held.1 - held.0, chrono::Duration::minutes(30) + chrono::Duration::seconds(2));
+    }
+
+    /// A try is logged as dialed again only when it really went out: not
+    /// when the phone is busy, nor when it was cancelled before the dial
+    /// (that dial is not counted against the per-minute cap either). An
+    /// errand whose window is over ends with its notice sent in the
+    /// background: a notification service that never answers holds nothing up.
+    #[tokio::test]
+    async fn only_a_dial_that_went_out_counts_as_dialed_again_and_the_last_notice_never_holds_the_timer() {
+        let mut rig = Rig::new();
+        let (sink, mut ph) = phone_socket().await;
+        rig.control.register_client("pixel-grab-6".into(), sink).await;
+        let ago = |s: i64| stamp_of(chrono::Utc::now() - chrono::Duration::seconds(s));
+        let waiting = |id: &str, number: &str| Errand {
+            id: id.into(),
+            number: number.into(),
+            task: "訂位".into(),
+            status: QUEUED.into(),
+            call_code: REDIAL_WAIT.into(),
+            attempts: 2,
+            redial: true,
+            grab_min: 30,
+            redial_at: ago(1),
+            grab_since: ago(60),
+            dialed_at: vec![ago(30)],
+            phone_asked: "pixel-grab-6".into(),
+            ..Default::default()
+        };
+        // The phone busy: no dial, nothing logged, nothing counted.
+        rig.store.insert(waiting("e-grab-busy", "0223459951"));
+        let mut busy = phone("pixel-grab-6", &[(1, "tw")]);
+        busy.busy = true;
+        assert!(redial_due(&rig.env(vec![busy]), "tw").await.is_empty());
+        assert_eq!(rig.store.get("e-grab-busy").unwrap().dialed_at.len(), 1);
+        rig.store.remove("e-grab-busy");
+        // Cancelled as its dial was being made: not sent, not logged, its dial taken back.
+        rig.store.insert(waiting("e-grab-cancel", "0223459952"));
+        rig.store.live().entry("e-grab-cancel".into()).or_default().cancel = true;
+        let phones = vec![phone("pixel-grab-6", &[(1, "tw")])];
+        assert!(redial_due(&rig.env(phones.clone()), "tw").await.is_empty());
+        assert_eq!(rig.store.get("e-grab-cancel").unwrap().dialed_at.len(), 1, "the dial not made is not counted");
+        assert_eq!(next_json(&mut ph, QUIET).await, None, "nothing dialed");
+        rig.store.remove("e-grab-cancel");
+        // Sent: logged and counted.
+        rig.store.insert(waiting("e-grab-sent", "0223459953"));
+        assert_eq!(redial_due(&rig.env(phones.clone()), "tw").await, vec!["e-grab-sent".to_string()]);
+        assert!(next_json(&mut ph, Duration::from_secs(2)).await.is_some(), "place_call");
+        assert_eq!(rig.store.get("e-grab-sent").unwrap().dialed_at.len(), 2);
+        // Its window over, with a notification service that never answers: the timer goes on at once.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let hold = tokio::spawn(async move {
+            let mut kept = Vec::new();
+            while let Ok((s, _)) = listener.accept().await {
+                kept.push(s);
+            }
+        });
+        rig.eff.call_notify = true;
+        rig.eff.notify_channels.clear();
+        rig.eff.notify_gateway_url.clear();
+        rig.eff.telegram_bot_token.clear();
+        rig.eff.notify_webhook_url = format!("http://127.0.0.1:{port}/hook");
+        let over = Errand { grab_min: 5, grab_since: ago(5 * 60 + 1), ..waiting("e-grab-over", "0223459954") };
+        rig.store.insert(over);
+        let quick = tokio::time::timeout(Duration::from_secs(3), redial_due(&rig.env(vec![]), "tw")).await;
+        assert!(quick.is_ok_and(|d| d.is_empty()), "the timer waited for the notice");
+        let e = rig.store.get("e-grab-over").unwrap();
+        assert_eq!(e.status, NO_ANSWER);
+        assert_eq!(notices("e-grab-over"), 1);
+        hold.abort();
     }
 }

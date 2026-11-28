@@ -1437,6 +1437,9 @@
     "er_err_not_scheduled": "This call has already started or ended, so its time can't change.",
     "er_err_number_taken": "“{who}” ({when}) is already redialing that number then. Pick another time.",
     "er_err_too_many_open": "{max} AI calls aren't over yet. Cancel some or wait for them to end.",
-    "er_err_time_skipped": "That time doesn't exist: the clock skips it for summer time. Pick another time."
+    "er_err_time_skipped": "That time doesn't exist: the clock skips it for summer time. Pick another time.",
+    "er_grab_min": "Keep redialing for",
+    "er_redial_min": "Redial until answered · {min} min",
+    "er_err_bad_grab_min": "Enter a whole number of minutes from {low} to {high}."
   }
 }

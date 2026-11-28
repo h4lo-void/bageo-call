@@ -1437,6 +1437,9 @@
     "er_err_not_scheduled": "Dieser Anruf hat schon begonnen oder ist vorbei, die Zeit lässt sich nicht mehr ändern.",
     "er_err_number_taken": "„{who}“ ({when}) ruft diese Nummer zu der Zeit schon wiederholt an. Wähl eine andere Zeit.",
     "er_err_too_many_open": "{max} KI-Anrufe sind noch nicht vorbei. Brich welche ab oder warte, bis sie fertig sind.",
-    "er_err_time_skipped": "Diese Uhrzeit gibt es nicht: Die Uhr springt bei der Sommerzeit darüber. Wähl eine andere."
+    "er_err_time_skipped": "Diese Uhrzeit gibt es nicht: Die Uhr springt bei der Sommerzeit darüber. Wähl eine andere.",
+    "er_grab_min": "Neu wählen für",
+    "er_redial_min": "Anrufen, bis jemand abnimmt · {min} Min.",
+    "er_err_bad_grab_min": "Gib eine ganze Zahl an Minuten von {low} bis {high} ein."
   }
 }

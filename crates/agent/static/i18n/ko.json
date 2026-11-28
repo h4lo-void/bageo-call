@@ -1437,6 +1437,9 @@
     "er_err_not_scheduled": "이미 시작했거나 끝난 전화라 시간을 바꿀 수 없어요.",
     "er_err_number_taken": "그 번호는 그 시간에 ‘{who}’({when})이(가) 다시 걸고 있어요. 다른 시간을 골라 주세요.",
     "er_err_too_many_open": "끝나지 않은 AI 대리 전화가 {max}건이에요. 몇 건을 취소하거나 끝날 때까지 기다려 주세요.",
-    "er_err_time_skipped": "그 시간은 서머타임 조정으로 존재하지 않아요. 다른 시간을 골라 주세요."
+    "er_err_time_skipped": "그 시간은 서머타임 조정으로 존재하지 않아요. 다른 시간을 골라 주세요.",
+    "er_grab_min": "다시 거는 시간",
+    "er_redial_min": "연결될 때까지 다시 걸기 · {min}분",
+    "er_err_bad_grab_min": "{low}~{high}분 사이의 정수로 입력해 주세요."
   }
 }

@@ -109,24 +109,26 @@ default) or as **You in person**.
 - **Redial until answered.** For a restaurant or shop whose line is always
   busy, turn this on when you start the errand. If the call doesn't get through
   (no answer, busy, voicemail, "not open yet"), the AI calls again 3 seconds
-  later, for up to 30 minutes, and stops once someone answers. It waits on the
-  line in a queue, leaves no voicemail message, and you get one notification
-  at the end.
+  later, for up to 30 minutes, and stops once someone answers. Set your own
+  length in **Keep redialing for** (1 to 120 minutes) for each errand. It waits
+  on the line in a queue, leaves no voicemail message, and you get one
+  notification at the end.
 - **Call at a set time.** Pick **At a set date and time** and a line, and the
   errand dials by itself then, even after a restart: handy when bookings open
   at 8:00. The time is Bageo's time zone unless you pick another **Time zone**
   (a shop abroad opening at 8:00 its time). You can schedule several, change
   their time or cancel them. A phone
   booked by one scheduled call (both its SIMs) can't be picked by another for
-  those 30 minutes. From a chat: "12/1 8am call … to book 4"; you confirm the
-  date, weekday, time and phone first.
+  as long as it keeps redialing. From a chat: "12/1 8am call … to book 4"; add
+  "keep calling for 45 minutes" to change the 30 minutes. You confirm the date,
+  weekday, time, phone and minutes first.
 - **Safe dialing.** Emergency numbers, short codes, premium-rate numbers and
   numbers written after an international call prefix are refused, so an errand
   never turns into an international call by mistake.
 - **The right SIM.** Phone app 1.4 and later reports its active SIMs automatically on connect and when SIMs change (`phone_sims.json`; older apps learn them from incoming calls). Errands pick a SIM of the number's own country first; if the call will go out from a SIM of another country, Bageo asks you to confirm first. If the phone reports a different SIM as the call starts, Bageo hangs up before it connects (`wrong_sim`).
 - **Sensible limits.** One call to a number at a time; at most 10 minutes per
   call, with a wrap-up at 9:30 (with **Redial until answered**, time waiting in
-  a queue doesn't count, up to the end of its 30 minutes); no automatic redials
+  a queue doesn't count, up to the end of its redialing minutes); no automatic redials
   unless you turn on **Redial until answered** (otherwise **Call again** is your
   button); voice menus waited out for up to 90 seconds; a carrier's "not in
   service" recording ends the call at once.

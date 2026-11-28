@@ -1437,6 +1437,9 @@
     "er_err_not_scheduled": "这条已经开始或结束，不能再改时间。",
     "er_err_number_taken": "这个号码那段时间已经有“{who}”（{when}）在拨到通，请换个时间。",
     "er_err_too_many_open": "还没结束的代打已经有 {max} 条，请先取消或等几条结束。",
-    "er_err_time_skipped": "这个时间在夏令时调整中不存在，请换一个时间。"
+    "er_err_time_skipped": "这个时间在夏令时调整中不存在，请换一个时间。",
+    "er_grab_min": "一直重拨多久",
+    "er_redial_min": "拨到通 · {min} 分钟",
+    "er_err_bad_grab_min": "一直重拨多久请填 {low} 到 {high} 的整数分钟。"
   }
 }

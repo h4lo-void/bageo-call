@@ -395,6 +395,7 @@ pub fn tools(rt: &RuntimeSettings) -> Vec<Value> {
                 "target": { "type": "string", "maxLength": 80, "description": "a phone number or a contact's name" },
                 "task": { "type": "string", "maxLength": 1000, "description": "what the AI should get done on the call, with every detail it needs" },
                 "at": { "type": "string", "maxLength": 25, "description": "optional: place the call later, at this local time (YYYY-MM-DDTHH:MM, up to 60 days ahead); it redials until it gets through, and always waits for the owner's yes first; empty: now" },
+                "grab_minutes": { "type": "integer", "minimum": crate::errand_plan::GRAB_MIN_LOW, "maximum": crate::errand_plan::GRAB_MIN_HIGH, "description": "optional, with `at` only: how many minutes it keeps redialing until someone answers (default 30)" },
             }),
             &["target", "task"],
             false,
@@ -484,8 +485,16 @@ pub async fn call_tool(ctrl: &Controller, rt: &RuntimeSettings, name: &str, args
         // A time given but not as text is no time: refused, never a call now.
         "request_call" if args.get("at").is_some_and(|v| !v.is_string() && !v.is_null()) => Err("bad_time"),
         "request_call" => {
+            // Minutes that are no whole number are refused, never rounded or dropped.
+            let grab_min = match args.get("grab_minutes") {
+                None | Some(Value::Null) => None,
+                Some(v) => match v.as_u64() {
+                    Some(m) => Some(u32::try_from(m).unwrap_or(u32::MAX)),
+                    None => return result(ctrl, rt, &failed("bad_grab_min")),
+                },
+            };
             let direct = calls_mode(rt) == "direct";
-            let o = ctrl.request_errand(rt, MCP_CHAT, arg(args, "target"), arg(args, "task"), arg(args, "at"), direct, rt.mcp_errands_per_hour).await;
+            let o = ctrl.request_errand(rt, MCP_CHAT, arg(args, "target"), arg(args, "task"), arg(args, "at"), grab_min, direct, rt.mcp_errands_per_hour).await;
             return result(ctrl, rt, &o);
         }
         _ => Err("unknown_tool"),

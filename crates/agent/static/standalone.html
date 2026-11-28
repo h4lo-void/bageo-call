@@ -4540,7 +4540,7 @@ function errandCard(e) {
     h("div", { class: "sub" },
       String(e.name || "").trim() && e.number ? h("span", { class: "mono", text: e.number }) : null,
       h("span", { class: "tag", text: t(e.identity === "owner" ? "er_as_owner" : "er_as_assistant") }),
-      e.redial ? h("span", { class: "tag", text: t("er_redial") }) : null,
+      e.redial ? h("span", { class: "tag", text: t("er_redial_min", { min: Number(e.grab_min) || (er.grab && Number(er.grab.window_min)) || 30 }) }) : null,
       simBadge ? h("span", { class: "tag", text: simBadge }) : null,
       h("span", { text: fmtWhen(e.created_at) }))));
   const task = String(e.task || "");

@@ -2093,6 +2093,14 @@
     "who": "the owner",
     "placeholders": []
   },
+  "er_err_bad_grab_min": {
+    "where": "an error under the AI call form when the minutes of 'Keep redialing for' are not a whole number in range. English: Enter a whole number of minutes from {low} to {high}.",
+    "who": "the owner",
+    "placeholders": [
+      "{low}",
+      "{high}"
+    ]
+  },
   "er_err_bad_number": {
     "where": "a label or sentence in the console. English: That number doesn't look right.",
     "who": "the owner",
@@ -2273,6 +2281,11 @@
   },
   "er_fu_title": {
     "where": "a label or sentence in the console. English: Reply, and have the AI call again",
+    "who": "the owner",
+    "placeholders": []
+  },
+  "er_grab_min": {
+    "where": "the label of a number field in the AI call form, shown when 'Redial until answered' is on; the word for minutes follows the field. English: Keep redialing for",
     "who": "the owner",
     "placeholders": []
   },
@@ -2595,6 +2608,13 @@
     "who": "the owner",
     "placeholders": [
       "{gap}",
+      "{min}"
+    ]
+  },
+  "er_redial_min": {
+    "where": "a short tag on an AI call card set to 'Redial until answered', with how many minutes it keeps redialing. English: Redial until answered · {min} min",
+    "who": "the owner",
+    "placeholders": [
       "{min}"
     ]
   },

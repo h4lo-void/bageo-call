@@ -83,8 +83,10 @@ pub enum Action {
     Decide { r: String, confirm: bool },
     /// The AI calls the target (a number or a contact's name) to get the task
     /// done; `when`: later, at that date and time (as the owner wrote it, or
-    /// `YYYY-MM-DDTHH:MM`; [crate::errand_plan::resolve_when]), empty: now.
-    Errand { target: String, task: String, when: String },
+    /// `YYYY-MM-DDTHH:MM`; [crate::errand_plan::resolve_when]), empty: now;
+    /// `grab_min`: with a `when`, how many minutes it keeps redialing until
+    /// someone answers (None: [crate::errand_plan::GRAB_MIN_DEFAULT]).
+    Errand { target: String, task: String, when: String, grab_min: Option<u32> },
     Errands,
     /// Empty ref: the one AI call under way.
     Cancel { r: String },
@@ -199,12 +201,18 @@ pub fn validate(a: Action) -> Result<Action, &'static str> {
             }
             Action::Answer { text }
         }
-        Action::Errand { target, task, when } => {
+        Action::Errand { target, task, when, grab_min } => {
             let target = one_line(&clean(&target));
             let task = clean(&task);
             let when = one_line(&clean(&when));
             if when.chars().count() > WHEN_MAX {
                 return Err("bad_time");
+            }
+            if grab_min.is_some_and(|m| !crate::errand_plan::grab_min_ok(m as u64)) {
+                return Err("bad_grab_min");
+            }
+            if grab_min.is_some() && when.is_empty() {
+                return Err("grab_needs_time");
             }
             if target.is_empty() {
                 return Err("no_target");
@@ -218,7 +226,7 @@ pub fn validate(a: Action) -> Result<Action, &'static str> {
             if task.chars().count() > TASK_MAX_CHARS {
                 return Err("task_too_long");
             }
-            Action::Errand { target, task, when }
+            Action::Errand { target, task, when, grab_min }
         }
         Action::Mode { phone, mode } => {
             let phone = one_line(&clean(&phone));
@@ -283,7 +291,7 @@ fn parse_errand(args: &str) -> Option<Action> {
     if let Some(rest) = args.strip_prefix('"').or_else(|| args.strip_prefix('“')) {
         let end = rest.find(['"', '”'])?;
         let task = rest[end..].chars().skip(1).collect::<String>();
-        return Some(Action::Errand { target: rest[..end].to_string(), task, when });
+        return Some(Action::Errand { target: rest[..end].to_string(), task, when, grab_min: None });
     }
     let (first, mut rest) = first_word(args);
     if first.is_empty() {
@@ -302,7 +310,7 @@ fn parse_errand(args: &str) -> Option<Action> {
             rest = after;
         }
     }
-    Some(Action::Errand { target, task: rest.to_string(), when })
+    Some(Action::Errand { target, task: rest.to_string(), when, grab_min: None })
 }
 
 /// A list number ("1", "#2") or an errand id.
@@ -449,7 +457,7 @@ pub fn from_model(v: &Value) -> Option<Action> {
         "tasks" => Action::Tasks,
         "confirm" => Action::Decide { r: s("ref"), confirm: true },
         "ignore" => Action::Decide { r: s("ref"), confirm: false },
-        "errand" => Action::Errand { target: s("target"), task: s("task"), when: s("when") },
+        "errand" => Action::Errand { target: s("target"), task: s("task"), when: s("when"), grab_min: None },
         "errands" => Action::Errands,
         "cancel" => Action::Cancel { r: s("ref") },
         "say" => Action::Say { r: s("ref"), text: s("text") },
@@ -539,7 +547,7 @@ mod tests {
     }
 
     fn errand(target: &str, task: &str, when: &str) -> Action {
-        Action::Errand { target: target.into(), task: task.into(), when: when.into() }
+        Action::Errand { target: target.into(), task: task.into(), when: when.into(), grab_min: None }
     }
 
     #[test]
@@ -576,7 +584,7 @@ mod tests {
     #[test]
     fn the_models_answer_passes_the_same_checks_as_a_typed_command() {
         let errand = json!({"action": "errand", "target": "0912345678", "task": "訂明天晚上七點兩位"});
-        assert_eq!(from_model(&errand), Some(Action::Errand { target: "0912345678".into(), task: "訂明天晚上七點兩位".into(), when: String::new() }));
+        assert_eq!(from_model(&errand), Some(Action::Errand { target: "0912345678".into(), task: "訂明天晚上七點兩位".into(), when: String::new(), grab_min: None }));
         let calls = json!({"action": "calls", "day": "yesterday", "limit": 500, "only": "nonsense"});
         assert_eq!(from_model(&calls), Some(Action::Calls(CallQuery { limit: CALLS_MAX, day: Some(Day::Yesterday), ..Default::default() })));
         // Unknown actions, missing fields, out-of-range values: nothing.

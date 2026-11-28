@@ -31,7 +31,8 @@ pub struct GrabRules {
     /// (time for the phone to free the line).
     pub gap: Duration,
     /// Tries start within this long of the first one (a scheduled errand:
-    /// of its time). Once a person is on the line, no more tries.
+    /// of its time). Once a person is on the line, no more tries. Each
+    /// errand sets its own ([GrabRules::for_minutes]); this is the default.
     pub window: Duration,
     /// Not a rule, a guard against a loop gone wrong: at most this many dials
     /// in any one minute.
@@ -51,6 +52,29 @@ pub const GRAB: GrabRules = GrabRules {
     queue_wait: Duration::from_secs(30 * 60),
     phone_retry: Duration::from_secs(1),
 };
+
+/// How many minutes an errand keeps redialing when the owner sets none.
+pub const GRAB_MIN_DEFAULT: u32 = 30;
+/// The fewest and most minutes the owner may set.
+pub const GRAB_MIN_LOW: u32 = 1;
+pub const GRAB_MIN_HIGH: u32 = 120;
+
+/// Minutes the owner may set ([GRAB_MIN_LOW] to [GRAB_MIN_HIGH]).
+pub fn grab_min_ok(min: u64) -> bool {
+    (GRAB_MIN_LOW as u64..=GRAB_MIN_HIGH as u64).contains(&min)
+}
+
+/// A window of `min` minutes.
+pub fn grab_window(min: u32) -> Duration {
+    Duration::from_secs(min as u64 * 60)
+}
+
+impl GrabRules {
+    /// These rules with a window of `min` minutes (one errand's own).
+    pub fn for_minutes(self, min: u32) -> GrabRules {
+        GrabRules { window: grab_window(min), ..self }
+    }
+}
 
 /// How a try ended, as grab mode tells them apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,14 +187,16 @@ pub const PLAIN_HOLD: Duration = Duration::from_secs(12 * 60);
 pub const LATE_MAX: Duration = Duration::from_secs(5 * 60);
 
 /// The line a scheduled errand holds: from its first dial ([GrabRules::lead]
-/// before its time) to the end of its window (grab) or of one call.
-pub fn hold(at: DateTime<Utc>, grab: bool) -> (DateTime<Utc>, DateTime<Utc>) {
-    (at - span(GRAB.lead), at + span(if grab { GRAB.window } else { PLAIN_HOLD }))
+/// before its time) to the end of its window (`grab`: grab mode for that many
+/// minutes) or of one call (None).
+pub fn hold(at: DateTime<Utc>, grab: Option<u32>) -> (DateTime<Utc>, DateTime<Utc>) {
+    (at - span(GRAB.lead), at + span(grab.map_or(PLAIN_HOLD, grab_window)))
 }
 
-/// Until when a scheduled errand may still start once its time has passed.
-pub fn start_by(at: DateTime<Utc>, grab: bool) -> DateTime<Utc> {
-    at + span(if grab { GRAB.window } else { LATE_MAX })
+/// Until when a scheduled errand may still start once its time has passed
+/// (`grab` as for [hold]).
+pub fn start_by(at: DateTime<Utc>, grab: Option<u32>) -> DateTime<Utc> {
+    at + span(grab.map_or(LATE_MAX, grab_window))
 }
 
 /// Bageo's time zone as an IANA name ("Asia/Taipei"): `TZ` when it names
@@ -219,7 +245,7 @@ pub fn check_at(at: DateTime<Utc>, now: DateTime<Utc>) -> Result<(), &'static st
 }
 
 /// Two holds ([hold]) share a moment beyond the [GrabRules::lead] one of
-/// them dials early with: a schedule right where another's 30 minutes end
+/// them dials early with: a schedule right where another's window ends
 /// does not clash with it.
 pub fn overlaps(a: Span, b: Span) -> bool {
     let lead = span(GRAB.lead);
@@ -653,6 +679,10 @@ const BOOKING_WORDS: &[&str] = &["訂", "订", "予約", "예약", "book", "rese
 /// no booking named before them ("book a table at 7 pm tomorrow, call …").
 /// Anything less clear is None: the chat model's reading stands.
 pub fn call_time_in(text: &str, now: NaiveDateTime, owner: Lang) -> Option<NaiveDateTime> {
+    // A time with a zone is the chat model's to read (as `YYYY-MM-DDTHH:MM+08:00`).
+    if has_zone(text) {
+        return None;
+    }
     let t = normalize(text);
     let cut = CALL_WORDS.iter().filter_map(|w| find_word(&t, w)).min()?;
     let head: String = t[..cut].iter().collect();
@@ -693,6 +723,8 @@ fn when_token(tok: &str) -> bool {
         || AM.contains(&s.as_str())
         || MONTHS.iter().any(|(m, _)| s.trim_end_matches(['.', ',']) == *m)
         || (digits && s.trim_end_matches([',', '.', 'º', '°']).chars().all(|c| c.is_ascii_digit()) && s.len() <= 2)
+        // A zone name after the time ("UTC") stays with it, so the time is refused, never read as local.
+        || zone_word(tok.trim_end_matches([',', '.']))
 }
 
 /// The date and time a chat command starts with ("12/1 08:00 0912345678 …"),
@@ -723,14 +755,15 @@ pub fn leading_when(args: &str) -> Option<(&str, &str)> {
 /// The time an errand's `when` names: `YYYY-MM-DDTHH:MM` (what the chat
 /// model writes; with a zone, `Z` or `+08:00`, that moment in the owner's
 /// local time), else a date and time as the owner wrote them ([parse_when]).
-/// A zone that cannot be read is no time at all, never dropped.
+/// Any other time with a zone ("12/1 08:00Z", "… 08:00+08:00", "… 08:00
+/// UTC") is no time at all: the zone is never dropped.
 pub fn resolve_when(when: &str, now: NaiveDateTime, owner: Lang) -> Option<NaiveDateTime> {
     let w = when.trim();
     let zoned = w.strip_suffix(['Z', 'z']).map(|s| format!("{s}+00:00")).unwrap_or_else(|| w.to_string());
     if let Some(t) = DateTime::parse_from_rfc3339(&zoned).ok().or_else(|| DateTime::parse_from_str(&zoned, "%Y-%m-%dT%H:%M%:z").ok()) {
         return Some(t.with_timezone(&Local).naive_local());
     }
-    if zone_tail(w) {
+    if has_zone(w) {
         return None;
     }
     ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"]
@@ -739,16 +772,66 @@ pub fn resolve_when(when: &str, now: NaiveDateTime, owner: Lang) -> Option<Naive
         .or_else(|| parse_when(w, now, day_first(w, owner)))
 }
 
-/// `YYYY-MM-DDTHH:MM[:SS]` followed by a zone (`Z`, `+…`, `-…`).
-fn zone_tail(w: &str) -> bool {
-    let Some(head) = w.get(..16) else {
-        return false;
-    };
-    if ["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"].iter().all(|f| NaiveDateTime::parse_from_str(head, f).is_err()) {
+/// Zone names a time may be followed by ("08:00 UTC", "8 pm EST"). UTC and
+/// GMT in any case; the others only in capitals (French "est" is a word).
+const ZONE_NAMES: &[&str] = &[
+    "UTC", "GMT", "UT", "WET", "WEST", "CET", "CEST", "EET", "EEST", "BST", "IST", "MSK", "EST", "EDT", "CST", "CDT", "MST", "MDT", "PST", "PDT",
+    "AKST", "AKDT", "HST", "AST", "ADT", "NST", "NDT", "BRT", "ART", "JST", "KST", "HKT", "SGT", "PHT", "WIB", "ICT", "AEST", "AEDT", "ACST",
+    "ACDT", "AWST", "NZST", "NZDT",
+];
+
+/// `word` names a zone: one of [ZONE_NAMES], or one with an offset after it ("UTC+8").
+fn zone_word(word: &str) -> bool {
+    let name: String = word.chars().take_while(char::is_ascii_alphabetic).collect();
+    let rest = &word[name.len()..];
+    if !(rest.is_empty() || rest.starts_with(['+', '-'])) {
         return false;
     }
-    let rest = w[16..].trim_start_matches(|c: char| c.is_ascii_digit() || c == ':' || c == '.').trim_start();
-    rest.starts_with(['Z', 'z', '+', '-'])
+    ["utc", "gmt"].contains(&name.to_ascii_lowercase().as_str()) || ZONE_NAMES.contains(&name.as_str())
+}
+
+/// Whether a time in `text` is followed by a zone: `Z`, an offset (`+08:00`,
+/// `-5`) or a zone name ([ZONE_NAMES]). A time: digits after `:` or `h`
+/// ("08:00", "20h15"), or before am/pm, h, Uhr, 點 ("8 pm", "20h").
+pub fn has_zone(text: &str) -> bool {
+    let t: Vec<char> = text.chars().collect();
+    let mut i = 0;
+    while i < t.len() {
+        if !t[i].is_ascii_digit() {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < t.len() && t[i].is_ascii_digit() {
+            i += 1;
+        }
+        let after_mark = start > 1 && (t[start - 1] == ':' || (t[start - 1].eq_ignore_ascii_case(&'h') && t[start - 2].is_ascii_digit()));
+        let mut end = i;
+        if !after_mark {
+            let s = skip_spaces(&t, i);
+            let lower: String = t[s..t.len().min(s + 4)].iter().collect::<String>().to_lowercase();
+            let suffix = ["a.m.", "p.m.", "uhr", "am", "pm", "h", "點", "点", "時", "时", "시"].iter().find(|w| lower.starts_with(**w));
+            match suffix {
+                Some(w) if !letter(t.get(s + w.chars().count())) || w.chars().all(|c| !c.is_ascii()) => end = s + w.chars().count(),
+                _ => continue,
+            }
+        }
+        let s = skip_spaces(&t, end);
+        let next = t.get(s).copied();
+        let glued = s == end;
+        if (matches!(next, Some('Z')) || (glued && matches!(next, Some('z')))) && !letter(t.get(s + 1)) {
+            return true;
+        }
+        if matches!(next, Some('+' | '-' | '\u{2212}')) && t.get(s + 1).is_some_and(|c| c.is_ascii_digit()) {
+            return true;
+        }
+        let word: String = t[s..].iter().take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | ':')).collect();
+        if !word.is_empty() && zone_word(&word) {
+            return true;
+        }
+        i = i.max(end);
+    }
+    false
 }
 
 // ---------------------------------------------------------------- the owner's words
@@ -813,7 +896,8 @@ pub fn stamp_label(lang: Lang, stamp: &str) -> String {
 
 /// What the owner reads about scheduled errands and grab mode. `{when}`: a
 /// [when_label]; `{line}`: the phone and SIM; `{gap}`, `{min}`: [GRAB]'s gap
-/// in seconds and window in minutes; `{who}`: the errand holding a line.
+/// in seconds and the errand's window in minutes; `{who}`: the errand holding
+/// a line; `{low}`, `{high}`: the minutes the owner may set.
 pub struct Words {
     /// Notification: an errand was scheduled.
     pub scheduled: &'static str,
@@ -850,6 +934,11 @@ pub struct Words {
     pub e_too_many_open: &'static str,
     /// A local time the clock skips for summer time.
     pub e_time_skipped: &'static str,
+    /// Minutes of redialing out of range or not a whole number (`{low}`, `{high}`).
+    pub e_bad_grab_min: &'static str,
+    /// Minutes of redialing given for a call now (only a scheduled call from
+    /// a chat or MCP redials).
+    pub e_grab_needs_time: &'static str,
     /// Why a scheduled errand is cancelled: a backup was restored.
     pub restored: &'static str,
 }
@@ -868,9 +957,19 @@ pub fn words(lang: Lang) -> &'static Words {
     }
 }
 
-/// `template` with `{gap}` and `{min}` from [GRAB].
-pub fn fill_grab(template: &str) -> String {
-    template.replace("{gap}", &GRAB.gap.as_secs().to_string()).replace("{min}", &(GRAB.window.as_secs() / 60).to_string())
+/// `template` with `{gap}` from [GRAB] and `{min}`: the errand's minutes.
+pub fn fill_grab(template: &str, min: u32) -> String {
+    template.replace("{gap}", &GRAB.gap.as_secs().to_string()).replace("{min}", &min.to_string())
+}
+
+/// The lines a chat's confirmation card shows for a scheduled call: when
+/// (`label`, a [when_label]), from which line (`line`, picked by Bageo), and
+/// that it redials for `min` minutes.
+pub fn card_lines(lang: Lang, label: &str, line: &str, min: u32) -> String {
+    let w = words(lang);
+    let sep = crate::locale::words(lang).sep.as_str();
+    let line = w.line_auto.replace("{line}", line);
+    format!("{}{sep}{label}\n{}{sep}{line}\n{}", w.when, w.line, fill_grab(w.grab, min))
 }
 
 const ZH_TW: Words = Words {
@@ -895,6 +994,8 @@ const ZH_TW: Words = Words {
     e_number_taken: "這個號碼那段時間已經有「{who}」（{when}）在撥到通，請換個時間。",
     e_too_many_open: "還沒結束的代打已經有 {max} 筆，請先取消或等幾筆結束。",
     e_time_skipped: "這個時間在夏令時間調整中不存在，請換一個時間。",
+    e_bad_grab_min: "一直重撥的時間請設 {low} 到 {high} 分鐘的整數。",
+    e_grab_needs_time: "只有排定時間的代打會一直重撥，請一起給撥打時間。",
     restored: "還原備份後，這個排程已取消",
 };
 
@@ -920,6 +1021,8 @@ const ZH_CN: Words = Words {
     e_number_taken: "这个号码那段时间已经有“{who}”（{when}）在拨到通，请换个时间。",
     e_too_many_open: "还没结束的代打已经有 {max} 条，请先取消或等几条结束。",
     e_time_skipped: "这个时间在夏令时调整中不存在，请换一个时间。",
+    e_bad_grab_min: "一直重拨的时间请设 {low} 到 {high} 分钟的整数。",
+    e_grab_needs_time: "只有定时代打会一直重拨，请同时给出拨打时间。",
     restored: "恢复备份后，这个安排已取消",
 };
 
@@ -945,6 +1048,8 @@ const EN: Words = Words {
     e_number_taken: "“{who}” ({when}) is already redialing that number then. Pick another time.",
     e_too_many_open: "{max} AI calls aren't over yet. Cancel some or wait for them to end.",
     e_time_skipped: "That time doesn't exist: the clock skips it for summer time. Pick another time.",
+    e_bad_grab_min: "Set how long to keep redialing as a whole number from {low} to {high} minutes.",
+    e_grab_needs_time: "Only a scheduled call keeps redialing. Give the time to call too.",
     restored: "Cancelled when a backup was restored",
 };
 
@@ -970,6 +1075,8 @@ const JA: Words = Words {
     e_number_taken: "その番号にはその時間「{who}」（{when}）がかけ直し中です。別の時間を選んでください。",
     e_too_many_open: "終わっていない代理電話が {max} 件あります。いくつか取り消すか、終わるまでお待ちください。",
     e_time_skipped: "その時刻はサマータイムの切り替えで存在しません。別の時刻を選んでください。",
+    e_bad_grab_min: "かけ直し続ける時間は {low}〜{high} 分の整数で指定してください。",
+    e_grab_needs_time: "かけ直し続けるのは予約発信だけです。発信日時も指定してください。",
     restored: "バックアップを復元したため、この予約は取り消されました",
 };
 
@@ -995,6 +1102,8 @@ const KO: Words = Words {
     e_number_taken: "그 번호는 그 시간에 ‘{who}’({when})이(가) 다시 걸고 있어요. 다른 시간을 골라 주세요.",
     e_too_many_open: "끝나지 않은 AI 대리 전화가 {max}건이에요. 몇 건을 취소하거나 끝날 때까지 기다려 주세요.",
     e_time_skipped: "그 시간은 서머타임 조정으로 존재하지 않아요. 다른 시간을 골라 주세요.",
+    e_bad_grab_min: "다시 거는 시간은 {low}~{high}분 사이의 정수로 정해 주세요.",
+    e_grab_needs_time: "예약 전화만 계속 다시 겁니다. 걸 시간도 함께 알려 주세요.",
     restored: "백업을 복원해서 이 예약은 취소됐어요",
 };
 
@@ -1020,6 +1129,8 @@ const ES: Words = Words {
     e_number_taken: "«{who}» ({when}) ya está llamando a ese número a esa hora. Elige otra hora.",
     e_too_many_open: "Hay {max} llamadas de la IA sin terminar. Cancela alguna o espera a que terminen.",
     e_time_skipped: "Esa hora no existe: el reloj se la salta por el horario de verano. Elige otra.",
+    e_bad_grab_min: "Indica cuánto tiempo seguir rellamando: un número entero de {low} a {high} minutos.",
+    e_grab_needs_time: "Solo una llamada programada sigue rellamando. Indica también la hora.",
     restored: "Cancelada al restaurar una copia de seguridad",
 };
 
@@ -1045,6 +1156,8 @@ const FR: Words = Words {
     e_number_taken: "« {who} » ({when}) rappelle déjà ce numéro à cette heure. Choisissez une autre heure.",
     e_too_many_open: "{max} appels de l'IA ne sont pas terminés. Annulez-en ou attendez qu'ils finissent.",
     e_time_skipped: "Cette heure n'existe pas : l'horloge la saute au passage à l'heure d'été. Choisissez-en une autre.",
+    e_bad_grab_min: "Indiquez combien de temps rappeler : un nombre entier de {low} à {high} minutes.",
+    e_grab_needs_time: "Seul un appel programmé rappelle en boucle. Indiquez aussi l'heure.",
     restored: "Annulé lors de la restauration d'une sauvegarde",
 };
 
@@ -1070,6 +1183,8 @@ const DE: Words = Words {
     e_number_taken: "„{who}“ ({when}) ruft diese Nummer zu der Zeit schon wiederholt an. Wähl eine andere Zeit.",
     e_too_many_open: "{max} KI-Anrufe sind noch nicht vorbei. Brich welche ab oder warte, bis sie fertig sind.",
     e_time_skipped: "Diese Uhrzeit gibt es nicht: Die Uhr springt bei der Sommerzeit darüber. Wähl eine andere.",
+    e_bad_grab_min: "Gib an, wie lange neu gewählt wird: eine ganze Zahl von {low} bis {high} Minuten.",
+    e_grab_needs_time: "Nur ein geplanter Anruf wählt immer wieder neu. Gib auch die Uhrzeit an.",
     restored: "Beim Wiederherstellen eines Backups abgebrochen",
 };
 
@@ -1095,6 +1210,8 @@ const PT: Words = Words {
     e_number_taken: "“{who}” ({when}) já está ligando para esse número nesse horário. Escolha outro horário.",
     e_too_many_open: "Há {max} ligações da IA sem terminar. Cancele algumas ou espere terminarem.",
     e_time_skipped: "Esse horário não existe: o relógio pula ele no horário de verão. Escolha outro.",
+    e_bad_grab_min: "Diga por quanto tempo continuar ligando: um número inteiro de {low} a {high} minutos.",
+    e_grab_needs_time: "Só uma ligação agendada continua ligando. Informe também o horário.",
     restored: "Cancelada ao restaurar um backup",
 };
 
@@ -1113,9 +1230,81 @@ pub fn error_text(lang: Lang, code: &str) -> Option<String> {
         "number_taken" => w.e_number_taken,
         "too_many_open" => w.e_too_many_open,
         "time_skipped" => w.e_time_skipped,
+        "bad_grab_min" => w.e_bad_grab_min,
+        "grab_needs_time" => w.e_grab_needs_time,
         _ => return None,
     };
-    Some(text.replace("{days}", &MAX_DAYS.to_string()).replace("{max}", &OPEN_MAX.to_string()))
+    Some(
+        text.replace("{days}", &MAX_DAYS.to_string())
+            .replace("{max}", &OPEN_MAX.to_string())
+            .replace("{low}", &GRAB_MIN_LOW.to_string())
+            .replace("{high}", &GRAB_MIN_HIGH.to_string()),
+    )
+}
+
+/// Minutes of redialing an owner's chat message asks for ("打 10 分鐘", "10
+/// 分鐘內一直打", "keep calling for 45 minutes", "10分間かけ続けて", "10분
+/// 동안 계속 걸어", "durante 20 minutos", "pendant 20 minutes", "20 Minuten
+/// lang", "por 20 minutos"), as written: the caller checks the range. None:
+/// it names none (a time to call is no length of redialing).
+pub fn grab_minutes_in(text: &str) -> Option<u32> {
+    let t = normalize(text);
+    let dial = |c: Option<&char>| c.is_some_and(|c| matches!(c, '打' | '撥' | '拨'));
+    for n in numbers(&t) {
+        let after = skip_spaces(&t, n.end);
+        let mut before = n.start;
+        while before > 0 && t[before - 1].is_whitespace() {
+            before -= 1;
+        }
+        // 打 10 分鐘 / 重撥10分钟 / 10 分鐘內一直打
+        if let Some(unit) = ["分鐘", "分钟"].iter().find(|u| at_str(&t, after, u)) {
+            if before > 0 && dial(t.get(before - 1)) {
+                return Some(n.val);
+            }
+            let rest = after + unit.chars().count();
+            if matches!(t.get(rest), Some('內' | '内')) && (rest + 1..(rest + 6).min(t.len())).any(|i| dial(t.get(i))) {
+                return Some(n.val);
+            }
+        }
+        let near = |from: usize, words: &[&str]| (from..(from + 10).min(t.len())).any(|i| words.iter().any(|w| at_str(&t, i, w)));
+        // 10分間かけ続けて
+        if at_str(&t, after, "分間") && near(after + 2, &["かけ", "電話", "発信"]) {
+            return Some(n.val);
+        }
+        // 10분 동안 계속 걸어
+        if at_str(&t, after, "분") {
+            let d = skip_spaces(&t, after + 1);
+            if at_str(&t, d, "동안") && near(d + 2, &["걸", "전화"]) {
+                return Some(n.val);
+            }
+        }
+    }
+    // The Latin-script languages: "for 45 minutes" with a word asking for the call shortly before.
+    let s: String = t.iter().collect();
+    let words: Vec<&str> = s.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    const UNITS: &[&str] = &["minute", "minutes", "min", "mins", "minuto", "minutos", "minuten"];
+    const BEFORE: &[&str] = &["for", "durante", "pendant", "por", "für"];
+    const CALLING: &[&str] = &[
+        "call", "calling", "redial", "redialing", "redialling", "dial", "dialing", "dialling", "ring", "ringing", "try", "trying", "llama", "llamando",
+        "llamar", "intenta", "intentando", "insiste", "insistiendo", "marca", "marcando", "appelle", "appeler", "rappelle", "rappeler", "essaie",
+        "essayer", "insistez", "ruf", "rufe", "anrufen", "wähl", "wähle", "wählen", "versuch", "versuche", "probier", "liga", "ligando",
+        "ligar", "tenta", "tentando", "disca", "discando",
+    ];
+    for (i, w) in words.iter().enumerate() {
+        if !w.chars().all(|c| c.is_ascii_digit()) || !words.get(i + 1).is_some_and(|u| UNITS.contains(u)) {
+            continue;
+        }
+        let prep = i > 0 && BEFORE.contains(&words[i - 1]);
+        let lang = words.get(i + 2).is_some_and(|l| *l == "lang");
+        if !(prep || lang) {
+            continue;
+        }
+        let from = i.saturating_sub(if prep { 6 } else { 5 });
+        if words[from..i].iter().any(|x| CALLING.contains(x)) {
+            return Some(w.parse().unwrap_or(u32::MAX));
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -1169,15 +1358,15 @@ mod tests {
     #[test]
     fn a_schedule_holds_its_line_from_just_before_its_time_to_the_end_of_its_window() {
         let t = utc("2026-12-01T00:00:00Z");
-        let (from, to) = hold(t, true);
+        let (from, to) = hold(t, Some(30));
         assert_eq!((from, to), (t - chrono::Duration::seconds(2), t + chrono::Duration::minutes(30)));
-        assert_eq!(hold(t, false).1, t + chrono::Duration::minutes(12));
-        assert!(overlaps(hold(t, true), hold(t + chrono::Duration::minutes(29), true)));
-        assert!(!overlaps(hold(t, true), hold(t + chrono::Duration::minutes(31), true)));
+        assert_eq!(hold(t, None).1, t + chrono::Duration::minutes(12));
+        assert!(overlaps(hold(t, Some(30)), hold(t + chrono::Duration::minutes(29), Some(30))));
+        assert!(!overlaps(hold(t, Some(30)), hold(t + chrono::Duration::minutes(31), Some(30))));
         // Exactly 30 minutes apart: the second's early 2 seconds are no clash, either way round.
-        assert!(!overlaps(hold(t, true), hold(t + chrono::Duration::minutes(30), true)));
-        assert!(!overlaps(hold(t + chrono::Duration::minutes(30), true), hold(t, true)));
-        assert!(overlaps(hold(t, true), hold(t + chrono::Duration::minutes(30) - chrono::Duration::seconds(1), true)));
+        assert!(!overlaps(hold(t, Some(30)), hold(t + chrono::Duration::minutes(30), Some(30))));
+        assert!(!overlaps(hold(t + chrono::Duration::minutes(30), Some(30)), hold(t, Some(30))));
+        assert!(overlaps(hold(t, Some(30)), hold(t + chrono::Duration::minutes(30) - chrono::Duration::seconds(1), Some(30))));
         // A queue may be waited out for 30 minutes, never past the run's window.
         assert_eq!(queue_wait_left(&GRAB, t, t), Duration::from_secs(30 * 60));
         assert_eq!(queue_wait_left(&GRAB, t, t + chrono::Duration::minutes(25)), Duration::from_secs(5 * 60));
@@ -1319,10 +1508,137 @@ mod tests {
         assert_eq!(when_label(Lang::Pt, t, now), "ter, 1 dez, 08:00");
         assert_eq!(when_label(Lang::ZhTw, at(2027, 1, 2, 9, 0), now), "2027/1/2（週六）09:00");
         for lang in [Lang::ZhTw, Lang::ZhCn, Lang::En, Lang::Ja, Lang::Ko, Lang::Es, Lang::Fr, Lang::De, Lang::Pt] {
-            let g = fill_grab(words(lang).grab);
+            let g = fill_grab(words(lang).grab, 30);
             assert!(g.contains('3') && g.contains("30") && !g.contains('{'), "{lang:?} {g}");
             assert!(error_text(lang, "line_taken").is_some_and(|s| s.contains("{who}") && s.contains("{when}")), "{lang:?}");
         }
         assert_eq!(error_text(Lang::En, "busy"), None);
+    }
+
+    /// Each errand redials for its own minutes (1 to 120, 30 unless set):
+    /// its window, the line it holds, how late it may still start, and how
+    /// long a queue may keep it all follow them; the gap, the head start and
+    /// the per-minute cap do not change.
+    #[test]
+    fn each_errand_redials_for_its_own_minutes_and_holds_its_line_that_long() {
+        assert!(!grab_min_ok(0) && grab_min_ok(1) && grab_min_ok(120) && !grab_min_ok(121));
+        assert_eq!(GRAB_MIN_DEFAULT, 30);
+        let t = utc("2026-12-01T00:00:00Z");
+        let ten = GRAB.for_minutes(10);
+        assert_eq!((ten.window, ten.gap, ten.lead, ten.per_minute_cap), (Duration::from_secs(600), GRAB.gap, GRAB.lead, GRAB.per_minute_cap));
+        // Its window: no try starts once its minutes are over.
+        assert!(grab_next_at(&ten, t, &[], t + chrono::Duration::seconds(10 * 60 - 4)).is_some());
+        assert_eq!(grab_next_at(&ten, t, &[], t + chrono::Duration::seconds(10 * 60 - 2)), None);
+        let long = GRAB.for_minutes(120);
+        assert!(grab_next_at(&long, t, &[], t + chrono::Duration::minutes(90)).is_some());
+        // The line it holds and how late it may still start.
+        assert_eq!(hold(t, Some(10)), (t - chrono::Duration::seconds(2), t + chrono::Duration::minutes(10)));
+        assert_eq!(hold(t, Some(120)).1, t + chrono::Duration::minutes(120));
+        assert_eq!(start_by(t, Some(10)), t + chrono::Duration::minutes(10));
+        assert_eq!(start_by(t, Some(90)), t + chrono::Duration::minutes(90));
+        assert_eq!(start_by(t, None), t + chrono::Duration::minutes(5));
+        // Two schedules with different minutes: a short one ending before the next is free; a long one reaching into it clashes.
+        assert!(!overlaps(hold(t, Some(10)), hold(t + chrono::Duration::minutes(10), Some(30))));
+        assert!(overlaps(hold(t, Some(45)), hold(t + chrono::Duration::minutes(30), Some(10))));
+        assert!(!overlaps(hold(t, Some(30)), hold(t + chrono::Duration::minutes(31), Some(120))));
+        // A queue: never past its own window.
+        assert_eq!(queue_wait_left(&ten, t, t), Duration::from_secs(600));
+        assert_eq!(queue_wait_left(&long, t, t), GRAB.queue_wait);
+        // What the owner reads says its minutes.
+        for lang in [Lang::ZhTw, Lang::ZhCn, Lang::En, Lang::Ja, Lang::Ko, Lang::Es, Lang::Fr, Lang::De, Lang::Pt] {
+            let g = fill_grab(words(lang).grab, 45);
+            assert!(g.contains("45") && !g.contains("30") && !g.contains('{'), "{lang:?} {g}");
+            for code in ["bad_grab_min", "grab_needs_time"] {
+                let s = error_text(lang, code).unwrap();
+                assert!(!s.contains('{'), "{lang:?} {code} {s}");
+            }
+            assert!(error_text(lang, "bad_grab_min").unwrap().contains("120"), "{lang:?}");
+        }
+    }
+
+    /// The chat card of a scheduled call says its minutes, in languages other than Chinese too.
+    #[test]
+    fn a_scheduled_calls_card_says_how_many_minutes_it_redials() {
+        for (lang, want) in [
+            (Lang::En, "for up to 45 minutes"),
+            (Lang::Ja, "最長 45 分"),
+            (Lang::Fr, "pendant 45 minutes au plus"),
+            (Lang::De, "höchstens 45 Minuten"),
+            (Lang::Es, "durante 45 minutos"),
+            (Lang::ZhTw, "最多 45 分鐘"),
+        ] {
+            let card = card_lines(lang, "Tue, Dec 1, 08:00", "Pixel 9", 45);
+            assert!(card.contains(want) && card.contains("Pixel 9") && card.contains("Dec 1"), "{lang:?}: {card}");
+            assert_eq!(card.lines().count(), 3, "{lang:?}");
+        }
+    }
+
+    /// Minutes of redialing read from an owner's message, in the nine
+    /// languages; a time, a party size or minutes not about redialing are none.
+    #[test]
+    fn minutes_of_redialing_are_read_from_a_chat_message() {
+        for (text, want) in [
+            ("12/1 8點幫我打給 0223456789 訂位，打 10 分鐘", 10),
+            ("12/1 8點打給鼎泰豐，一直打十五分鐘", 15),
+            ("12月1日8点打给 0223456789，重拨20分钟", 20),
+            ("12/1 8點打給 0223456789，45 分鐘內一直撥", 45),
+            ("On 12/1 at 8am call Joe's Diner, keep calling for 45 minutes", 45),
+            ("Dec 1 8am redial 0912345678 for 90 min", 90),
+            ("12月1日8時に鈴木食堂に電話して、10分間かけ続けて", 10),
+            ("12월 1일 오전 8시에 한강식당에 전화해 줘, 20분 동안 계속 걸어 줘", 20),
+            ("El 1/12 a las 8 llama al restaurante durante 25 minutos", 25),
+            ("Le 1/12 à 8h appelle le bistrot pendant 40 minutes", 40),
+            ("Am 1.12. um 8 Uhr ruf das Gasthaus 15 Minuten lang an", 15),
+            ("Dia 1/12 às 8h liga para o restaurante por 30 minutos", 30),
+            ("12/1 8點打給 0223456789，打 200 分鐘", 200),
+        ] {
+            assert_eq!(grab_minutes_in(text), Some(want), "{text}");
+        }
+        for text in [
+            "12/1 8點幫我打給鼎泰豐訂 4 位",
+            "12/1 8點打給阿姨說我會晚到 10 分鐘",
+            "On 12/1 at 8am call Joe's Diner and book a table for 4",
+            "Call the clinic and say I'll be 10 minutes late",
+            "12月1日8時に電話して、10分遅れると伝えて",
+            "Le 1/12 à 8h appelle le bistrot, on arrive dans 20 minutes",
+            "Am 1.12. um 8 Uhr ruf an und sag, dass wir 15 Minuten später kommen",
+        ] {
+            assert_eq!(grab_minutes_in(text), None, "{text}");
+        }
+    }
+
+    /// A time written another way with a zone after it (Z, an offset, a
+    /// zone's name) is refused, never read as local time; RFC 3339 still reads.
+    #[test]
+    fn a_time_with_a_zone_not_in_rfc_3339_is_refused() {
+        let now = at(2026, 11, 28, 10, 0);
+        for (when, lang) in [
+            ("12/1 08:00Z", Lang::ZhTw),
+            ("12/1 08:00+08:00", Lang::ZhTw),
+            ("12/1 08:00 +0800", Lang::En),
+            ("2026-12-01T08:00 UTC", Lang::En),
+            ("2026-12-01 08:00 GMT", Lang::En),
+            ("12/1 08:00 GMT+8", Lang::En),
+            ("12/1 08:00 utc", Lang::En),
+            ("Dec 1 8am EST", Lang::En),
+            ("12/1 8 pm PST", Lang::En),
+            ("1/12 20h CET", Lang::Fr),
+            ("1.12. 8 Uhr CET", Lang::De),
+        ] {
+            assert_eq!(resolve_when(when, now, lang), None, "{when}");
+        }
+        assert!(resolve_when("2026-12-01T08:00Z", now, Lang::En).is_some());
+        assert_eq!(resolve_when("12/1 08:00", now, Lang::ZhTw), Some(at(2026, 12, 1, 8, 0)));
+        assert_eq!(resolve_when("1/12 20h15", now, Lang::Fr), Some(at(2026, 12, 1, 20, 15)));
+        // In a chat message: none read (the chat model reads it with its zone).
+        assert_eq!(call_time_in("12/1 08:00 UTC call 0912345678", now, Lang::En), None);
+        assert_eq!(call_time_in("12/1 8:00Z 打給 0223456789", now, Lang::ZhTw), None);
+        // A chat command keeps the zone name with its time, so it is refused.
+        let (when, rest) = leading_when("12/1 08:00 UTC 0912345678 訂4位").unwrap();
+        assert_eq!((when, rest), ("12/1 08:00 UTC", "0912345678 訂4位"));
+        assert_eq!(resolve_when(when, now, Lang::ZhTw), None);
+        // A French "est" after a time is a word, not a zone.
+        assert!(!has_zone("Le 1/12 à 20h est parfait, appelle le bistrot"));
+        assert!(!has_zone("2026-12-01 08:00"));
     }
 }

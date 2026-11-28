@@ -1437,6 +1437,9 @@
     "er_err_not_scheduled": "Cet appel a déjà commencé ou est terminé : son heure ne peut plus changer.",
     "er_err_number_taken": "« {who} » ({when}) rappelle déjà ce numéro à cette heure. Choisissez une autre heure.",
     "er_err_too_many_open": "{max} appels de l'IA ne sont pas terminés. Annulez-en ou attendez qu'ils finissent.",
-    "er_err_time_skipped": "Cette heure n'existe pas : l'horloge la saute au passage à l'heure d'été. Choisissez-en une autre."
+    "er_err_time_skipped": "Cette heure n'existe pas : l'horloge la saute au passage à l'heure d'été. Choisissez-en une autre.",
+    "er_grab_min": "Rappeler pendant",
+    "er_redial_min": "Rappeler jusqu’à ce qu’on décroche · {min} min",
+    "er_err_bad_grab_min": "Saisissez un nombre entier de minutes entre {low} et {high}."
   }
 }

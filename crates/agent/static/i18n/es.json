@@ -1437,6 +1437,9 @@
     "er_err_not_scheduled": "Esta llamada ya empezó o terminó; no se puede cambiar la hora.",
     "er_err_number_taken": "«{who}» ({when}) ya está llamando a ese número a esa hora. Elige otra hora.",
     "er_err_too_many_open": "Hay {max} llamadas de la IA sin terminar. Cancela alguna o espera a que terminen.",
-    "er_err_time_skipped": "Esa hora no existe: el reloj se la salta por el horario de verano. Elige otra."
+    "er_err_time_skipped": "Esa hora no existe: el reloj se la salta por el horario de verano. Elige otra.",
+    "er_grab_min": "Seguir rellamando durante",
+    "er_redial_min": "Llamar hasta que contesten · {min} min",
+    "er_err_bad_grab_min": "Escribe un número entero de minutos entre {low} y {high}."
   }
 }

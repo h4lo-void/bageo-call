@@ -1437,6 +1437,9 @@
     "er_err_not_scheduled": "這筆已經開始或結束，不能再改時間。",
     "er_err_number_taken": "這個號碼那段時間已經有「{who}」（{when}）在撥到通，請換個時間。",
     "er_err_too_many_open": "還沒結束的代打已經有 {max} 筆，請先取消或等幾筆結束。",
-    "er_err_time_skipped": "這個時間在夏令時間調整中不存在，請換一個時間。"
+    "er_err_time_skipped": "這個時間在夏令時間調整中不存在，請換一個時間。",
+    "er_grab_min": "一直重撥多久",
+    "er_redial_min": "撥到通 · {min} 分鐘",
+    "er_err_bad_grab_min": "一直重撥多久請填 {low} 到 {high} 的整數分鐘。"
   }
 }

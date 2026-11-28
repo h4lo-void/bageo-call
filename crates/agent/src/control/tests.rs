@@ -287,7 +287,7 @@ async fn a_call_can_be_scheduled_from_a_chat_on_a_line_free_at_that_time() {
 /// itself only when the model gave none and the message says it plainly.
 #[test]
 fn the_models_time_to_call_stands_and_a_plain_one_fills_in() {
-    let errand = |when: &str| Action::Errand { target: "0223456789".into(), task: "訂4位".into(), when: when.into() };
+    let errand = |when: &str| Action::Errand { target: "0223456789".into(), task: "訂4位".into(), when: when.into(), grab_min: None };
     let read = |a: Action| match a {
         Action::Errand { when, .. } => when,
         other => panic!("{other:?}"),
@@ -321,7 +321,7 @@ async fn a_scheduled_call_from_mcp_always_waits_for_the_owner() {
     let c = rig.controller();
     let rt = rig.state.settings_store.snapshot();
     let when = (chrono::Local::now() + chrono::Duration::days(2)).format("%Y-%m-%dT%H:%M").to_string();
-    let o = c.request_errand(&rt, crate::mcp::MCP_CHAT, "0223459861", "訂4位", &when, true, 10).await;
+    let o = c.request_errand(&rt, crate::mcp::MCP_CHAT, "0223459861", "訂4位", &when, None, true, 10).await;
     assert!(!matches!(o, Outcome::ErrandStarted { .. }), "{o:?}");
     assert!(rig.state.errands.list().is_empty(), "nothing set without the owner's yes");
 }
@@ -339,7 +339,7 @@ async fn an_mcp_client_is_never_told_the_number_of_the_owners_sim() {
     let mut cards = c.subscribe();
     let rt = rig.state.settings_store.snapshot();
     let when = (chrono::Local::now() + chrono::Duration::days(2)).format("%Y-%m-%dT%H:%M").to_string();
-    let o = c.request_errand(&rt, crate::mcp::MCP_CHAT, "0223459884", "問營業時間", &when, false, 10).await;
+    let o = c.request_errand(&rt, crate::mcp::MCP_CHAT, "0223459884", "問營業時間", &when, None, false, 10).await;
     let Outcome::Confirm { summary, .. } = &o else { panic!("{o:?}") };
     assert!(!summary.contains("0912345678"), "{summary}");
     assert!(summary.contains(&crate::notify::device_label("pixel-mcp-line")), "{summary}");
@@ -393,6 +393,98 @@ async fn a_reply_to_a_scheduled_cards_questions_brings_the_card_again_for_a_yes(
         assert_eq!(e.status, crate::errands::SCHEDULED);
         assert!(e.answers.get("note").is_some_and(|n| n.contains("0912345678")), "{answer}: {:?}", e.answers);
     }
+}
+
+/// The text holds `pick`'s words in some language (other tests may switch the notification language).
+fn says(text: &str, pick: impl Fn(Lang) -> String) -> bool {
+    crate::locale::ALL.iter().any(|l| text.contains(&crate::locale::for_owner_in(*l, &pick(*l))))
+}
+
+fn grab_line(min: u32) -> impl Fn(Lang) -> String {
+    move |l| crate::errand_plan::fill_grab(crate::errand_plan::words(l).grab, min)
+}
+
+/// A scheduled call from a chat redials for the minutes the owner wrote
+/// ("打 10 分鐘", "keep calling for 45 minutes"), else 30: the card says
+/// them, and only the yes sets them. Minutes out of range are said at once.
+/// Its questions' card says a reply brings it back for a yes.
+#[tokio::test]
+async fn a_scheduled_call_from_a_chat_redials_for_the_minutes_the_owner_wrote_once_confirmed() {
+    let rig = Rig::with_env_bot();
+    rig.set(json!({"call_notify": false, "country_code": "886", "control_errands_per_hour": 10}));
+    let (sink, _phone) = crate::callback::test_socket::phone_socket().await;
+    rig.state.control.register_client("pixel-chat-grab".into(), sink).await;
+    rig.state.errands.sims.note("pixel-chat-grab", 1, "tw");
+    let c = rig.controller();
+    let day = (chrono::Local::now().date_naive() + chrono::Duration::days(4)).format("%Y-%m-%d").to_string();
+    for (at, number, words, min) in [
+        ("08:00", "0223459971", "問營業時間，打 10 分鐘", 10),
+        ("10:00", "0223459972", "ask the opening hours, keep calling for 45 minutes", 45),
+        ("12:00", "0223459973", "問營業時間", 30),
+    ] {
+        let set = |rig: &Rig| rig.state.errands.list().into_iter().find(|e| e.number == number);
+        let ask = c.handle(&owner(&format!("/errand {day} {at} {number} {words}"))).await.unwrap();
+        assert_eq!(ask.buttons.len(), 2, "{}", ask.text);
+        assert!(says(&ask.text, grab_line(min)), "{min}: {}", ask.text);
+        assert!(set(&rig).is_none(), "{min}: nothing set before the yes");
+        let done = c.handle(&press(&ask.buttons[0].data)).await.unwrap();
+        let e = set(&rig).unwrap_or_else(|| panic!("{min}: {}", done.text));
+        assert_eq!((e.status.as_str(), e.redial, e.grab_min), (crate::errands::SCHEDULED, true, min));
+    }
+    // Minutes out of range: said at once, no card.
+    let out = c.handle(&owner(&format!("/errand {day} 14:00 0223459974 問營業時間，打 200 分鐘"))).await.unwrap();
+    assert!(out.buttons.is_empty(), "{}", out.text);
+    assert!(says(&out.text, |l| crate::errand_plan::error_text(l, "bad_grab_min").unwrap()), "{}", out.text);
+    // A scheduled call with questions: its card says the reply comes back for a yes.
+    let gaps = c.handle(&owner(&format!("/errand {day} 16:00 0223459975 訂餐廳 7 點半，打 15 分鐘"))).await.unwrap();
+    assert_eq!(gaps.buttons.len(), 2, "{}", gaps.text);
+    let tail = |l: Lang| crate::preflight::card_text_for(l, &[], true).lines().last().unwrap().to_string();
+    assert!(says(&gaps.text, tail), "{}", gaps.text);
+    assert!(says(&gaps.text, grab_line(15)), "{}", gaps.text);
+    // A call now's card with questions says the reply sends it.
+    let now_tail = |l: Lang| crate::preflight::card_text_for(l, &[], false).lines().last().unwrap().to_string();
+    let now = c.handle(&owner("/errand 0223459976 訂餐廳 7 點半")).await.unwrap();
+    assert!(says(&now.text, now_tail) && !says(&now.text, tail), "{}", now.text);
+}
+
+/// MCP's request_call takes `grab_minutes` with `at`: a whole number from 1
+/// to 120 (else `bad_grab_min`), never without a time (`grab_needs_time`);
+/// the owner's card says them and the yes sets them.
+#[tokio::test]
+async fn mcp_grab_minutes_are_checked_shown_on_the_card_and_set_on_the_yes() {
+    let rig = Rig::with_env_bot();
+    rig.set(json!({"call_notify": false, "country_code": "886", "mcp_calls": "confirm", "mcp_errands_per_hour": 20, "control_errands_per_hour": 10}));
+    let (sink, _phone) = crate::callback::test_socket::phone_socket().await;
+    rig.state.control.register_client("pixel-mcp-grab".into(), sink).await;
+    rig.state.errands.sims.note("pixel-mcp-grab", 1, "tw");
+    let c = rig.controller();
+    let mut cards = c.subscribe();
+    let rt = rig.state.settings_store.snapshot();
+    let when = (chrono::Local::now() + chrono::Duration::days(5)).format("%Y-%m-%dT%H:%M").to_string();
+    let call = |args: Value| {
+        let (c, rt) = (c.clone(), rt.clone());
+        async move { crate::mcp::call_tool(&c, &rt, "request_call", &args).await }
+    };
+    for bad in [json!(0), json!(121), json!(10.5), json!("30"), json!(-5)] {
+        let r = call(json!({"target": "0223459981", "task": "問營業時間", "at": when, "grab_minutes": bad})).await;
+        assert_eq!((r["isError"].clone(), r["structuredContent"]["code"].clone()), (json!(true), json!("bad_grab_min")), "{bad}");
+    }
+    let r = call(json!({"target": "0223459981", "task": "問營業時間", "grab_minutes": 30})).await;
+    assert_eq!(r["structuredContent"]["code"], "grab_needs_time");
+    assert!(cards.try_recv().is_err(), "no card for a refused request");
+    let r = call(json!({"target": "0223459981", "task": "問營業時間", "at": when, "grab_minutes": 45})).await;
+    assert_eq!(r["structuredContent"]["kind"], "confirm", "{r}");
+    assert!(says(r["structuredContent"]["summary"].as_str().unwrap_or(""), grab_line(45)), "{r}");
+    let card = cards.try_recv().expect("the owner's card");
+    assert!(says(&card.out.text, grab_line(45)), "{}", card.out.text);
+    assert!(rig.state.errands.list().is_empty(), "nothing set before the yes");
+    c.handle(&press(&card.out.buttons[0].data)).await.unwrap();
+    let e = rig.state.errands.list().into_iter().find(|e| e.number == "0223459981").expect("set on the yes");
+    assert_eq!((e.status.as_str(), e.grab_min), (crate::errands::SCHEDULED, 45));
+    // The tool says what it takes.
+    let tools = crate::mcp::tools(&rt);
+    let rc = tools.iter().find(|t| t["name"] == "request_call").unwrap();
+    assert_eq!(rc["inputSchema"]["properties"]["grab_minutes"]["maximum"], 120);
 }
 
 #[tokio::test]

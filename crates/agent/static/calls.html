@@ -1108,6 +1108,8 @@ html[data-embed="android"] .brand .word{display:none}
         <div class="help" id="erPhoneHelp" data-i18n="er_phone_h" hidden></div></div>
       <div class="field">
         <label class="sw"><input type="checkbox" id="erRedial" /><span><b data-i18n="er_redial"></b><small id="erRedialH"></small></span></label></div>
+      <div class="field" id="erGrabBox" hidden><label for="erGrabMin" data-i18n="er_grab_min"></label>
+        <div class="inline"><input type="number" id="erGrabMin" min="1" max="120" step="1" value="30" inputmode="numeric" /><span class="muted" data-i18n="unit_minutes"></span></div></div>
       <div class="er-pre" id="erPre" role="group" aria-labelledby="erPreT" hidden>
         <b id="erPreT" data-i18n="er_pre_t"></b>
         <p class="help" id="erPreD" data-i18n="er_pre_d"></p>
@@ -8102,10 +8104,24 @@ function erErrText(e) {
   const code = String((e && e.data && (e.data.error || e.data.code)) || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
   const key = "er_err_" + code;
   const hb = e && e.data && e.data.held_by;
-  const vars = { who: hb ? erHolderName(hb) : "—", when: hb ? erFmtAt(hb.scheduled_at) || "—" : "—", days: er.grab ? er.grab.max_days : "", max: er.grab ? er.grab.max_open : "" };
+  const vars = { who: hb ? erHolderName(hb) : "—", when: hb ? erFmtAt(hb.scheduled_at) || "—" : "—", days: er.grab ? er.grab.max_days : "", max: er.grab ? er.grab.max_open : "", ...erGrabRange() };
   return code && (I18N[lang][key] != null || I18N.en[key] != null) ? t(key, vars) : e.message;
 }
 function erHolderName(hb) { return String((hb && hb.name) || "").trim() || String((hb && hb.number) || "") || "—"; }
+// "Keep redialing for": the minutes the owner may set, the default, and what is typed (NaN: no whole number in range).
+function erGrabRange() {
+  const g = er.grab || {};
+  return { low: Number(g.min_low) || 1, high: Number(g.min_high) || 120 };
+}
+function erGrabDefault() { return (er.grab && Number(er.grab.window_min)) || 30; }
+function erGrabMinValue() {
+  const raw = String($("erGrabMin").value || "").trim();
+  const n = /^\d+$/.test(raw) ? Number(raw) : NaN;
+  const { low, high } = erGrabRange();
+  return n >= low && n <= high ? n : NaN;
+}
+// An errand's own minutes (one saved before they could be set: the default).
+function erGrabOf(e) { return Number(e.grab_min) || erGrabDefault(); }
 // A scheduled time with its weekday, in the page's language.
 function erFmtAt(s) {
   const d = parseStamp(s);
@@ -8403,6 +8419,8 @@ async function erLoadHeld() {
   if (later && !at) { erHeld = new Map(); erRenderPhones(); return; }
   try {
     const q = new URLSearchParams({ at, grab: String($("erRedial").checked) });
+    const min = erGrabMinValue();
+    if ($("erRedial").checked && Number.isFinite(min)) q.set("grab_min", String(min));
     const d = await erApi("/lines?" + q.toString());
     if (seq !== erHeldSeq) return;
     erHeld = new Map((d.held || []).map((x) => [x.serial + ":" + x.sub_id, x.held_by]));
@@ -8428,7 +8446,13 @@ function erWhenChanged() {
 }
 function renderErrandHelp() {
   const g = er.grab;
-  $("erRedialH").textContent = g ? t("er_redial_h", { gap: g.gap_s, min: g.window_min }) : "";
+  const on = $("erRedial").checked;
+  const { low, high } = erGrabRange();
+  $("erGrabBox").hidden = !on;
+  $("erGrabMin").min = String(low);
+  $("erGrabMin").max = String(high);
+  const min = erGrabMinValue();
+  $("erRedialH").textContent = g ? t("er_redial_h", { gap: g.gap_s, min: on && Number.isFinite(min) ? min : erGrabDefault() }) : "";
   $("erAtHelp").textContent = g ? t("er_at_h", { days: g.max_days }) : "";
   if (!$("erAtBox").hidden) erFillZones();
   if ($("erAt").dtSync) $("erAt").dtSync();
@@ -8541,6 +8565,8 @@ function erResetForm() {
   $("erPhone").value = "";
   $("erRedial").checked = false;
   erRedialTouched = false;
+  $("erGrabMin").value = String(erGrabDefault());
+  $("erGrabBox").hidden = true;
   document.querySelectorAll('input[name="er_when"]').forEach((r) => { r.checked = r.value === "now"; });
   $("erAt").value = "";
   $("erAt").dtSync();
@@ -8620,7 +8646,14 @@ document.querySelectorAll('input[name="er_when"]').forEach((r) => r.addEventList
 dtMount($("erAt"));
 $("erAt").addEventListener("change", () => { if (erPre) erPreHide(); erLoadHeld(); });
 $("erTz").addEventListener("change", () => { erAtBounds(); if (erPre) erPreHide(); erLoadHeld(); });
-$("erRedial").addEventListener("change", () => { erRedialTouched = true; erLoadHeld(); });
+$("erRedial").addEventListener("change", () => { erRedialTouched = true; if (erPre) erPreHide(); renderErrandHelp(); erLoadHeld(); });
+let erGrabTimer = 0;
+$("erGrabMin").addEventListener("input", () => {
+  if (erPre) erPreHide();
+  renderErrandHelp();
+  clearTimeout(erGrabTimer);
+  erGrabTimer = setTimeout(erLoadHeld, 300);
+});
 document.querySelectorAll('input[name="er_identity"]').forEach((r) => r.addEventListener("change", () => { erIdTouched = true; }));
 $("erRefresh").addEventListener("click", () => loadErrands());
 $("erForm").addEventListener("submit", async (ev) => {
@@ -8639,6 +8672,12 @@ $("erForm").addEventListener("submit", async (ev) => {
   body.identity = erIdentity();
   const pickedLine = $("erPhone").value;
   const colon = pickedLine.indexOf(":");
+  if ($("erRedial").checked) {
+    // How long to keep redialing: a whole number in range, else said here (never changed into one that fits).
+    const min = erGrabMinValue();
+    if (!Number.isFinite(min)) return erFormErr(t("er_err_bad_grab_min", erGrabRange()), $("erGrabMin"));
+    body.grab_min = min;
+  }
   if (erWhen() === "later") {
     // A set time: in the future, and a line of its own (checked again by Bageo).
     if (!$("erAt").value) return erFormErr(t("er_err_need_time"), $("erAt"));
@@ -8815,7 +8854,7 @@ function erReveal(id) {
 
 // ---- the list: one card per errand, kept (with its captions and what is typed) while unchanged
 function erSig(e) {
-  return JSON.stringify([lang, calApp(), e.updated_at, e.status, e.attempts, e.redial, e.redial_at, e.scheduled_at, erMove.has(e.id), e.result, e.questions, e.history, e.record_id,
+  return JSON.stringify([lang, calApp(), e.updated_at, e.status, e.attempts, e.redial, e.grab_min, e.redial_at, e.scheduled_at, erMove.has(e.id), e.result, e.questions, e.history, e.record_id,
     e.device_label, e.serial, e.sub_id, e.sub_id_asked, e.sim_country, e.name, e.number, e.task, e.identity, er.busy.has(e.id), erExpanded.has(e.id), erFollow.has(e.id),
     phoneLineLabel(e.serial, e.sub_id ?? e.sub_id_asked, e.sim_country)]);
 }
@@ -8876,7 +8915,7 @@ function errandCard(e) {
       h("div", { class: "sub" },
         String(e.name || "").trim() && e.number ? h("span", { class: "mono", text: e.number }) : null,
         h("span", { class: "tag", text: t(e.identity === "owner" ? "er_as_owner" : "er_as_assistant") }),
-        e.redial ? h("span", { class: "tag", text: t("er_redial") }) : null,
+        e.redial ? h("span", { class: "tag", text: t("er_redial_min", { min: erGrabOf(e) }) }) : null,
         phone ? h("span", { text: t("er_via", { phone }) }) : null)),
     h("div", { class: "er-side" },
       h("span", { class: "tag " + (ER_ST_TAG[st] || "") }, active ? h("span", { class: "pulse" }) : null, h("span", { text: tCode("er_st_", st || "queued") })),
