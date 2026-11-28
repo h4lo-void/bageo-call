@@ -807,22 +807,8 @@ fn drop_unreadable(dir: &Path, older_than: Option<(u64, u64)>) {
 /// Write body to a new file next to path, then rename it over path: a crash
 /// leaves the old file or the new one, never half of one.
 fn write_atomic(path: &Path, body: &[u8]) -> std::io::Result<()> {
-    use std::io::Write as _;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
     let tmp = path.with_file_name(format!(".{FILE_NAME}.tmp"));
-    let written = (|| -> std::io::Result<()> {
-        let mut f = std::fs::File::create(&tmp)?;
-        f.write_all(body)?;
-        f.sync_all()?;
-        drop(f);
-        std::fs::rename(&tmp, path)
-    })();
-    if written.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    written
+    crate::private_file::write_atomic(path, &tmp, body)
 }
 
 #[cfg(test)]

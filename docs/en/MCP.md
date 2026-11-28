@@ -44,7 +44,7 @@ A client running on another network (a cloud chat app) needs an HTTPS address th
 | `list_tasks` | To-dos waiting for your decision | always |
 | `list_errands` | The AI's calls for you and where each stands | always |
 | `find_contacts` | Contacts matching `query` | always |
-| `request_call` | The AI calls `target` (a number or a contact's name) to do `task` | `mcp_calls` = `confirm` or `direct` |
+| `request_call` | The AI calls `target` (a number or a contact's name) to do `task`; with `at` (local `YYYY-MM-DDTHH:MM`), at that time on a free phone, redialing until it gets through for `grab_minutes` (optional, a whole number from 1 to 120, default 30; only with `at`, else `grab_needs_time`; out of range: `bad_grab_min`), always after the owner's yes, whose card shows the minutes | `mcp_calls` = `confirm` or `direct` |
 | `cancel_call` | Stops an AI call by its `id` | `mcp_calls` = `confirm` or `direct` |
 | `say_to_call` | A line for the AI on a call that is on the line now | `mcp_calls` = `direct` |
 

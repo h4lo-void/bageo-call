@@ -37,6 +37,7 @@ dependencies = [
  "hmac",
  "hyper",
  "hyper-util",
+ "iana-time-zone",
  "libc",
  "reqwest",
  "ring",

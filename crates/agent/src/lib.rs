@@ -49,6 +49,7 @@ pub mod embedded;
 mod summary;
 mod dtmf;
 mod end_call;
+mod errand_plan;
 mod errands;
 mod extract;
 mod fulfill;
@@ -73,6 +74,7 @@ mod place_habits;
 mod secret_seal;
 mod wifi_tls;
 mod preflight;
+mod private_file;
 mod prompt_book;
 mod prompts;
 mod recent_notices;
@@ -1381,6 +1383,28 @@ async fn bootstrap_runtime() -> Result<(AppState, CallsState, Arc<control::Contr
                 tick.tick().await;
                 appointment_callbacks(&state, "", None).await;
                 errand_tick(&state).await;
+            }
+        });
+    }
+    // Scheduled errands and next tries: woken at the moment one is due (to
+    // the second), when one is added or changed, and at least every 30 s
+    // (the clock may have been changed or the computer asleep).
+    {
+        let state = state.clone();
+        tokio::spawn(async move {
+            loop {
+                // Something already due that could not go yet (its last call
+                // not over, no phone): looked at again every second.
+                let wait = state
+                    .errands
+                    .next_due()
+                    .map(|at| (at - chrono::Utc::now()).to_std().unwrap_or(Duration::from_secs(1)))
+                    .unwrap_or(ERRAND_TIMER_IDLE)
+                    .min(ERRAND_TIMER_IDLE);
+                tokio::select! {
+                    _ = tokio::time::sleep(wait) => errand_due(&state).await,
+                    _ = state.errands.woken() => {}
+                }
             }
         });
     }
@@ -4386,7 +4410,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         if !hit.is_product_key() {
                                             info!(
                                                 "IVR reject non-product DTMF digit={} conf={:.3} purity={:.3} serial={serial}",
-                                                hit.digit, hit.confidence, hit.purity
+                                                log_text::Said(&hit.digit.to_string()), hit.confidence, hit.purity
                                             );
                                             continue;
                                         }
@@ -4394,7 +4418,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         if !accept {
                                             info!(
                                                 "IVR reject structure DTMF digit={} conf={:.3} purity={:.3} high_margin={:.2} phase={phase:?} serial={serial}",
-                                                hit.digit, hit.confidence, hit.purity, hit.high_margin
+                                                log_text::Said(&hit.digit.to_string()), hit.confidence, hit.purity, hit.high_margin
                                             );
                                             continue;
                                         }
@@ -4411,7 +4435,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         if !is_action {
                                             info!(
                                                 "IVR ignore non-action DTMF digit={} conf={:.3} serial={serial}",
-                                                hit.digit, hit.confidence
+                                                log_text::Said(&hit.digit.to_string()), hit.confidence
                                             );
                                             continue;
                                         }
@@ -4420,7 +4444,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         deadline = None;
                                         info!(
                                             "IVR DTMF digit={} conf={:.3} purity={:.3} high_margin={:.2} phase={phase:?} remote_only serial={serial}",
-                                            hit.digit, hit.confidence, hit.purity, hit.high_margin
+                                            log_text::Said(&hit.digit.to_string()), hit.confidence, hit.purity, hit.high_margin
                                         );
                                         agent_dbg(
                                             "main.rs:dtmf", "dtmf_received", "H4",
@@ -4514,7 +4538,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         } else {
                                             info!(
                                                 "IVR ignore digit={} (hold={} vm={} end={:?}) serial={serial}",
-                                                hit.digit, hold_key, vm_key, end_keys
+                                                log_text::Said(&hit.digit.to_string()), hold_key, vm_key, end_keys
                                             );
                                         }
                                     }
@@ -10970,9 +10994,21 @@ async fn appointment_callbacks(state: &AppState, serial: &str, ev: Option<&Value
     }
 }
 
+/// The errand timer looks again at least this often.
+const ERRAND_TIMER_IDLE: Duration = Duration::from_secs(30);
+
 /// Errands waiting for a phone: dialed once it is free, failed after their
 /// limit ([`errands::sweep`]). Every 15 s.
 async fn errand_tick(state: &AppState) {
+    errand_run(state, false).await;
+}
+
+/// Scheduled errands and next tries that are due ([`errands::due`]).
+async fn errand_due(state: &AppState) {
+    errand_run(state, true).await;
+}
+
+async fn errand_run(state: &AppState, due: bool) {
     let rt = state.settings_store.snapshot();
     let eff = rt.effective(&state.settings);
     let phones = errands::phone_view(&state.control, &state.phones, &state.calls, &state.errands.sims).await;
@@ -10986,7 +11022,11 @@ async fn errand_tick(state: &AppState) {
         calls: &state.calls,
         phones,
     };
-    errands::sweep(&env).await;
+    if due {
+        errands::due(&env).await;
+    } else {
+        errands::sweep(&env).await;
+    }
 }
 
 /// Persona mode gave up on the AI and hung up (`persona_ai_unavailable_hangup`).

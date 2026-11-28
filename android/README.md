@@ -392,8 +392,6 @@ Do not disable `com.android.phone`: that is the telephony stack itself.
 | `CAPTURE_AUDIO_OUTPUT` | Record the call audio (`VOICE_DOWNLINK` / `VOICE_CALL` sources). |
 | `MODIFY_PHONE_STATE` | Play the AI's audio into the call through the `TYPE_TELEPHONY` output. |
 | `CONTROL_INCALL_EXPERIENCE` | Run the app's invisible in-call service. |
-| `WRITE_SECURE_SETTINGS` | Declared and allow-listed; the current code changes settings through `su` instead. |
-| `INTERACT_ACROSS_USERS`, `MANAGE_USERS` | In the allow-list file only; the app does not declare them. |
 
 **Granted on the setup screen.**
 

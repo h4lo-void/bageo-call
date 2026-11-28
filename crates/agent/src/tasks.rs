@@ -9,7 +9,7 @@
 //! Created once in `main.rs` and shared with the web console (`calls_http`).
 
 use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -160,7 +160,7 @@ pub struct TaskStore {
 
 impl TaskStore {
     pub fn new(root: PathBuf) -> Arc<Self> {
-        if let Err(e) = fs::create_dir_all(&root) {
+        if let Err(e) = crate::private_file::create_dir_private(&root) {
             warn!("tasks dir create {}: {e}", root.display());
         }
         let index = load_or_rebuild_index(&root).unwrap_or_default();
@@ -490,17 +490,11 @@ fn index_path(root: &Path) -> PathBuf {
 }
 
 fn save_task_file(root: &Path, task: &TaskRecord) -> Result<()> {
-    fs::create_dir_all(root)?;
     let path = task_file_path(root, &task.id);
     let tmp = root.join(format!("{}.json.tmp", task.id));
     let data = serde_json::to_vec_pretty(task)?;
-    {
-        let mut f = File::create(&tmp).with_context(|| format!("create {}", tmp.display()))?;
-        f.write_all(&data)?;
-        f.flush()?;
-    }
-    fs::rename(&tmp, &path).with_context(|| format!("rename to {}", path.display()))?;
-    Ok(())
+    crate::private_file::write_atomic(&path, &tmp, &data).with_context(|| format!("write {}", path.display()))
+
 }
 
 fn load_task_file(root: &Path, id: &str) -> Result<TaskRecord> {
@@ -512,16 +506,10 @@ fn load_task_file(root: &Path, id: &str) -> Result<TaskRecord> {
 }
 
 fn save_index(root: &Path, index: &TaskIndex) -> Result<()> {
-    fs::create_dir_all(root)?;
     let path = index_path(root);
     let tmp = root.join("index.json.tmp");
     let data = serde_json::to_vec_pretty(index)?;
-    {
-        let mut f = File::create(&tmp)?;
-        f.write_all(&data)?;
-        f.flush()?;
-    }
-    fs::rename(&tmp, &path)?;
+    crate::private_file::write_atomic(&path, &tmp, &data)?;
     Ok(())
 }
 
@@ -619,6 +607,21 @@ mod tests {
             Some("2026-08-01/call-1_vm.wav")
         );
 
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn task_files_and_folder_are_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = temp_tasks_root();
+        let store = TaskStore::new(root.clone());
+        let draft = draft_from_voicemail("call-p", "serial-a", "0900000000", "", ReplyMethod::Phone, None, false);
+        let created = store.create(draft).await.expect("create");
+        let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&root), 0o700);
+        assert_eq!(mode(&task_file_path(&root, &created.id)), 0o600);
+        assert_eq!(mode(&index_path(&root)), 0o600);
         let _ = fs::remove_dir_all(root);
     }
 

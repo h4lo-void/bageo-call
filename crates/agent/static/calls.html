@@ -127,6 +127,34 @@ input::placeholder,textarea::placeholder{color:var(--muted);opacity:.72}
 textarea{resize:vertical;min-height:96px;line-height:1.5}
 select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888b94' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 9px center;background-size:14px;padding-inline-end:28px;text-overflow:ellipsis}
 input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid color-mix(in srgb,var(--focus) 35%,transparent);outline-offset:0;border-color:var(--focus);border-radius:var(--radius-sm)}
+.er-at{display:grid;gap:6px;margin-top:12px}
+.dt{position:relative;width:100%;max-width:18rem}
+.dt-btn{display:flex;align-items:center;gap:10px;width:100%;min-height:40px;padding:8px 12px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--surface);color:var(--text);text-align:start;cursor:pointer;font-variant-numeric:tabular-nums;transition:border-color .14s}
+.dt-btn:hover{border-color:var(--line-strong)}
+.dt-btn[aria-expanded=true]{border-color:var(--focus)}
+.dt-btn svg{flex:0 0 auto;width:17px;height:17px;color:var(--muted)}
+.dt-btn .dt-txt{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dt-btn .dt-txt.dt-ph{color:var(--muted);letter-spacing:.04em}
+.dt-pop{position:absolute;z-index:60;top:calc(100% + 6px);inset-inline-start:0;width:296px;max-width:calc(100vw - 32px);padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);box-shadow:0 10px 28px rgba(0,0,0,.18)}
+.dt-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px}
+.dt-head b{font-weight:600}
+.dt-nav{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--muted);cursor:pointer}
+.dt-nav:hover:not(:disabled){background:var(--surface2);color:var(--text)}
+.dt-nav:disabled{opacity:.35;cursor:default}
+.dt-nav svg{width:16px;height:16px}
+[dir=rtl] .dt-nav svg{transform:scaleX(-1)}
+.dt-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+.dt-wd{font-size:.76rem;color:var(--muted);padding:4px 0}
+.dt-day{height:34px;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--text);cursor:pointer;font-variant-numeric:tabular-nums}
+.dt-day:hover:not(:disabled){background:var(--surface2)}
+.dt-day.today{box-shadow:inset 0 0 0 1px var(--line-strong)}
+.dt-day.on{background:var(--accent);color:var(--on-accent);font-weight:600}
+.dt-day:disabled{color:var(--muted);opacity:.4;cursor:default}
+.dt-day.pad{visibility:hidden}
+.dt-time{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.dt-time svg{width:16px;height:16px;color:var(--muted);flex:0 0 auto}
+.dt-time select{flex:1 1 0;min-height:36px;font-variant-numeric:tabular-nums}
+.dt-time span{color:var(--muted)}
 .tag{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:6px;font-size:.76rem;font-weight:500;background:var(--surface2);color:var(--muted);white-space:nowrap}
 .tag.ok{background:var(--ok-soft);color:var(--ok)}
 .tag.warn{background:var(--warn-soft);color:var(--warn)}
@@ -1062,11 +1090,23 @@ html[data-embed="android"] .brand .word{display:none}
           <label><input type="radio" name="er_identity" value="assistant" checked /><span><b id="erIdAssistant"></b><small data-i18n="er_id_assistant_d"></small></span></label>
           <label><input type="radio" name="er_identity" value="owner" /><span><b id="erIdOwner"></b><small data-i18n="er_id_owner_d"></small></span></label>
         </div></div>
+      <div class="field"><div class="lbl" id="lbl-er-when" data-i18n="er_when"></div>
+        <div class="choice" role="radiogroup" aria-labelledby="lbl-er-when">
+          <label><input type="radio" name="er_when" value="now" checked /><span><b data-i18n="er_when_now"></b></span></label>
+          <label><input type="radio" name="er_when" value="later" /><span><b data-i18n="er_when_later"></b><small data-i18n="er_when_later_d"></small></span></label>
+        </div>
+        <div class="er-at" id="erAtBox" hidden>
+          <label for="erAtBtn" data-i18n="er_at"></label>
+          <input type="hidden" id="erAt" />
+          <div class="help" id="erAtHelp"></div>
+        </div></div>
       <div class="field"><label for="erPhone" data-i18n="er_phone"></label>
         <select id="erPhone" style="max-width:28rem"></select>
         <div class="help" id="erPhoneHelp" data-i18n="er_phone_h" hidden></div></div>
       <div class="field">
-        <label class="sw"><input type="checkbox" id="erRedial" /><span><b data-i18n="er_redial"></b><small data-i18n="er_redial_h"></small></span></label></div>
+        <label class="sw"><input type="checkbox" id="erRedial" /><span><b data-i18n="er_redial"></b><small id="erRedialH"></small></span></label></div>
+      <div class="field" id="erGrabBox" hidden><label for="erGrabMin" data-i18n="er_grab_min"></label>
+        <div class="inline"><input type="number" id="erGrabMin" min="1" max="120" step="1" value="30" inputmode="numeric" /><span class="muted" data-i18n="unit_minutes"></span></div></div>
       <div class="er-pre" id="erPre" role="group" aria-labelledby="erPreT" hidden>
         <b id="erPreT" data-i18n="er_pre_t"></b>
         <p class="help" id="erPreD" data-i18n="er_pre_d"></p>
@@ -8029,9 +8069,9 @@ function calButton(links, icsPath) {
 // answers, and a box to tell the AI something. Afterwards: what came of it,
 // reply and call again, call again, add to calendar.
 const ER_ACTIVE = ["dialing", "on_call"];
-const ER_OPEN = ["queued", "dialing", "on_call"];
+const ER_OPEN = ["scheduled", "queued", "dialing", "on_call"];
 const ER_RETRY = ["no_answer", "failed", "cancelled"];
-const ER_ST_TAG = { dialing: "info", on_call: "accent", done: "ok", no_answer: "warn", failed: "bad" };
+const ER_ST_TAG = { scheduled: "info", dialing: "info", on_call: "accent", done: "ok", no_answer: "warn", failed: "bad" };
 const ER_OC_TAG = { done: "ok", partial: "warn", not_done: "bad", need_owner: "warn", no_answer: "warn", voicemail: "warn", failed: "bad" };
 const er = { list: [], state: "idle", error: "", seq: 0, busy: new Set(), sending: false };
 const erCards = new Map();  // errand id → { sig, el }: a card is rebuilt only when it changed
@@ -8044,6 +8084,10 @@ let erPhonesSig = "";
 let erPre = null; // the open card before dialing: { body, missing, optional, note, remind }
 let erFormLang = "";
 let erTicks = 0;
+let erHeld = new Map();     // "serial:sub_id" → the errand holding that line at the time picked
+let erHeldSeq = 0;
+let erRedialTouched = false;
+const erMove = new Map();   // scheduled errand id → the new time being typed ("Change time")
 const erOpen = (e) => ER_OPEN.includes(e.status);
 const erPath = (id, tail) => "/" + encodeURIComponent(id) + (tail || "");
 const erTitle = (e) => String(e.name || "").trim() || String(e.number || "") || "—";
@@ -8053,11 +8097,260 @@ async function erApi(path, opts) {
   if (d && d.ok === false) throw new ApiError(String(d.error || ""), 400, String(d.error || ""), d);
   return d;
 }
-// A refused request comes back as {"ok":false,"error":"<code>"}: the code in words.
+// A refused request comes back as {"ok":false,"error":"<code>"}: the code in words
+// (with the errand holding the line, when that is why).
 function erErrText(e) {
   const code = String((e && e.data && (e.data.error || e.data.code)) || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
   const key = "er_err_" + code;
-  return code && (I18N[lang][key] != null || I18N.en[key] != null) ? t(key) : e.message;
+  const hb = e && e.data && e.data.held_by;
+  const vars = { who: hb ? erHolderName(hb) : "—", when: hb ? erFmtAt(hb.scheduled_at) || "—" : "—", days: er.grab ? er.grab.max_days : "", max: er.grab ? er.grab.max_open : "", ...erGrabRange() };
+  return code && (I18N[lang][key] != null || I18N.en[key] != null) ? t(key, vars) : e.message;
+}
+function erHolderName(hb) { return String((hb && hb.name) || "").trim() || String((hb && hb.number) || "") || "—"; }
+// "Keep redialing for": the minutes the owner may set, the default, and what is typed (NaN: no whole number in range).
+function erGrabRange() {
+  const g = er.grab || {};
+  return { low: Number(g.min_low) || 1, high: Number(g.min_high) || 120 };
+}
+function erGrabDefault() { return (er.grab && Number(er.grab.window_min)) || 30; }
+function erGrabMinValue() {
+  const raw = String($("erGrabMin").value || "").trim();
+  const n = /^\d+$/.test(raw) ? Number(raw) : NaN;
+  const { low, high } = erGrabRange();
+  return n >= low && n <= high ? n : NaN;
+}
+// An errand's own minutes (one saved before they could be set: the default).
+function erGrabOf(e) { return Number(e.grab_min) || erGrabDefault(); }
+// A scheduled time with its weekday, in the page's language.
+function erFmtAt(s) {
+  const d = parseStamp(s);
+  if (!d) return "";
+  // In Bageo's zone, named when this browser is in another one.
+  const bz = erBageoZone();
+  const opts = { calendar: "gregory", weekday: "short", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" };
+  if (bz) { opts.timeZone = bz; if (bz !== erHereZone()) opts.timeZoneName = "shortOffset"; }
+  try { return new Intl.DateTimeFormat(loc(), opts).format(d); } catch (_) { return d.toLocaleString(); }
+}
+// How long until then ("in 3 hours"), in the page's language.
+function erLeft(s) {
+  const d = parseStamp(s);
+  if (!d) return "";
+  const sec = Math.round((d.getTime() - Date.now()) / 1000);
+  const a = Math.abs(sec);
+  try {
+    const rtf = new Intl.RelativeTimeFormat(loc(), { numeric: "auto" });
+    if (a >= 86400) return rtf.format(Math.round(sec / 86400), "day");
+    if (a >= 3600) return rtf.format(Math.round(sec / 3600), "hour");
+    if (a >= 60) return rtf.format(Math.round(sec / 60), "minute");
+    return rtf.format(sec, "second");
+  } catch (_) { return ""; }
+}
+function erSchLine(at) { return t("er_sch_at", { when: erFmtAt(at), left: erLeft(at) }); }
+// A Date as a date-and-time field's value ("2026-12-01T08:00", local time).
+function erLocalValue(d) {
+  if (!d) return "";
+  const p = (x) => String(x).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+// ---- time zone: a time picked is Bageo's computer's (what a plain time means to it)
+function erBageoZone() { return (er.grab && er.grab.tz) || ""; }
+function erHereZone() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (_) { return ""; } }
+// The zone the date field is read in.
+function erZone() { return erBageoZone() || erHereZone(); }
+// The wall clock in `zone` at instant `ms`, as UTC milliseconds of those fields (null: unknown zone).
+function erWallUtc(zone, ms) {
+  try {
+    const f = new Intl.DateTimeFormat("en-US", { timeZone: zone || undefined, calendar: "gregory", numberingSystem: "latn", hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" });
+    const p = {};
+    for (const x of f.formatToParts(new Date(ms))) p[x.type] = +x.value;
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute);
+  } catch (_) { return null; }
+}
+// A date field value: the wall clock in `zone` at instant `ms`.
+function erWallValue(zone, ms) {
+  const w = erWallUtc(zone, ms);
+  if (w == null) return erLocalValue(new Date(ms));
+  return new Date(w).toISOString().slice(0, 16);
+}
+// The instant a date field value ("2026-12-01T08:00") is in `zone` (null: unreadable).
+function erInstant(zone, v) {
+  const d = dtParse(v);
+  if (!d) return null;
+  const want = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes());
+  if (erWallUtc(zone, want) == null) return d.getTime();
+  let ms = want;
+  for (let i = 0; i < 3; i++) ms += want - erWallUtc(zone, ms);
+  return ms;
+}
+// The date field's earliest and latest, in Bageo's zone.
+function erAtBounds() {
+  const days = er.grab ? Number(er.grab.max_days) || 0 : 0;
+  $("erAt").min = erWallValue(erZone(), Date.now() + 60000);
+  if (days) $("erAt").max = erWallValue(erZone(), Date.now() + days * 86400000);
+}
+// Bageo's zone as "Taipei Standard Time (GMT+8)" in the page's language; its
+// offset only when the name is not known.
+function erZoneLabel() {
+  const zone = erBageoZone();
+  const part = (opts) => {
+    try { return (new Intl.DateTimeFormat(loc(), Object.assign({ timeZone: zone }, opts)).formatToParts(new Date()).find((x) => x.type === "timeZoneName") || {}).value || ""; } catch (_) { return ""; }
+  };
+  if (zone) {
+    const off = part({ timeZoneName: "shortOffset" });
+    const name = part({ timeZoneName: "longGeneric" }) || part({ timeZoneName: "long" });
+    if (name && off && name !== off) return name + " (" + off + ")";
+    if (off || name) return off || name;
+  }
+  if (!er.grab) return "";
+  const min = Number(er.grab.utc_offset_min) || 0;
+  const a = Math.abs(min);
+  return "GMT" + (min < 0 ? "-" : "+") + Math.floor(a / 60) + (a % 60 ? ":" + String(a % 60).padStart(2, "0") : "");
+}
+// The page's own date-and-time picker over hidden `input` (value, min and max
+// as "2026-12-01T08:00"): a button showing the time picked, a month to pick the
+// day from, then the hour and minute. Picking sends "input" and "change".
+// `input.dtSync()` redraws it after its value is set from code.
+const DT_ICON_CAL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>';
+const DT_ICON_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+const DT_ICON_PREV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>';
+const DT_ICON_NEXT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+function dtParse(v) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(v || "");
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
+}
+function dtDay(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+// Every language and region: the Gregorian calendar (the days in the grid),
+// the language's own digits and order, its first day of the week.
+function dtFmt(opts) {
+  try { return new Intl.DateTimeFormat(loc(), Object.assign({ calendar: "gregory" }, opts)); } catch (_) {}
+  try { return new Intl.DateTimeFormat("en", opts); } catch (_) { return null; }
+}
+function dtLabel(d) {
+  const f = dtFmt({ year: "numeric", month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  return f ? f.format(d) : erLocalValue(d).replace("T", " ");
+}
+// What an empty field shows: the picked time's shape in this language, its digits dashed.
+function dtBlank() {
+  const f = dtFmt({ year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const s = f ? f.format(new Date(2026, 10, 30, 9, 0)) : "2026-11-30 09:00";
+  return s.replace(/\p{Nd}/gu, "-");
+}
+// Numbers in the language's own digits, at least `width` of them.
+function dtNum(width) {
+  let f = null;
+  try { f = new Intl.NumberFormat(loc(), { minimumIntegerDigits: width, useGrouping: false }); } catch (_) {}
+  return (n) => (f ? f.format(n) : String(n).padStart(width, "0"));
+}
+// 0 Sunday … 6 Saturday.
+function dtWeekStart() {
+  try {
+    const l = new Intl.Locale(loc());
+    const w = typeof l.getWeekInfo === "function" ? l.getWeekInfo() : l.weekInfo;
+    if (w && w.firstDay) return w.firstDay % 7;
+  } catch (_) {}
+  const base = String(loc()).toLowerCase().split("-")[0];
+  if (["ar", "fa", "ps", "ckb"].includes(base)) return 6;
+  if (["en", "zh", "ja", "ko", "pt", "he", "hi", "th", "id", "fil", "tl", "bn", "mr", "gu", "kn", "ml", "ta", "te", "pa", "ne", "my", "km", "lo", "am", "sw", "zu", "xh", "af"].includes(base)) return 0;
+  return 1;
+}
+// The one picker open; a press anywhere else closes it.
+let dtOpen = null;
+document.addEventListener("pointerdown", (ev) => { if (dtOpen && !dtOpen.wrap.contains(ev.target)) dtOpen.close(); });
+function dtMount(input) {
+  const svg = (s) => { const t = document.createElement("template"); t.innerHTML = s; return t.content.firstChild; };
+  const txt = h("span", { class: "dt-txt" });
+  const btn = h("button", { type: "button", class: "dt-btn", id: input.id ? input.id + "Btn" : null, attr: { "aria-haspopup": "dialog", "aria-expanded": "false" } }, svg(DT_ICON_CAL), txt);
+  const pop = h("div", { class: "dt-pop", role: "dialog", hidden: true });
+  const wrap = h("div", { class: "dt" });
+  if (input.parentNode) input.replaceWith(wrap);
+  wrap.append(input, btn, pop);
+  let month = null;
+  const bounds = () => [dtParse(input.min), dtParse(input.max)];
+  function set(d) {
+    const [lo, hi] = bounds();
+    if (lo && d < lo) d = lo;
+    if (hi && d > hi) d = hi;
+    input.value = erLocalValue(d);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    sync();
+    if (!pop.hidden) draw();
+  }
+  function sync() {
+    const d = dtParse(input.value);
+    txt.textContent = d ? dtLabel(d) : dtBlank();
+    txt.classList.toggle("dt-ph", !d);
+  }
+  function draw() {
+    clear(pop);
+    const cur = dtParse(input.value);
+    const [lo, hi] = bounds();
+    const first = new Date(month.getFullYear(), month.getMonth(), 1);
+    const tf = dtFmt({ year: "numeric", month: "long" });
+    const title = tf ? tf.format(first) : first.getFullYear() + "-" + (first.getMonth() + 1);
+    const step = (n) => { month = new Date(month.getFullYear(), month.getMonth() + n, 1); draw(); };
+    const prevOk = !lo || first > dtDay(lo);
+    const nextFirst = new Date(month.getFullYear(), month.getMonth() + 1, 1);
+    const nextOk = !hi || nextFirst <= hi;
+    pop.append(h("div", { class: "dt-head" },
+      h("button", { type: "button", class: "dt-nav", disabled: !prevOk, onclick: () => step(-1) }, svg(DT_ICON_PREV)),
+      h("b", { text: title }),
+      h("button", { type: "button", class: "dt-nav", disabled: !nextOk, onclick: () => step(1) }, svg(DT_ICON_NEXT))));
+    const grid = h("div", { class: "dt-grid" });
+    const ws = dtWeekStart();
+    const wdf = dtFmt({ weekday: "narrow" });
+    const num = dtNum(1);
+    // 2026-11-01 is a Sunday.
+    for (let i = 0; i < 7; i++) grid.append(h("div", { class: "dt-wd", text: wdf ? wdf.format(new Date(2026, 10, 1 + ((ws + i) % 7))) : "" }));
+    for (let i = 0; i < (first.getDay() - ws + 7) % 7; i++) grid.append(h("span", { class: "dt-day pad" }));
+    const today = dtDay(new Date()).getTime();
+    const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+    for (let n = 1; n <= days; n++) {
+      const day = new Date(month.getFullYear(), month.getMonth(), n);
+      const off = (lo && day < dtDay(lo)) || (hi && day > dtDay(hi));
+      const on = cur && dtDay(cur).getTime() === day.getTime();
+      grid.append(h("button", {
+        type: "button", class: "dt-day" + (on ? " on" : "") + (day.getTime() === today ? " today" : ""), disabled: !!off, text: num(n),
+        onclick: () => { const base = cur || new Date(2000, 0, 1, 9, 0); day.setHours(base.getHours(), base.getMinutes()); set(day); },
+      }));
+    }
+    pop.append(grid);
+    const p2 = dtNum(2);
+    const hour = h("select", { "aria-label": t("er_at"), disabled: !cur });
+    for (let i = 0; i < 24; i++) hour.append(h("option", { value: String(i), text: p2(i) }));
+    const min = h("select", { "aria-label": t("er_at"), disabled: !cur });
+    for (let i = 0; i < 60; i++) min.append(h("option", { value: String(i), text: p2(i) }));
+    if (cur) { hour.value = String(cur.getHours()); min.value = String(cur.getMinutes()); }
+    const pick = () => { const d = dtParse(input.value); if (!d) return; d.setHours(+hour.value, +min.value); set(d); };
+    hour.addEventListener("change", pick);
+    min.addEventListener("change", pick);
+    pop.append(h("div", { class: "dt-time" }, svg(DT_ICON_CLOCK), hour, h("span", { text: ":" }), min));
+  }
+  function open() {
+    if (dtOpen) dtOpen.close();
+    const d = dtParse(input.value) || dtParse(input.min) || new Date();
+    month = new Date(d.getFullYear(), d.getMonth(), 1);
+    pop.hidden = false;
+    btn.setAttribute("aria-expanded", "true");
+    dtOpen = { wrap, close };
+    draw();
+  }
+  function close() {
+    if (dtOpen && dtOpen.wrap === wrap) dtOpen = null;
+    if (pop.hidden) return;
+    pop.hidden = true;
+    btn.setAttribute("aria-expanded", "false");
+  }
+  btn.addEventListener("click", () => (pop.hidden ? open() : close()));
+  wrap.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && !pop.hidden) { ev.stopPropagation(); close(); btn.focus(); } });
+  input.dtSync = sync;
+  input.focus = () => btn.focus();
+  sync();
+  return wrap;
+}
+function erWhen() {
+  const r = document.querySelector('input[name="er_when"]:checked');
+  return r ? r.value : "now";
 }
 function erPut(x) {
   if (!x || !x.id) return;
@@ -8073,6 +8366,7 @@ async function loadErrands() {
     const d = await erApi("");
     if (seq !== er.seq) return;
     er.list = Array.isArray(d.errands) ? d.errands : [];
+    if (d.grab) er.grab = d.grab;
     er.state = "ok";
   } catch (e) {
     if (seq !== er.seq || er.state === "ok") return; // keep what is shown
@@ -8083,7 +8377,51 @@ async function loadErrands() {
 }
 function showErrands() {
   loadErrands();
-  loadDevices().then(() => erRenderPhones());
+  loadDevices().then(() => erLoadHeld());
+}
+// The lines other errands hold over the call being set up (now, or at the time picked).
+async function erLoadHeld() {
+  const seq = ++erHeldSeq;
+  const later = erWhen() === "later";
+  const at = later ? $("erAt").value : "";
+  if (later && !at) { erHeld = new Map(); erRenderPhones(); return; }
+  try {
+    const q = new URLSearchParams({ at, grab: String($("erRedial").checked) });
+    const min = erGrabMinValue();
+    if ($("erRedial").checked && Number.isFinite(min)) q.set("grab_min", String(min));
+    const d = await erApi("/lines?" + q.toString());
+    if (seq !== erHeldSeq) return;
+    erHeld = new Map((d.held || []).map((x) => [x.serial + ":" + x.sub_id, x.held_by]));
+    if (d.grab) er.grab = d.grab;
+  } catch (_) {
+    if (seq !== erHeldSeq) return;
+    erHeld = new Map();
+  }
+  erRenderPhones();
+  renderErrandHelp();
+}
+// "Now" or "At a set date and time": the date field and a line of its own only for the second.
+function erWhenChanged() {
+  const later = erWhen() === "later";
+  $("erAtBox").hidden = !later;
+  if (!erRedialTouched) $("erRedial").checked = later;
+  const days = er.grab ? Number(er.grab.max_days) || 0 : 0;
+  erAtBounds();
+  if (erPre) erPreHide();
+  renderErrandHelp();
+  erLoadHeld();
+}
+function renderErrandHelp() {
+  const g = er.grab;
+  const on = $("erRedial").checked;
+  const { low, high } = erGrabRange();
+  $("erGrabBox").hidden = !on;
+  $("erGrabMin").min = String(low);
+  $("erGrabMin").max = String(high);
+  const min = erGrabMinValue();
+  $("erRedialH").textContent = g ? t("er_redial_h", { gap: g.gap_s, min: on && Number.isFinite(min) ? min : erGrabDefault() }) : "";
+  $("erAtHelp").textContent = g ? t("er_at_h", { zone: erZoneLabel(), days: g.max_days }) : "";
+  if ($("erAt").dtSync) $("erAt").dtSync();
 }
 
 // ---- the form: who, what, as whom, from which phone
@@ -8099,6 +8437,7 @@ function renderErrandForm() {
   $("erIdOwner").textContent = name ? t("er_id_owner", { name }) : t("er_id_owner_anon");
   if (!erIdTouched) erSetIdentity(erDefaultIdentity());
   erRenderPhones();
+  renderErrandHelp();
   if (erFormLang !== lang) { erFormLang = lang; erRenderPick(); erSending(er.sending); erPreHide(); }
 }
 // The connected phones; one in "normal phone" mode is listed but cannot be picked.
@@ -8107,8 +8446,11 @@ function erPhones() {
   const all = new Set([...((devices && devices.connected) || []), ...live.serials]);
   return Array.from(all).map((s) => ({ serial: s, normal: (info.has(s) && info.get(s).mode === "normal") || live.normal.includes(s) }));
 }
+// One option per SIM line (a line another errand holds then can't be picked,
+// and says by which); a scheduled call takes only a named SIM.
 function erLineOptions() {
   const list = erPhones();
+  const later = erWhen() === "later";
   const out = [];
   for (const p of list) {
     const name = devName(p.serial);
@@ -8119,13 +8461,13 @@ function erLineOptions() {
         const eff = String(sim.effective_number || "").trim();
         const region = [String(sim.country || "").toUpperCase(), String(sim.carrier || "").trim()].filter(Boolean).join(" ");
         const base = eff ? `${name} · ${eff}` : t("er_line_unset", { name, region: region || "?" });
-        out.push({
-          value: `${p.serial}:${sim.sub_id}`,
-          normal: p.normal,
-          text: p.normal ? t("er_phone_normal", { name: base }) : base,
-        });
+        const value = `${p.serial}:${sim.sub_id}`;
+        const hb = erHeld.get(value);
+        let text = p.normal ? t("er_phone_normal", { name: base }) : base;
+        if (hb && !p.normal) text = t("er_line_held", { name: base, who: erHolderName(hb), when: erFmtAt(hb.scheduled_at) || "—" });
+        out.push({ value, normal: p.normal || !!hb, text });
       }
-    } else {
+    } else if (!later) {
       const manual = allSims[0] && String(allSims[0].effective_number || "").trim();
       const base = manual ? `${name} · ${manual}` : name;
       out.push({
@@ -8139,12 +8481,13 @@ function erLineOptions() {
 }
 function erRenderPhones() {
   const { phones, opts } = erLineOptions();
-  const sig = JSON.stringify([lang, opts]);
+  const later = erWhen() === "later";
+  const sig = JSON.stringify([lang, later, opts]);
   if (sig === erPhonesSig) return;
   erPhonesSig = sig;
   const sel = $("erPhone");
   const keep = sel.value;
-  clear(sel).append(h("option", { value: "", text: t("er_phone_auto") }));
+  clear(sel).append(later ? h("option", { value: "", disabled: true, text: t("er_phone_pick") }) : h("option", { value: "", text: t("er_phone_auto") }));
   for (const o of opts) sel.append(h("option", { value: o.value, disabled: o.normal, text: o.text }));
   sel.value = opts.some((o) => o.value === keep && !o.normal) ? keep : "";
   $("erPhoneHelp").hidden = !phones.some((p) => p.normal);
@@ -8187,8 +8530,16 @@ function erResetForm() {
   erSetIdentity(erDefaultIdentity());
   $("erPhone").value = "";
   $("erRedial").checked = false;
+  erRedialTouched = false;
+  $("erGrabMin").value = String(erGrabDefault());
+  $("erGrabBox").hidden = true;
+  document.querySelectorAll('input[name="er_when"]').forEach((r) => { r.checked = r.value === "now"; });
+  $("erAt").value = "";
+  $("erAt").dtSync();
+  $("erAtBox").hidden = true;
   erRenderPick();
   erHideSugg();
+  erLoadHeld();
 }
 
 // "Who to call": a name finds contacts (one line per number), a number is used as typed.
@@ -8257,6 +8608,17 @@ $("erTask").addEventListener("input", erCount);
 // Anything changed after the questions came up: they are asked again on the next start.
 for (const id of ["erTask", "erTo"]) $(id).addEventListener("input", () => { if (erPre) erPreHide(); });
 $("erPhone").addEventListener("change", () => { if (erPre) erPreHide(); });
+document.querySelectorAll('input[name="er_when"]').forEach((r) => r.addEventListener("change", erWhenChanged));
+dtMount($("erAt"));
+$("erAt").addEventListener("change", () => { if (erPre) erPreHide(); erLoadHeld(); });
+$("erRedial").addEventListener("change", () => { erRedialTouched = true; if (erPre) erPreHide(); renderErrandHelp(); erLoadHeld(); });
+let erGrabTimer = 0;
+$("erGrabMin").addEventListener("input", () => {
+  if (erPre) erPreHide();
+  renderErrandHelp();
+  clearTimeout(erGrabTimer);
+  erGrabTimer = setTimeout(erLoadHeld, 300);
+});
 document.querySelectorAll('input[name="er_identity"]').forEach((r) => r.addEventListener("change", () => { erIdTouched = true; }));
 $("erRefresh").addEventListener("click", () => loadErrands());
 $("erForm").addEventListener("submit", async (ev) => {
@@ -8273,9 +8635,25 @@ $("erForm").addEventListener("submit", async (ev) => {
   if (!task) return erFormErr(t("er_err_no_task"), $("erTask"));
   body.task = task;
   body.identity = erIdentity();
-  body.redial = $("erRedial").checked;
   const pickedLine = $("erPhone").value;
   const colon = pickedLine.indexOf(":");
+  if ($("erRedial").checked) {
+    // How long to keep redialing: a whole number in range, else said here (never changed into one that fits).
+    const min = erGrabMinValue();
+    if (!Number.isFinite(min)) return erFormErr(t("er_err_bad_grab_min", erGrabRange()), $("erGrabMin"));
+    body.grab_min = min;
+  }
+  if (erWhen() === "later") {
+    // A set time: in the future, and a line of its own (checked again by Bageo).
+    if (!$("erAt").value) return erFormErr(t("er_err_need_time"), $("erAt"));
+    if (!(erInstant(erZone(), $("erAt").value) > Date.now())) return erFormErr(t("er_err_past_time"), $("erAt"));
+    const at = $("erAt").value;
+    if (colon <= 0) return erFormErr(t("er_err_need_line"), $("erPhone"));
+    body.scheduled_at = at;
+    body.grab = $("erRedial").checked;
+  } else {
+    body.redial = $("erRedial").checked;
+  }
   if (colon > 0) {
     body.serial = pickedLine.slice(0, colon);
     const sid = parseInt(pickedLine.slice(colon + 1), 10);
@@ -8314,7 +8692,8 @@ async function erCreate(body, answers) {
     const d = await erApi("", jsonBody("POST", body));
     erPreHide();
     erResetForm();
-    toast(t(d.errand && d.errand.status === "queued" ? "er_queued" : "er_started"));
+    const st = d.errand && d.errand.status;
+    toast(t(st === "scheduled" ? "er_scheduled_ok" : st === "queued" ? "er_queued" : "er_started"));
     if (d.errand) { erPut(d.errand); renderErrands(); erReveal(d.errand.id); }
     loadErrands();
   } catch (e) {
@@ -8440,7 +8819,7 @@ function erReveal(id) {
 
 // ---- the list: one card per errand, kept (with its captions and what is typed) while unchanged
 function erSig(e) {
-  return JSON.stringify([lang, calApp(), e.updated_at, e.status, e.attempts, e.redial, e.redial_at, e.result, e.questions, e.history, e.record_id,
+  return JSON.stringify([lang, calApp(), e.updated_at, e.status, e.attempts, e.redial, e.grab_min, e.redial_at, e.scheduled_at, erMove.has(e.id), e.result, e.questions, e.history, e.record_id,
     e.device_label, e.serial, e.sub_id, e.sub_id_asked, e.sim_country, e.name, e.number, e.task, e.identity, er.busy.has(e.id), erExpanded.has(e.id), erFollow.has(e.id),
     phoneLineLabel(e.serial, e.sub_id ?? e.sub_id_asked, e.sim_country)]);
 }
@@ -8461,7 +8840,11 @@ function renderErrands() {
   for (const n of Array.from(box.children)) if (!n.classList.contains("er-card")) n.remove();
   const keep = new Set();
   let prev = null;
-  for (const e of er.list) {
+  // The scheduled ones first, soonest first; then the rest, newest first.
+  const at = (e) => { const d = parseStamp(e.scheduled_at); return d ? d.getTime() : 0; };
+  const sorted = er.list.filter((e) => e.status === "scheduled").sort((a, b) => at(a) - at(b))
+    .concat(er.list.filter((e) => e.status !== "scheduled"));
+  for (const e of sorted) {
     keep.add(e.id);
     const sig = erSig(e);
     let c = erCards.get(e.id);
@@ -8497,12 +8880,12 @@ function errandCard(e) {
       h("div", { class: "sub" },
         String(e.name || "").trim() && e.number ? h("span", { class: "mono", text: e.number }) : null,
         h("span", { class: "tag", text: t(e.identity === "owner" ? "er_as_owner" : "er_as_assistant") }),
-        e.redial ? h("span", { class: "tag", text: t("er_redial") }) : null,
+        e.redial ? h("span", { class: "tag", text: t("er_redial_min", { min: erGrabOf(e) }) }) : null,
         phone ? h("span", { text: t("er_via", { phone }) }) : null)),
     h("div", { class: "er-side" },
       h("span", { class: "tag " + (ER_ST_TAG[st] || "") }, active ? h("span", { class: "pulse" }) : null, h("span", { text: tCode("er_st_", st || "queued") })),
       h("span", { text: fmtWhen(e.created_at) }),
-      Number(e.attempts) > 0 ? h("span", { text: t("er_attempt", { n: e.attempts }) }) : null)));
+      Number(e.attempts) > 0 && st !== "scheduled" ? h("span", { text: t("er_attempt", { n: e.attempts }) }) : null)));
   const task = String(e.task || "");
   const long = task.length > 140 || task.split("\n").length > 3;
   const open = erExpanded.has(e.id);
@@ -8512,6 +8895,10 @@ function errandCard(e) {
       onclick: () => { if (open) erExpanded.delete(e.id); else erExpanded.add(e.id); renderErrands(); } }));
   }
   if (st === "queued" && e.redial_at) card.append(h("p", { class: "small muted", text: erRedialLine(e) }));
+  if (st === "scheduled") {
+    card.append(h("p", { class: "small er-countdown", dataset: { at: e.scheduled_at }, text: erSchLine(e.scheduled_at) }));
+    if (erMove.has(e.id)) card.append(erMoveBox(e));
+  }
   if (active) card.append(erLiveBox(e));
   if (!erOpen(e)) {
     const res = erResult(e);
@@ -8522,6 +8909,40 @@ function errandCard(e) {
   if (Array.isArray(e.history) && e.history.length) card.append(erHistory(e));
   card.append(erActions(e, busy));
   return card;
+}
+// "Change time" on a scheduled errand: the new date and time, saved or dropped.
+function erMoveBox(e) {
+  const input = h("input", { type: "hidden" });
+  // In Bageo's zone: a plain time sent back is read in it.
+  const at = parseStamp(e.scheduled_at);
+  input.value = erMove.get(e.id) || (at ? erWallValue(erBageoZone(), at.getTime()) : "");
+  input.min = erWallValue(erBageoZone(), Date.now() + 60000);
+  const days = er.grab ? Number(er.grab.max_days) || 0 : 0;
+  if (days) input.max = erWallValue(erBageoZone(), Date.now() + days * 86400000);
+  input.addEventListener("input", () => erMove.set(e.id, input.value));
+  const field = dtMount(input);
+  field.style.flex = "1 1 14rem";
+  return h("div", { class: "row er-move", style: "gap:8px;flex-wrap:wrap;margin-top:8px" }, field,
+    h("button", { type: "button", class: "btn sm primary", disabled: er.busy.has(e.id), text: t("er_move_save"), onclick: () => erMoveSave(e, input.value) }),
+    h("button", { type: "button", class: "btn sm ghost", text: t("cancel"), onclick: () => { erMove.delete(e.id); renderErrands(); } }));
+}
+async function erMoveSave(e, value) {
+  if (!value) return toast(t("er_err_need_time"), true);
+  if (er.busy.has(e.id)) return;
+  er.busy.add(e.id);
+  renderErrands();
+  try {
+    const d = await erApi(erPath(e.id, "/schedule"), jsonBody("POST", { scheduled_at: value }));
+    erMove.delete(e.id);
+    if (d.errand) erPut(d.errand);
+    toast(t("er_moved"));
+  } catch (err) {
+    if (err.status !== 401) toast(erErrText(err), true);
+  } finally {
+    er.busy.delete(e.id);
+    renderErrands();
+    loadErrands();
+  }
 }
 // "Redial until answered", waiting: how many tries got no answer and when the next one goes.
 function erRedialLine(e) {
@@ -8675,6 +9096,7 @@ function errandTick() {
   erTicks++;
   for (const e of er.list) if (ER_ACTIVE.includes(e.status) && erLive.has(e.id)) erPoll(e.id);
   for (const st of erLive.values()) erTickQ(st);
+  for (const el of document.querySelectorAll("#erList .er-countdown")) el.textContent = erSchLine(el.dataset.at);
   if (erTicks % 5 === 0 && er.list.some(erOpen)) loadErrands();
 }
 
@@ -8784,12 +9206,15 @@ function erActions(e, busy) {
   const st = e.status;
   const oc = e.result && e.result.outcome;
   if (ER_ACTIVE.includes(st)) row.append(h("button", { type: "button", class: "btn sm danger", disabled: busy, onclick: () => erHangup(e), text: t("er_hangup") }));
-  if (st === "queued") row.append(h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => erAct(e, "/cancel", "er_cancelled"), text: t("er_cancel_q") }));
+  if (st === "scheduled" && !erMove.has(e.id)) {
+    row.append(h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => { erMove.set(e.id, ""); renderErrands(); }, text: t("er_move") }));
+  }
+  if (st === "queued" || st === "scheduled") row.append(h("button", { type: "button", class: "btn sm", disabled: busy, onclick: () => erAct(e, "/cancel", "er_cancelled"), text: t("er_cancel_q") }));
   if (ER_RETRY.includes(st) || (st === "done" && ["no_answer", "voicemail", "failed"].includes(oc))) {
     row.append(h("button", { type: "button", class: "btn sm primary", disabled: busy, onclick: () => erAct(e, "/retry", "er_retried"), text: t("er_retry") }));
   }
   if (e.record_id) row.append(h("a", { class: "btn sm", href: "#call=" + encodeURIComponent(e.record_id), text: t("er_open_call") }));
-  if (!erOpen(e)) row.append(h("button", { type: "button", class: "btn sm ghost er-del", disabled: busy, onclick: () => erDelete(e), text: t("er_delete") }));
+  if (!erOpen(e) || st === "scheduled") row.append(h("button", { type: "button", class: "btn sm ghost er-del", disabled: busy, onclick: () => erDelete(e), text: t("er_delete") }));
   if (busy) row.append(h("span", { class: "spin", attr: { "aria-hidden": "true" } }));
   return row;
 }

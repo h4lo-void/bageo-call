@@ -1270,7 +1270,7 @@ impl CallStore {
         record_tts: bool,
     ) -> Arc<Self> {
         if record_enabled {
-            if let Err(e) = fs::create_dir_all(&root) {
+            if let Err(e) = crate::private_file::create_dir_private(&root) {
                 warn!("calls dir create {}: {e}", root.display());
             }
         }
@@ -1443,7 +1443,7 @@ impl CallStore {
         let started_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
         let date_dir = Utc::now().format("%Y-%m-%d").to_string();
         let dir = self.root.join(&date_dir);
-        if let Err(e) = tokio::fs::create_dir_all(&dir).await {
+        if let Err(e) = crate::private_file::create_dir_private(&dir) {
             warn!("calls date dir {}: {e}", dir.display());
             return None;
         }
@@ -1902,13 +1902,8 @@ impl CallStore {
         let tmp = dir_path.join(format!("{id}_notes.json.tmp"));
         let data = serde_json::to_vec(notes)?;
         tokio::task::spawn_blocking(move || {
-            fs::create_dir_all(&dir_path)?;
-            {
-                let mut f = File::create(&tmp).with_context(|| format!("create {}", tmp.display()))?;
-                f.write_all(&data)?;
-                f.sync_all()?;
-            }
-            fs::rename(&tmp, &path).with_context(|| format!("rename to {}", path.display()))
+            crate::private_file::write_atomic(&path, &tmp, &data)
+                .with_context(|| format!("write {}", path.display()))
         })
         .await??;
         Ok(())
@@ -2466,17 +2461,9 @@ fn load_index(root: &Path) -> Result<CallIndex> {
 }
 
 fn write_index_bytes(root: &Path, data: &[u8]) -> Result<()> {
-    fs::create_dir_all(root)?;
     let path = index_path(root);
     let tmp = root.join("index.json.tmp");
-    {
-        let mut f = File::create(&tmp)?;
-        if let Err(e) = f.write_all(data).and_then(|_| f.sync_all()) {
-            let _ = fs::remove_file(&tmp);
-            return Err(e.into());
-        }
-    }
-    fs::rename(&tmp, &path)?;
+    crate::private_file::write_atomic(&path, &tmp, data)?;
     Ok(())
 }
 
@@ -2539,7 +2526,7 @@ pub fn parse_wav_pcm(bytes: &[u8]) -> Option<(Vec<u8>, u32, u16)> {
 
 fn write_wav(path: &Path, pcm: &[u8], sample_rate: u32, channels: u16) -> Result<()> {
     let bytes = wav_from_pcm(pcm, sample_rate, channels);
-    let mut f = File::create(path).with_context(|| format!("create {}", path.display()))?;
+    let mut f = crate::private_file::create_file(path).with_context(|| format!("create {}", path.display()))?;
     f.write_all(&bytes)?;
     f.flush()?;
     Ok(())
