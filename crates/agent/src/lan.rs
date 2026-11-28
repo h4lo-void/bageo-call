@@ -411,10 +411,15 @@ const _: () = assert!(FREE_TRIES < MAX_TRIES);
 /// Addresses kept at most (older ones are dropped first when they are done).
 const MAX_ADDRESSES: usize = 4096;
 /// Wrong passwords from all addresses together within [`TRY_WINDOW`] after
-/// which every answer to a request with a password is a second late, so
-/// changing address does not make guessing faster. A right password is
-/// never held back.
+/// which the sources that guessed wrong in that window (and any new source
+/// while the address table is full) go through one at a time, a second apart,
+/// before their request is handled: changing address or sending many requests
+/// at once does not make guessing faster. A source that never guessed wrong
+/// is not held back.
 pub const MAX_WRONG_ALL: u32 = 30;
+/// The longest a request waits for its turn in that line before it is refused
+/// (429 `too_many_tries`).
+const GATE_WAIT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Copy)]
 struct TryEntry {
@@ -487,9 +492,37 @@ impl Tries {
         self.all_since.is_some_and(|s| now.duration_since(s) < TRY_WINDOW) && self.all_wrong >= MAX_WRONG_ALL
     }
 
+    /// Whether a request from `ip` has to go through the one-at-a-time line
+    /// ([`gate_pass`]): too many wrong passwords from all sources lately, and
+    /// `ip` guessed wrong in this window or cannot be told apart from others
+    /// because the address table is full.
+    pub fn gated(&self, ip: IpAddr, now: Instant) -> bool {
+        if !self.too_many_all(now) {
+            return false;
+        }
+        match self.map.get(&crate::phone_wifi::source_key(ip)) {
+            Some(e) => e.fails > 0 && now.duration_since(e.since) < TRY_WINDOW,
+            None => self.map.len() >= MAX_ADDRESSES,
+        }
+    }
+
     /// A right password from `ip`: its count starts over.
     pub fn succeeded(&mut self, ip: IpAddr) {
         self.map.remove(&crate::phone_wifi::source_key(ip));
+    }
+}
+
+/// A place in the one-at-a-time line: waits for the single permit (at most
+/// `wait`), then `delay` while holding it. False when the turn did not come in
+/// time: the request is refused.
+async fn gate_pass(gate: &tokio::sync::Semaphore, delay: Duration, wait: Duration) -> bool {
+    match tokio::time::timeout(wait, gate.acquire()).await {
+        Ok(Ok(permit)) => {
+            tokio::time::sleep(delay).await;
+            drop(permit);
+            true
+        }
+        _ => false,
     }
 }
 
@@ -585,9 +618,11 @@ fn forwarded_client(headers: &HeaderMap) -> Option<IpAddr> {
 pub fn throttle(router: Router, settings: Settings) -> Router {
     let settings = Arc::new(settings);
     let tries = Arc::new(Mutex::new(Tries::default()));
+    let gate = Arc::new(tokio::sync::Semaphore::new(1));
     router.layer(axum::middleware::from_fn(move |req: Request, next: Next| {
         let settings = settings.clone();
         let tries = tries.clone();
+        let gate = gate.clone();
         async move {
             if from_this_computer(req.extensions(), req.headers()) {
                 return next.run(req).await;
@@ -614,6 +649,12 @@ pub fn throttle(router: Router, settings: Settings) -> Router {
                 }
                 return res;
             }
+            let gated = tries.lock().unwrap_or_else(|e| e.into_inner()).gated(ip, Instant::now());
+            if gated && !gate_pass(&gate, SLOW_ANSWER, GATE_WAIT).await {
+                let mut res = api_refusal(StatusCode::TOO_MANY_REQUESTS, "too_many_tries", "too many wrong passwords; try again in a minute");
+                res.headers_mut().insert(header::RETRY_AFTER, HeaderValue::from_static("5"));
+                return res;
+            }
             let websocket = req
                 .headers()
                 .get(header::UPGRADE)
@@ -636,16 +677,11 @@ pub fn throttle(router: Router, settings: Settings) -> Router {
                 None if res.status() != StatusCode::UNAUTHORIZED => return res,
                 None => {}
             }
-            let (fails, slow_all) = {
-                let mut t = tries.lock().unwrap_or_else(|e| e.into_inner());
-                let now = Instant::now();
-                let fails = t.failed(ip, wrong, now);
-                (fails, t.too_many_all(now))
-            };
+            let fails = tries.lock().unwrap_or_else(|e| e.into_inner()).failed(ip, wrong, Instant::now());
             if fails >= MAX_TRIES {
                 warn!("{ip}: {fails} wrong passwords within a minute; it waits a minute now");
             }
-            if fails > FREE_TRIES || slow_all {
+            if fails > FREE_TRIES {
                 tokio::time::sleep(SLOW_ANSWER).await;
             }
             res
@@ -991,6 +1027,83 @@ mod tests {
         assert!(!t.too_many_all(t0 + TRY_WINDOW));
         t.failed(ip("198.51.100.200"), 1, t0 + TRY_WINDOW);
         assert!(!t.too_many_all(t0 + TRY_WINDOW));
+    }
+
+    #[test]
+    fn only_sources_that_guessed_wrong_go_through_the_line_when_all_together_guess_too_much() {
+        let t0 = Instant::now();
+        let mut t = Tries::default();
+        let guesser = ip("198.51.100.1");
+        t.failed(guesser, 1, t0);
+        assert!(!t.gated(guesser, t0), "not while the total is low");
+        for n in 2..=MAX_WRONG_ALL {
+            t.failed(ip(&format!("198.51.100.{n}")), 1, t0);
+        }
+        assert!(t.too_many_all(t0));
+        assert!(t.gated(guesser, t0));
+        assert!(t.gated(ip("198.51.100.9"), t0));
+        assert!(!t.gated(ip("203.0.113.5"), t0), "a source that never guessed wrong passes");
+        assert!(!t.gated(guesser, t0 + TRY_WINDOW), "the window is over");
+        t.succeeded(guesser);
+        assert!(!t.gated(guesser, t0));
+    }
+
+    #[test]
+    fn a_full_address_table_gates_new_sources_too() {
+        let t0 = Instant::now();
+        let mut t = Tries::default();
+        for n in 0..MAX_ADDRESSES {
+            t.map.insert(
+                ip(&format!("10.{}.{}.{}", n >> 16, (n >> 8) & 255, n & 255)),
+                TryEntry { fails: 1, since: t0, last_wrong: 1, locked_until: None },
+            );
+        }
+        assert!(!t.gated(ip("203.0.113.5"), t0), "total still low");
+        t.all_since = Some(t0);
+        t.all_wrong = MAX_WRONG_ALL;
+        assert!(t.gated(ip("203.0.113.5"), t0));
+        // Its wrong tries are not kept, but still count in the total.
+        assert_eq!(t.failed(ip("203.0.113.5"), 1, t0), 0);
+        assert!(t.gated(ip("203.0.113.6"), t0));
+    }
+
+    #[tokio::test]
+    async fn many_requests_at_once_go_through_the_line_one_at_a_time() {
+        let gate = Arc::new(tokio::sync::Semaphore::new(1));
+        let delay = Duration::from_millis(100);
+        let started = Instant::now();
+        let mut jobs = Vec::new();
+        for _ in 0..6 {
+            let gate = gate.clone();
+            jobs.push(tokio::spawn(async move { gate_pass(&gate, delay, Duration::from_secs(10)).await }));
+        }
+        for j in jobs {
+            assert!(j.await.unwrap());
+        }
+        assert!(started.elapsed() >= delay * 6, "6 requests took {:?}", started.elapsed());
+    }
+
+    #[tokio::test]
+    async fn a_request_that_waits_too_long_for_its_turn_is_refused() {
+        let gate = Arc::new(tokio::sync::Semaphore::new(1));
+        let holder = {
+            let gate = gate.clone();
+            tokio::spawn(async move { gate_pass(&gate, Duration::from_millis(400), Duration::from_secs(1)).await })
+        };
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let mut jobs = Vec::new();
+        for _ in 0..5 {
+            let gate = gate.clone();
+            jobs.push(tokio::spawn(async move { gate_pass(&gate, Duration::from_millis(400), Duration::from_millis(100)).await }));
+        }
+        let mut refused = 0;
+        for j in jobs {
+            if !j.await.unwrap() {
+                refused += 1;
+            }
+        }
+        assert_eq!(refused, 5);
+        assert!(holder.await.unwrap());
     }
 
     #[test]
