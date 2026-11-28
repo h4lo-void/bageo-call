@@ -16,8 +16,9 @@
 //!
 //! The rules, each with its test below:
 //! - Downloads go through [crate::pack_update]: the fixed source, every
-//!   redirect checked, the size capped, SHA-256 counted as it comes in, a
-//!   temporary file that any failure removes.
+//!   redirect checked, the index used only with its signature, the size
+//!   capped, SHA-256 counted as it comes in, a temporary file that any
+//!   failure removes.
 //! - The zip is read with [crate::backup::ZipIn] and its zip-bomb check:
 //!   exactly the files the entry promises, by exact name, each at most
 //!   [MAX_CLIP_BYTES] and a WAV Bageo plays.
@@ -648,6 +649,11 @@ async fn fetch_steps(client: &reqwest::Client, src: &Source, root: &Path, id: &s
         Err(IndexError::TooNew(n)) => return Err(Fail::UpdateBageo(format!("voice index format {n}")).into()),
         Err(IndexError::Bad(s)) => return Err(pack_update::bad(s).into()),
     };
+    // An older release played back: refused before any zip is asked.
+    let kept = known_index(root).version;
+    if ix.version < kept {
+        return Err(pack_update::bad(format!("voice index {} is older than the one in use ({kept})", ix.version)).into());
+    }
     let entry = ix.entry(id).cloned().ok_or(Stop::NotListed)?;
     std::fs::create_dir_all(root).map_err(|e| io_fail("cannot make the voices folder", e))?;
     let url = src.release_file_url(&hops, INDEX_NAME, &entry.file).ok_or_else(|| pack_update::bad("the index names a path, not a file"))?;
@@ -959,7 +965,7 @@ pub fn router() -> Router<CallsState> {
 mod tests {
     use super::*;
     use crate::locale::Lang;
-    use crate::pack_update::tests::{tmp, Reply, Server};
+    use crate::pack_update::tests::{test_key, tmp, Reply, Server, TestKey};
     use crate::voice_preview::VoicePreviews;
     use std::sync::Arc;
 
@@ -1259,6 +1265,75 @@ mod tests {
         let s = release(index_text(std::slice::from_ref(&e)), vec![(e.file.clone(), changed)]);
         assert_eq!(run(&s.source(), &d.0, "ja").await, Outcome::BadPack);
         assert!(!d.0.join("ja").exists());
+        assert!(leftovers(&d.0).is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_voice_index_without_its_own_good_signature_is_refused() {
+        let zip = zip_of(&files_for(&TWO));
+        let e = entry("ja", None, &TWO, &zip);
+        let index = index_text(std::slice::from_ref(&e)).into_bytes();
+        let sig_path = format!("{TAGGED}{INDEX_NAME}.sig");
+        let trusted = vec![test_key().public];
+        let cases = [
+            ("no signature", None, trusted.clone()),
+            ("empty", Some(Vec::new()), trusted.clone()),
+            ("another key", Some(TestKey::fresh().sign(INDEX_NAME, &index)), trusted.clone()),
+            ("the data pack index's", Some(test_key().sign("bageo-pack-index.json", &index)), trusted.clone()),
+            ("the extras index's", Some(test_key().sign(crate::extras::INDEX_NAME, &index)), trusted),
+            ("no key in the program", Some(test_key().sign(INDEX_NAME, &index)), Vec::new()),
+        ];
+        for (what, sig, keys) in cases {
+            let d = tmp();
+            let (ix, zp, sp, file) = (index.clone(), zip.clone(), sig_path.clone(), e.file.clone());
+            let s = Server::start_raw(move |path| {
+                if path == LATEST {
+                    Reply::Redirect(format!("{TAGGED}{INDEX_NAME}"))
+                } else if path == format!("{TAGGED}{INDEX_NAME}") {
+                    Reply::Body(ix.clone())
+                } else if path == sp {
+                    sig.clone().map_or(Reply::NotFound, Reply::Body)
+                } else if path == format!("{TAGGED}{file}") {
+                    Reply::Body(zp.clone())
+                } else {
+                    Reply::NotFound
+                }
+            });
+            assert_eq!(run(&s.source().with_keys(keys), &d.0, "ja").await, Outcome::BadPack, "{what}");
+            assert_eq!(s.asked(&e.file), 0, "{what}: the pack was never asked");
+            assert!(!d.0.join("ja").exists() && leftovers(&d.0).is_empty() && !kept_index(&d.0), "{what}");
+        }
+        // Signed right, the same release installs.
+        let d = tmp();
+        let s = release(String::from_utf8(index).unwrap(), vec![(e.file.clone(), zip)]);
+        assert_eq!(run(&s.source(), &d.0, "ja").await, Outcome::Installed);
+        assert_eq!(s.asked(&sig_path), 1);
+    }
+
+    #[tokio::test]
+    async fn an_older_signed_voice_index_played_back_is_refused() {
+        let d = tmp();
+        let ja_zip = zip_of(&files_for(&TWO));
+        let ja = entry("ja", None, &TWO, &ja_zip);
+        let es_zip = zip_of(&files_for(&TWO));
+        let es = entry("es", None, &TWO, &es_zip);
+        let newer = builtin().version + 2;
+        let text = serde_json::to_string(&json!({"format": FORMAT, "version": newer, "voices": [ja.clone(), es.clone()]})).unwrap();
+        let s = release(text, vec![(ja.file.clone(), ja_zip.clone()), (es.file.clone(), es_zip.clone())]);
+        assert_eq!(run(&s.source(), &d.0, "ja").await, Outcome::Installed);
+        assert_eq!(known_index(&d.0).version, newer);
+        let installed_before: Vec<_> = installed(&d.0).into_iter().map(|(id, _)| id).collect();
+        // The same version again: another language still installs.
+        assert_eq!(run(&s.source(), &d.0, "es").await, Outcome::Installed);
+        // An older release, signed right, offering a different Japanese pack.
+        let other_zip = zip_of(&files_for(&["Kore"]));
+        let other = entry("ja", None, &["Kore"], &other_zip);
+        let old = release(index_text(std::slice::from_ref(&other)), vec![(other.file.clone(), other_zip)]);
+        assert_eq!(run(&old.source(), &d.0, "ja").await, Outcome::BadPack);
+        assert_eq!(old.asked(&other.file), 0, "no zip is asked");
+        assert_eq!(known_index(&d.0).version, newer, "the newer index is kept");
+        assert_eq!(std::fs::read_dir(d.0.join("ja")).unwrap().count(), TWO.len() * PARTS.len(), "the installed pack stays");
+        assert!(installed_before.iter().all(|id| installed(&d.0).iter().any(|(i, _)| i == id)));
         assert!(leftovers(&d.0).is_empty());
     }
 

@@ -749,9 +749,9 @@ Content-Type: application/json
 
 - `version` 是 `YYYYMMDDNN`，`date` 是同一個日期寫成 `YYYY-MM-DD`；`builtin` 為 `true` 表示正在用 Bageo 內建的版本；`regions` 是地區數；`running` 表示正在檢查；`last_check` 是 `null`，或 Bageo 這次啟動以來最後一次檢查的 `{at, result, version}`。
 - `result`：`up_to_date`、`updated`（之後的電話都用新的；正在進行的通話照用舊的）、`offline`（沒有網路、逾時或 GitHub 沒回應，稍後再試）、`bad_pack`（下載的檔被拒收，什麼都沒改）、`update_bageo`（這份資料要更新版的 Bageo）、`restart`（這次啟動已經裝了太多次更新，請先重新開啟 Bageo）、`io`（存不了檔）或 `busy`（已經有檢查在跑）。
-- Bageo 怎麼檢查：從 `https://github.com/h4lo-void/bageo-packs/releases/latest/download/` 讀 `bageo-pack-index.json`（最多 16 KiB），再下載同一個 Release 裡它指名的檔（只能是純檔名，最多 4 MiB）。每個網址，包括最多 5 次轉址的每一跳，都必須是 `https`、標準連接埠、不帶使用者名稱，主機只能是 `github.com`（限該資料庫的 Release）、`objects.githubusercontent.com` 或 `release-assets.githubusercontent.com`。大小和 SHA-256 要跟 index 一致，index 的 `format` 與 `min_bageo` 要符合這版 Bageo，版本要比現在用的新。接著跟內建版本一樣做完整檢查，再一次改名到位。下載來源不能用設定改。
+- Bageo 怎麼檢查：從 `https://github.com/h4lo-void/bageo-packs/releases/latest/download/` 讀 `bageo-pack-index.json`（最多 16 KiB），再下載同一個 Release 裡它指名的檔（只能是純檔名，最多 4 MiB）。每個網址，包括最多 5 次轉址的每一跳，都必須是 `https`、標準連接埠、不帶使用者名稱，主機只能是 `github.com`（限該資料庫的 Release）、`objects.githubusercontent.com` 或 `release-assets.githubusercontent.com`。讀 index 之前，Bageo 會先從同一個 Release 下載 `bageo-pack-index.json.sig`（最多 256 位元組），確認它是 Bageo 內建金鑰對這份 index 做的 Ed25519 簽章；沒有或不對就什麼都不再下載、什麼都不改（`bad_pack`）。大小和 SHA-256 要跟 index 一致，index 的 `format` 與 `min_bageo` 要符合這版 Bageo，版本要比現在用的新。接著跟內建版本一樣做完整檢查，再一次改名到位。下載來源不能用設定改。
 - 下載的版本存在資料資料夾的 `packs/bageo-pack.json`，Bageo 每次啟動都會再檢查一次；沒下載完的暫存檔會刪掉。
-- 依需求下載的語言擴充包（`lang-<code>.json.gz`，壓縮與解開後各最多 600 KiB；通話用的 70 種語言全部已內建）來自同一個 GitHub 資料庫的 `bageo-extras-index.json`（最多 256 KiB），放在 `packs/extras/`，不列入備份。語言包帶著主要語言是這個語言的地區插圖；每個地區的插圖各自檢查（最多 64 KiB，僅允許白名單 SVG 元素與屬性），不合格的那一區單獨略過，不影響語言本身。
+- 依需求下載的語言擴充包（`lang-<code>.json.gz`，壓縮與解開後各最多 600 KiB；通話用的 70 種語言全部已內建）來自同一個 GitHub 資料庫的 `bageo-extras-index.json`（最多 256 KiB，一樣要有簽章），放在 `packs/extras/`，不列入備份。語言包帶著主要語言是這個語言的地區插圖；每個地區的插圖各自檢查（最多 64 KiB，僅允許白名單 SVG 元素與屬性），不合格的那一區單獨略過，不影響語言本身。
 
 ## 語音下載
 
@@ -769,7 +769,7 @@ Content-Type: application/json
 - `id` 是 `<語言>` 或 `<語言>-<地區>`（`zh-tw-tw`、`es-latam`），地區代號跟當地資料一樣。Bageo 回傳一律小寫，收的時候大小寫都可以；Windows 的裝置名稱（`con`、`nul`、`com1`…）不能當語言或地區。
 - `result`：`installed`（之後的試聽和拒接語音都用它）、`removed`、`not_listed`、`offline`（稍後再試）、`bad_pack`（被拒收，什麼都沒改）、`update_bageo`、`io` 或 `busy`（已經有下載、匯入或刪除在跑）。
 - 一包是 `voices-<id>.zip`，裡面只能有清單列出的每個聲音的 `<聲音名>_<0|1|2|reject>.wav`（30 個聲音就是 120 個檔）。清單是同一個 Release 裡的 `bageo-voices-index.json`：`{format, version, voices: [{lang, region?, file, bytes, sha256, voices}]}`。Bageo 內建一份，下載時拿到比較新的會留下來用。
-- Bageo 怎麼檢查：網址、轉址和 https 的規則跟「當地資料」一樣；清單最多 256 KiB，一包最多 16 MiB，大小和 SHA-256 要跟清單一致。zip 用備份功能的 zip 讀取程式打開：檔案要剛好是清單說的那些、檔名完全相同，每個最多 512 KiB、不能像壓縮炸彈那樣壓得太緊、要是 Bageo 播得了的 WAV，試聽句每段最長 13 秒、拒接語音最長 16 秒。先解到暫存資料夾，再一次改名成資料資料夾裡的 `voices/<id>/`；要換掉的舊語音包在新的放不進去時會放回原位（當機後下次啟動也會放回），其他沒做完的東西下次啟動時刪掉。清單要等至少一包裝好才會留下來。
+- Bageo 怎麼檢查：網址、轉址、https 和簽章的規則跟「當地資料」一樣（清單的簽章是 `bageo-voices-index.json.sig`）；清單最多 256 KiB，一包最多 16 MiB，大小和 SHA-256 要跟清單一致。zip 用備份功能的 zip 讀取程式打開：檔案要剛好是清單說的那些、檔名完全相同，每個最多 512 KiB、不能像壓縮炸彈那樣壓得太緊、要是 Bageo 播得了的 WAV，試聽句每段最長 13 秒、拒接語音最長 16 秒。先解到暫存資料夾，再一次改名成資料資料夾裡的 `voices/<id>/`；要換掉的舊語音包在新的放不進去時會放回原位（當機後下次啟動也會放回），其他沒做完的東西下次啟動時刪掉。清單要等至少一包裝好才會留下來。
 - 裝好語音包時，會清掉這種語言、這幾個聲音以前請 Gemini 做的試聽，之後改播語音包的錄音。刪除語音包不會動這些試聽。
 - 試聽從哪裡來：這台電腦以前做過的，再來是這個地區的語音包，再來是這種語言的語音包或 Bageo 附的（`assets/voices/<語言>`，舊版安裝留下的也照用），都沒有才請 Gemini 生成。地區照所在國家，沒設定就用這種語言的主要國家。
 - 設定 `dismissed_pack_prompts`（`PUT /calls/api/settings`）列出主人按過「先不用」的語音包，提示卡不會再問。

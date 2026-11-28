@@ -9,7 +9,8 @@
 //! Listed in `bageo-extras-index.json` inside the public `bageo-packs`
 //! releases on GitHub, downloaded through [crate::pack_update] with the same
 //! fixed host allowlist, redirect checks, SHA-256 verification and size caps:
-//! - Index: at most [MAX_INDEX_BYTES] (256 KiB), format <= [EXTRAS_FORMAT].
+//! - Index: at most [MAX_INDEX_BYTES] (256 KiB), format <= [EXTRAS_FORMAT],
+//!   used only with its signature ([crate::pack_update::fetch_index]).
 //! - Language pack: at most [MAX_EXTRA_LANG_BYTES] (600 KiB) both compressed
 //!   and unpacked ([crate::locales_store::install_extra_lang]); installs and
 //!   deletions share the translations' per-run memory cap
@@ -269,9 +270,14 @@ fn map_lang_issues(issues: &[Issue]) -> Fail {
     Fail::Bad(issues.first().map(|i| i.to_string()).unwrap_or_else(|| "bad language pack".into()))
 }
 
-async fn fetch_index_step(client: &reqwest::Client, src: &Source) -> Result<(String, ExtrasIndex, Vec<url::Url>), Stop> {
+/// The signed index, refused when it is older than the one kept in root (an
+/// old release played back), before any language pack is downloaded.
+async fn fetch_index_step(client: &reqwest::Client, src: &Source, root: &Path) -> Result<(String, ExtrasIndex, Vec<url::Url>), Stop> {
     let (text, hops) = pack_update::fetch_index(client, src, INDEX_NAME, MAX_INDEX_BYTES as u64).await?;
     let ix = parse_index_for_download(&text)?;
+    if let Some(kept) = known_index(root).filter(|kept| ix.version < kept.version) {
+        return Err(pack_update::bad(format!("extras index {} is older than the one kept ({})", ix.version, kept.version)).into());
+    }
     Ok((text, ix, hops))
 }
 
@@ -315,7 +321,7 @@ where
     F: FnOnce(&Path, Ext, u64) -> Result<(), Vec<Issue>> + Send + 'static,
 {
     let res = match tokio::time::timeout(limit, async {
-        let (text, ix, hops) = fetch_index_step(client, src).await?;
+        let (text, ix, hops) = fetch_index_step(client, src, root).await?;
         let (staged, version, bytes) = download_entry(client, src, &hops, &ix, root, ext).await?;
         Ok::<_, Stop>((staged, version, bytes, text, ix))
     })
@@ -568,7 +574,7 @@ pub fn router() -> Router<CallsState> {
 mod tests {
     use super::*;
     use bageo_packs::extras::{check_art, lang_file_name, BUILTIN_ART_REGIONS};
-    use crate::pack_update::tests::{tmp, Reply, Server};
+    use crate::pack_update::tests::{test_key, tmp, Reply, Server, TestKey};
     use flate2::write::GzEncoder;
     use flate2::Compression;
     use sha2::{Digest, Sha256};
@@ -881,6 +887,78 @@ mod tests {
         });
         let (out5, _) = get_lang(&srv5, &packs_dir, &count, "th").await;
         assert_eq!(out5, Outcome::BadPack);
+    }
+
+    #[tokio::test]
+    async fn an_extras_index_without_its_own_good_signature_is_refused() {
+        let th_gz = sample_lang_gz("th", 2026112101, true, true);
+        let index = index_for(2026112101, &[("th", 2026112101, &th_gz, "console")]).into_bytes();
+        let sig_path = format!("{TAGGED}{INDEX_NAME}.sig");
+        let cases: [(&str, Option<Vec<u8>>); 5] = [
+            ("no signature", None),
+            ("too large", Some(vec![b'0'; 4096])),
+            ("another key", Some(TestKey::fresh().sign(INDEX_NAME, &index))),
+            ("the voice index's", Some(test_key().sign(crate::voice_packs::INDEX_NAME, &index))),
+            ("one byte changed", Some(test_key().sign(INDEX_NAME, &index[..index.len() - 1]))),
+        ];
+        for (what, sig) in cases {
+            let d = tmp();
+            let packs_dir = d.0.join("packs");
+            let root = locales_store::extras_dir(&packs_dir);
+            let count = Arc::new(AtomicUsize::new(0));
+            let (ix, gz, sp) = (index.clone(), th_gz.clone(), sig_path.clone());
+            let srv = Server::start_raw(move |path| {
+                if path == LATEST {
+                    Reply::Redirect(format!("{TAGGED}{INDEX_NAME}"))
+                } else if path == format!("{TAGGED}{INDEX_NAME}") {
+                    Reply::Body(ix.clone())
+                } else if path == sp {
+                    sig.clone().map_or(Reply::NotFound, Reply::Body)
+                } else if path == format!("{TAGGED}{}", lang_file_name("th")) {
+                    Reply::Body(gz.clone())
+                } else {
+                    Reply::NotFound
+                }
+            });
+            let (out, table) = get_lang(&srv, &packs_dir, &count, "th").await;
+            assert_eq!(out, Outcome::BadPack, "{what}");
+            assert!(table.is_none(), "{what}");
+            assert_eq!(srv.asked(&lang_file_name("th")), 0, "{what}: the pack was never asked");
+            assert!(!kept_index(&root), "{what}");
+            assert_eq!(locales_store::single_extra_version(&root, Ext::from_code("th").unwrap()), 0, "{what}");
+            assert!(std::fs::read_dir(&root).map(|d| d.count() == 0).unwrap_or(true), "{what}: nothing left behind");
+        }
+        // Signed right, the same release installs.
+        let d = tmp();
+        let srv = release(String::from_utf8(index).unwrap(), vec![(lang_file_name("th"), th_gz)]);
+        let (out, _) = get_lang(&srv, &d.0.join("packs"), &Arc::new(AtomicUsize::new(0)), "th").await;
+        assert_eq!(out, Outcome::Installed);
+        assert_eq!(srv.asked(&sig_path), 1);
+    }
+
+    #[tokio::test]
+    async fn an_older_signed_extras_index_played_back_is_refused_even_for_a_new_language() {
+        let d = tmp();
+        let packs_dir = d.0.join("packs");
+        let root = locales_store::extras_dir(&packs_dir);
+        let count = Arc::new(AtomicUsize::new(0));
+        let (th_gz, it_gz) = (sample_lang_gz("th", 2026112102, true, true), sample_lang_gz("it", 2026112102, true, true));
+        let newer = index_for(2026112102, &[("th", 2026112102, &th_gz, "console"), ("it", 2026112102, &it_gz, "console")]);
+        let srv = release(newer, vec![(lang_file_name("th"), th_gz), (lang_file_name("it"), it_gz.clone())]);
+        assert_eq!(get_lang(&srv, &packs_dir, &count, "th").await.0, Outcome::Installed);
+        assert_eq!(known_index(&root).map(|ix| ix.version), Some(2026112102));
+        // An older release, signed right, for a language not installed yet.
+        let old_it = sample_lang_gz("it", 2026112101, true, true);
+        let old = release(index_for(2026112101, &[("it", 2026112101, &old_it, "console")]), vec![(lang_file_name("it"), old_it)]);
+        let (out, table) = get_lang(&old, &packs_dir, &count, "it").await;
+        assert_eq!(out, Outcome::BadPack);
+        assert!(table.is_none());
+        assert_eq!(old.asked(&lang_file_name("it")), 0, "no language pack is asked");
+        assert_eq!(locales_store::single_extra_version(&root, Ext::from_code("it").unwrap()), 0);
+        assert_eq!(locales_store::single_extra_version(&root, Ext::from_code("th").unwrap()), 2026112102, "the installed one stays");
+        assert_eq!(known_index(&root).map(|ix| ix.version), Some(2026112102), "the newer index is kept");
+        // The same version as the kept index: the new language installs.
+        assert_eq!(get_lang(&srv, &packs_dir, &count, "it").await.0, Outcome::Installed);
     }
 
     #[test]

@@ -191,6 +191,7 @@ version = "2.3.0"
 dependencies = [
  "chrono",
  "flate2",
+ "ring",
  "serde",
  "serde_json",
  "sha2",

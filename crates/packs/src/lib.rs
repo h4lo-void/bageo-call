@@ -22,6 +22,7 @@
 //! of its regions, and the drawings built into Bageo.
 //! The [prompts] module holds the words Bageo tells the models and the
 //! download of changed ones, bageo-prompts.json.gz.
+//! The [signing] module signs the release indexes and checks their signatures.
 
 pub mod check;
 pub mod data;
@@ -32,6 +33,7 @@ pub mod locales;
 pub mod model;
 pub mod prompts;
 pub mod scams;
+pub mod signing;
 pub mod source;
 pub mod sync;
 pub mod util;

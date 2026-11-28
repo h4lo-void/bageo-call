@@ -376,6 +376,8 @@ Before anything is restored, the console shows when the backup was made, which v
 - *Voice downloads*: the voices on this computer (*No voices downloaded yet* when there are none). Delete one here, or *Import a file* when you have no internet.
 - *Other languages*: download or delete the 70 extra language packs. Calls work in all of them without a download; a pack adds the console or notifications in that language.
 
+Every download must be signed by the official bageo-packs release. If the signature is missing or wrong, Bageo refuses the update and keeps what it has.
+
 ### Advanced
 
 | Setting | Default | What it does |

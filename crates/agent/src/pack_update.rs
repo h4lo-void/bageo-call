@@ -11,6 +11,15 @@
 //!   and the bundle it names (a plain file name) in the same release. The
 //!   address is fixed in the program; nothing in the settings or environment
 //!   changes it.
+//! - Every index is signed: right after it comes in, before it is read, its
+//!   `<index>.sig` from the same release (at most [MAX_SIG_BYTES], same hosts
+//!   and redirects) must be an Ed25519 signature of that index under its own
+//!   file name ([bageo_packs::signing]) by one of [PUBLIC_KEYS], written into
+//!   the program. No signature, a wrong one, or no key at all: the whole check
+//!   fails, nothing else is downloaded, and what is in use stays. This holds
+//!   for the data pack's, the extra languages' and the voice packs' indexes.
+//!   Files already on disk are read at start-up as before, without a check
+//!   over the network.
 //! - Redirects are followed by hand, at most [MAX_HOPS]: every address must be
 //!   https on the default port, without a user name, on one of [HOSTS]; on
 //!   github.com only under this repository's releases ([hop_allowed]).
@@ -54,6 +63,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use bageo_packs::locales::{check_locales_ref, LOCALES_FORMAT};
+use bageo_packs::signing::{self, PublicKey, MAX_SIG_BYTES, SIG_SUFFIX};
 use bageo_packs::{check_prompts_ref, check_scams_ref, parse_index, Issue, LocalesRef, FORMAT, MAX_BUNDLE_BYTES, PROMPTS_FORMAT, SCAMS_FORMAT};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -67,6 +77,12 @@ const REPO_PATH: &str = "/h4lo-void/bageo-packs";
 /// Its releases; the index is in the latest one.
 const RELEASES: &str = "https://github.com/h4lo-void/bageo-packs/releases";
 const INDEX_NAME: &str = "bageo-pack-index.json";
+/// The Ed25519 keys a release index may be signed with
+/// ([bageo_packs::signing::public_key], 64 hex characters each): at most two,
+/// so a new key can come in before the old one goes. Empty: every update is
+/// refused. Settings and the environment cannot change them.
+const PUBLIC_KEYS: &[PublicKey] = &[signing::public_key("86f842aca217cc49da26ce0aac8d08c54ff9ed03b66cda87002c529503504adc")];
+const _: () = assert!(PUBLIC_KEYS.len() <= 2, "at most two update keys");
 /// The only hosts a download may go through: GitHub and its release downloads.
 const HOSTS: [&str; 3] = ["github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"];
 /// Redirects followed for one file.
@@ -177,6 +193,9 @@ pub(crate) struct Source {
     /// Tests: the local server that plays GitHub (plain http on 127.0.0.1).
     #[cfg(test)]
     test_port: Option<u16>,
+    /// Tests: the keys the local server's indexes are signed with.
+    #[cfg(test)]
+    test_keys: Vec<PublicKey>,
 }
 
 impl Source {
@@ -185,12 +204,33 @@ impl Source {
             releases: RELEASES.to_string(),
             #[cfg(test)]
             test_port: None,
+            #[cfg(test)]
+            test_keys: Vec::new(),
         }
     }
 
+    /// The local server, its indexes signed with the tests' own key.
     #[cfg(test)]
     pub(crate) fn local(port: u16) -> Self {
-        Source { releases: format!("http://127.0.0.1:{port}{REPO_PATH}/releases"), test_port: Some(port) }
+        Source { releases: format!("http://127.0.0.1:{port}{REPO_PATH}/releases"), test_port: Some(port), test_keys: vec![tests::test_key().public] }
+    }
+
+    /// The local server, trusting these keys instead.
+    #[cfg(test)]
+    pub(crate) fn with_keys(mut self, keys: Vec<PublicKey>) -> Self {
+        self.test_keys = keys;
+        self
+    }
+
+    /// The keys an index's signature may be made with.
+    fn keys(&self) -> &[PublicKey] {
+        #[cfg(test)]
+        {
+            if self.test_port.is_some() {
+                return &self.test_keys;
+            }
+        }
+        PUBLIC_KEYS
     }
 
     fn index_url(&self) -> String {
@@ -332,7 +372,12 @@ pub(crate) async fn read_capped(resp: &mut reqwest::Response, cap: u64, mut each
 
 /// The index file `name` of the latest release, at most `cap` bytes, as text;
 /// and the addresses asked on the way (they tell which release it is in).
+/// Refused unless its signature file checks out with a key of [Source::keys];
+/// with no key nothing is asked.
 pub(crate) async fn fetch_index(client: &reqwest::Client, src: &Source, name: &str, cap: u64) -> Result<(String, Vec<Url>), Fail> {
+    if src.keys().is_empty() {
+        return Err(bad(format!("{name}: {}", signing::SigError::NoKey)));
+    }
     let url = Url::parse(&src.index_url_named(name)).map_err(|e| bad(e.to_string()))?;
     let (mut resp, hops) = open(client, src, url).await?;
     let mut raw = Vec::new();
@@ -341,8 +386,32 @@ pub(crate) async fn fetch_index(client: &reqwest::Client, src: &Source, name: &s
         Ok(())
     })
     .await?;
+    let sig = fetch_signature(client, src, &hops, name).await?;
+    signing::verify_index(name, &raw, &sig, src.keys()).map_err(|e| bad(format!("{name}: {e}")))?;
     let text = String::from_utf8(raw).map_err(|_| bad("the index is not UTF-8 text"))?;
     Ok((text, hops))
+}
+
+/// The signature file of the index `name`, from the release the index came
+/// from (`hops`), at most [MAX_SIG_BYTES]. A release without one: refused.
+async fn fetch_signature(client: &reqwest::Client, src: &Source, hops: &[Url], name: &str) -> Result<Vec<u8>, Fail> {
+    let url = src.release_file_url(hops, name, &format!("{name}{SIG_SUFFIX}")).ok_or_else(|| bad(format!("{name}: no name for its signature")))?;
+    let not_found = format!("HTTP {}", reqwest::StatusCode::NOT_FOUND);
+    let (mut resp, _) = open(client, src, url).await.map_err(|f| match f {
+        Fail::Offline(s) if s == not_found => bad(format!("{name}: the release has no signature")),
+        f => f,
+    })?;
+    let mut sig = Vec::new();
+    read_capped(&mut resp, MAX_SIG_BYTES, |c| {
+        sig.extend_from_slice(c);
+        Ok(())
+    })
+    .await
+    .map_err(|f| match f {
+        Fail::Bad(s) => bad(format!("{name}: the signature is {s}")),
+        f => f,
+    })?;
+    Ok(sig)
 }
 
 /// Downloads `url` into `staged`: it must be exactly `bytes` long with the
@@ -926,11 +995,37 @@ pub(crate) mod tests {
     use std::io::{BufRead, BufReader};
     use std::net::{Shutdown, TcpListener, TcpStream};
     use std::sync::atomic::AtomicUsize;
-    use std::sync::Arc;
+    use std::sync::{Arc, OnceLock};
+
+    use bageo_packs::signing::{new_seed, public_key_of, sign_index, Seed};
 
     const LATEST: &str = "/h4lo-void/bageo-packs/releases/latest/download/bageo-pack-index.json";
     const TAGGED: &str = "/h4lo-void/bageo-packs/releases/download/v9/";
     const PACK: &str = "bageo-pack.json";
+
+    /// A signing key the tests make for themselves.
+    pub(crate) struct TestKey {
+        seed: Seed,
+        pub(crate) public: PublicKey,
+    }
+
+    impl TestKey {
+        pub(crate) fn fresh() -> Self {
+            let seed = new_seed().unwrap();
+            TestKey { seed, public: public_key_of(&seed).unwrap() }
+        }
+
+        /// The `.sig` file of the index `name` holding `body`.
+        pub(crate) fn sign(&self, name: &str, body: &[u8]) -> Vec<u8> {
+            sign_index(&self.seed, name, body).unwrap().into_bytes()
+        }
+    }
+
+    /// The key [Server::start] signs with and [Source::local] trusts.
+    pub(crate) fn test_key() -> &'static TestKey {
+        static KEY: OnceLock<TestKey> = OnceLock::new();
+        KEY.get_or_init(TestKey::fresh)
+    }
 
     fn url_allowed(raw: &str) -> bool {
         Url::parse(raw).is_ok_and(|u| hop_allowed(&u))
@@ -953,7 +1048,21 @@ pub(crate) mod tests {
     }
 
     impl Server {
+        /// Signs every file it serves with [test_key]: `<file>.sig` answers
+        /// the signature of what `<file>` answers, as a release has it.
         pub(crate) fn start(route: impl Fn(&str) -> Reply + Send + 'static) -> Self {
+            Self::start_raw(move |path| {
+                if let Some(of) = path.strip_suffix(SIG_SUFFIX) {
+                    if let Reply::Body(b) = route(of) {
+                        return Reply::Body(test_key().sign(of.rsplit('/').next().unwrap_or_default(), &b));
+                    }
+                }
+                route(path)
+            })
+        }
+
+        /// Answers only what `route` says, signature files included.
+        pub(crate) fn start_raw(route: impl Fn(&str) -> Reply + Send + 'static) -> Self {
             let listener = TcpListener::bind("127.0.0.1:0").unwrap();
             let port = listener.local_addr().unwrap().port();
             let hits = Arc::new(Mutex::new(Vec::new()));
@@ -1271,7 +1380,7 @@ pub(crate) mod tests {
             ix["file"] = json!(file);
             let s = release(ix, body.clone());
             assert_eq!(run(&s.source(), &d.0, v0()).await, Outcome::BadPack, "{file}");
-            assert_eq!(s.hits.lock().unwrap().len(), 2, "{file}: only the index");
+            assert_eq!(s.hits.lock().unwrap().len(), 3, "{file}: only the index and its signature");
             assert!(empty(&d.0));
         }
     }
@@ -1434,6 +1543,179 @@ pub(crate) mod tests {
         assert!(src.pack_url(&[latest], "../x.json").is_none());
         assert_eq!(version_date(2026112001), "2026-11-20");
         assert_eq!(version_date(0), "");
+    }
+
+    // ---- the index's signature ----
+
+    const SIG: &str = "bageo-pack-index.json.sig";
+
+    /// A release whose index is served as `served` and whose signature file
+    /// answers whatever `sig` says.
+    fn release_with_sig(served: Vec<u8>, pack: Vec<u8>, sig: impl Fn() -> Reply + Send + 'static) -> Server {
+        Server::start_raw(move |path| {
+            if path == LATEST {
+                Reply::Redirect(format!("{TAGGED}{INDEX_NAME}"))
+            } else if path == format!("{TAGGED}{INDEX_NAME}") {
+                Reply::Body(served.clone())
+            } else if path == format!("{TAGGED}{SIG}") {
+                sig()
+            } else if path == format!("{TAGGED}{PACK}") {
+                Reply::Body(pack.clone())
+            } else {
+                Reply::NotFound
+            }
+        })
+    }
+
+    /// An update whose index is fine but for its signature.
+    fn good_update() -> (u64, Vec<u8>, Vec<u8>) {
+        let v = v0() + 1;
+        let body = pack(v, |_| {});
+        let index = serde_json::to_vec(&index_for(&body, v)).unwrap();
+        (v, index, body)
+    }
+
+    /// Refused as a bad file: nothing past the signature asked, nothing left.
+    async fn refused(src: &Source, s: &Server, what: &str) {
+        let d = tmp();
+        assert_eq!(run(src, &d.0, v0()).await, Outcome::BadPack, "{what}");
+        assert_eq!(s.asked(PACK), 0, "{what}: the pack was never asked");
+        assert!(empty(&d.0), "{what}: nothing left behind");
+    }
+
+    #[tokio::test]
+    async fn a_signed_index_is_used_and_its_signature_comes_from_its_release() {
+        let (v, index, body) = good_update();
+        let sig = test_key().sign(INDEX_NAME, &index);
+        let s = release_with_sig(index, body, move || Reply::Body(sig.clone()));
+        let d = tmp();
+        assert_eq!(run(&s.source(), &d.0, v0()).await, Outcome::Updated(v));
+        assert_eq!(s.asked(&format!("{TAGGED}{SIG}")), 1, "the signature of the index's own release");
+        assert_eq!(s.asked(&format!("{TAGGED}{PACK}")), 1);
+    }
+
+    #[tokio::test]
+    async fn an_index_without_a_signature_is_refused() {
+        let (_, index, body) = good_update();
+        let s = release_with_sig(index.clone(), body.clone(), || Reply::NotFound);
+        refused(&s.source(), &s, "no signature").await;
+        assert_eq!(s.asked(SIG), 1);
+        // A signature elsewhere is no signature either.
+        for to in ["https://evil.example/bageo-pack-index.json.sig", "https://raw.githubusercontent.com/h4lo-void/bageo-packs/main/bageo-pack-index.json.sig"] {
+            let s = release_with_sig(index.clone(), body.clone(), move || Reply::Redirect(to.to_string()));
+            refused(&s.source(), &s, to).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn an_empty_oversized_or_garbled_signature_is_refused() {
+        let (_, index, body) = good_update();
+        let good = test_key().sign(INDEX_NAME, &index);
+        let mut padded = good.clone();
+        padded.resize(MAX_SIG_BYTES as usize + 1, b'\n');
+        fn answer(f: impl Fn() -> Reply + Send + 'static) -> Box<dyn Fn() -> Reply + Send> {
+            Box::new(f)
+        }
+        let whole = index.clone();
+        let cases = [
+            ("empty", answer(|| Reply::Body(Vec::new()))),
+            ("over its limit", answer(move || Reply::Body(padded.clone()))),
+            ("endless", answer(|| Reply::Endless)),
+            ("cut short", answer(move || Reply::Cut(good.len(), good[..good.len() / 2].to_vec()))),
+            ("not hex", answer(|| Reply::Body(vec![b'z'; 128]))),
+            ("the index itself", answer(move || Reply::Body(whole.clone()))),
+        ];
+        for (what, sig) in cases {
+            let s = release_with_sig(index.clone(), body.clone(), sig);
+            let d = tmp();
+            let out = run(&s.source(), &d.0, v0()).await;
+            let want = if what == "cut short" { matches!(out, Outcome::BadPack | Outcome::Offline) } else { out == Outcome::BadPack };
+            assert!(want, "{what}: {out:?}");
+            assert_eq!(s.asked(PACK), 0, "{what}");
+            assert!(empty(&d.0), "{what}");
+        }
+    }
+
+    #[tokio::test]
+    async fn an_index_signed_with_another_key_is_refused() {
+        let (_, index, body) = good_update();
+        let sig = TestKey::fresh().sign(INDEX_NAME, &index);
+        let s = release_with_sig(index, body, move || Reply::Body(sig.clone()));
+        refused(&s.source(), &s, "another key").await;
+    }
+
+    #[tokio::test]
+    async fn an_index_changed_after_signing_is_refused() {
+        let (v, index, body) = good_update();
+        let sig = test_key().sign(INDEX_NAME, &index);
+        // One byte: the minimum version, still an index this Bageo would take.
+        let at = index.windows(5).position(|w| w == b"1.0.0").unwrap() + 4;
+        let mut changed = index.clone();
+        changed[at] = b'1';
+        let fine = test_key().sign(INDEX_NAME, &changed);
+        let s = release_with_sig(changed.clone(), body.clone(), move || Reply::Body(fine.clone()));
+        let d = tmp();
+        assert_eq!(run(&s.source(), &d.0, v0()).await, Outcome::Updated(v), "signed as it is, the changed index is fine");
+        let s = release_with_sig(changed, body.clone(), {
+            let sig = sig.clone();
+            move || Reply::Body(sig.clone())
+        });
+        refused(&s.source(), &s, "one byte").await;
+        // One bit anywhere.
+        for at in [0, index.len() / 2, index.len() - 1] {
+            let mut flipped = index.clone();
+            flipped[at] ^= 0x01;
+            let sig = sig.clone();
+            let s = release_with_sig(flipped, body.clone(), move || Reply::Body(sig.clone()));
+            refused(&s.source(), &s, &format!("bit at {at}")).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn the_signature_of_another_index_is_refused() {
+        let (_, index, body) = good_update();
+        // The same bytes signed as the voice or the extras index.
+        for other in [crate::voice_packs::INDEX_NAME, crate::extras::INDEX_NAME] {
+            let sig = test_key().sign(other, &index);
+            let s = release_with_sig(index.clone(), body.clone(), move || Reply::Body(sig.clone()));
+            refused(&s.source(), &s, other).await;
+        }
+        // The signature of another release's index.
+        let other = pack(v0() + 2, |_| {});
+        let sig = test_key().sign(INDEX_NAME, &serde_json::to_vec(&index_for(&other, v0() + 2)).unwrap());
+        let s = release_with_sig(index, body, move || Reply::Body(sig.clone()));
+        refused(&s.source(), &s, "another release").await;
+    }
+
+    #[tokio::test]
+    async fn no_key_in_the_program_refuses_every_update() {
+        let (_, index, body) = good_update();
+        let sig = test_key().sign(INDEX_NAME, &index);
+        let s = release_with_sig(index, body, move || Reply::Body(sig.clone()));
+        refused(&s.source().with_keys(Vec::new()), &s, "no key").await;
+        assert!(s.hits.lock().unwrap().is_empty(), "nothing is even asked");
+        // The data pack, translations, scams and prompts all stay as they are.
+        let (pv, lv) = (packs_store::current().version, locales_store::current().version);
+        let d = tmp();
+        let both = run_both(&s.source().with_keys(Vec::new()), &d.0, pv, lv).await;
+        assert_eq!(both, (Outcome::BadPack, Outcome::BadPack));
+        assert_eq!((packs_store::current().version, locales_store::current().version), (pv, lv));
+        assert!(Source::official().keys().len() <= 2);
+    }
+
+    #[tokio::test]
+    async fn either_of_two_keys_is_accepted() {
+        let (old, new) = (TestKey::fresh(), TestKey::fresh());
+        let trusted = vec![old.public, new.public];
+        for (which, signer) in [("old", &old), ("new", &new)] {
+            let (v, index, body) = good_update();
+            let sig = signer.sign(INDEX_NAME, &index);
+            let s = release_with_sig(index, body, move || Reply::Body(sig.clone()));
+            let other = if which == "old" { new.public } else { old.public };
+            refused(&s.source().with_keys(vec![other]), &s, &format!("{which} key not trusted")).await;
+            let d = tmp();
+            assert_eq!(run(&s.source().with_keys(trusted.clone()), &d.0, v0()).await, Outcome::Updated(v), "{which}");
+        }
     }
 
     // ---- the translations, downloaded with the pack ----
