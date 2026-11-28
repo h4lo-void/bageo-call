@@ -50,8 +50,8 @@ crate::prompt_book::prompt_texts! {
     /// was the owner's gets neither a yes nor a no (the AI cannot know; 「我那時在
     /// 睡覺」 got a real card blocked or a fraud case opened) and no agreement to
     /// block or dispute anything: the owner checks with the bank himself.
-    /// `{ai_identity}` = whether it admits to being an AI when asked (yes on a
-    /// normal call, no while stalling; see `prompts::Pack::guard`).
+    /// `{ai_identity}` = nothing on a normal call (it speaks as the owner), the
+    /// stalling line once the call is judged (see `prompts::Pack::guard`).
     pub PERSONA_GUARD = "zh-TW/live_persona_guard";
     /// Sentence of the default persona prompt that sales / scam stalling replaces.
     pub(crate) PERSONA_SALES_REJECT_LINE = "zh-TW/live_persona_sales_reject_line";
@@ -4343,8 +4343,8 @@ impl StallReview {
     /// Stalling, and the caller just asked whether they are talking to a
     /// robot, an AI, a real person or a recording (`asks`): a stalling call does
     /// not admit to being an AI, so a caller judged wrongly gets one more check
-    /// whether to be let go (a sure "normal" brings back the normal prompt,
-    /// which does). Once a call, and only when the review judged it.
+    /// whether to be let go (a sure "normal" brings back the normal prompt).
+    /// Once a call, and only when the review judged it.
     fn should_ask_confirm_for_identity(&mut self, asks: bool) -> bool {
         if !asks || self.identity_confirm || self.pending || self.no_key || self.why != EngageWhy::Review {
             return false;
@@ -14116,7 +14116,7 @@ mod tests {
         assert!(p.contains("你就是機主本人") && !p.contains("{owner}"));
         assert!(p.contains("【底線（固定）】"));
         assert!(!p.contains("AI 助理"));
-        // Custom prompt replaces the body but never the guard; answering as the owner it is no "AI 助理".
+        // Custom prompt replaces the body but never the guard; persona mode does not disclose AI.
         let c = persona_system_prompt("你是我，講話很隨性。", false, "", StallPrompt::Off);
         assert!(c.starts_with("你是我"));
         assert!(c.contains("【底線（固定）】") && c.contains("不要給、也不要編"));
@@ -14145,8 +14145,10 @@ mod tests {
         assert!(on.contains("陪他繞") && on.contains("理賠") && on.contains("不能給"));
         // The fixed guard still comes last: the stalling one once the call is judged.
         assert!(on.ends_with(&persona_guard(StallPrompt::Full)) && first.ends_with(&persona_guard(StallPrompt::ListenFirst)));
-        assert!(on.contains("不承認是 AI") && !on.contains("被認真問是不是 AI 就承認"));
-        assert!(first.contains("被認真問是不是 AI 就承認") && !first.contains("不承認是 AI"));
+        assert!(on.contains("不承認是 AI"));
+        // Before it is judged, as the owner: the guard as it was, nothing on being an AI.
+        assert!(!first.contains("不承認是 AI") && !first.contains("是不是 AI"));
+        assert_eq!(persona_guard(StallPrompt::ListenFirst), PERSONA_GUARD.fill(&[("ai_identity", &"")]).replace("{owner}", "機主"));
         // A custom prompt without the reject line still gets the block / line.
         let c = persona_system_prompt("你是我。", false, "", StallPrompt::Full);
         assert!(c.starts_with(PERSONA_STALL_HEAD.get()) && c.contains("你是我。") && c.contains("陪他繞"));

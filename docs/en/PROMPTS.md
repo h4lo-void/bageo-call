@@ -397,9 +397,9 @@ After the call, the summary of the result is also told how places there usually 
 
 Bageo appends these to every prompt, built-in or your own:
 
-- **Identity and commitments.** *AI assistant*: never claims to be you, and
-  says it is an AI when asked. *As me*: speaks as you, and says it is an AI only
-  when seriously asked. While keeping a sales or scam caller talking, neither
+- **Identity and commitments.** *AI assistant*: never claims to be a person or
+  to be you, and says it is an AI when asked. *As me*: speaks as you without
+  claiming to be an AI. While keeping a sales or scam caller talking, neither
   style admits to being an AI. Either way it makes no commitments for you.
 - **No personal details, no codes.** *As me*: asked for an ID number, date of
   birth, card or account number, verification code, password or address, the

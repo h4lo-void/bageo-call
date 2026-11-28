@@ -31,7 +31,7 @@ missing, with no date.
 | Spam and robocall handling | Done | Blacklist (with `*` prefixes); three layers (follow-up whitelist, weighted keywords, a semantic second look), then a polite no or Stall Mode. |
 | Recognising returning callers | Partly | Contacts give the AI the caller's name and your note. Earlier summaries for the same number are not in the prompt yet. |
 | Knowledge-base answers without making things up | Partly | *Notes the AI may answer from*: plain text in the prompt with a "do not guess" rule. No document search. |
-| AI disclosure, recording notice | Partly | Disclosure is built into the *AI assistant* style; *As me* speaks as you and says it is an AI only when seriously asked. Neither admits it while keeping a sales or scam caller talking. A recording notice is up to your prompt. |
+| AI disclosure, recording notice | Partly | Disclosure is built into the *AI assistant* style; *As me* speaks as you without disclosing. Neither admits it while keeping a sales or scam caller talking. A recording notice is up to your prompt. |
 | Prompt-injection resistance | Partly | A fixed rule in every prompt; no separate filter. |
 
 ### Languages

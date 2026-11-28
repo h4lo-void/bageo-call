@@ -63,9 +63,10 @@ pub struct Pack {
     /// function is declared (never to the stalling one).
     pub end_call_note: String,
     /// The fixed hard lines, last in every prompt ([`Pack::guard`]): a normal
-    /// call's, which admit to being an AI when seriously asked, and a stalled
-    /// one's (`*_stall`, with [`StallPrompt::Full`]): every other line the
-    /// same, but no admitting it.
+    /// call's (the assistant admits to being an AI when asked; answering as
+    /// the owner it speaks as the owner) and a stalled one's (`*_stall`, with
+    /// [`StallPrompt::Full`]): every other line the same, but it never brings
+    /// up or admits being an AI.
     pub guard_persona: String,
     pub guard_assistant: String,
     pub guard_persona_stall: String,
@@ -165,9 +166,9 @@ crate::prompt_book::prompt_texts! {
     ZH_INJECTION_GUARD = "zh-TW/injection_guard";
     ZH_SALES_LISTEN_CUSTOM_PREFIX = "zh-TW/sales_listen_custom_prefix";
     ZH_GUARD_ASSISTANT = "zh-TW/guard_assistant";
-    /// `{ai_identity}` of the guards: asked whether it is an AI, a normal call
-    /// says so; a sales / scam call being stalled does not.
-    ZH_AI_IDENTITY_PERSONA = "zh-TW/ai_identity_persona";
+    /// `{ai_identity}` of the guards: asked whether it is an AI, the assistant
+    /// on a normal call says so; answering as the owner nothing is said there
+    /// (it speaks as the owner), and a sales / scam call being stalled does not.
     ZH_AI_IDENTITY_ASSISTANT = "zh-TW/ai_identity_assistant";
     ZH_AI_IDENTITY_STALL = "zh-TW/ai_identity_stall";
     ZH_ASSISTANT_NOT_HUMAN = "zh-TW/assistant_not_human";
@@ -195,7 +196,6 @@ crate::prompt_book::prompt_texts! {
     EN_READBACK_NOTE = "en/readback_note";
     EN_GUARD_PERSONA = "en/guard_persona";
     EN_GUARD_ASSISTANT = "en/guard_assistant";
-    EN_AI_IDENTITY_PERSONA = "en/ai_identity_persona";
     EN_AI_IDENTITY_ASSISTANT = "en/ai_identity_assistant";
     EN_AI_IDENTITY_STALL = "en/ai_identity_stall";
     EN_ALIASES_PERSONA = "en/aliases_persona";
@@ -373,7 +373,7 @@ fn zh_tw_pack() -> Pack {
         hello_loop_note: gl::PERSONA_HELLO_LOOP_NOTE.get().to_string(),
         readback_note: gl::PERSONA_READBACK_NOTE.get().to_string(),
         end_call_note: ZH_END_CALL_NOTE.get().to_string(),
-        guard_persona: gl::PERSONA_GUARD.fill(&[("ai_identity", &ZH_AI_IDENTITY_PERSONA)]),
+        guard_persona: gl::PERSONA_GUARD.fill(&[("ai_identity", &"")]),
         guard_assistant: ZH_GUARD_ASSISTANT.fill(&[("ai_identity", &ZH_AI_IDENTITY_ASSISTANT)]),
         guard_persona_stall: gl::PERSONA_GUARD.fill(&[("ai_identity", &ZH_AI_IDENTITY_STALL)]),
         guard_assistant_stall: ZH_GUARD_ASSISTANT.fill(&[("ai_identity", &ZH_AI_IDENTITY_STALL)]),
@@ -634,9 +634,10 @@ fn generic_pack(lang: Lang) -> Pack {
         hello_loop_note: fill(EN_HELLO_LOOP_NOTE.get()),
         readback_note: fill(EN_READBACK_NOTE.get()),
         end_call_note: fill(EN_END_CALL_NOTE.get()),
-        guard_persona: fill(&EN_GUARD_PERSONA.fill(&[("ai_identity", &EN_AI_IDENTITY_PERSONA)])),
+        // The persona's slot sits right before the next sentence: a line put in it ends with a space.
+        guard_persona: fill(&EN_GUARD_PERSONA.fill(&[("ai_identity", &"")])),
         guard_assistant: fill(&EN_GUARD_ASSISTANT.fill(&[("ai_identity", &EN_AI_IDENTITY_ASSISTANT)])),
-        guard_persona_stall: fill(&EN_GUARD_PERSONA.fill(&[("ai_identity", &EN_AI_IDENTITY_STALL)])),
+        guard_persona_stall: fill(&EN_GUARD_PERSONA.fill(&[("ai_identity", &format!("{EN_AI_IDENTITY_STALL} "))])),
         guard_assistant_stall: fill(&EN_GUARD_ASSISTANT.fill(&[("ai_identity", &EN_AI_IDENTITY_STALL)])),
         assistant_not_human: st.not_human.to_string(),
         aliases_persona: fill(EN_ALIASES_PERSONA.get()),
@@ -2074,7 +2075,6 @@ mod tests {
             let assistant = build(&ctx(lang, true, StallPrompt::Off));
             assert!(persona.ends_with(&p.guard_persona.replace("{owner}", "Alex")), "{lang:?}");
             assert!(assistant.ends_with(&p.guard_assistant.replace("{owner}", "Alex")), "{lang:?}");
-            // Answering as the owner, it is no "AI assistant" or "AI voice".
             for ai_mark in ["AI 語音", "AI 语音", "AI voice", "AI 助理", "AI assistant"] {
                 assert!(!p.guard_persona.contains(ai_mark), "{lang:?} persona guard leaked {ai_mark}");
             }
@@ -2092,34 +2092,46 @@ mod tests {
         }
     }
 
-    /// The words of a normal call (admit to being an AI when seriously asked)
-    /// and of a stalled sales / scam call (do not admit it), per language.
-    fn ai_identity_marks(lang: Lang) -> (&'static str, &'static str, &'static str) {
+    /// The words of a normal assistant call (say it is an AI when asked) and of
+    /// a stalled sales / scam call (never bring it up or admit it), per language.
+    fn ai_identity_marks(lang: Lang) -> (&'static str, &'static str) {
         match lang {
-            Lang::ZhTw => ("被認真問是不是 AI 就承認", "就直接說你是幫Alex接電話的 AI 助理", "不承認是 AI"),
-            Lang::ZhCn => ("被认真问是不是 AI 就承认", "就直接说你是帮Alex接电话的 AI 助理", "不承认是 AI"),
-            _ => (
-                "Seriously asked if you are an AI, say yes",
-                "say plainly that you are an AI assistant answering the phone for Alex",
-                "without admitting it",
-            ),
+            Lang::ZhTw => ("就直接說你是幫Alex接電話的 AI 助理", "不承認是 AI"),
+            Lang::ZhCn => ("就直接说你是帮Alex接电话的 AI 助理", "不承认是 AI"),
+            _ => ("say plainly that you are an AI assistant answering the phone for Alex", "without admitting it"),
         }
     }
 
-    /// Asked whether it is an AI: a normal call (as the owner or as the
-    /// assistant, before the call is judged too) says so, a stalled sales /
-    /// scam call does not. Each prompt carries one of the two rules, never both.
+    /// The `{ai_identity}` lines of `lang`'s guards as the pack fills them in:
+    /// the assistant's on a normal call, and the stalling one.
+    fn ai_identity_lines(lang: Lang) -> (String, String) {
+        let (a, s) = if lang.is_zh() {
+            (ZH_AI_IDENTITY_ASSISTANT.get(), ZH_AI_IDENTITY_STALL.get())
+        } else {
+            (EN_AI_IDENTITY_ASSISTANT.get(), EN_AI_IDENTITY_STALL.get())
+        };
+        if lang == Lang::ZhCn {
+            (to_cn(a), to_cn(s))
+        } else {
+            (a.to_string(), s.to_string())
+        }
+    }
+
+    /// Asked whether it is an AI: the assistant on a normal call (before the
+    /// call is judged too) says so; answering as the owner the prompt says
+    /// nothing about it (it speaks as the owner); a stalled sales / scam call
+    /// never brings it up or admits it, in either style. Each prompt carries
+    /// at most one of the rules.
     #[test]
-    fn a_normal_call_admits_being_an_ai_and_a_stalled_one_does_not() {
+    fn only_the_assistant_on_a_normal_call_admits_being_an_ai() {
         let own: &'static str = "You answer the phone for {owner}. Keep it short.";
         let mut non_chinese = 0;
         for lang in locale::ALL {
             if !lang.is_zh() {
                 non_chinese += 1;
             }
-            let (persona_admits, assistant_admits, stall_denies) = ai_identity_marks(lang);
+            let (admits, stall_denies) = ai_identity_marks(lang);
             for assistant in [false, true] {
-                let admits = if assistant { assistant_admits } else { persona_admits };
                 for custom in ["", own] {
                     for stall in [StallPrompt::Off, StallPrompt::ListenFirst, StallPrompt::Full] {
                         let mut c = ctx(lang, assistant, stall);
@@ -2127,42 +2139,45 @@ mod tests {
                         let prompt = build(&c);
                         let case = format!("{lang:?} assistant={assistant} {stall:?} custom={custom:?}");
                         if stall == StallPrompt::Full {
-                            assert!(prompt.contains(stall_denies), "{case}: {prompt}");
+                            assert_eq!(prompt.matches(stall_denies).count(), 1, "{case}: {prompt}");
                             assert!(!prompt.contains(admits), "{case}: {prompt}");
-                            assert_eq!(prompt.matches(stall_denies).count(), 1, "{case}");
                         } else {
-                            assert!(prompt.contains(admits), "{case}: {prompt}");
                             assert!(!prompt.contains(stall_denies), "{case}: {prompt}");
-                            assert_eq!(prompt.matches(admits).count(), 1, "{case}");
+                            assert_eq!(prompt.matches(admits).count(), usize::from(assistant), "{case}: {prompt}");
                         }
                     }
                 }
             }
+            // As the owner, the normal guard is the one it had before (no line on being an AI).
+            assert!(!pack(lang).guard_persona.contains("AI"), "{lang:?}: {}", pack(lang).guard_persona);
         }
         assert!(non_chinese >= 4, "{non_chinese}");
     }
 
     /// The stalling guard is the normal one with only the line on being an AI
-    /// changed: personal details, codes, card checks, no commitment for the
-    /// owner, the injection guard and the stalling ending all stay.
+    /// put in (as the owner) or changed (as the assistant): personal details,
+    /// codes, card checks, no commitment for the owner, the injection guard and
+    /// the stalling ending all stay.
     #[test]
     fn the_stalling_guard_keeps_every_other_hard_line() {
         for lang in locale::ALL {
             let p = pack(lang);
-            let (persona_admits, assistant_admits, stall_denies) = ai_identity_marks(lang);
+            let (assistant_line, stall_line) = ai_identity_lines(lang);
+            let (_, stall_denies) = ai_identity_marks(lang);
+            assert!(stall_line.contains(stall_denies), "{lang:?}");
             for assistant in [false, true] {
-                let normal = p.guard(assistant, StallPrompt::Off).replace("{owner}", "Alex");
-                let stalling = p.guard(assistant, StallPrompt::Full).replace("{owner}", "Alex");
+                let normal = p.guard(assistant, StallPrompt::Off);
+                let stalling = p.guard(assistant, StallPrompt::Full);
                 assert_ne!(normal, stalling, "{lang:?} assistant={assistant}");
-                assert_eq!(p.guard(assistant, StallPrompt::ListenFirst), p.guard(assistant, StallPrompt::Off));
-                // Same start and end: only the middle (the AI line) differs.
-                let head = normal.chars().zip(stalling.chars()).take_while(|(a, b)| a == b).count();
-                let tail = normal.chars().rev().zip(stalling.chars().rev()).take_while(|(a, b)| a == b).count();
-                let admits = if assistant { assistant_admits } else { persona_admits };
-                let middle = |s: &str| -> String { s.chars().skip(head).take(s.chars().count().saturating_sub(head + tail)).collect() };
-                let (changed, now) = (middle(&normal), middle(&stalling));
-                assert!(changed.contains(admits.split("Alex").next().unwrap()), "{lang:?} assistant={assistant}: {changed}");
-                assert!(now.contains(stall_denies), "{lang:?} assistant={assistant}: {now}");
+                assert_eq!(p.guard(assistant, StallPrompt::ListenFirst), normal);
+                assert_eq!(stalling.matches(stall_line.as_str()).count(), 1, "{lang:?} assistant={assistant}");
+                let back = if assistant {
+                    stalling.replacen(stall_line.as_str(), &assistant_line, 1)
+                } else {
+                    let sep = if lang.is_zh() { "" } else { " " };
+                    stalling.replacen(&format!("{stall_line}{sep}"), "", 1)
+                };
+                assert_eq!(back, normal, "{lang:?} assistant={assistant}");
                 let full = build(&ctx(lang, assistant, StallPrompt::Full));
                 let marks: &[&str] = match (lang.is_zh(), assistant) {
                     (true, false) => &["不要給、也不要編", "驗證碼", "不要答應停卡、掛失", "不要真的答應付錢、轉帳", "不要替Alex做任何承諾"],

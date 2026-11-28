@@ -50,7 +50,6 @@ fn the_builtin_files_read_and_their_locked_keys_exist() {
             &[
                 "live_persona_guard",
                 "guard_assistant",
-                "ai_identity_persona",
                 "ai_identity_assistant",
                 "ai_identity_stall",
                 "assistant_not_human",
@@ -71,7 +70,6 @@ fn the_builtin_files_read_and_their_locked_keys_exist() {
             &[
                 "guard_persona",
                 "guard_assistant",
-                "ai_identity_persona",
                 "ai_identity_assistant",
                 "ai_identity_stall",
                 "stall_head",
