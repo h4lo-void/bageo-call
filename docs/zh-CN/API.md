@@ -817,7 +817,8 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/devices/pixel-12345/mode" \
 
 - 每部手机保持一条长期的 *control* 连接，每通电话另开一条 *media* 连接。
 - 两种连接都双向传送 JSON 文本帧和原始的 16 kHz 单声道 16 位小端序 PCM 二进制帧（手机每 60 ms 发一帧）。
-- 来自这台电脑本身的连接（USB 通道）不需 Token 一律接受；Wi-Fi 连接可连 `PHONE_WIFI_PORT`（默认 `8788`，仅提供 `/ws`）并带上 USB 配对时发放的 `phone-pairing.key` 或 `DEVICE_TOKEN`，或连到主端口并在设置了 `DEVICE_TOKEN` 时带上 `?token=<DEVICE_TOKEN>`。
+- 来自这台电脑本身的连接（USB 通道）不需 Token 一律接受；Wi-Fi 连接可连 `PHONE_WIFI_PORT`（默认 `8788`，仅提供 `/ws`）并带上 USB 配对时发放的 `phone-pairing.key` 或 `DEVICE_TOKEN`，或连到主端口并在设置了 `DEVICE_TOKEN` 时带上 `?token=<DEVICE_TOKEN>`。配对密钥只接受走 TLS（`wss://`）的连接，除非设置了 `PHONE_WIFI_ALLOW_PLAIN=true`。
+- **连接验证：** 来自这台电脑本身的连接不再自动算可信。应用发送 `x-bageo-link: 1` 和 `x-bageo-link-cnonce`（32 字节随机值，hex）；101 响应带 `x-bageo-link-snonce` 与 `x-bageo-link-proof`（用连接密钥 `phone-link.key` 算的 HMAC-SHA256，Bageo 通过 USB 启动应用服务时交给应用）；应用的 `hello` 带 `link_proof`。不符就断开。`PHONE_LINK_AUTH=compat`（默认）时没做验证的旧应用仍可连接，但拿不到 Wi-Fi 地址；`required` 一律拒绝。
 
 逐字段的完整消息列表在 [`android/README.md`](../../android/README.md#websocket-protocol)（英文）。任何会说这套协议的程序都能代替手机，所以要加上 SIP 或软电话前端，完全不用改动通话逻辑。双方都会忽略不认识的内容，所以旧 App、旧版 Bageo照样能用。
 
@@ -833,7 +834,7 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/devices/pixel-12345/mode" \
 | Bageo → 手机 | `answer_plan` | `{delay_ms, prewarm, reject}`：响多久再接，或 `reject: true` 响铃中直接拒接（`reject_mode` 为 `decline` 的黑名单号码）。 |
 | 手机 → Bageo | `call_waiting_rejected` | `{serial, caller_id, sim_country, sim_sub_id}`：通话中又有第二通打进来，手机立刻拒接（AI 模式）。会留下通话记录并发出“通话中插播未接”通知。 |
 | Bageo → 手机／手机 → Bageo | `set_mode`／`set_mode_result` | `{mode, id}`／`{id, ok, mode, error}`：远程切换模式；`error` 用上面的代码。 |
-| Bageo → 手机 | `agent_info` | `{console_url}` 给 App 的“**打开网页控制台**”按钮用（`public_url` 或局域网地址）；通过受信任的 USB 通道时另附 `wifi: {urls: [...]}` 提供 Wi-Fi 配对地址（`ws://<局域网-IP>:<PHONE_WIFI_PORT>/ws?token=<key>`，开启局域网名称时另附 `ws://<名称>.local:<PHONE_WIFI_PORT>/ws?token=<key>`）。 |
+| Bageo → 手机 | `agent_info` | `{console_url}` 给 App 的“**打开网页控制台**”按钮用（`public_url` 或局域网地址）；通过受信任的连接时另附 `wifi: {urls: [...]}` 提供 Wi-Fi 配对地址（`wss://<局域网-IP>:<PHONE_WIFI_PORT>/ws?token=<key>&pin=<sha256>`，开启局域网名称时另附 `<名称>.local` 的同样地址；`ws://` 只在 `PHONE_WIFI_ALLOW_PLAIN=true` 时给）。应用只接收通过连接验证的连接发来、在局域网内且有证书指纹的 `wss://` 地址。 |
 | Bageo → 手机 | `place_call` | `{number, call_id, task_id, sub_id}`：拨出电话（AI 回拨或 AI 代打），用 subscription id 为 `sub_id` 的 SIM 拨（找不到就用手机默认的）。忙线时见下方。 |
 | 手机 → Bageo | `place_call_ack`、`place_call_failed`、`outbound_ready`、`call_end` | 拨出的电话已拨号／拨不出去／接通／结束。 |
 | Bageo → 手机 | `send_sms` | `{id, to, text, sub_id}`：给来电者发短信（日程预约）。字段限制见下方。 |

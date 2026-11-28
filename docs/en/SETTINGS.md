@@ -440,6 +440,8 @@ The image itself sets `AGENT_HOST=0.0.0.0`, `ASSETS_DIR=/app/assets`, `CALLS_DAT
 | `PUBLIC_URL` | *(empty)* | Same as *Address in notifications* (under [Notifications](#notifications)); the web console's value wins. Empty = automatic (see [Advanced](#advanced)). |
 | `MDNS_NAME` | `bageo` | Same as *Network name*: the console answers at `http://<this>.local/` on your network. The web console's value wins. |
 | `PHONE_WIFI_PORT` | `AGENT_PORT` + 1 (`8788`) | Port phones use over Wi-Fi. Opened on all network interfaces only while `AGENT_HOST` is not set or `127.0.0.1`; it serves only the phones' connection (no console) and always needs the pairing key or `DEVICE_TOKEN`. `0` = never. |
+| `PHONE_LINK_AUTH` | `compat` | A phone on USB and Bageo check each other before they talk. `compat`: an older app still connects, but gets no Wi-Fi address and the *System* page asks you to update it. `required`: older apps are refused. |
+| `PHONE_WIFI_ALLOW_PLAIN` | *(off)* | `true` = phones over Wi-Fi may also use unencrypted `ws://` (only for apps that cannot use `wss://`). Off: Wi-Fi addresses are `wss://` only. |
 
 Phones on USB are exempt from `DEVICE_TOKEN` (the USB tunnel ends on the computer itself).
 
