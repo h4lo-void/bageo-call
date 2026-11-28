@@ -961,8 +961,27 @@ impl ControlRegistry {
                     .get("reason")
                     .and_then(|v| v.as_str())
                     .unwrap_or("dial failed");
+                // The old place_call id must not match a later hello. The dial
+                // itself is queued again by the appointment book, not failed here.
+                // A to-do call-back is in that book too, and the owner sees the wait.
+                let deferred = reason == "incoming_call";
                 drop(sessions);
-                if write_task {
+                // Still held in the call-back queue (up to its ten minutes), even once the
+                // script book's own five minutes are over.
+                let voicemail = deferred
+                    && (crate::appointments::voicemail_callback_tracked(&task_id) || crate::fulfill::voicemail_callback_known(&task_id));
+                if write_task && deferred && voicemail {
+                    let _ = store.push_event(&task_id, "callback_place_call_deferred").await;
+                    let _ = store
+                        .patch(
+                            &task_id,
+                            crate::tasks::TaskPatch {
+                                fulfill_error: Some(Some("callback: incoming_call".to_string())),
+                                ..Default::default()
+                            },
+                        )
+                        .await;
+                } else if write_task && !deferred {
                     let _ = store
                         .push_event(&task_id, "callback_place_call_failed")
                         .await;
@@ -976,7 +995,11 @@ impl ControlRegistry {
                         )
                         .await;
                 }
-                warn!(task_id, reason, "callback place_call_failed");
+                if deferred {
+                    info!(task_id, "callback place_call deferred: an incoming call");
+                } else {
+                    warn!(task_id, reason, "callback place_call_failed");
+                }
             }
             "outbound_ready" => {
                 on_outbound_ready(session);
@@ -1527,6 +1550,53 @@ mod tests {
         // sim_not_found parses as Failed("sim_not_found") rather than generic_failure.
         let parsed = parse_sms_result(&json!({"type": "send_sms_result", "id": "s1", "ok": false, "error": "sim_not_found"})).unwrap();
         assert_eq!(parsed.1, SmsOutcome::Failed("sim_not_found".into()));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn an_incoming_call_marks_the_dial_failed_without_a_hard_failure() {
+        let reg = ControlRegistry::default();
+        let root = std::env::temp_dir().join(format!("bageo-cb-incoming-{}", Uuid::new_v4()));
+        let tasks = TaskStore::new(root.clone());
+        let task = tasks
+            .create(crate::tasks::TaskRecord {
+                id: "task-h6-defer".into(),
+                created_at: String::new(),
+                updated_at: String::new(),
+                call_id: String::new(),
+                serial: "phone-h6-defer".into(),
+                caller_id: "0912000707".into(),
+                status: crate::tasks::TaskStatus::Pending,
+                intent: crate::tasks::TaskIntent::Callback,
+                summary: String::new(),
+                transcript: String::new(),
+                datetime_hint: None,
+                reply_method: crate::tasks::ReplyMethod::None,
+                reply_contact: None,
+                contact_verified: false,
+                voicemail_path: None,
+                calendar_event_id: None,
+                fulfill_error: None,
+                openclaw_ref: None,
+                events: Vec::new(),
+                appointment: None,
+            })
+            .await
+            .unwrap();
+        let mut session = CallbackSession::new(&task.id, "0912000707");
+        session.call_id = "cid-h6-defer".into();
+        session.serial = "phone-h6-defer".into();
+        session.phase = CallbackPhase::Dialing;
+        reg.register_callback_session("task-h6-defer", "cid-h6-defer".into(), session).await;
+        reg.handle_phone_event(
+            &json!({"type": "place_call_failed", "reason": "incoming_call", "call_id": "cid-h6-defer", "task_id": "task-h6-defer"}),
+            &tasks,
+        )
+        .await;
+        assert_eq!(reg.callback_session_for("task-h6-defer", "").await.unwrap().phase, CallbackPhase::Failed);
+        let kept = tasks.get("task-h6-defer").await.unwrap();
+        assert!(kept.fulfill_error.is_none());
+        assert!(!kept.events.iter().any(|e| e == "callback_place_call_failed"));
         let _ = std::fs::remove_dir_all(root);
     }
 }

@@ -490,6 +490,9 @@ pub enum CallNotice {
 /// so it holds at the first ring, whether or not the phone has reported the call
 /// ready yet; any other call is one coming in.
 pub async fn call_notice(control: &ControlRegistry, store: &ErrandStore, serial: &str, caller_id: &str) -> CallNotice {
+    if appointments::caller_has_no_digits(caller_id) && appointments::phone_incoming_open(serial) {
+        return CallNotice::Incoming;
+    }
     if let Some(call) = appointments::outgoing_call_on(serial, caller_id) {
         if call.errand {
             let again = store.get(&call.task_id).is_none_or(|e| e.is_final() || (e.redial && e.redial_try() > 1));
@@ -508,6 +511,9 @@ pub async fn call_notice(control: &ControlRegistry, store: &ErrandStore, serial:
 /// Whether `(serial, caller_id)` is currently one of our own active outbound
 /// calls (an errand dial or voicemail callback).
 pub async fn is_active_outbound_call(control: &ControlRegistry, serial: &str, caller_id: &str) -> bool {
+    if appointments::caller_has_no_digits(caller_id) && appointments::phone_incoming_open(serial) {
+        return false;
+    }
     appointments::outgoing_call_on(serial, caller_id).is_some()
         || crate::fulfill::voicemail_callback_dialing(control, serial, caller_id).await
 }
@@ -5581,6 +5587,72 @@ mod tests {
         let late = rig.store.get(&behind.id).unwrap();
         assert_eq!((late.status.as_str(), late.call_code.as_str()), (FAILED, "number_busy"));
         assert!(!appointments::errand_call_known(&behind.id));
+    }
+
+    #[tokio::test]
+    async fn an_incoming_call_puts_an_errand_back_in_the_queue() {
+        let rig = Rig::new();
+        let (sink, mut ph) = phone_socket().await;
+        let serial = "phone-h6-errand-q";
+        rig.control.register_client(serial.into(), sink).await;
+        let e = create(
+            &rig.env(vec![phone(serial, &[(1, "tw")])]),
+            &json!({"number": "0223456709", "task": "問明天有沒有營業"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!((e.status.as_str(), e.call_code.as_str()), (DIALING, "dialing"));
+        let placed = next_json(&mut ph, Duration::from_secs(2)).await.expect("place_call");
+        let refused = json!({
+            "type": "place_call_failed",
+            "reason": "incoming_call",
+            "call_id": placed["call_id"],
+            "task_id": e.id,
+        });
+        appointments::on_callback_event(&rig.env(vec![]).cb(), serial, &refused).await;
+        let back = rig.store.get(&e.id).unwrap();
+        assert_eq!((back.status.as_str(), back.call_code.as_str()), (QUEUED, "phone_busy"));
+        assert!(!appointments::errand_call_known(&e.id));
+        sweep(&rig.env(vec![phone(serial, &[(1, "tw")])])).await;
+        let again = rig.store.get(&e.id).unwrap();
+        assert_eq!(again.status, DIALING);
+        let redial = next_json(&mut ph, Duration::from_secs(2)).await.expect("redial");
+        assert_eq!(redial["task_id"].as_str(), Some(e.id.as_str()));
+        assert_ne!(redial["call_id"], placed["call_id"]);
+    }
+
+    #[tokio::test]
+    async fn an_older_app_errand_with_an_open_incoming_call_treats_an_empty_number_as_incoming() {
+        let rig = Rig::new();
+        let (sink, mut ph) = phone_socket().await;
+        let serial = "phone-h6-errand-in";
+        rig.control.register_client(serial.into(), sink).await;
+        let e = create(
+            &rig.env(vec![phone(serial, &[(1, "tw")])]),
+            &json!({"number": "0223456708", "task": "問營業時間"}),
+        )
+        .await
+        .unwrap();
+        let placed = next_json(&mut ph, Duration::from_secs(2)).await.expect("place_call");
+        let env = rig.env(vec![]);
+        let cb = env.cb();
+        appointments::on_callback_event(
+            &cb,
+            serial,
+            &json!({"type": "outbound_ready", "call_id": placed["call_id"], "task_id": e.id, "number": "0223456708"}),
+        )
+        .await;
+        assert_eq!(call_notice(&rig.control, &rig.store, serial, "").await, CallNotice::Outgoing);
+        appointments::note_phone_incoming(serial);
+        assert_eq!(call_notice(&rig.control, &rig.store, serial, "").await, CallNotice::Incoming);
+        assert!(!is_active_outbound_call(&rig.control, serial, "").await);
+        appointments::clear_phone_incoming(serial);
+        appointments::on_callback_event(
+            &cb,
+            serial,
+            &json!({"type": "place_call_failed", "reason": "busy", "call_id": placed["call_id"], "task_id": e.id}),
+        )
+        .await;
     }
 
     #[test]

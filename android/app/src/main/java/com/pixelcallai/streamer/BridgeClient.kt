@@ -57,6 +57,13 @@ class BridgeClient(
         simCountry: String = "",
         /** Subscription id of the SIM the call uses; not sent when unknown. */
         simSubId: Int? = null,
+        /**
+         * `outbound` when this session is the agent's own dial, `incoming` otherwise.
+         * Always sent, so the agent can tell this app from an older one that omits it.
+         */
+        direction: String = HELLO_DIRECTION_INCOMING,
+        /** The agent's `place_call` id when [direction] is outbound; empty otherwise. */
+        callId: String = "",
     ) {
         debugSerial = serial
         agentReady.set(false)
@@ -91,18 +98,18 @@ class BridgeClient(
                     Log.i(TAG, "bridge probe open ${Prefs.redactUrl(url)} serial=$serial (wait ready, no hello)")
                     return
                 }
-                val hello = JSONObject()
-                    .put("type", "hello")
-                    .put("serial", serial)
-                    .put("caller_id", callerId)
-                    .put("sample_rate", sampleRate)
-                    .put("mode", "SILENT_LOCAL")
-                    .put("sim_country", simCountry)
-                    .put("play_tts_locally", false)
-                    .put("local_menu", BuildConfig.LOCAL_MENU_ENABLED)
-                    .put("model", DeviceName.display)
-                    .put("app_version", BuildConfig.VERSION_NAME)
-                if (simSubId != null) hello.put("sim_sub_id", simSubId)
+                val hello = mediaHello(
+                    serial = serial,
+                    callerId = callerId,
+                    sampleRate = sampleRate,
+                    simCountry = simCountry,
+                    simSubId = simSubId,
+                    direction = direction,
+                    callId = callId,
+                    localMenu = BuildConfig.LOCAL_MENU_ENABLED,
+                    model = DeviceName.display,
+                    appVersion = BuildConfig.VERSION_NAME,
+                )
                 session?.helloProof()?.let { hello.put("link_proof", it) }
                 send(hello.toString())
                 val ringing = JSONObject()
@@ -322,5 +329,63 @@ class BridgeClient(
         private const val TAG = "BridgeClient"
         /** Seconds without a pong before the media connection counts as lost. */
         private const val CONNECTION_LOST_TIMEOUT_S = 10
+        internal const val HELLO_DIRECTION_OUTBOUND = "outbound"
+        internal const val HELLO_DIRECTION_INCOMING = "incoming"
+
+        /**
+         * Fields of the media `hello`. `direction` and `call_id` are always present.
+         * Kept as a map so a unit test can read it: the SDK `JSONObject` is a stub.
+         */
+        internal fun mediaHelloFields(
+            serial: String,
+            callerId: String,
+            sampleRate: Int,
+            simCountry: String,
+            simSubId: Int?,
+            direction: String,
+            callId: String,
+            localMenu: Boolean,
+            model: String,
+            appVersion: String,
+        ): LinkedHashMap<String, Any> {
+            val hello = linkedMapOf<String, Any>(
+                "type" to "hello",
+                "serial" to serial,
+                "caller_id" to callerId,
+                "sample_rate" to sampleRate,
+                "mode" to "SILENT_LOCAL",
+                "sim_country" to simCountry,
+                "play_tts_locally" to false,
+                "local_menu" to localMenu,
+                "model" to model,
+                "app_version" to appVersion,
+                "direction" to direction,
+                "call_id" to callId,
+            )
+            if (simSubId != null) hello["sim_sub_id"] = simSubId
+            return hello
+        }
+
+        /** The media `hello`. `direction` and `call_id` are always present. */
+        internal fun mediaHello(
+            serial: String,
+            callerId: String,
+            sampleRate: Int,
+            simCountry: String,
+            simSubId: Int?,
+            direction: String,
+            callId: String,
+            localMenu: Boolean,
+            model: String,
+            appVersion: String,
+        ): JSONObject {
+            val hello = JSONObject()
+            for ((key, value) in mediaHelloFields(
+                serial, callerId, sampleRate, simCountry, simSubId, direction, callId, localMenu, model, appVersion,
+            )) {
+                hello.put(key, value)
+            }
+            return hello
+        }
     }
 }

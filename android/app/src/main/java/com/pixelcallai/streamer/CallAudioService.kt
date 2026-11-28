@@ -86,6 +86,9 @@ class CallAudioService : Service() {
     /** The `place_call` reached DIALING/OFFHOOK; one that never does is dropped after 30 s. */
     @Volatile private var pendingOutboundDialed = false
     private var pendingOutboundExpiry: Runnable? = null
+    /** What the next media hello says this session is. Set before [startCallSession]. */
+    private var helloDirection: String = BridgeClient.HELLO_DIRECTION_INCOMING
+    private var helloCallId: String = ""
     private var telephonyManager: TelephonyManager? = null
     private var telephonyCallback: TelephonyCallback? = null
     @Suppress("DEPRECATION")
@@ -688,6 +691,17 @@ class CallAudioService : Service() {
             endCallSession()
         }
         offhookWithoutAi = false
+        val ours = isAgentOutboundCall(
+            answeredRing = false,
+            pendingOutbound = pendingOutboundCallId != null,
+            systemOutgoing = systemCallOutgoing(instanceId),
+            sdkInt = Build.VERSION.SDK_INT,
+        )
+        if (!ours && systemCallOutgoing(instanceId) == false) {
+            dropUndialedPendingForIncoming()
+        }
+        prepareMediaHello(ours)
+        if (ours) sendOutboundReady()
         startCallSession(smoke = false, callInstanceId = instanceId)
     }
 
@@ -819,6 +833,13 @@ class CallAudioService : Service() {
             return
         }
         reportCallState(state != TelephonyManager.CALL_STATE_IDLE)
+        // A ring is not a place_call that has not reached DIALING/OFFHOOK, including
+        // when AI answering is off (that path returns before the ring is handled).
+        if (state == TelephonyManager.CALL_STATE_RINGING &&
+            shouldCancelPendingForRing(pendingOutboundCallId, pendingOutboundDialed)
+        ) {
+            cancelPendingOutboundForIncoming()
+        }
         if (!Prefs.isAiCallEnabled(this)) {
             if (!isNormalPhoneAgentCall(state)) {
                 Log.i(TAG, "normal phone mode; leave call state=$state alone")
@@ -1021,15 +1042,31 @@ class CallAudioService : Service() {
                 // A call dialed by hand on this phone is the user's own call:
                 // never attach the AI (it would greet into the ringback tone) and
                 // give the owner the microphone and earpiece back.
-                val kind = classifyOffhook(
-                    agentCallback = pendingOutboundCallId != null,
+                val outgoing = systemCallOutgoing(callInstanceId)
+                val ours = isAgentOutboundCall(
                     answeredRing = answeredRing,
-                    ownCall = SilentInCallService.isOwnCallUp(),
+                    pendingOutbound = pendingOutboundCallId != null,
+                    systemOutgoing = outgoing,
+                    sdkInt = Build.VERSION.SDK_INT,
                 )
-                when (kind) {
-                    OffhookKind.OWN -> onOwnCallOffhook()
-                    OffhookKind.UNKNOWN -> recheckOffhookDirection(answeredRing)
-                    OffhookKind.AI -> startOffhookSession(callInstanceId)
+                // Android 10+: a pending dial is ours only once the system says it is
+                // outgoing. Direction not published yet → ask again, do not guess.
+                if (
+                    !ours && !answeredRing && pendingOutboundCallId != null && outgoing == null &&
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                ) {
+                    recheckOffhookDirection(answeredRing)
+                } else {
+                    val kind = classifyOffhook(
+                        agentCallback = ours,
+                        answeredRing = answeredRing,
+                        ownCall = SilentInCallService.isOwnCallUp(),
+                    )
+                    when (kind) {
+                        OffhookKind.OWN -> onOwnCallOffhook()
+                        OffhookKind.UNKNOWN -> recheckOffhookDirection(answeredRing)
+                        OffhookKind.AI -> startOffhookSession(callInstanceId, ours)
+                    }
                 }
             }
             TelephonyManager.CALL_STATE_IDLE -> {
@@ -1085,24 +1122,12 @@ class CallAudioService : Service() {
             (pendingOutboundCallId != null || callActive || synchronized(sessionOwnershipLock) { bridge != null })
 
     /** OFFHOOK of an incoming call or of the agent's `place_call`: start the AI session. */
-    private fun startOffhookSession(callInstanceId: Long) {
+    private fun startOffhookSession(callInstanceId: Long, agentOutbound: Boolean) {
         offhookWithoutAi = false
-        val outboundId = pendingOutboundCallId
-        if (outboundId != null) {
-            pendingOutboundDialed = true
-            Log.i(
-                TAG,
-                "onOutboundReady call_id=$outboundId number_len=${pendingOutboundNumber?.length ?: 0}",
-            )
-            sendControlOrQueue(
-                org.json.JSONObject()
-                    .put("type", "outbound_ready")
-                    .put("call_id", outboundId)
-                    .put("task_id", pendingOutboundTaskId.orEmpty())
-                    .put("number", pendingOutboundNumber.orEmpty()),
-            )
-        }
-        Log.i(TAG, "OFFHOOK — start silent stream session outbound=${outboundId != null}")
+        if (!agentOutbound) dropUndialedPendingForIncoming()
+        prepareMediaHello(agentOutbound)
+        if (agentOutbound) sendOutboundReady()
+        Log.i(TAG, "OFFHOOK — start silent stream session outbound=$agentOutbound")
         audioGuard?.applyHardMute()
         audioGuard?.startHoldLoop()
         startCallSession(smoke = false, callInstanceId = callInstanceId)
@@ -1130,24 +1155,40 @@ class CallAudioService : Service() {
         offhookRecheckJob?.cancel()
         offhookRecheckJob = scope.launch {
             var ownCall: Boolean? = null
+            var outgoing: Boolean? = null
             for (attempt in 1..OUTGOING_CHECK_ATTEMPTS) {
                 delay(OUTGOING_CHECK_RETRY_MS)
                 ownCall = SilentInCallService.isOwnCallUp()
-                if (ownCall != null) break
+                outgoing = systemCallOutgoing(currentCallInstanceForTelephony())
+                val ours = isAgentOutboundCall(
+                    answeredRing,
+                    pendingOutboundCallId != null,
+                    outgoing,
+                    Build.VERSION.SDK_INT,
+                )
+                if (ours || outgoing == false || ownCall != null) break
             }
-            val decided = ownCall
-            mainHandler.post { resolveOffhookDirection(decided, answeredRing) }
+            val decidedOwn = ownCall
+            val decidedOut = outgoing
+            mainHandler.post { resolveOffhookDirection(decidedOwn, answeredRing, decidedOut) }
         }
     }
 
-    private fun resolveOffhookDirection(ownCall: Boolean?, answeredRing: Boolean) {
+    private fun resolveOffhookDirection(ownCall: Boolean?, answeredRing: Boolean, systemOutgoing: Boolean?) {
         if (effectiveCallState() != TelephonyManager.CALL_STATE_OFFHOOK) return
         val hasSession = synchronized(sessionOwnershipLock) {
             callActive || bridge != null || injector != null
         }
         if (hasSession) return
-        when (classifyOffhook(pendingOutboundCallId != null, answeredRing, ownCall)) {
-            OffhookKind.AI -> startOffhookSession(currentCallInstanceForTelephony())
+        val instanceId = currentCallInstanceForTelephony()
+        val ours = isAgentOutboundCall(
+            answeredRing,
+            pendingOutboundCallId != null,
+            systemOutgoing ?: systemCallOutgoing(instanceId),
+            Build.VERSION.SDK_INT,
+        )
+        when (classifyOffhook(ours, answeredRing, ownCall)) {
+            OffhookKind.AI -> startOffhookSession(instanceId, ours)
             OffhookKind.OWN -> onOwnCallOffhook()
             OffhookKind.UNKNOWN -> {
                 Log.w(
@@ -1648,12 +1689,16 @@ class CallAudioService : Service() {
             )
             if (!mutateCurrentSession(generation, callInstanceId) {
                     bridge = client
+                    val direction = if (smoke) BridgeClient.HELLO_DIRECTION_INCOMING else helloDirection
+                    val callId = if (smoke) "" else helloCallId
                     client.connect(
                         serial = serial,
                         callerId = details.callerId,
                         sampleRate = BuildConfig.SAMPLE_RATE,
                         simCountry = details.simCountry,
                         simSubId = details.simSubId,
+                        direction = direction,
+                        callId = callId,
                     )
                 }
             ) {
@@ -2267,6 +2312,74 @@ class CallAudioService : Service() {
         }
         old?.let { mainHandler.removeCallbacks(it) }
         mainHandler.postDelayed(expiry, OUTBOUND_DIAL_TIMEOUT_MS)
+    }
+
+    /**
+     * A ring arrived before this `place_call` reached DIALING/OFFHOOK. Tell the agent
+     * so it can dial again later; this ring is not that call.
+     */
+    private fun cancelPendingOutboundForIncoming() {
+        val (callId, taskId, number) = synchronized(sessionOwnershipLock) {
+            val id = pendingOutboundCallId ?: return
+            if (pendingOutboundDialed) return
+            Triple(id, pendingOutboundTaskId, pendingOutboundNumber)
+        }
+        clearPendingOutbound(callId)
+        Log.i(TAG, "pending place_call cancelled for an incoming call call_id=$callId")
+        sendControlOrQueue(
+            org.json.JSONObject()
+                .put("type", "place_call_failed")
+                .put("call_id", callId)
+                .put("task_id", taskId.orEmpty())
+                .put("number", number.orEmpty())
+                .put("reason", "incoming_call"),
+        )
+        if (BuildConfig.STANDALONE && !Prefs.isAiCallEnabled(this)) finishNormalPhoneAgentDial()
+    }
+
+    /** OFFHOOK that is not our dial: drop a place_call that never started, if one remains. */
+    private fun dropUndialedPendingForIncoming() {
+        if (shouldCancelPendingForRing(pendingOutboundCallId, pendingOutboundDialed)) {
+            cancelPendingOutboundForIncoming()
+        }
+    }
+
+    private fun prepareMediaHello(agentOutbound: Boolean) {
+        if (agentOutbound) {
+            helloDirection = BridgeClient.HELLO_DIRECTION_OUTBOUND
+            helloCallId = pendingOutboundCallId.orEmpty()
+        } else {
+            helloDirection = BridgeClient.HELLO_DIRECTION_INCOMING
+            helloCallId = ""
+        }
+    }
+
+    private fun sendOutboundReady() {
+        val outboundId = pendingOutboundCallId ?: return
+        if (pendingOutboundDialed) return
+        pendingOutboundDialed = true
+        Log.i(
+            TAG,
+            "onOutboundReady call_id=$outboundId number_len=${pendingOutboundNumber?.length ?: 0}",
+        )
+        sendControlOrQueue(
+            org.json.JSONObject()
+                .put("type", "outbound_ready")
+                .put("call_id", outboundId)
+                .put("task_id", pendingOutboundTaskId.orEmpty())
+                .put("number", pendingOutboundNumber.orEmpty()),
+        )
+    }
+
+    /**
+     * `Call.Details.getCallDirection()` as stored when the call was added.
+     * Null when InCallService has not published it (or this Android has no such API).
+     */
+    private fun systemCallOutgoing(instanceId: Long): Boolean? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        val info = SilentInCallService.callInfo(instanceId)
+            ?: if (instanceId != NO_CALL_INSTANCE) SilentInCallService.callInfo(NO_CALL_INSTANCE) else null
+        return info?.outgoing
     }
 
     private fun clearPendingOutbound(callId: String) {
@@ -3657,17 +3770,37 @@ class CallAudioService : Service() {
         /**
          * Whether an OFFHOOK call gets the AI. [ownCall] = dialed by hand (stored per call
          * by SilentInCallService; an agent callback is false); null = InCallService does
-         * not know the call yet, and a call this app answered after it rang is incoming
-         * even then.
+         * not know the call yet. A call this app just answered after it rang is incoming
+         * even when a `place_call` is still pending ([agentCallback] is ignored then).
          */
         internal fun classifyOffhook(agentCallback: Boolean, answeredRing: Boolean, ownCall: Boolean?): OffhookKind =
             when {
+                answeredRing -> OffhookKind.AI
                 agentCallback -> OffhookKind.AI
                 ownCall == true -> OffhookKind.OWN
                 ownCall == false -> OffhookKind.AI
-                answeredRing -> OffhookKind.AI
                 else -> OffhookKind.UNKNOWN
             }
+
+        /** A `place_call` still waiting for DIALING/OFFHOOK must be dropped when a call rings. */
+        internal fun shouldCancelPendingForRing(pendingCallId: String?, dialed: Boolean): Boolean =
+            !pendingCallId.isNullOrBlank() && !dialed
+
+        /**
+         * This OFFHOOK is the call the agent placed.
+         * Android 10 and newer: not a just-answered ring, and [systemOutgoing] is true
+         * (`Call.Details.getCallDirection()`). Older: the pending `place_call`, but never
+         * a just-answered ring. [systemOutgoing] null means the direction is not known yet.
+         */
+        internal fun isAgentOutboundCall(
+            answeredRing: Boolean,
+            pendingOutbound: Boolean,
+            systemOutgoing: Boolean?,
+            sdkInt: Int,
+        ): Boolean {
+            if (answeredRing || !pendingOutbound) return false
+            return if (sdkInt >= Build.VERSION_CODES.Q) systemOutgoing == true else true
+        }
     }
 
     /** Play `assets/ivr_wait.wav` once per call into uplink. */
