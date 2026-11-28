@@ -16,6 +16,8 @@
 //! packs sync-source --bageo-call <checkout> --out <packs folder> [--commit <text>]
 //! packs export-app --packs <packs folder> --android <res folder> --desktop <i18n.ext.json> [--commit <text>] [--check]
 //! packs new-signing-key --out <signing key file>
+//!             (on Windows the file is not limited to you: save it where only you can read it,
+//!             and delete it once the GitHub secret is set)
 //! packs sign-index <index file> [--out <index file>.sig]   (signing key in BAGEO_PACKS_SIGNING_KEY)
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -49,6 +51,7 @@ const USAGE: &str = "usage:
   packs sync-source --bageo-call <checkout> --out <packs folder> [--commit <text>]
   packs export-app --packs <packs folder> --android <res folder> --desktop <i18n.ext.json> [--commit <text>] [--check]
   packs new-signing-key --out <signing key file>
+      (on Windows the file is not limited to you: save it where only you can read it, and delete it once the GitHub secret is set)
   packs sign-index <index file> [--out <index file>.sig]   (signing key in BAGEO_PACKS_SIGNING_KEY)";
 
 /// Plain `x.y.z` from `CARGO_PKG_VERSION` (stripping `-beta`, `-rc.1`, `+build`).
@@ -794,6 +797,9 @@ fn cmd_new_signing_key(args: &[String]) -> ExitCode {
         return fail(format!("cannot write {out}: {e}"));
     }
     println!("wrote the signing key to {out}; keep it secret and never print or commit it");
+    if cfg!(windows) {
+        println!("on Windows this file is not limited to you: keep it where only you can read it, and delete it once the GitHub secret is set");
+    }
     println!("public key: {}", signing::to_hex(&public));
     ExitCode::SUCCESS
 }
