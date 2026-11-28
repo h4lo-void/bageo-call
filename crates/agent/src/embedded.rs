@@ -9,8 +9,9 @@
 //! JNI), so only the Bageo app itself can read calls or change settings. The one
 //! socket left is the phone bridge on loopback ([`LOCAL_BRIDGE_PORT`]) that the app's
 //! own call service uses; it serves only the phone WebSocket and refuses every
-//! request without the key made at start ([`BRIDGE_KEY_HEADER`]), which lives in
-//! memory only and reaches the app over JNI.
+//! request that does not start the link check ([`crate::phone_link`]) with the key
+//! made at start. The key lives in memory only, reaches the app over JNI once the
+//! bridge listens, and never goes over the socket.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
@@ -40,7 +41,8 @@ use crate::{bootstrap_runtime, calendar, lan, locale, notify, recent_notices, sm
 /// phone is plugged into a PC.
 pub const LOCAL_BRIDGE_PORT: u16 = 8766;
 
-/// Header carrying the bridge key on every request to [`LOCAL_BRIDGE_PORT`].
+/// Header older apps sent the bridge key in. No longer taken: the key never
+/// goes over the socket ([`crate::phone_link`]).
 pub const BRIDGE_KEY_HEADER: &str = "x-bageo-bridge-key";
 
 /// Fills `Settings.port` (links in settings answers). Nothing listens on it.
@@ -85,9 +87,15 @@ impl EmbeddedControl {
         })
     }
 
-    /// The key the app's call service shows on [`LOCAL_BRIDGE_PORT`]. A new one each start.
+    /// The key the app's call service checks [`LOCAL_BRIDGE_PORT`] with. A new one
+    /// each start; empty until the bridge listens, so the app never talks to
+    /// whatever holds the port before that.
     pub fn bridge_key(&self) -> &str {
-        &self.bridge_key
+        if self.ready.load(Ordering::Acquire) {
+            &self.bridge_key
+        } else {
+            ""
+        }
     }
 
     fn handles(&self) -> Option<EmbeddedHandles> {
@@ -382,26 +390,24 @@ pub async fn dispatch_local(app: Router, ui_token: &str, req: LocalRequest) -> L
 }
 
 /// The routes on [`LOCAL_BRIDGE_PORT`]: only the phone WebSocket (`/` and `/ws`),
-/// and nothing at all without `key` in [`BRIDGE_KEY_HEADER`].
+/// and nothing at all without the link check with `key` ([`crate::phone_link`]).
 pub(crate) fn phone_bridge_app(state: AppState, key: &str) -> Router {
     let key: Arc<str> = Arc::from(key.trim());
     Router::new()
         .route("/", get(crate::root))
         .route("/ws", get(crate::ws_upgrade))
         .with_state(state)
-        .layer(axum::middleware::from_fn_with_state(key, require_bridge_key))
+        .layer(axum::middleware::from_fn_with_state(key, require_link_check))
 }
 
-async fn require_bridge_key(State(key): State<Arc<str>>, req: Request, next: Next) -> Response {
-    let given = req
-        .headers()
-        .get(BRIDGE_KEY_HEADER)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    if key.is_empty() || !crate::mcp::same(given.trim(), &key) {
-        debug!("phone bridge refused a request without the app's key");
+/// Every request must start the link check; the WebSocket handler then proves
+/// this agent with `key` and the phone's hello must prove the app.
+async fn require_link_check(State(key): State<Arc<str>>, mut req: Request, next: Next) -> Response {
+    if key.is_empty() || crate::phone_link::requested_cnonce(req.headers()).is_none() {
+        debug!("phone bridge refused a request without the link check");
         return StatusCode::UNAUTHORIZED.into_response();
     }
+    req.extensions_mut().insert(crate::phone_link::KeyOverride(key.clone()));
     next.run(req).await
 }
 
@@ -477,7 +483,7 @@ pub async fn run_embedded(cfg: Arc<EmbeddedControl>) -> Result<()> {
     let app = crate::build_app(state.clone(), calls_state, remote, true);
     let bridge_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), LOCAL_BRIDGE_PORT);
     let listener = bind_with_retries(bridge_addr).await?;
-    let bridge = phone_bridge_app(state.clone(), cfg.bridge_key());
+    let bridge = phone_bridge_app(state.clone(), &cfg.bridge_key);
 
     *cfg.handles.lock().unwrap_or_else(|e| e.into_inner()) = Some(EmbeddedHandles {
         settings,
@@ -487,7 +493,7 @@ pub async fn run_embedded(cfg: Arc<EmbeddedControl>) -> Result<()> {
         runtime: tokio::runtime::Handle::current(),
     });
     cfg.ready.store(true, Ordering::Release);
-    info!("embedded Bageo ready: console inside the app only, phone bridge on ws://{bridge_addr} (app key required)");
+    info!("embedded Bageo ready: console inside the app only, phone bridge on ws://{bridge_addr} (link check required)");
 
     serve_phone_bridge(listener, bridge).await?;
     anyhow::bail!("the phone bridge stopped")
@@ -943,9 +949,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_phone_bridge_needs_the_app_key_and_serves_only_calls() {
+    async fn the_phone_bridge_needs_the_link_check_and_serves_only_calls() {
+        use crate::phone_link::{HEADER_CNONCE, HEADER_LINK, HEADER_PROOF, HEADER_SNONCE};
+        use futures_util::{SinkExt, StreamExt};
         use tokio_tungstenite::tungstenite::client::IntoClientRequest;
         use tokio_tungstenite::tungstenite::Error as WsError;
+        use tokio_tungstenite::tungstenite::Message as WsMessage;
 
         let (state, root) = make_test_app_state("emb-bridge");
         let key = new_bridge_key();
@@ -955,32 +964,66 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         tokio::spawn(serve_phone_bridge(listener, phone_bridge_app(state, &key)));
 
+        // No link check: refused, also with the old header carrying the right key.
         for path in ["/", "/ws"] {
-            for wrong in [None, Some("0".repeat(64)), Some(key[..63].to_string())] {
+            for old in [None, Some(key.clone())] {
                 let mut rq = format!("ws://127.0.0.1:{port}{path}").into_client_request().unwrap();
-                if let Some(w) = wrong {
-                    rq.headers_mut().insert(BRIDGE_KEY_HEADER, w.parse().unwrap());
+                if let Some(k) = old {
+                    rq.headers_mut().insert(BRIDGE_KEY_HEADER, k.parse().unwrap());
                 }
                 match tokio_tungstenite::connect_async(rq).await {
                     Err(WsError::Http(resp)) => assert_eq!(resp.status().as_u16(), 401),
-                    other => panic!("{path} opened without the key: {:?}", other.map(|_| ())),
+                    other => panic!("{path} opened without the link check: {:?}", other.map(|_| ())),
                 }
             }
         }
+        let cnonce = "c1".repeat(32);
         let mut rq = format!("ws://127.0.0.1:{port}/ws").into_client_request().unwrap();
-        rq.headers_mut().insert(BRIDGE_KEY_HEADER, key.parse().unwrap());
-        let (mut ws, resp) = tokio_tungstenite::connect_async(rq).await.expect("the app's key opens the bridge");
+        rq.headers_mut().insert(HEADER_LINK, "1".parse().unwrap());
+        rq.headers_mut().insert(HEADER_CNONCE, cnonce.parse().unwrap());
+        let (mut ws, resp) = tokio_tungstenite::connect_async(rq).await.expect("the link check opens the bridge");
         assert_eq!(resp.status().as_u16(), 101);
+        let snonce = resp.headers().get(HEADER_SNONCE).unwrap().to_str().unwrap().to_string();
+        let proof = resp.headers().get(HEADER_PROOF).unwrap().to_str().unwrap().to_string();
+        let (host, phone) = crate::phone_link::proofs(&key, &cnonce, &snonce).unwrap();
+        assert_eq!(proof, host, "the agent proves it holds this start's key");
+        assert!(!resp.headers().contains_key(BRIDGE_KEY_HEADER));
+        // The app's proof in its hello: the agent answers it.
+        let hello = json!({"type": "hello", "serial": "emb-test", "mode": "CONTROL_IDLE", "link_proof": phone});
+        ws.send(WsMessage::Text(hello.to_string().into())).await.unwrap();
+        let mut acked = false;
+        for _ in 0..6 {
+            match tokio::time::timeout(Duration::from_secs(5), ws.next()).await {
+                Ok(Some(Ok(WsMessage::Text(t)))) if t.as_str().contains("hello_ack") => {
+                    acked = true;
+                    break;
+                }
+                Ok(Some(Ok(_))) => continue,
+                _ => break,
+            }
+        }
+        assert!(acked, "a right link_proof is taken");
         let _ = ws.close(None).await;
 
-        // The console is not on the bridge, even with the key.
+        // The console is not on the bridge, even with the link check.
         let client = reqwest::Client::new();
         let url = format!("http://127.0.0.1:{port}/calls/api/settings");
-        let with_key = client.get(&url).header(BRIDGE_KEY_HEADER, &key).send().await.unwrap();
-        assert_eq!(with_key.status().as_u16(), 404);
+        let checked = client.get(&url).header(HEADER_LINK, "1").header(HEADER_CNONCE, &cnonce).send().await.unwrap();
+        assert_eq!(checked.status().as_u16(), 404);
         let without = client.get(&url).send().await.unwrap();
         assert_eq!(without.status().as_u16(), 401);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_bridge_key_is_given_out_only_once_the_bridge_listens() {
+        let ctrl = EmbeddedControl::new(PathBuf::from("/path/to/data"), PathBuf::from("/path/to/assets"));
+        ctrl.alive.store(true, Ordering::Release);
+        assert_eq!(ctrl.bridge_key(), "", "starting: whatever holds the port gets nothing");
+        ctrl.ready.store(true, Ordering::Release);
+        assert_eq!(ctrl.bridge_key().len(), 64);
+        ctrl.ready.store(false, Ordering::Release);
+        assert_eq!(ctrl.bridge_key(), "");
     }
 
     #[test]

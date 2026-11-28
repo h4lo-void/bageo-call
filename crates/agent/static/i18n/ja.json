@@ -1410,6 +1410,8 @@
     "sl_region_none": "指定しない",
     "sl_second1": "副言語 1",
     "sl_second2": "副言語 2",
-    "sl_second_none": "なし"
+    "sl_second_none": "なし",
+    "ippair_new_app": "ペアリングには最新の Bageo アプリが必要です。",
+    "ph_link_unchecked": "接続が確認されていません：このスマホの Bageo アプリを更新してください"
   }
 }

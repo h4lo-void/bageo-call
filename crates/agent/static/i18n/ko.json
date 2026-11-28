@@ -1410,6 +1410,8 @@
     "sl_region_none": "지정 안 함",
     "sl_second1": "부 언어 1",
     "sl_second2": "부 언어 2",
-    "sl_second_none": "없음"
+    "sl_second_none": "없음",
+    "ippair_new_app": "페어링하려면 휴대폰에 최신 Bageo 앱이 있어야 합니다.",
+    "ph_link_unchecked": "연결이 확인되지 않았습니다: 이 휴대폰의 Bageo 앱을 업데이트하세요"
   }
 }

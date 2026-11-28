@@ -1410,6 +1410,8 @@
     "sl_region_none": "Not set",
     "sl_second1": "Second language 1",
     "sl_second2": "Second language 2",
-    "sl_second_none": "None"
+    "sl_second_none": "None",
+    "ippair_new_app": "The phone needs the latest Bageo app to pair.",
+    "ph_link_unchecked": "Connection not verified: update the Bageo app on this phone"
   }
 }

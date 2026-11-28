@@ -1410,6 +1410,8 @@
     "sl_region_none": "不指定",
     "sl_second1": "副语言 1",
     "sl_second2": "副语言 2",
-    "sl_second_none": "不用"
+    "sl_second_none": "不用",
+    "ippair_new_app": "手机要装最新版 Bageo 应用才能配对。",
+    "ph_link_unchecked": "连接未经验证：请更新这部手机的 Bageo 应用"
   }
 }

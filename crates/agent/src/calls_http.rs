@@ -2745,6 +2745,8 @@ pub struct PhoneDevices {
     waiting: std::sync::Mutex<HashMap<String, (String, oneshot::Sender<ModeReply>)>>,
     /// What the owner was told and answered about each phone's call audio.
     fit: crate::audio_fit::FitBook,
+    /// Phones whose control connection skipped the link check (`crate::phone_link`).
+    unchecked: std::sync::Mutex<std::collections::HashSet<String>>,
 }
 
 impl PhoneDevices {
@@ -2819,6 +2821,20 @@ impl PhoneDevices {
     pub fn set_wifi(&self, serial: &str, wifi: bool) {
         if let Some(p) = self.phones().get_mut(serial) {
             p.wifi = wifi;
+        }
+    }
+
+    fn unchecked(&self) -> std::sync::MutexGuard<'_, std::collections::HashSet<String>> {
+        self.unchecked.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Whether the phone's control connection passed the link check (or came
+    /// with the pairing key over Wi-Fi). False: the console asks for an app update.
+    pub fn set_link_checked(&self, serial: &str, checked: bool) {
+        if checked {
+            self.unchecked().remove(serial);
+        } else {
+            self.unchecked().insert(serial.to_string());
         }
     }
 
@@ -3042,6 +3058,10 @@ impl PhoneDevices {
                     if view.noted {
                         v["audio_fit_noted"] = json!(true);
                     }
+                    // Only when false: on this computer without the link check (an older app).
+                    if self.unchecked().contains(serial.as_str()) {
+                        v["link_checked"] = json!(false);
+                    }
                     v
                 })
             })
@@ -3236,6 +3256,10 @@ fn phone_pairing_renew_with(
     }
     match pairing.renew() {
         Ok(()) => {
+            // The link key goes too; plugged-in phones are given the new one.
+            if let Err(e) = crate::phone_link::link().renew() {
+                tracing::warn!("phones paired again, but the new link key could not be saved: {e}");
+            }
             info!("phones paired again: the phones on Wi-Fi must be plugged in by USB once more");
             Json(json!({"ok": true})).into_response()
         }
