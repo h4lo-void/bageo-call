@@ -1,3 +1,27 @@
+# Bageo v2.3.0
+
+- **AI errands can be scheduled, and Bageo keeps redialing to grab the line.** An AI errand can now have a date and time, and you can choose how long Bageo keeps redialing when the line is busy or unanswered (1 to 120 minutes, 30 by default). A time you write with its zone is read as that moment in the computer's local time, and a card that asks a question shows up again once you answer it. See [Features](docs/en/FEATURES.md#ai-errands-it-makes-calls-for-you).
+- **AI 代打可以排日期時間，並持續重撥搶打。** AI 代打現在可以指定日期與時間，也能設定忙線或沒人接時 Bageo 要重撥多久（1 到 120 分鐘，預設 30 分鐘）。寫了時區的時間會換算成這台電腦的當地時間，回答完卡片上的問題後卡片會再顯示一次。見[功能總覽](docs/zh-TW/FEATURES.md#ai-代打替你打電話)。
+- **AI 代打可以排日期时间，并持续重拨抢打。** AI 代打现在可以指定日期与时间，也能设置忙线或没人接时 Bageo 要重拨多久（1 到 120 分钟，默认 30 分钟）。写了时区的时间会换算成这台电脑的当地时间，回答完卡片上的问题后卡片会再显示一次。见[功能总览](docs/zh-CN/FEATURES.md#ai-代打替你打电话)。
+- **Phones and computers now check each other, and Wi-Fi pairing is always encrypted.** Bageo and the phone app verify each other before they talk, and connections that do not finish the check are closed. Pairing over Wi-Fi now hands over a link key and never runs unencrypted; update the computer first, then the phone app, and pair again if you used an old unencrypted pairing. See [Phone](docs/en/PHONE.md).
+- **手機與電腦會互相驗證，Wi-Fi 配對一律加密。** Bageo 與手機 App 連線前會先互相確認身分，沒通過確認的連線會被關閉。透過 Wi-Fi 配對時會交換連線金鑰，不再有未加密的連線；請先更新電腦端，再更新手機 App，舊的未加密配對要重新配對。見[手機端說明](docs/zh-TW/PHONE.md)。
+- **手机与电脑会互相验证，Wi-Fi 配对一律加密。** Bageo 与手机应用连接前会先互相确认身份，没通过确认的连接会被关闭。通过 Wi-Fi 配对时会交换连接密钥，不再有未加密的连接；请先更新电脑端，再更新手机应用，旧的未加密配对要重新配对。见[手机端说明](docs/zh-CN/PHONE.md)。
+- **Stronger protection for the console and your data.** The console limits password guesses, cannot be embedded in other pages, and uses a longer MCP token. Data files are readable only by you, logs say less, and strangers cannot make Bageo dial you over and over. Notifications show text from outside as plain text, so a fake link cannot pass as a button, and dial numbers are checked before the phone app opens.
+- **控制台與資料的防護加強。** 控制台限制猜密碼的次數、不能被嵌進其他網頁，MCP token 也加長。資料檔只有你自己能讀，記錄檔寫得更少，陌生人也無法讓 Bageo 一直撥給你。通知裡來自外部的文字一律顯示成純文字，偽造的連結不會被當成按鈕；開啟手機撥號畫面前也會先檢查號碼。
+- **控制台与数据的防护加强。** 控制台限制猜密码的次数、不能被嵌进其他网页，MCP token 也加长。数据文件只有你自己能读，日志写得更少，陌生人也无法让 Bageo 一直拨给你。通知里来自外部的文字一律显示为纯文本，伪造的链接不会被当成按钮；打开手机拨号界面前也会先检查号码。
+- **A confirmation card is never pushed out.** A chat keeps every open confirmation card, and a card from an MCP client can no longer replace one you are waiting on. A chat also stops stacking cards it cannot answer.
+- **確認卡不會被覆蓋。** 同一個聊天室裡每張未處理的確認卡都會保留，MCP 客戶端送來的卡片也不會蓋掉你正在等的那一張，聊天室不再堆出無法回答的卡片。
+- **确认卡不会被覆盖。** 同一个聊天室里每张未处理的确认卡都会保留，MCP 客户端送来的卡片也不会盖掉你正在等的那一张，聊天室不再堆出无法回答的卡片。
+- **The AI no longer admits to being an AI while stalling.** In the AI assistant style it still says so on a normal call when asked seriously; "As me" speaks as you, as before. While keeping a sales or scam caller busy, neither style admits it. See [Prompts](docs/en/PROMPTS.md).
+- **陪聊時 AI 不會承認自己是 AI。** 「AI 助理」在一般通話被認真問到時仍會承認；「本人」照舊以你的身分講話。陪推銷或詐騙電話聊時，兩種都不承認。見[提示詞](docs/zh-TW/PROMPTS.md)。
+- **陪聊时 AI 不会承认自己是 AI。** 「AI 助理」在一般通话被认真问到时仍会承认；「本人」照旧以你的身份讲话。陪推销或诈骗电话聊时，两种都不承认。见[提示词](docs/zh-CN/PROMPTS.md)。
+- **An incoming call is never told what an outgoing dial was for.** If a call comes in while Bageo is about to dial out, the caller is not given the errand's content, and a to-do callback is held until the line is free. Phones still on the 2.2.0 app keep getting their callback script.
+- **撥出時有來電，不會把代打內容講給來電者聽。** Bageo 正要撥出時若剛好有電話打進來，來電者不會聽到代打的內容，待辦的回電會等線路空了再撥。還在用 2.2.0 App 的手機仍可收到回電的說明。
+- **拨出时有来电，不会把代打内容讲给来电者听。** Bageo 正要拨出时若刚好有电话打进来，来电者不会听到代打的内容，待办的回电会等线路空了再拨。还在用 2.2.0 应用的手机仍可收到回电的说明。
+- **The phone app asks for less.** The phone app drops three permissions it never used, and release builds pin their third-party tools to fixed versions.
+- **手機 App 要求的權限變少。** 手機 App 移除了三個從未用到的權限，發版流程用到的第三方工具也鎖定在固定版本。
+- **手机应用要求的权限变少。** 手机应用移除了三个从未用到的权限，发版流程用到的第三方工具也锁定在固定版本。
+
 # Bageo v2.2.0
 
 - **A main language, region, and up to two second languages per SIM.** Under *Languages for each SIM*, each SIM can now have a main language and region plus up to two second languages with regions. Local and hidden numbers open in the main language with that region's local habits, while a call from abroad opens in the matching second language (or the caller's country language). See [Settings](docs/en/SETTINGS.md#basics).

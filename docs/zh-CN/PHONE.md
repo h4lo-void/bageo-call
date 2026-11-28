@@ -12,18 +12,18 @@
 
 构建应用、它的权限和通信协议，写在 [`android/README.md`](../../android/README.md)（英文）里。
 
-这一页说明的是 **Bageo 2.2**：root 模块 `v2.2.0`（versionCode 32），里面的应用是 `2.2.0`（versionCode 40）。
+这一页说明的是 **Bageo 2.3**：root 模块 `v2.3.0`（versionCode 33），里面的应用是 `2.3.0`（versionCode 41）。
 
-安装包有两个：`bageo-phone-module-2.2.0.zip`（电脑联动版 **Bageo Uplink**，配合电脑或 NAS 使用）与 `bageo-phone-standalone-2.2.0.zip`（手机独立版 **Bageo AI Call Agent**，不需要电脑，把完整 Bageo 与控制台装在手机里）。应用的版本在“高级”页面能看到，控制台则在“系统 → 手机”里。
+安装包有两个：`bageo-phone-module-2.3.0.zip`（电脑联动版 **Bageo Uplink**，配合电脑或 NAS 使用）与 `bageo-phone-standalone-2.3.0.zip`（手机独立版 **Bageo AI Call Agent**，不需要电脑，把完整 Bageo 与控制台装在手机里）。应用的版本在“高级”页面能看到，控制台则在“系统 → 手机”里。
 
 | 安装包 | 用途 | 模块 ID |
 |---|---|---|
-| `bageo-phone-standalone-2.2.0.zip` | **Bageo AI Call Agent**（手机独立版）：不用电脑，整个 Bageo 在手机上。 | `bageo_ai_call_agent`（管理器显示 Bageo AI Call Agent） |
-| `bageo-phone-module-2.2.0.zip` | 配电脑用：搭配 Windows、macOS、Linux 安装包或 Docker。 | `pixelcallai_uplink`（管理器显示 **Bageo Uplink (for Bageo on a computer)**） |
+| `bageo-phone-standalone-2.3.0.zip` | **Bageo AI Call Agent**（手机独立版）：不用电脑，整个 Bageo 在手机上。 | `bageo_ai_call_agent`（管理器显示 Bageo AI Call Agent） |
+| `bageo-phone-module-2.3.0.zip` | 配电脑用：搭配 Windows、macOS、Linux 安装包或 Docker。 | `pixelcallai_uplink`（管理器显示 **Bageo Uplink (for Bageo on a computer)**） |
 
 两个只能装一个；装其中一个，另一个会在下次重启时自动移除。
 
-> **想完全不靠电脑？** 直接改刷 `bageo-phone-standalone-2.2.0.zip` 即可。用 Google AI Studio 的免费 Gemini 密钥就不用付 API 费用；我们实测免费额度每天 10 通以上够用（免费额度的上限由 Google 决定，可能会变）。两个版本的模块 ID 不同：手机独立版是 `bageo_ai_call_agent`（管理器里显示 Bageo AI Call Agent），电脑联动版是 `pixelcallai_uplink`（显示 Bageo Uplink (for Bageo on a computer)）。装其中一版时，另一版会在下次重启自动移除，应用与设置都会保留。手机独立版的控制台只能在手机上的 Bageo 应用里打开，其他手机或电脑都打不开。
+> **想完全不靠电脑？** 直接改刷 `bageo-phone-standalone-2.3.0.zip` 即可。用 Google AI Studio 的免费 Gemini 密钥就不用付 API 费用；我们实测免费额度每天 10 通以上够用（免费额度的上限由 Google 决定，可能会变）。两个版本的模块 ID 不同：手机独立版是 `bageo_ai_call_agent`（管理器里显示 Bageo AI Call Agent），电脑联动版是 `pixelcallai_uplink`（显示 Bageo Uplink (for Bageo on a computer)）。装其中一版时，另一版会在下次重启自动移除，应用与设置都会保留。手机独立版的控制台只能在手机上的 Bageo 应用里打开，其他手机或电脑都打不开。
 
 ## 手机会做哪些事
 
@@ -66,7 +66,7 @@
 
 1. 用 Magisk 或 KernelSU 给手机 **root**（这里不讲）。
 2. 如果你曾经把这个应用当作普通 APK 安装过，请先卸载。两种绝对不要同时存在。
-3. 把 `bageo-phone-module-<version>.zip` 复制到手机（这一版是 `bageo-phone-module-2.2.0.zip`）。在 Magisk 或 KernelSU 应用里：“模块”（Modules）→“从本地安装”（Install from storage）→ 选择那个 zip → 重启。
+3. 把 `bageo-phone-module-<version>.zip` 复制到手机（这一版是 `bageo-phone-module-2.3.0.zip`）。在 Magisk 或 KernelSU 应用里：“模块”（Modules）→“从本地安装”（Install from storage）→ 选择那个 zip → 重启。
 4. 打开 **Bageo**。最上面的卡片用一句话说明手机现在的状态。下面的“**设置步骤**”列出还没完成的事，每一步都有按钮：
 
    | 步骤 | 要做什么 |
