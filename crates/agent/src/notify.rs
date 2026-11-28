@@ -565,6 +565,14 @@ fn md_safe(s: &str) -> String {
     out
 }
 
+/// Whether a webhook address is Slack's own (not a Mattermost server).
+fn is_slack_host(url: &str) -> bool {
+    url::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_ascii_lowercase))
+        .is_some_and(|h| h == "slack.com" || h.ends_with(".slack.com"))
+}
+
 /// Text for Slack's message format: `&`, `<` and `>` as Slack writes them, so
 /// `<!channel>`, `<@user>` and `<link|label>` stay plain words.
 fn slack_safe(s: &str) -> String {
@@ -660,10 +668,16 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             json!({ "content": clip(&md_safe(body), 1900), "allowed_mentions": { "parse": [] } }),
         ),
         "slack" if base.is_empty() && !ch.token.trim().is_empty() => slack_bot_prepared(ch, msg)?,
-        "slack" => post_json(
-            need_http("url", "webhook URL", &base)?,
-            json!({ "text": slack_safe(&clip(body, 3500)), "mrkdwn": false }),
-        ),
+        "slack" => {
+            let url = need_http("url", "webhook URL", &base)?;
+            // Mattermost takes this shape too but reads Markdown and ignores `mrkdwn`.
+            let payload = if is_slack_host(&url) {
+                json!({ "text": slack_safe(&clip(body, 3500)), "mrkdwn": false })
+            } else {
+                json!({ "text": clip(&md_safe(body), 3500) })
+            };
+            post_json(url, payload)
+        }
         // Microsoft Learn, "Create incoming webhooks with Workflows for Microsoft
         // Teams": the "Post to a channel when a webhook request is received"
         // workflow takes a message whose attachment is an Adaptive Card. The old
@@ -752,7 +766,7 @@ pub fn prepare(ch: &Channel, msg: &Message, now_ms: u64) -> Result<Prepared> {
             put: false,
             url: need_http("url", "webhook URL", &base)?,
             headers: Vec::new(),
-            body: Body::Form(vec![("payload".into(), json!({ "text": clip(body, 2000) }).to_string())]),
+            body: Body::Form(vec![("payload".into(), json!({ "text": clip(&chat_links_safe(body), 2000) }).to_string())]),
         },
         "line" => Prepared {
             put: false,
@@ -2872,6 +2886,24 @@ mod tests {
         // Services that show plain text get the words as they are.
         let p = prepare(&ch("ntfy", "", "", "calls"), &m, 0).unwrap();
         assert_eq!(json_body(&p)["message"], TRICK);
+    }
+
+    #[test]
+    fn mattermost_and_synology_get_the_made_plain_text() {
+        let m = Message { body: TRICK.into(), ..msg() };
+        let p = prepare(&ch("slack", "https://chat.example.org/hooks/abc", "", ""), &m, 0).unwrap();
+        assert!(json_body(&p).get("mrkdwn").is_none());
+        let text = json_body(&p)["text"].as_str().unwrap();
+        assert_eq!(text, md_safe(TRICK));
+        assert!(!text.contains("@everyone") && !text.contains("<!channel>") && text.contains(r"\[your bank\]"), "{text}");
+        for host in ["https://hooks.slack.com/services/T/B/x", "https://slack.com/api/x", "https://hooks.slack-gov.com.evil.example/x"] {
+            let p = prepare(&ch("slack", host, "", ""), &m, 0).unwrap();
+            assert_eq!(json_body(&p).get("mrkdwn").is_some(), !host.contains("evil"), "{host}");
+        }
+        let p = prepare(&ch("synology", "https://nas.example.org/webapi/entry.cgi", "", ""), &m, 0).unwrap();
+        let payload: Value = serde_json::from_str(&form_body(&p)["payload"]).unwrap();
+        let text = payload["text"].as_str().unwrap();
+        assert!(!text.contains("<!channel>") && !text.contains("@everyone"), "{text}");
     }
 
     #[test]
