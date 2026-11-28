@@ -10,6 +10,7 @@
 //! code.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -35,7 +36,14 @@ struct Pending {
     sender: String,
     job: Job,
     at: Instant,
+    /// Insertion order, so "oldest" stays the one put in first.
+    seq: u64,
 }
+
+/// How many cards one chat keeps. A newer one drops the oldest card the
+/// chat itself asked for. A chat that is already full of MCP cards takes
+/// no further MCP card.
+pub const MAX_PER_CHAT: usize = 20;
 
 /// chat → code → the card. One code may sit in several chats ([`Confirmations::ask_many`]);
 /// the first answer removes it from all of them.
@@ -44,6 +52,7 @@ type Open = HashMap<String, HashMap<String, Pending>>;
 pub struct Confirmations {
     ttl: Duration,
     open: Mutex<Open>,
+    seq: AtomicU64,
 }
 
 /// 128 random bits as 32 hex digits: too many to guess. Two v4 UUIDs, the
@@ -76,7 +85,7 @@ pub enum TypedReply {
 
 impl Confirmations {
     pub fn new(ttl: Duration) -> Self {
-        Self { ttl, open: Mutex::new(HashMap::new()) }
+        Self { ttl, open: Mutex::new(HashMap::new()), seq: AtomicU64::new(1) }
     }
 
     fn open(&self) -> std::sync::MutexGuard<'_, Open> {
@@ -84,24 +93,70 @@ impl Confirmations {
     }
 
     /// Waits for the owner's yes; its code. Other cards in the chat stay.
-    pub fn ask(&self, chat: &str, sender: &str, job: Job) -> String {
+    /// None when this chat is already full of MCP cards and this one is too.
+    pub fn ask(&self, chat: &str, sender: &str, job: Job) -> Option<String> {
         self.ask_many(&[chat.to_string()], sender, job)
     }
 
     /// The same job waiting in several chats under one code: the first
     /// answer in any of them settles it everywhere. Cards already waiting
-    /// in those chats stay.
-    pub fn ask_many(&self, chats: &[String], sender: &str, job: Job) -> String {
-        let code = new_code();
+    /// in those chats stay. Expired cards are dropped first. Past
+    /// [MAX_PER_CHAT], the oldest card the chat itself asked for is dropped
+    /// to make room. A chat already full of MCP cards is skipped when this
+    /// card is one too. None when every chat was skipped.
+    pub fn ask_many(&self, chats: &[String], sender: &str, job: Job) -> Option<String> {
         let sender = sender.trim().to_string();
+        let mcp = sender == ANY_SENDER;
         let mut open = self.open();
+        let mut kept = Vec::new();
         for chat in chats {
-            open.entry(chat.clone()).or_default().insert(
+            if room_for(&mut open, chat, self.ttl, mcp) {
+                kept.push(chat.clone());
+            }
+        }
+        if kept.is_empty() {
+            return None;
+        }
+        let code = new_code();
+        let seq = self.seq.fetch_add(1, Ordering::Relaxed);
+        let at = Instant::now();
+        for chat in kept {
+            open.entry(chat).or_default().insert(
                 code.clone(),
-                Pending { sender: sender.clone(), job: job.clone(), at: Instant::now() },
+                Pending { sender: sender.clone(), job: job.clone(), at, seq },
             );
         }
-        code
+        Some(code)
+    }
+
+    /// A card this chat asked for is still inside its time limit.
+    pub fn has_live_owner(&self, chat: &str) -> bool {
+        let open = self.open();
+        open.get(chat).is_some_and(|cards| cards.values().any(|p| !is_mcp(p) && p.at.elapsed() <= self.ttl))
+    }
+
+    /// A typed 1 / 2 on a chat that has no buttons, when several of this
+    /// sender's own cards are waiting and none of the live cards is from an
+    /// MCP client: the oldest of this sender's. None otherwise.
+    pub fn take_oldest_owner(&self, chat: &str, sender: &str) -> Option<Job> {
+        let mut open = self.open();
+        purge_expired(&mut open, chat, self.ttl);
+        let pick = {
+            let cards = open.get(chat)?;
+            let live: Vec<&Pending> = cards.values().filter(|p| p.at.elapsed() <= self.ttl).collect();
+            if live.len() < 2 || live.iter().any(|p| is_mcp(p)) {
+                return None;
+            }
+            let sender = sender.trim();
+            cards
+                .iter()
+                .filter(|(_, p)| !is_mcp(p) && p.sender == sender)
+                .min_by_key(|(_, p)| p.seq)
+                .map(|(code, p)| (code.clone(), p.job.clone()))
+        };
+        let (code, job) = pick?;
+        remove_code(&mut open, &code);
+        Some(job)
     }
 
     /// Something waits in this chat (it may have expired: taking it says so).
@@ -261,6 +316,44 @@ fn purge_expired(open: &mut Open, chat: &str, ttl: Duration) {
     }
 }
 
+fn drop_one(open: &mut Open, chat: &str, code: &str) {
+    let empty = if let Some(cards) = open.get_mut(chat) {
+        cards.remove(code);
+        cards.is_empty()
+    } else {
+        false
+    };
+    if empty {
+        open.remove(chat);
+    }
+}
+
+/// Expired cards in this chat are gone. True when one more card fits.
+/// At the limit, the oldest card the chat asked for is dropped. A chat
+/// that holds only MCP cards has no room for another of those.
+fn room_for(open: &mut Open, chat: &str, ttl: Duration, mcp_new: bool) -> bool {
+    purge_expired(open, chat, ttl);
+    let len = open.get(chat).map(|cards| cards.len()).unwrap_or(0);
+    if len < MAX_PER_CHAT {
+        return true;
+    }
+    let oldest_owner = open.get(chat).and_then(|cards| {
+        cards.iter().filter(|(_, p)| !is_mcp(p)).min_by_key(|(_, p)| p.seq).map(|(code, _)| code.clone())
+    });
+    if let Some(code) = oldest_owner {
+        drop_one(open, chat, &code);
+        return true;
+    }
+    if mcp_new {
+        return false;
+    }
+    let oldest = open.get(chat).and_then(|cards| cards.iter().min_by_key(|(_, p)| p.seq).map(|(code, _)| code.clone()));
+    if let Some(code) = oldest {
+        drop_one(open, chat, &code);
+    }
+    true
+}
+
 /// A typed 1 / 2. Drops expired cards in this chat first. Takes the card
 /// only when one remains and it is not from an MCP client.
 fn take_typed(open: &mut Open, chat: &str, sender: &str, ttl: Duration) -> Option<Job> {
@@ -287,7 +380,7 @@ mod tests {
     fn one_code_in_many_chats_is_settled_by_the_first_answer_from_anyone_there() {
         let c = Confirmations::new(Duration::from_secs(60));
         let chats = vec!["tg:1".to_string(), "tg:2".to_string()];
-        let code = c.ask_many(&chats, ANY_SENDER, Job::Decide { task_id: "t1".into(), confirm: true });
+        let code = c.ask_many(&chats, ANY_SENDER, Job::Decide { task_id: "t1".into(), confirm: true }).unwrap();
         assert!(c.waiting("tg:1") && c.waiting("tg:2"));
         assert!(c.take("tg:2", "someone", Some("WRONG")).is_none());
         assert!(c.take("tg:2", "someone", Some(&code)).is_some());
@@ -307,15 +400,15 @@ mod tests {
     fn a_reply_settles_only_an_errand_card_that_asked_questions() {
         let c = Confirmations::new(Duration::from_secs(60));
         let plain = Job::Errand { body: serde_json::json!({"number": "0912345678", "task": "x"}) };
-        c.ask("chat", "42", plain.clone());
+        c.ask("chat", "42", plain.clone()).unwrap();
         assert_eq!(c.take_gapped_errand("chat", "42"), None);
         assert!(c.waiting("chat"), "a card without questions stays for 1 / 2");
         let gapped = gapped("x");
-        c.ask("chat", "42", gapped.clone());
+        c.ask("chat", "42", gapped.clone()).unwrap();
         assert_eq!(c.take_gapped_errand("chat", "7"), None, "another member cannot answer it");
         assert_eq!(c.take_gapped_errand("chat", "42"), Some(gapped));
         assert_eq!(c.take_gapped_errand("chat", "42"), None, "it is used once");
-        let other = c.ask("chat", "42", job());
+        let other = c.ask("chat", "42", job()).unwrap();
         assert_eq!(c.take_gapped_errand("chat", "42"), None);
         assert!(c.take("chat", "42", Some(&other)).is_some());
     }
@@ -323,7 +416,7 @@ mod tests {
     #[test]
     fn a_confirmation_works_once_for_the_one_who_asked() {
         let c = Confirmations::new(Duration::from_secs(120));
-        let code = c.ask("chat", "42", job());
+        let code = c.ask("chat", "42", job()).unwrap();
         assert_eq!(code.len(), 32);
         assert!(code.chars().all(|ch| ch.is_ascii_hexdigit()));
         assert!(format!("k:{code}:y").len() <= super::super::BUTTON_DATA_MAX);
@@ -345,8 +438,8 @@ mod tests {
         let anded = codes.iter().fold(u128::MAX, |acc, c| acc & u128::from_str_radix(c, 16).unwrap());
         assert_eq!((ored, anded), (u128::MAX, 0), "a fixed bit in the code");
         let c = Confirmations::new(Duration::from_secs(120));
-        let old = c.ask("chat", "42", job());
-        let new = c.ask("chat", "42", Job::Decide { task_id: "t2".into(), confirm: false });
+        let old = c.ask("chat", "42", job()).unwrap();
+        let new = c.ask("chat", "42", Job::Decide { task_id: "t2".into(), confirm: false }).unwrap();
         assert_ne!(old, new);
         assert_eq!(c.typed("chat"), TypedReply::UseButton, "two cards: a typed 1 must not choose");
         assert_eq!(c.take("chat", "42", None), None, "a typed 1 takes neither");
@@ -363,11 +456,11 @@ mod tests {
     #[test]
     fn a_typed_one_settles_only_the_single_owners_card() {
         let c = Confirmations::new(Duration::from_secs(120));
-        let code = c.ask("chat", "42", job());
+        let code = c.ask("chat", "42", job()).unwrap();
         assert_eq!(c.typed("chat"), TypedReply::One);
         assert_eq!(c.take("chat", "42", None), Some(job()));
         assert_eq!(c.take("chat", "42", Some(&code)), None, "the typed answer used it");
-        let mcp = c.ask("chat", ANY_SENDER, Job::Decide { task_id: "mcp".into(), confirm: true });
+        let mcp = c.ask("chat", ANY_SENDER, Job::Decide { task_id: "mcp".into(), confirm: true }).unwrap();
         assert_eq!(c.typed("chat"), TypedReply::UseButton, "the only card is from MCP");
         assert_eq!(c.take("chat", "42", None), None, "typing does not settle an MCP card");
         assert_eq!(
@@ -380,9 +473,9 @@ mod tests {
     #[test]
     fn an_mcp_card_stays_when_the_owner_has_one_too_and_a_gapped_reply_skips_it() {
         let c = Confirmations::new(Duration::from_secs(60));
-        let owner = c.ask("chat", "42", gapped("訂餐廳"));
-        let mcp = c.ask("chat", ANY_SENDER, gapped("問營業時間"));
-        let plain = c.ask("chat", "42", job());
+        let owner = c.ask("chat", "42", gapped("訂餐廳")).unwrap();
+        let mcp = c.ask("chat", ANY_SENDER, gapped("問營業時間")).unwrap();
+        let plain = c.ask("chat", "42", job()).unwrap();
         assert_eq!(c.typed("chat"), TypedReply::UseButton);
         assert_eq!(c.take("chat", "42", None), None);
         assert!(c.waiting("chat"));
@@ -396,11 +489,69 @@ mod tests {
     #[test]
     fn an_expired_confirmation_does_nothing() {
         let c = Confirmations::new(Duration::ZERO);
-        let code = c.ask("chat", "42", job());
+        let code = c.ask("chat", "42", job()).unwrap();
         std::thread::sleep(Duration::from_millis(5));
         assert!(c.waiting("chat"));
         assert_eq!(c.typed("chat"), TypedReply::One, "one expired card: taking it says so");
         assert_eq!(c.take("chat", "42", Some(&code)), None);
         assert!(!c.waiting("chat"), "dropped once seen expired");
+    }
+
+    #[test]
+    fn an_expired_card_is_dropped_before_the_next_and_twenty_is_the_most() {
+        let c = Confirmations::new(Duration::from_millis(40));
+        let old = c.ask("chat", "42", job()).unwrap();
+        std::thread::sleep(Duration::from_millis(80));
+        let fresh = c.ask("chat", "42", Job::Decide { task_id: "fresh".into(), confirm: true }).unwrap();
+        assert_eq!(c.take("chat", "42", Some(&old)), None, "expired before the new card");
+        assert_eq!(c.take("chat", "42", Some(&fresh)).map(|j| matches!(j, Job::Decide { task_id, .. } if task_id == "fresh")), Some(true));
+
+        let c = Confirmations::new(Duration::from_secs(60));
+        let mut codes = Vec::new();
+        for i in 0..MAX_PER_CHAT {
+            codes.push(c.ask("chat", "42", Job::Decide { task_id: format!("t{i}"), confirm: true }).unwrap());
+        }
+        let extra = c.ask("chat", "42", Job::Decide { task_id: "new".into(), confirm: false }).unwrap();
+        assert_eq!(c.take("chat", "42", Some(&codes[0])), None, "the oldest was dropped");
+        assert!(c.take("chat", "42", Some(&codes[1])).is_some());
+        assert_eq!(
+            c.take("chat", "42", Some(&extra)).map(|j| matches!(j, Job::Decide { task_id, .. } if task_id == "new")),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn a_full_chat_keeps_an_mcp_card_and_refuses_another_mcp_card() {
+        let c = Confirmations::new(Duration::from_secs(60));
+        let mut owners = Vec::new();
+        for i in 0..MAX_PER_CHAT - 1 {
+            owners.push(c.ask("chat", "42", Job::Decide { task_id: format!("o{i}"), confirm: true }).unwrap());
+        }
+        let mcp = c.ask("chat", ANY_SENDER, Job::Decide { task_id: "mcp".into(), confirm: true }).unwrap();
+        let extra = c.ask("chat", "42", job()).unwrap();
+        assert_eq!(c.take("chat", "42", Some(&owners[0])), None, "the oldest card the chat asked for");
+        assert!(c.take("chat", "7", Some(&mcp)).is_some(), "the MCP card stays");
+        assert!(c.take("chat", "42", Some(&extra)).is_some());
+
+        let c = Confirmations::new(Duration::from_secs(60));
+        let mut mcps = Vec::new();
+        for i in 0..MAX_PER_CHAT {
+            mcps.push(c.ask("full", ANY_SENDER, Job::Decide { task_id: format!("m{i}"), confirm: true }).unwrap());
+        }
+        assert!(c.ask("full", ANY_SENDER, job()).is_none(), "a chat of MCP cards takes no more");
+        let shared = c.ask_many(&["full".into(), "open".into()], ANY_SENDER, job()).unwrap();
+        assert_eq!(c.take("full", "1", Some(&shared)), None, "the full chat was skipped");
+        assert!(c.take("open", "1", Some(&shared)).is_some());
+        assert!(c.take("full", "1", Some(&mcps[0])).is_some());
+        assert!(c.take("full", "1", Some(&mcps[MAX_PER_CHAT - 1])).is_some());
+
+        let mut packed = Vec::new();
+        for i in 0..MAX_PER_CHAT {
+            packed.push(c.ask("packed", ANY_SENDER, Job::Decide { task_id: format!("p{i}"), confirm: true }).unwrap());
+        }
+        let owner = c.ask("packed", "42", job()).unwrap();
+        assert_eq!(c.take("packed", "1", Some(&packed[0])), None, "the oldest MCP card made room for the chat's own");
+        assert_eq!(c.take("packed", "42", Some(&owner)), Some(job()));
+        assert!(c.take("packed", "1", Some(&packed[1])).is_some());
     }
 }

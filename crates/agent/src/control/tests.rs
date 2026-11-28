@@ -820,9 +820,11 @@ fn every_language_asks_for_the_button_and_yes_no_are_whole_words() {
     for lang in crate::locale::ALL {
         let w = words(lang);
         assert!(!w.use_button.trim().is_empty() && w.use_button.chars().count() <= 80, "{lang:?}: {}", w.use_button);
-        let low = w.use_button.to_lowercase();
-        assert!(!low.contains("mcp"), "{lang:?}: {}", w.use_button);
+        assert!(!w.finish_first.trim().is_empty() && w.finish_first.chars().count() <= 80, "{lang:?}: {}", w.finish_first);
+        let low = format!("{} {}", w.use_button, w.finish_first).to_lowercase();
+        assert!(!low.contains("mcp"), "{lang:?}: {low}");
         assert!(seen.insert(w.use_button), "same words twice: {}", w.use_button);
+        assert!(seen.insert(w.finish_first), "same words twice: {}", w.finish_first);
     }
     assert_eq!(words::typed_yes_no("1"), Some(true));
     assert_eq!(words::typed_yes_no("２"), Some(false));
@@ -885,7 +887,7 @@ async fn typing_one_next_to_an_mcp_card_asks_for_the_button_and_each_button_stil
     let owner_yes = ask.buttons[0].data.clone();
     assert!(owner_yes.starts_with("k:") && owner_yes.ends_with(":y") && owner_yes.len() == 36, "{owner_yes}");
     let chat = access::chat_key(ENV_TELEGRAM, "42");
-    let mcp_code = c.confirms.ask(&chat, confirm::ANY_SENDER, Job::Decide { task_id: mcp_id.clone(), confirm: false });
+    let mcp_code = c.confirms.ask(&chat, confirm::ANY_SENDER, Job::Decide { task_id: mcp_id.clone(), confirm: false }).unwrap();
     let typed = c.handle(&owner("1")).await.unwrap();
     assert!(reads_as(&typed.text, |w| w.use_button.to_string()), "{}", typed.text);
     assert!(typed.buttons.is_empty());
@@ -913,20 +915,22 @@ async fn a_scheduled_cards_reply_brings_it_back_and_leaves_the_mcp_card() {
     let rig = Rig::with_env_bot();
     let c = rig.controller();
     let chat = access::chat_key(ENV_TELEGRAM, "42");
-    c.confirms.ask(
-        &chat,
-        "42",
-        Job::Errand {
-            body: json!({
-                "number": "0912345678",
-                "task": "訂餐廳",
-                "preflight_gaps": true,
-                "scheduled_at": "2026-12-01T19:30:00+08:00",
-                "card": ["讓 AI 打給 0912345678：\n訂餐廳", ""]
-            }),
-        },
-    );
-    let mcp = c.confirms.ask(&chat, confirm::ANY_SENDER, Job::Decide { task_id: "mcp-stay".into(), confirm: true });
+    c.confirms
+        .ask(
+            &chat,
+            "42",
+            Job::Errand {
+                body: json!({
+                    "number": "0912345678",
+                    "task": "訂餐廳",
+                    "preflight_gaps": true,
+                    "scheduled_at": "2026-12-01T19:30:00+08:00",
+                    "card": ["讓 AI 打給 0912345678：\n訂餐廳", ""]
+                }),
+            },
+        )
+        .unwrap();
+    let mcp = c.confirms.ask(&chat, confirm::ANY_SENDER, Job::Decide { task_id: "mcp-stay".into(), confirm: true }).unwrap();
     let mut reply_msg = owner("兩位，七點半可以");
     reply_msg.reply_to_bot = true;
     let again = c.handle(&reply_msg).await.unwrap();
@@ -935,4 +939,96 @@ async fn a_scheduled_cards_reply_brings_it_back_and_leaves_the_mcp_card() {
     assert_ne!(&again.buttons[0].data, &format!("k:{mcp}:y"));
     assert_eq!(c.confirms.take(&chat, "7", Some(&mcp)).map(|j| matches!(j, Job::Decide { .. })), Some(true));
     assert!(c.confirms.waiting(&chat), "the card brought back is still waiting");
+}
+
+/// 取消 / 不要 / no, and the same whole word in the other languages, drop the
+/// one card the owner asked for. Someone else in the chat saying no does not.
+#[tokio::test]
+async fn a_whole_no_in_every_language_drops_only_the_card_its_owner_asked_for() {
+    let rig = Rig::with_env_bot();
+    rig.set(json!({"control_commands_per_minute": 80}));
+    let c = rig.controller();
+    let id = rig.task("task-other-no", "回電給王小明").await;
+    c.handle(&owner(&format!("/ignore {id}"))).await.unwrap();
+    let other = c.handle(&from(ENV_TELEGRAM, "42", "43", Body::Text("no".into()))).await.unwrap();
+    assert!(reads_as(&other.text, |w| w.expired.to_string()), "{}", other.text);
+    assert!(matches!(rig.task_status(&id).await, TaskStatus::Pending));
+    let owner_no = c.handle(&owner("no")).await.unwrap();
+    assert!(reads_as(&owner_no.text, |w| w.dropped.to_string()), "{}", owner_no.text);
+    assert!(matches!(rig.task_status(&id).await, TaskStatus::Pending));
+
+    for (n, word) in [
+        "drop", "取消", "不要", "否", "取り消し", "いいえ", "취소", "아니요", "descartar", "abandonner", "non", "verwerfen", "nein", "não", "nao",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let id = rig.task(&format!("task-no-{n}"), "王小明想改約時間").await;
+        let ask = c.handle(&owner(&format!("/ignore {id}"))).await.unwrap();
+        assert_eq!(ask.buttons.len(), 2, "{word}");
+        let out = c.handle(&owner(word)).await.unwrap();
+        assert!(reads_as(&out.text, |w| w.dropped.to_string()), "{word}: {}", out.text);
+        assert!(matches!(rig.task_status(&id).await, TaskStatus::Pending), "{word}");
+    }
+}
+
+fn matrix_in(channel: &str, text: &str) -> Inbound {
+    let mut m = from(channel, "!room:example.org", "@lee:example.org", Body::Text(text.to_string()));
+    m.platform = "matrix".into();
+    m.direct = true;
+    m
+}
+
+/// Matrix has no buttons. A second card is not opened; 1 still settles the one
+/// already waiting. An MCP card is not pushed there, and with only that chat
+/// the call is refused.
+#[tokio::test]
+async fn a_matrix_chat_finishes_the_open_card_and_an_mcp_card_is_not_pushed_there() {
+    let rig = Rig::new();
+    rig.set(json!({
+        "call_notify": false,
+        "country_code": "886",
+        "notify_channels": [{
+            "kind": "matrix",
+            "enabled": true,
+            "url": "https://matrix.example.org",
+            "token": "test-token-matrix",
+            "target": "!room:example.org",
+            "control": true
+        }]
+    }));
+    let channel = rig.state.settings_store.snapshot().notify_channels[0].id.clone();
+    let c = rig.controller();
+    let first = rig.task("task-matrix-1", "回電給王小明").await;
+    let ask = c.handle(&matrix_in(&channel, &format!("/ignore {first}"))).await.unwrap();
+    assert_eq!(ask.buttons.len(), 2, "{}", ask.text);
+    let second = rig.task("task-matrix-2", "王小明想改約時間").await;
+    let blocked = c.handle(&matrix_in(&channel, &format!("/ignore {second}"))).await.unwrap();
+    assert!(reads_as(&blocked.text, |w| w.finish_first.to_string()), "{}", blocked.text);
+    assert!(blocked.buttons.is_empty());
+    assert!(matches!(rig.task_status(&second).await, TaskStatus::Pending));
+    let done = c.handle(&matrix_in(&channel, "1")).await.unwrap();
+    assert!(matches!(rig.task_status(&first).await, TaskStatus::Ignored), "{}", done.text);
+    assert!(matches!(rig.task_status(&second).await, TaskStatus::Pending));
+
+    let (sink, _phone) = crate::callback::test_socket::phone_socket().await;
+    rig.state.control.register_client("pixel-mcp-matrix".into(), sink).await;
+    rig.state.errands.sims.note("pixel-mcp-matrix", 1, "tw");
+    let mut cards = c.subscribe();
+    let rt = rig.state.settings_store.snapshot();
+    let refused = c.request_errand(&rt, crate::mcp::MCP_CHAT, "0223459891", "問營業時間", "", None, false, 10).await;
+    assert!(matches!(refused, Outcome::Failed { ref code } if code == "no_button_chat"), "{refused:?}");
+    assert!(cards.try_recv().is_err(), "nothing was pushed");
+    let matrix_key = access::chat_key(&channel, "!room:example.org");
+    assert!(!c.confirms.waiting(&matrix_key));
+
+    rig.set(json!({"telegram_bot_token": "123:TESTTOKEN", "telegram_chat_id": "42", "telegram_control": true}));
+    let rt = rig.state.settings_store.snapshot();
+    let o = c.request_errand(&rt, crate::mcp::MCP_CHAT, "0223459892", "問營業時間", "", None, false, 10).await;
+    assert!(matches!(o, Outcome::Confirm { .. }), "{o:?}");
+    let push = cards.try_recv().expect("the card goes to the chat that has buttons");
+    assert_eq!((push.channel_id.as_str(), push.chat_id.as_str()), (ENV_TELEGRAM, "42"));
+    assert!(cards.try_recv().is_err(), "the Matrix room was not offered the card");
+    assert!(!c.confirms.waiting(&matrix_key));
+    assert!(c.confirms.waiting(&access::chat_key(ENV_TELEGRAM, "42")));
 }
