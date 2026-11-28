@@ -2013,22 +2013,11 @@
     "placeholders": []
   },
   "er_at_h": {
-    "where": "a label or sentence in the console. English: Up to {days} days ahead.",
+    "where": "a hint under the date field in the console; {zone} is the time zone of the computer Bageo runs on, such as Taipei Standard Time (GMT+8). English: In the time zone of Bageo's computer: {zone}. Up to {days} days ahead.",
     "who": "the owner",
     "placeholders": [
+      "{zone}",
       "{days}"
-    ]
-  },
-  "er_tz": {
-    "where": "a label or sentence in the console. English: Time zone",
-    "who": "the owner",
-    "placeholders": []
-  },
-  "er_tz_bageo": {
-    "where": "a choice in a time zone list in the console; {zone} is the zone's name and offset, such as Taipei Standard Time (GMT+8). English: Same as Bageo ({zone})",
-    "who": "the owner",
-    "placeholders": [
-      "{zone}"
     ]
   },
   "er_attempt": {

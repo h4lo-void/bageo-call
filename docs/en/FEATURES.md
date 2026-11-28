@@ -115,9 +115,9 @@ default) or as **You in person**.
   notification at the end.
 - **Call at a set time.** Pick **At a set date and time** and a line, and the
   errand dials by itself then, even after a restart: handy when bookings open
-  at 8:00. The time is Bageo's time zone unless you pick another **Time zone**
-  (a shop abroad opening at 8:00 its time). You can schedule several, change
-  their time or cancel them. A phone
+  at 8:00. The time is in the time zone of the computer Bageo runs on (shown
+  under the date). You can schedule several, change their time or cancel them.
+  A phone
   booked by one scheduled call (both its SIMs) can't be picked by another for
   as long as it keeps redialing. From a chat: "12/1 8am call … to book 4"; add
   "keep calling for 45 minutes" to change the 30 minutes. You confirm the date,
