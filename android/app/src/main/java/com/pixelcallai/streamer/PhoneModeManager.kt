@@ -900,3 +900,18 @@ internal fun resolveOutcome(
         log.dndMode,
     )
 }
+
+/** Digits and `+`, `*`, `#` only, at most [DIALABLE_NUMBER_MAX] characters. */
+internal const val DIALABLE_NUMBER_MAX = 32
+
+internal fun dialableNumber(raw: String?): String {
+    if (raw.isNullOrEmpty()) return ""
+    val out = StringBuilder()
+    for (ch in raw) {
+        if (ch in '0'..'9' || ch == '+' || ch == '*' || ch == '#') {
+            if (out.length >= DIALABLE_NUMBER_MAX) break
+            out.append(ch)
+        }
+    }
+    return out.toString()
+}
