@@ -257,6 +257,9 @@ pub enum Outcome {
     NotFound { what: String },
     NoContact { what: String },
     ManyContacts { names: Vec<String> },
+    /// The line a scheduled call needs is held then (`line_taken`), or a call
+    /// now would run into a scheduled one (`line_reserved`): by `who` at `when`.
+    LineHeld { code: String, who: String, when: String },
     Failed { code: String },
 }
 
@@ -275,6 +278,49 @@ pub fn error_outcome(code: &str) -> Outcome {
     match code {
         "question_closed" => Outcome::Closed,
         other => Outcome::Failed { code: other.to_string() },
+    }
+}
+
+/// The model's reading of the owner's `text`. Its time to call stands; only
+/// when it gave none is one read from the text itself, and only a plain one
+/// ([crate::errand_plan::call_time_in]: a full date and time before the words
+/// asking for the call, no weekday, no booking named before). Either way the
+/// owner confirms the date, weekday, time and phone before anything is set.
+fn with_call_time(action: Action, text: &str) -> Action {
+    match action {
+        Action::Errand { target, task, when, grab_min } if when.trim().is_empty() => {
+            let read = crate::errand_plan::call_time_in(text, chrono::Local::now().naive_local(), locale::notify_lang());
+            let when = read.map(|t| t.format("%Y-%m-%dT%H:%M").to_string()).unwrap_or_default();
+            Action::Errand { target, task, when, grab_min }
+        }
+        other => other,
+    }
+}
+
+/// A scheduled call's minutes of redialing, read from the owner's `text`
+/// ("打 10 分鐘", "keep calling for 45 minutes";
+/// [crate::errand_plan::grab_minutes_in]) when none is set yet. None read:
+/// the default. The owner sees them on the card before anything is set. A
+/// call now from a chat never redials: nothing is read for it.
+fn with_grab_minutes(action: Action, text: &str) -> Action {
+    match action {
+        Action::Errand { target, task, when, grab_min: None } if !when.trim().is_empty() => {
+            let grab_min = crate::errand_plan::grab_minutes_in(text);
+            Action::Errand { target, task, when, grab_min }
+        }
+        other => other,
+    }
+}
+
+/// An errand refused ([errands::Refusal]), with the errand holding the line when it says one.
+fn refusal_outcome(r: errands::Refusal) -> Outcome {
+    match r.holder {
+        Some(h) => {
+            let who = if h.name.trim().is_empty() { h.number.trim().to_string() } else { h.name.trim().to_string() };
+            let when = crate::errand_plan::stamp_label(locale::notify_lang(), &h.scheduled_at);
+            Outcome::LineHeld { code: r.code.to_string(), who, when }
+        }
+        None => error_outcome(r.code),
     }
 }
 
@@ -385,13 +431,10 @@ fn pick_ref(listed: &[String], known: &[String], r: &str) -> Option<String> {
     None
 }
 
-/// A typed answer to a confirmation: 1 = go ahead, 2 = drop it.
+/// A typed answer to a confirmation: 1 = go ahead, 2 = drop it, and the
+/// same in the nine languages' yes / no words. The whole message only.
 fn yes_no(text: &str) -> Option<bool> {
-    match text.trim() {
-        "1" | "１" => Some(true),
-        "2" | "２" => Some(false),
-        _ => None,
-    }
+    words::typed_yes_no(text)
 }
 
 /// A short reply that means "don't call" (any language), so it is not taken
@@ -414,6 +457,51 @@ fn looks_like_cancel(text: &str) -> bool {
 fn reply(o: &Outcome, w: &Words) -> Outbound {
     Outbound { text: words::render(o, w), ..Default::default() }
 }
+
+/// A typed 1 / 2 cannot pick one card. The buttons still can.
+fn use_button(w: &Words) -> Outbound {
+    Outbound { text: w.use_button.to_string(), ..Default::default() }
+}
+
+/// This chat has no buttons, and a card is already waiting.
+fn finish_first(w: &Words) -> Outbound {
+    Outbound { text: w.finish_first.to_string(), ..Default::default() }
+}
+
+/// Telegram, Discord and Slack show the yes / no buttons. Matrix does not,
+/// so a card that can be answered only by its button is not sent there.
+fn channel_has_buttons(rt: &RuntimeSettings, channel_id: &str) -> bool {
+    let kind = if channel_id == ENV_TELEGRAM {
+        "telegram"
+    } else {
+        match rt.notify_channels.iter().find(|c| c.id == channel_id) {
+            Some(c) => c.kind.as_str(),
+            None => return false,
+        }
+    };
+    matches!(kind, "telegram" | "discord" | "slack")
+}
+
+fn chat_has_buttons(rt: &RuntimeSettings, chat: &str) -> bool {
+    let channel = chat.split_once('|').map(|(id, _)| id).unwrap_or(chat);
+    channel_has_buttons(rt, channel)
+}
+
+/// A confirmation card: the summary, its code, yes / no buttons.
+fn confirm_card(code: &str, summary: String, w: &Words) -> Outbound {
+    Outbound {
+        text: words::render(&Outcome::Confirm { code: code.to_string(), summary }, w),
+        buttons: vec![
+            Button { label: w.yes.to_string(), data: format!("k:{code}:y") },
+            Button { label: w.no.to_string(), data: format!("k:{code}:n") },
+        ],
+        edit: None,
+    }
+}
+
+/// In an errand card's job that asked questions: the card's text without
+/// them ([the task line, what follows it]), to show it again once answered.
+const CARD_KEY: &str = "card";
 
 /// The kind of an action, for the log (its text stays out of the log).
 fn action_kind(a: &Action) -> &'static str {
@@ -590,19 +678,52 @@ impl Controller {
                 return Some(reply(&self.answer_with(chat, Some(q), text), w));
             }
         }
-        if let Some(yes) = yes_no(text) {
-            if self.confirms.waiting(chat) {
-                return Some(reply(&self.settle(rt, chat, &m.sender_id, None, yes).await, w));
+        // A stateless API call is not a reply in the chat, and it is not a
+        // typed yes or no to a card waiting under that call's own key.
+        if m.platform != "api" {
+            if let Some(yes) = yes_no(text) {
+                match self.confirms.typed(chat) {
+                    confirm::TypedReply::Absent => {}
+                    // Several cards, or the one card is from an MCP client.
+                    confirm::TypedReply::UseButton => {
+                        if !chat_has_buttons(rt, chat) {
+                            if let Some(job) = self.confirms.take_oldest_owner(chat, &m.sender_id) {
+                                let o = if yes { self.execute(rt, chat, job).await } else { Outcome::Dropped };
+                                return Some(reply(&o, w));
+                            }
+                            return Some(finish_first(w));
+                        }
+                        return Some(use_button(w));
+                    }
+                    confirm::TypedReply::One => {
+                        return Some(reply(&self.settle(rt, chat, &m.sender_id, None, yes).await, w));
+                    }
+                }
             }
         }
         // A reply to a card that asked questions is their answer: the call goes ahead with it.
-        // A short "cancel" (取消／不要打了／cancel) to that card drops it instead.
-        if !text.starts_with('/') && m.reply_to_bot && self.confirms.has_gapped_errand(chat) && looks_like_cancel(text) {
-            return Some(reply(&self.settle(rt, chat, &m.sender_id, None, false).await, w));
-        }
+        // A short "cancel" (不要打了／cancel) to that card drops it instead.
+        // An MCP client's card is not one of these, and is not replaced by the new card.
         if !text.starts_with('/') && m.reply_to_bot {
+            let n = self.confirms.live_gapped(chat, &m.sender_id);
+            if looks_like_cancel(text) && self.confirms.has_gapped_errand(chat) {
+                if n > 1 {
+                    return Some(if chat_has_buttons(rt, chat) { use_button(w) } else { finish_first(w) });
+                }
+                let dropped = self.confirms.take_gapped_errand(chat, &m.sender_id).is_some();
+                let o = if dropped { Outcome::Dropped } else { Outcome::Expired };
+                return Some(reply(&o, w));
+            }
+            if n > 1 {
+                return Some(if chat_has_buttons(rt, chat) { use_button(w) } else { finish_first(w) });
+            }
             if let Some(Job::Errand { mut body }) = self.confirms.take_gapped_errand(chat, &m.sender_id) {
                 body["answers"] = json!({ "note": text });
+                // A scheduled call never goes ahead on a reply: its card comes
+                // again with the answer in it, for the owner's yes.
+                if body.get("scheduled_at").and_then(Value::as_str).is_some_and(|s| !s.trim().is_empty()) {
+                    return Some(self.card_again(chat, &m.sender_id, body, text, w));
+                }
                 return Some(reply(&self.execute(rt, chat, Job::Errand { body }).await, w));
             }
         }
@@ -618,6 +739,7 @@ impl Controller {
                 None => return Some(reply(&Outcome::Hint, w)),
             }
         };
+        let action = with_grab_minutes(action, text);
         info!(chat, action = action_kind(&action), "chat command");
         Some(self.run(rt, chat, &m.sender_id, action, !text.starts_with('/'), w).await)
     }
@@ -653,7 +775,8 @@ impl Controller {
         if key.is_empty() {
             return None;
         }
-        nlu::read(&self.state.http, &self.gemini_base, key, text, chrono::Local::now().date_naive()).await
+        let action = nlu::read(&self.state.http, &self.gemini_base, key, text, chrono::Local::now().date_naive()).await?;
+        Some(with_call_time(action, text))
     }
 
     /// from_model: the action is the model's reading of free text. What it
@@ -666,18 +789,34 @@ impl Controller {
         }
         match self.prepare(rt, chat, action, w).await {
             Ok((job, summary)) => {
-                let code = self.confirms.ask(chat, sender, job);
-                Outbound {
-                    text: words::render(&Outcome::Confirm { code: code.clone(), summary }, w),
-                    buttons: vec![
-                        Button { label: w.yes.to_string(), data: format!("k:{code}:y") },
-                        Button { label: w.no.to_string(), data: format!("k:{code}:n") },
-                    ],
-                    edit: None,
+                if !chat_has_buttons(rt, chat) && self.confirms.has_live_owner(chat) {
+                    return finish_first(w);
+                }
+                match self.confirms.ask(chat, sender, job) {
+                    Some(code) => confirm_card(&code, summary, w),
+                    None => reply(&Outcome::Failed { code: "confirm_full".into() }, w),
                 }
             }
             Err(o) => reply(&o, w),
         }
+    }
+
+    /// The owner answered the questions on a scheduled call's card: the card
+    /// again, the answer under the task and the questions gone, waiting for
+    /// a yes. A typed 1 counts when it is the only card in the chat; the
+    /// button always does. Other cards in the chat stay.
+    fn card_again(&self, chat: &str, sender: &str, mut body: Value, answer: &str, w: &Words) -> Outbound {
+        let part = |i: usize| body.get(CARD_KEY).and_then(|c| c.get(i)).and_then(Value::as_str).unwrap_or("").to_string();
+        let (ask, rest) = (part(0), part(1));
+        if let Some(o) = body.as_object_mut() {
+            o.remove("preflight_gaps");
+            o.remove(CARD_KEY);
+        }
+        let Some(code) = self.confirms.ask(chat, sender, Job::Errand { body }) else {
+            return reply(&Outcome::Failed { code: "confirm_full".into() }, w);
+        };
+        info!(chat, "scheduled errand card answered: shown again for a yes");
+        confirm_card(&code, format!("{ask}\n{}{rest}", answer.trim()), w)
     }
 
     /// The owner's yes or no to the confirmation waiting in the chat.
@@ -780,7 +919,7 @@ impl Controller {
                 None => return reply(&Outcome::Hint, w),
             }
         };
-        let action = match command::validate(action) {
+        let action = match command::validate(with_grab_minutes(action, text)) {
             Ok(a) => a,
             Err(code) => return reply(&Outcome::Failed { code: code.to_string() }, w),
         };
@@ -795,8 +934,8 @@ impl Controller {
             | Action::Tasks
             | Action::Errands
             | Action::Contacts { .. }) => self.perform(rt, crate::mcp::MCP_CHAT, a).await,
-            Action::Errand { target, task } if calls => {
-                self.request_errand(rt, crate::mcp::MCP_CHAT, &target, &task, mode == "direct", rt.mcp_errands_per_hour).await
+            Action::Errand { target, task, when, grab_min } if calls => {
+                self.request_errand(rt, crate::mcp::MCP_CHAT, &target, &task, &when, grab_min, mode == "direct", rt.mcp_errands_per_hour).await
             }
             a @ Action::Cancel { .. } if calls => self.perform(rt, crate::mcp::MCP_CHAT, a).await,
             a @ Action::Say { .. } if mode == "direct" && typed => self.perform(rt, crate::mcp::MCP_CHAT, a).await,
@@ -1104,11 +1243,41 @@ impl Controller {
         Err(Outcome::NotFound { what: r.to_string() })
     }
 
+    /// A call to `number` scheduled for `when`: the time is read and checked,
+    /// and a line free at that time picked, all into the create `body`
+    /// (grab mode on, for `grab_min` minutes: None,
+    /// [crate::errand_plan::GRAB_MIN_DEFAULT]). The lines for the
+    /// confirmation: the date and time with its weekday, the line, what grab
+    /// mode does and for how many minutes: the owner's (the line with its
+    /// SIM's number) and an MCP client's (the phone's name only, never the
+    /// owner's number). Err: said at once.
+    #[allow(clippy::result_large_err)]
+    fn plan_errand(&self, now: &errands::Now, number: &str, when: &str, grab_min: Option<u32>, body: &mut Value) -> Result<(String, String), Outcome> {
+        let lang = locale::notify_lang();
+        let min = grab_min.unwrap_or(crate::errand_plan::GRAB_MIN_DEFAULT);
+        if !crate::errand_plan::grab_min_ok(min as u64) {
+            return Err(error_outcome("bad_grab_min"));
+        }
+        let naive = crate::errand_plan::resolve_when(when, chrono::Local::now().naive_local(), lang).ok_or_else(|| error_outcome("bad_time"))?;
+        let at = crate::errand_plan::local_of(naive).ok_or_else(|| error_outcome("time_skipped"))?;
+        let utc = at.with_timezone(&chrono::Utc);
+        crate::errand_plan::check_at(utc, chrono::Utc::now()).map_err(error_outcome)?;
+        let pick = errands::free_line_at(&self.state.errands, &now.phones, number, &errands::home_region(&now.rt), utc, Some(min)).map_err(refusal_outcome)?;
+        body["scheduled_at"] = json!(at.to_rfc3339_opts(chrono::SecondsFormat::Secs, false));
+        body["serial"] = json!(pick.serial);
+        body["sub_id"] = json!(pick.sub_id);
+        body["grab"] = json!(true);
+        body["grab_min"] = json!(min);
+        let label = crate::errand_plan::when_label(lang, at.naive_local(), chrono::Local::now().naive_local());
+        let lines = |line: &str| crate::errand_plan::card_lines(lang, &label, line, min);
+        Ok((lines(&self.state.errands.line_label(&pick.serial, pick.sub_id)), lines(&crate::notify::device_label(&pick.serial))))
+    }
+
     /// Resolve an action that needs a confirmation into its job and the
     /// summary the owner confirms; Err: why not (said at once).
     async fn prepare(&self, rt: &RuntimeSettings, chat: &str, action: Action, w: &Words) -> Result<(Job, String), Outcome> {
         match action {
-            Action::Errand { target, task } => {
+            Action::Errand { target, task, when, grab_min } => {
                 let cap = rt.control_errands_per_hour.min(access::ERRANDS_PER_HOUR_MAX);
                 if !self.limits.errand_room(chat, cap) {
                     return Err(Outcome::TooMany { limit: cap });
@@ -1119,19 +1288,19 @@ impl Controller {
                 let now = errands::now_of(&self.state).await;
                 errands::pick_phone(&now.phones, &number, "", &errands::home_region(&now.rt)).map_err(error_outcome)?;
                 body["task"] = json!(task);
-                let mut summary = words::ask_errand(w, &who, &number, &task);
+                let ask = words::ask_errand(w, &who, &number, &task);
+                let planned = if when.is_empty() { String::new() } else { format!("\n\n{}", self.plan_errand(&now, &number, &when, grab_min, &mut body)?.0) };
                 let known = errand_known(&now.rt, &number);
                 let gaps = crate::preflight::local_with(&task, &known).missing;
-                if !gaps.is_empty() {
-                    summary = format!("{summary}\n\n{}", crate::preflight::card_text(locale::notify_lang(), &gaps));
-                    body["preflight_gaps"] = json!(true);
-                }
+                let asked = if gaps.is_empty() { String::new() } else { format!("\n\n{}", crate::preflight::card_text_for(locale::notify_lang(), &gaps, !planned.is_empty())) };
                 // What such places there are like, before the owner confirms.
                 let note = crate::preflight::local_note(locale::notify_lang(), &task, &known);
-                if !note.is_empty() {
-                    summary = format!("{summary}\n\n{note}");
+                let note = if note.is_empty() { String::new() } else { format!("\n\n{note}") };
+                if !gaps.is_empty() {
+                    body["preflight_gaps"] = json!(true);
+                    body[CARD_KEY] = json!([ask, format!("{planned}{note}")]);
                 }
-                Ok((Job::Errand { body }, summary))
+                Ok((Job::Errand { body }, format!("{ask}{planned}{asked}{note}")))
             }
             Action::Mode { phone, mode } => {
                 let serial = self.phone_ref(chat, &phone)?;
@@ -1167,20 +1336,23 @@ impl Controller {
         let st = &self.state;
         match job {
             Job::Act { action } => self.perform(rt, chat, action).await,
-            Job::Errand { body } => {
+            Job::Errand { mut body } => {
                 let cap = rt.control_errands_per_hour.min(access::ERRANDS_PER_HOUR_MAX);
                 if !self.limits.errand_room(chat, cap) {
                     return Outcome::TooMany { limit: cap };
                 }
+                if let Some(o) = body.as_object_mut() {
+                    o.remove(CARD_KEY);
+                }
                 let now = errands::now_of(st).await;
-                match errands::create(&errands::env_of(st, &now), &body).await {
+                match errands::create_with(&errands::env_of(st, &now), &body).await {
                     Ok(e) => {
                         self.limits.note_errand(chat);
                         self.mem(chat, |m| m.errands = vec![e.id.clone()]);
                         info!(errand = e.id.as_str(), chat, "errand created from a chat");
                         Outcome::ErrandStarted { errand: Self::errand_line(&e) }
                     }
-                    Err(code) => error_outcome(code),
+                    Err(r) => refusal_outcome(r),
                 }
             }
             Job::Mode { serial, mode } => {
@@ -1352,10 +1524,14 @@ impl Controller {
     /// direct: queued at once through errands::create. Otherwise the owner
     /// gets the summary with yes / no in every command chat an adapter
     /// reaches; the first answer counts, and the call is made only on a yes
-    /// (then within that chat's own hourly limit too).
-    pub async fn request_errand(&self, rt: &RuntimeSettings, origin: &str, target: &str, task: &str, direct: bool, cap: u32) -> Outcome {
-        let (target, task) = match command::validate(Action::Errand { target: target.to_string(), task: task.to_string() }) {
-            Ok(Action::Errand { target, task }) => (target, task),
+    /// (then within that chat's own hourly limit too). grab_min: a scheduled
+    /// call's minutes of redialing (None: the default; with no `when`,
+    /// refused as `grab_needs_time`).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn request_errand(&self, rt: &RuntimeSettings, origin: &str, target: &str, task: &str, when: &str, grab_min: Option<u32>, direct: bool, cap: u32) -> Outcome {
+        let asked = Action::Errand { target: target.to_string(), task: task.to_string(), when: when.to_string(), grab_min };
+        let (target, task, when, grab_min) = match command::validate(asked) {
+            Ok(Action::Errand { target, task, when, grab_min }) => (target, task, when, grab_min),
             Ok(_) => return Outcome::Failed { code: "bad_request".to_string() },
             Err(code) => return Outcome::Failed { code: code.to_string() },
         };
@@ -1372,41 +1548,62 @@ impl Controller {
             return error_outcome(code);
         }
         body["task"] = json!(task);
-        if direct {
-            return match errands::create(&errands::env_of(&self.state, &now), &body).await {
+        let (planned, planned_told) = if when.is_empty() {
+            (String::new(), String::new())
+        } else {
+            match self.plan_errand(&now, &number, &when, grab_min, &mut body) {
+                Ok(lines) => lines,
+                Err(o) => return o,
+            }
+        };
+        // A scheduled call always waits for the owner's yes on its card, `direct` or not.
+        if direct && planned.is_empty() {
+            return match errands::create_with(&errands::env_of(&self.state, &now), &body).await {
                 Ok(e) => {
                     self.limits.note_errand(origin);
                     self.mem(origin, |m| m.errands = vec![e.id.clone()]);
                     info!(errand = e.id.as_str(), "errand created from MCP");
                     Outcome::ErrandStarted { errand: Self::errand_line(&e) }
                 }
-                Err(code) => error_outcome(code),
+                Err(r) => refusal_outcome(r),
             };
         }
         let chats = self.reached_chats(rt);
         if chats.is_empty() || self.pushes.receiver_count() == 0 {
             return Outcome::Failed { code: "no_owner_chat".to_string() };
         }
+        // A card from an MCP client is answered only by its button, so a chat
+        // whose adapter has none (Matrix) is not offered it.
+        let chats: Vec<_> = chats.into_iter().filter(|(id, _)| channel_has_buttons(rt, id)).collect();
+        if chats.is_empty() {
+            return Outcome::Failed { code: "no_button_chat".to_string() };
+        }
         // Each request counts, answered or not: a client cannot flood the
         // owner's chats with cards.
         self.limits.note_errand(origin);
         let w = words(locale::notify_lang());
-        let mut summary = words::ask_errand(w, &who, &number, &task);
+        let ask = words::ask_errand(w, &who, &number, &task);
         let known = errand_known(&now.rt, &number);
         let gaps = crate::preflight::local_with(&task, &known).missing;
-        if !gaps.is_empty() {
-            summary = format!("{summary}\n\n{}", crate::preflight::card_text(locale::notify_lang(), &gaps));
-            body["preflight_gaps"] = json!(true);
-        }
+        let asked = if gaps.is_empty() { String::new() } else { format!("\n\n{}", crate::preflight::card_text_for(locale::notify_lang(), &gaps, !planned.is_empty())) };
         let note = crate::preflight::local_note(locale::notify_lang(), &task, &known);
-        if !note.is_empty() {
-            summary = format!("{summary}\n\n{note}");
+        let note = if note.is_empty() { String::new() } else { format!("\n\n{note}") };
+        let planned_at = |planned: &str| if planned.is_empty() { String::new() } else { format!("\n\n{planned}") };
+        let with = |planned: &str| format!("{ask}{}{asked}{note}", planned_at(planned));
+        if !gaps.is_empty() {
+            body["preflight_gaps"] = json!(true);
+            body[CARD_KEY] = json!([ask, format!("{}{note}", planned_at(&planned))]);
         }
         let keys: Vec<String> = chats.iter().map(|(c, i)| access::chat_key(c, i)).collect();
-        let code = self.confirms.ask_many(&keys, confirm::ANY_SENDER, Job::Errand { body });
-        let confirm = Outcome::Confirm { code: code.clone(), summary };
+        let Some(code) = self.confirms.ask_many(&keys, confirm::ANY_SENDER, Job::Errand { body }) else {
+            return Outcome::Failed { code: "confirm_full".to_string() };
+        };
+        // The owner's card names the line with its SIM's number; the MCP
+        // client is told the phone only.
+        let card_confirm = Outcome::Confirm { code: code.clone(), summary: with(&planned) };
+        let confirm = Outcome::Confirm { code: code.clone(), summary: with(&planned_told) };
         let card = Outbound {
-            text: format!("MCP · {}", words::render(&confirm, w)),
+            text: format!("MCP · {}", words::render(&card_confirm, w)),
             buttons: vec![
                 Button { label: w.yes.to_string(), data: format!("k:{code}:y") },
                 Button { label: w.no.to_string(), data: format!("k:{code}:n") },
@@ -1623,11 +1820,13 @@ mod p1_11_tests {
         }
 
         // Now add a gapped errand confirmation and verify "no" / "cancel" go to an active open_question first.
-        c.confirms.ask(
-            &chat_key,
-            "42",
-            Job::Errand { body: json!({"number": "0912345678", "task": "訂餐廳", "preflight_gaps": true}) },
-        );
+        c.confirms
+            .ask(
+                &chat_key,
+                "42",
+                Job::Errand { body: json!({"number": "0912345678", "task": "訂餐廳", "preflight_gaps": true}) },
+            )
+            .unwrap();
         assert!(c.confirms.has_gapped_errand(&chat_key));
 
         for reply_text in ["no", "cancel"] {
@@ -1670,14 +1869,17 @@ mod p1_11_tests {
         let rig = LocalRig::new();
         let c = Controller::new(rig.state.clone());
         let api_chat = "api|42";
-        c.confirms.ask(
-            api_chat,
-            "42",
-            Job::Errand { body: json!({"number": "0912345678", "task": "訂餐廳", "preflight_gaps": true}) },
-        );
+        c.confirms
+            .ask(
+                api_chat,
+                "42",
+                Job::Errand { body: json!({"number": "0912345678", "task": "訂餐廳", "preflight_gaps": true}) },
+            )
+            .unwrap();
         assert!(c.confirms.has_gapped_errand(api_chat));
 
-        // Stateless follow-up calls must not hijack or cancel the earlier gapped errand via reply_to_bot.
+        // Stateless follow-up calls must not hijack or cancel the earlier gapped errand.
+        // "取消" would be a typed no in the chat. Here it is not a reply, and not an answer to the card.
         let cancel_try = c.handle_external("42", "42", "取消", ApiCaller::Owner).await.unwrap();
         assert!(!cancel_try.text.is_empty());
         assert!(c.confirms.has_gapped_errand(api_chat));

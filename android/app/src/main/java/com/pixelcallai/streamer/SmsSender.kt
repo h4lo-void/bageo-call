@@ -17,6 +17,7 @@ import android.os.Looper
 import android.telephony.SmsManager
 import android.telephony.SmsMessage
 import android.telephony.SubscriptionManager
+import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
@@ -35,8 +36,8 @@ import kotlin.random.Random
  * the control connection reconnects (the agent drops repeats by id). A `send_sms` whose
  * id was already sent is answered from there instead of texting twice.
  *
- * Error codes: no_permission, bad_request, no_service, radio_off, generic_failure,
- * timeout, exception. A `send_sms` whose id is still being sent is ignored.
+ * Error codes: no_permission, bad_request, not_allowed (a number [DialRules] refuses),
+ * no_service, radio_off, generic_failure, timeout, exception. A `send_sms` whose id is still being sent is ignored.
  * All state lives on the main thread. Logs show only the last 3 digits of the number
  * and never the text.
  */
@@ -126,6 +127,12 @@ class SmsSender(
         ) {
             Log.w(TAG, "send_sms bad request id_len=${id.length} to=${mask(to)} text_len=${text.length}")
             answer(id, "bad_request")
+            return
+        }
+        // Never short codes, premium-rate or abroad-by-prefix numbers, whoever asks.
+        DialRules.check(to, simCountry(subId))?.let { why ->
+            Log.w(TAG, "send_sms id=$id refused to=${mask(to)}: $why")
+            answer(id, if (why == DialRules.NOT_ALLOWED) "not_allowed" else "bad_request")
             return
         }
         if (jobs.containsKey(id)) {
@@ -390,6 +397,15 @@ class SmsSender(
             null
         } ?: return null
         return deliveryOutcome(status, format)
+    }
+
+    /** Country (ISO, lowercase) of the SIM [subId], else of the default SIM; "" when unknown. */
+    private fun simCountry(subId: Int?): String = try {
+        val tm = context.getSystemService(TelephonyManager::class.java)
+        val t = if (subId != null) tm?.createForSubscriptionId(subId) else tm
+        t?.simCountryIso.orEmpty().trim().lowercase()
+    } catch (_: Exception) {
+        ""
     }
 
     /** True unless READ_PHONE_STATE is granted and the active SIM list omits [subId]. */

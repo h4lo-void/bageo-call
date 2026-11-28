@@ -50,6 +50,8 @@ crate::prompt_book::prompt_texts! {
     /// was the owner's gets neither a yes nor a no (the AI cannot know; 「我那時在
     /// 睡覺」 got a real card blocked or a fraud case opened) and no agreement to
     /// block or dispute anything: the owner checks with the bank himself.
+    /// `{ai_identity}` = nothing on a normal call (it speaks as the owner), the
+    /// stalling line once the call is judged (see `prompts::Pack::guard`).
     pub PERSONA_GUARD = "zh-TW/live_persona_guard";
     /// Sentence of the default persona prompt that sales / scam stalling replaces.
     pub(crate) PERSONA_SALES_REJECT_LINE = "zh-TW/live_persona_sales_reject_line";
@@ -3021,6 +3023,38 @@ fn released_talk_limits(persona: bool, persona_max_secs: u64, elapsed_secs: u64)
     talk_limits(persona, persona_max_secs.max(elapsed_secs + 60))
 }
 
+/// An errand call held by a queue's recording: its limits grow by the queue's
+/// wait once per call, and when the queue ends (a person came on) they shrink
+/// back to the original limits plus the time really spent in line.
+#[derive(Debug, Default, Clone, Copy)]
+struct ErrandQueueTime {
+    /// The extension in force: seconds added, and the call's age then.
+    open: Option<(u64, u64)>,
+    used: bool,
+}
+
+impl ErrandQueueTime {
+    /// A queue starts `at_s` into the call: the seconds to add to each limit,
+    /// or `None` once this call already had its extension.
+    fn start(&mut self, at_s: u64, extra: u64) -> Option<u64> {
+        if self.used {
+            return None;
+        }
+        self.used = true;
+        self.open = Some((extra, at_s));
+        Some(extra)
+    }
+
+    /// The queue ended `at_s` into the call: the seconds to take back off each
+    /// limit (the part of the extension not spent in line).
+    fn end(&mut self, at_s: u64) -> u64 {
+        match self.open.take() {
+            Some((extra, from)) => extra.saturating_sub(at_s.saturating_sub(from)),
+            None => 0,
+        }
+    }
+}
+
 /// Persona: caller speech after a closing this long is either a farewell or new
 /// content — their words / the model's next turn decide which.
 const PERSONA_POST_ARM_VOICE_MS: u32 = 600;
@@ -4157,6 +4191,9 @@ struct StallReview {
     confirms: u32,
     /// The last check did not answer: ask again after the caller's next turn.
     confirm_again: bool,
+    /// The check asked because the caller asked whether it is an AI
+    /// ([`StallReview::should_ask_confirm_for_identity`]).
+    identity_confirm: bool,
     /// A sure "scam" with nothing else behind it: it stalls only if the look
     /// after the caller's next turn says so again (not past [`BLIND_MAX`]).
     unbacked_scam: bool,
@@ -4331,6 +4368,20 @@ impl StallReview {
         if self.stall_turns < CONFIRM_AFTER_TURNS && said < CONFIRM_EARLY_UNITS {
             return false;
         }
+        self.start(LookOrigin::Confirm);
+        true
+    }
+
+    /// Stalling, and the caller just asked whether they are talking to a
+    /// robot, an AI, a real person or a recording (`asks`): a stalling call does
+    /// not admit to being an AI, so a caller judged wrongly gets one more check
+    /// whether to be let go (a sure "normal" brings back the normal prompt).
+    /// Once a call, and only when the review judged it.
+    fn should_ask_confirm_for_identity(&mut self, asks: bool) -> bool {
+        if !asks || self.identity_confirm || self.pending || self.no_key || self.why != EngageWhy::Review {
+            return false;
+        }
+        self.identity_confirm = true;
         self.start(LookOrigin::Confirm);
         true
     }
@@ -7404,6 +7455,11 @@ pub async fn run_session(
     let mut errand_carrier: Option<String> = None;
     // "Redial until answered": voicemail picked up (hung up, no message).
     let mut errand_voicemail = false;
+    // "Redial until answered": a queue's recording (hold, music, your place in
+    // line): the AI stays on the line for a person (errand_menu_since times it).
+    let mut errand_queue = false;
+    let mut errand_queue_wait = Duration::ZERO;
+    let mut errand_queue_time = ErrandQueueTime::default();
     // Testing only: rotate once after N s so it is testable without ~8 min.
     let test_rotate_after: Option<u64> = std::env::var("GEMINI_TEST_ROTATE_AFTER_SECS")
         .ok()
@@ -7627,8 +7683,24 @@ pub async fn run_session(
             if let Some(t0) = errand_menu_since {
                 if audio_chunks_out > errand_menu_chunks {
                     errand_menu_since = None;
+                    errand_queue = false;
+                    let back = errand_queue_time.end(session_start.elapsed().as_secs());
+                    wrap_secs = wrap_secs.saturating_sub(back);
+                    wrap_force_secs = wrap_force_secs.saturating_sub(back);
+                    max_secs = max_secs.saturating_sub(back);
                     e.note_menu(false);
-                    info!("Errand call: the AI talks after the voice menu (a person came on) serial={serial}");
+                    info!("Errand call: the AI talks after the voice menu (a person came on) serial={serial} cap_s={max_secs}");
+                } else if errand_queue {
+                    if t0.elapsed() >= errand_queue_wait {
+                        e.note_queue();
+                        end_reason = SessionEndReason::IvrHangup;
+                        signal_force_hangup(&mut hangup_signaled);
+                        info!(
+                            "Errand call: queue, no person within {}s serial={serial} — hang up",
+                            errand_queue_wait.as_secs()
+                        );
+                        break;
+                    }
                 } else if t0.elapsed() >= crate::errands::MENU_WAIT {
                     end_reason = SessionEndReason::IvrHangup;
                     signal_force_hangup(&mut hangup_signaled);
@@ -7641,7 +7713,8 @@ pub async fn run_session(
             }
         }
         // An errand's question waits for the owner: the line is not idle.
-        let errand_asking = errand.as_ref().is_some_and(|e| e.question_open()) || !ask_waiting.is_empty();
+        // In a queue too: no nudge and no idle hang-up while it plays.
+        let errand_asking = errand.as_ref().is_some_and(|e| e.question_open()) || !ask_waiting.is_empty() || errand_queue;
 
         // The second look says sales / scam: the AI starts stalling (stalling off:
         // the call is only marked so, and the AI goes on as it was).
@@ -9682,6 +9755,32 @@ pub async fn run_session(
                                                 errand_carrier = Some(in_tx_window.clone());
                                             }
                                         }
+                                        // …while a queue's recording keeps it on the line: its
+                                        // place is lost on hanging up. The call may run that long.
+                                        // Only before the AI spoke, or on a voice menu: a person's
+                                        // "one moment" later in the call is no queue.
+                                        if !errand_queue
+                                            && errand_carrier.is_none()
+                                            && !errand_voicemail
+                                            && (first_downlink_at.is_none() || errand_menu_since.is_some())
+                                            && e.redial()
+                                            && crate::errands::queue_message(&in_tx_window)
+                                        {
+                                            errand_queue = true;
+                                            errand_queue_wait = e.queue_wait();
+                                            e.note_menu(false);
+                                            errand_menu_since = Some(tokio::time::Instant::now());
+                                            errand_menu_chunks = audio_chunks_out;
+                                            let wait = errand_queue_wait.as_secs();
+                                            if let Some(extra) =
+                                                errand_queue_time.start(session_start.elapsed().as_secs(), wait)
+                                            {
+                                                wrap_secs += extra;
+                                                wrap_force_secs += extra;
+                                                max_secs += extra;
+                                            }
+                                            info!("Errand call: a queue — the AI stays on the line up to {wait}s for a person serial={serial} cap_s={max_secs}");
+                                        }
                                     }
                                     let hold = crate::locale::asks_to_hold(&caller_recent);
                                     if hold != caller_hold {
@@ -10169,7 +10268,15 @@ pub async fn run_session(
                                             }
                                         } else if stall_on && !own_matter && ivr_since.is_none() {
                                             stall_review.note_caller_turn_end();
-                                            if stall_review.should_ask_confirm(caller_said().1) {
+                                            let regular = stall_review.should_ask_confirm(caller_said().1);
+                                            // Asked whether it is an AI: one more check, since
+                                            // the stalling prompt does not say so (the owner's
+                                            // stall list is never let go: no check for it).
+                                            let identity = !regular
+                                                && !stall.as_ref().is_some_and(|c| c.force_start)
+                                                && stall_review
+                                                    .should_ask_confirm_for_identity(crate::stall_script::asks_if_ai(&caller_turn));
+                                            if regular || identity {
                                                 spawn_stall_review(
                                                     &review_tx,
                                                     &review_key,
@@ -10180,7 +10287,7 @@ pub async fn run_session(
                                                     crate::stall_review::Purpose::Confirm,
                                                 );
                                                 info!(
-                                                    "Persona stall check (let the caller go?) serial={serial} talk_s={}",
+                                                    "Persona stall check (let the caller go?) serial={serial} talk_s={} identity_question={identity}",
                                                     session_start.elapsed().as_secs()
                                                 );
                                             }
@@ -12873,6 +12980,51 @@ mod tests {
         assert!(!r.should_ask_confirm(80));
     }
 
+    /// Stalling, the caller asks whether they are talking to an AI (in any
+    /// language): one more check whether the call was judged wrongly, even right
+    /// after stalling started or after the regular check said "carry on"; once a
+    /// call, and only when the review judged it.
+    #[test]
+    fn asking_if_it_is_an_ai_while_stalling_gets_one_more_check() {
+        use crate::stall_review::{Confidence::*, Verdict::*};
+        for question in [
+            "Wait, am I talking to a robot?",
+            "你是不是機器人啊？",
+            "もしかしてAIですか？",
+            "혹시 인공지능이에요?",
+            "¿Eres una persona real?",
+            "Est-ce que je parle à une IA ?",
+            "Bin ich mit einer KI verbunden?",
+            "Você é um robô?",
+        ] {
+            let asks = crate::stall_script::asks_if_ai(question);
+            assert!(asks, "{question}");
+            let mut r = StallReview::default();
+            r.note_engaged(20);
+            assert!(!r.should_ask_confirm(21));
+            assert!(r.should_ask_confirm_for_identity(asks), "{question}");
+            assert_eq!(r.purpose(), crate::stall_review::Purpose::Confirm);
+            assert_eq!(r.decide(&review_of(Normal, High), 0, 0, StallFacts::default()), StallVerdictStep::Release);
+            assert!(!r.should_ask_confirm_for_identity(asks), "once a call");
+        }
+        // After the regular check kept the stall, the question still gets its own.
+        let mut r = StallReview::default();
+        r.note_engaged(20);
+        assert!(r.should_ask_confirm(20 + CONFIRM_EARLY_UNITS));
+        assert!(!r.should_ask_confirm_for_identity(true), "one at a time");
+        assert_eq!(r.decide(&review_of(ScamOrSales, High), 0, 0, StallFacts::default()), StallVerdictStep::Carry);
+        assert!(!r.should_ask_confirm_for_identity(false));
+        assert!(r.should_ask_confirm_for_identity(true));
+        // Words only scammers say still keep the caller.
+        let hard = StallFacts { hard_hit: true, ..StallFacts::default() };
+        assert_eq!(r.decide(&review_of(Normal, High), 0, 0, hard), StallVerdictStep::KeepForHardWords);
+        // Stalled for scam-only words, not by the review: no check.
+        let mut r = StallReview::default();
+        assert!(r.engage_hard_at_once(true, true, false));
+        r.note_engaged(20);
+        assert!(!r.should_ask_confirm_for_identity(true));
+    }
+
     /// The check while stalling did not answer (too slow, a server error): it is
     /// asked again after the caller's next turn, at most twice a call, so a caller
     /// judged wrongly is not kept to the end because of one slow answer.
@@ -13679,6 +13831,11 @@ mod tests {
         assert!(r.early < STALL_REVIEW_EARLY_MAX);
     }
 
+    /// The fixed guard that closes the test agent's persona prompt at this stage.
+    fn persona_guard(stall: StallPrompt) -> String {
+        crate::prompts::pack(crate::locale::Lang::ZhTw).guard(false, stall).replace("{owner}", "機主")
+    }
+
     /// The fixed guard of the answering-as-me style: a card desk's "was this
     /// purchase yours?" gets neither yes nor no and no blocking.
     #[test]
@@ -13767,7 +13924,7 @@ mod tests {
         // A custom prompt keeps its words; the note goes before the fixed guard.
         let c = session_prompt(&persona_system_prompt("你是我，只講中文。", false, "", StallPrompt::Off), Outbound::Errand);
         assert!(c.starts_with("你是我，只講中文。") && c.contains("【對方講別的語言】"));
-        assert!(c.ends_with(&PERSONA_GUARD.get().replace("{owner}", "機主")));
+        assert!(c.ends_with(&persona_guard(StallPrompt::Off)));
         // Asked for personal details or a code: none given, none made up.
         assert!(c.contains("身分證字號") && c.contains("驗證碼") && c.contains("不要給、也不要編"));
         assert!(!c.contains("我這邊先幫他接"));
@@ -14066,9 +14223,12 @@ mod tests {
         let on = persona_system_prompt("", false, "", StallPrompt::Full);
         assert!(!on.contains(PERSONA_SALES_REJECT_DEFAULT.get()) && !on.contains(PERSONA_SALES_LISTEN_LINE.get()));
         assert!(on.contains("陪他繞") && on.contains("理賠") && on.contains("不能給"));
-        // The fixed guard still comes last.
-        let guard = PERSONA_GUARD.get().replace("{owner}", "機主");
-        assert!(on.ends_with(&guard) && first.ends_with(&guard));
+        // The fixed guard still comes last: the stalling one once the call is judged.
+        assert!(on.ends_with(&persona_guard(StallPrompt::Full)) && first.ends_with(&persona_guard(StallPrompt::ListenFirst)));
+        assert!(on.contains("不承認是 AI"));
+        // Before it is judged, as the owner: the guard as it was, nothing on being an AI.
+        assert!(!first.contains("不承認是 AI") && !first.contains("是不是 AI"));
+        assert_eq!(persona_guard(StallPrompt::ListenFirst), PERSONA_GUARD.fill(&[("ai_identity", &"")]).replace("{owner}", "機主"));
         // A custom prompt without the reject line still gets the block / line.
         let c = persona_system_prompt("你是我。", false, "", StallPrompt::Full);
         assert!(c.starts_with(PERSONA_STALL_HEAD.get()) && c.contains("你是我。") && c.contains("陪他繞"));
@@ -14808,6 +14968,29 @@ mod tests {
         assert!(w < f && f < m && w >= 60, "{w} {f} {m}");
         // Assistant (relay) mode keeps its old cap.
         assert_eq!(talk_limits(false, 30 * 60).2, LIVE_MAX_SECS);
+    }
+
+    #[test]
+    fn an_errand_queue_lengthens_the_call_once_and_gives_back_what_it_did_not_use() {
+        let cap = crate::errands::CALL_MAX_SECS;
+        let mut q = ErrandQueueTime::default();
+        let mut max = cap;
+        // A queue 20 s in: up to 30 minutes more.
+        max += q.start(20, 1800).unwrap();
+        assert_eq!(max, cap + 1800);
+        // A person came on after 2 minutes in line: the original cap plus those 2 minutes.
+        max -= q.end(20 + 120);
+        assert_eq!(max, cap + 120);
+        // A voice menu and another queue later in the same call: nothing more.
+        assert_eq!(q.start(400, 1800), None);
+        assert_eq!(q.end(900), 0);
+        assert_eq!(max, cap + 120);
+        // A queue that ran its whole wait gives nothing back (the call ends then).
+        let mut q = ErrandQueueTime::default();
+        assert_eq!(q.start(0, 600), Some(600));
+        assert_eq!(q.end(700), 0);
+        // No queue: nothing to give back.
+        assert_eq!(ErrandQueueTime::default().end(50), 0);
     }
 
     #[test]
@@ -15889,7 +16072,7 @@ mod tests {
         for mode in [StallPrompt::Off, StallPrompt::ListenFirst, StallPrompt::Full] {
             let p = persona_system_prompt("", false, "", mode);
             assert!(p.contains("【電信提示音】") && p.contains("【對方一直喂】"));
-            assert!(p.ends_with(&PERSONA_GUARD.get().replace("{owner}", "機主")));
+            assert!(p.ends_with(&persona_guard(mode)));
         }
     }
 

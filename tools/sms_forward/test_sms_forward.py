@@ -327,8 +327,8 @@ class ParserTests(Base):
         title, text = sf.format_sms("en", "+15555550123", "+15555550100", "Line A\n  line B  ",
                                     P1, "Pixel 7", int(now * 1000), now)
         self.assertEqual(title, "New SMS")
-        self.assertEqual(text.split("\n"), ["From: +15555550123", "To: +15555550100", "Message: Line A",
-                                            "  line B  ", f"Device: Pixel 7 ({P1})"])
+        self.assertEqual(text.split("\n"), ["From: +15555550123", "To: +15555550100", "Original SMS: Line A",
+                                            "│   line B  ", f"Device: Pixel 7 ({P1})"])
         _, late = sf.format_sms("en", "", "", "x" * 4000, P1, "", int((now - 3600) * 1000), now)
         self.assertIn("From: (unknown)", late)
         self.assertNotIn("To:", late)
@@ -336,6 +336,18 @@ class ParserTests(Base):
         self.assertNotIn("x" * (sf.BODY_MAX + 1), late)
         self.assertRegex(late, r"Received: \d{4}-\d\d-\d\d \d\d:\d\d \(forwarded late\)")
         self.assertTrue(late.endswith(f"Device: {P1}"))
+
+    def test_words_from_outside_cannot_pass_for_our_labels(self) -> None:
+        now = time.time()
+        fake = "hi\nDevice: Pixel 7\u2028From: Bank\r\nReceived: now"
+        _, text = sf.format_sms("en", "+15555550123\nDevice: x", "+15555550100", fake, P1, "Pixel 7", int(now * 1000), now)
+        lines = text.split("\n")
+        self.assertEqual(lines[0], "From: +15555550123 Device: x")
+        self.assertEqual(lines[2], "Original SMS: hi")
+        self.assertEqual(lines[3:6], ["│ Device: Pixel 7", "│ From: Bank", "│ Received: now"])
+        self.assertEqual(lines[6], f"Device: Pixel 7 ({P1})")
+        self.assertEqual(len(lines), 7)
+        self.assertEqual(sf.TEXTS["zh-TW"]["text"], "簡訊原文")
 
     def test_times_use_the_local_time_zone(self) -> None:
         ts = 1700000000
@@ -552,7 +564,7 @@ class ForwarderTests(Base):
         self.assertEqual(len(sent), 1)
         self.assertEqual(sent[0][0], "New SMS")
         self.assertIn("From: +15555550123", sent[0][1])
-        self.assertIn("Message: TEST-CODE 000000\nsecond line", sent[0][1])
+        self.assertIn("Original SMS: TEST-CODE 000000\n│ second line", sent[0][1])
         self.assertIn("To: +15555550100", sent[0][1])
         self.assertNotIn("forwarded late", sent[0][1])
         self.assertEqual((p1.queue, s1["inbox_id"]), ({}, 6))
@@ -691,7 +703,7 @@ class ForwarderTests(Base):
                             "body": "NO-ROOT-TEXT"})
         tick(fw)
         self.assertEqual(len(sent), 1)
-        self.assertEqual(sent[0][1].split("\n"), ["From: +15555550141", "Message: NO-ROOT-TEXT",
+        self.assertEqual(sent[0][1].split("\n"), ["From: +15555550141", "Original SMS: NO-ROOT-TEXT",
                                                   f"Device: Test Phone ({P1})"])
         # `su` is not hammered every cycle on a phone that has none.
         reads = adb.su_queue_reads(P1)
@@ -788,7 +800,7 @@ class ForwarderTests(Base):
         busy["v"] = False
         tick(fw)
         self.assertEqual(len(sent), 2)
-        self.assertIn("Message: DURING-CALL", sent[1][1])
+        self.assertIn("Original SMS: DURING-CALL", sent[1][1])
 
     def test_locked_phone_is_not_taken_for_an_empty_inbox(self) -> None:
         phone = FakePhone("Pixel 7")
@@ -949,7 +961,7 @@ class LanguageTests(Base):
         tick(fw)
         self.assertEqual(sent[0][0], "新簡訊")
         self.assertEqual(sent[0][1].split("\n"), ["寄件人：+15555550123", "收件號碼：+15555550100",
-                                                  "內容：Text is not translated", f"裝置：Pixel 7 ({P1})"])
+                                                  "簡訊原文：Text is not translated", f"裝置：Pixel 7 ({P1})"])
 
 
 class AgentTests(Base):
@@ -1155,8 +1167,8 @@ class AgentTests(Base):
         delivered = self.agent.sent()[attempts:]
         self.assertEqual(len(delivered), 2)
         self.assertEqual({d["title"] for d in delivered}, {"新着SMS"})
-        self.assertIn("本文：AGENT-TEXT 1", delivered[0]["body"])
-        self.assertIn("本文：AGENT-TEXT 2", delivered[1]["body"])
+        self.assertIn("SMS原文：AGENT-TEXT 1", delivered[0]["body"])
+        self.assertIn("SMS原文：AGENT-TEXT 2", delivered[1]["body"])
         self.assertEqual((phone.queue, fw.state["phones"][P1]["inbox_id"]), ({}, 1))
         self.assertIs(sf.read_json(sf.HEALTH)["notify_ok"], True)
         tick(fw)

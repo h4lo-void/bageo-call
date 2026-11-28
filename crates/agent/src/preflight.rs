@@ -1941,9 +1941,28 @@ const CARD_TAIL: [&str; 9] = [
     "Antworte auf diese Nachricht mit den Angaben, dann ruft die KI damit an.",
     "Responda a esta mensagem com os dados e a IA liga com eles.",
 ];
+/// A scheduled call's card: the reply brings the card again for a yes.
+const CARD_TAIL_SCHEDULED: [&str; 9] = [
+    "回覆這則訊息補上答案，會再請你確認一次才排定。",
+    "回复这条消息补上答案，会再请你确认一次才安排。",
+    "Reply to this message with the answers. You'll confirm once more before it's scheduled.",
+    "このメッセージに返信で答えると、もう一度確認してから予約します。",
+    "이 메시지에 답을 회신하면 한 번 더 확인한 뒤 예약합니다.",
+    "Responde a este mensaje con los datos. Confirmarás una vez más antes de programarla.",
+    "Répondez à ce message avec les infos. Vous confirmerez encore une fois avant de la programmer.",
+    "Antworte auf diese Nachricht mit den Angaben. Vor dem Planen bestätigst du noch einmal.",
+    "Responda a esta mensagem com os dados. Você confirma mais uma vez antes de agendar.",
+];
 
-/// The questions as lines for a confirmation card in a chat.
+/// The questions as lines for a confirmation card in a chat (a call now:
+/// the reply sends it).
 pub fn card_text(lang: Lang, keys: &[&str]) -> String {
+    card_text_for(lang, keys, false)
+}
+
+/// [card_text]; `scheduled`: a scheduled call's card, whose reply brings the
+/// card again for the owner's yes instead of sending it.
+pub fn card_text_for(lang: Lang, keys: &[&str], scheduled: bool) -> String {
     let i = lang_index(lang);
     let mut out = String::from(CARD_HEAD[i]);
     for k in keys.iter().take(MISSING_MAX) {
@@ -1951,7 +1970,7 @@ pub fn card_text(lang: Lang, keys: &[&str]) -> String {
         out.push_str(question(lang, k));
     }
     out.push('\n');
-    out.push_str(CARD_TAIL[i]);
+    out.push_str(if scheduled { CARD_TAIL_SCHEDULED[i] } else { CARD_TAIL[i] });
     out
 }
 
@@ -2313,6 +2332,25 @@ mod tests {
             assert_eq!(card.lines().count(), 5, "{lang:?}: head, three questions, tail");
         }
         assert_eq!(question(Lang::En, "nothing"), "");
+    }
+
+    /// A call now's card says the reply sends the call; a scheduled call's
+    /// card says the reply brings it back for one more yes, in every language.
+    #[test]
+    fn a_scheduled_cards_tail_says_it_is_confirmed_again_and_a_call_nows_says_it_dials() {
+        for lang in ALL {
+            let keys = ["party", "phone", "name"];
+            let now = card_text_for(lang, &keys, false);
+            let later = card_text_for(lang, &keys, true);
+            assert_eq!(now, card_text(lang, &keys), "{lang:?}");
+            assert_eq!((now.lines().count(), later.lines().count()), (5, 5), "{lang:?}");
+            assert_eq!(later.lines().last(), Some(CARD_TAIL_SCHEDULED[lang_index(lang)]), "{lang:?}");
+            assert_ne!(now.lines().last(), later.lines().last(), "{lang:?}");
+        }
+        assert!(card_text_for(Lang::ZhTw, &["party"], true).contains("再請你確認一次"));
+        assert!(card_text_for(Lang::En, &["party"], true).contains("confirm once more"));
+        assert!(card_text_for(Lang::Ja, &["party"], true).contains("もう一度確認"));
+        assert!(card_text_for(Lang::ZhTw, &["party"], false).contains("帶著撥出"));
     }
 
     #[test]

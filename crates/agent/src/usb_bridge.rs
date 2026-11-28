@@ -10,7 +10,10 @@
 //!   (re-adding drops the phone's open sockets);
 //! - start the call service only after a reverse was restored, or when fewer
 //!   phones are connected than plugged in and no call is running — and not more
-//!   often than every [`ARM_BACKOFF`] per phone;
+//!   often than every [`ARM_BACKOFF`] per phone; each start hands the app the
+//!   link key (`crate::phone_link`) through adb's standard input, and a phone
+//!   not given the current key yet (agent restarted, key replaced) is started
+//!   once more for it while no call runs;
 //! - one adb binary: mixing versions makes each one restart the adb server,
 //!   which wipes every reverse. Set `ADB_BIN` when several are installed.
 //!
@@ -156,14 +159,33 @@ fn adb_candidates(configured: &str) -> Vec<PathBuf> {
 }
 
 async fn run(adb: &str, args: &[&str]) -> Result<String, String> {
+    run_with_input(adb, args, None).await
+}
+
+/// [`run`] with `input` on adb's standard input (what must not show on this
+/// computer's command line, such as the link key).
+async fn run_with_input(adb: &str, args: &[&str], input: Option<&str>) -> Result<String, String> {
+    use tokio::io::AsyncWriteExt as _;
     let mut cmd = Command::new(adb);
-    cmd.args(args).kill_on_drop(true).stdin(std::process::Stdio::null());
+    cmd.args(args)
+        .kill_on_drop(true)
+        .stdin(if input.is_some() { std::process::Stdio::piped() } else { std::process::Stdio::null() })
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
     #[cfg(windows)]
     {
         // No console window flashing up every few seconds.
         cmd.creation_flags(0x0800_0000);
     }
-    match tokio::time::timeout(ADB_TIMEOUT, cmd.output()).await {
+    let work = async {
+        let mut child = cmd.spawn()?;
+        if let (Some(text), Some(mut stdin)) = (input, child.stdin.take()) {
+            stdin.write_all(text.as_bytes()).await?;
+            stdin.shutdown().await?;
+        }
+        child.wait_with_output().await
+    };
+    match tokio::time::timeout(ADB_TIMEOUT, work).await {
         Err(_) => Err(format!("adb {} timed out", args.join(" "))),
         Ok(Err(e)) => Err(format!("adb could not start: {e}")),
         Ok(Ok(out)) => {
@@ -218,6 +240,78 @@ pub fn should_arm(connected_phones: usize, usb_phones: usize, active_calls: usiz
     usb_phones > 0 && connected_phones < usb_phones && active_calls == 0
 }
 
+/// The shell script that starts the app's call service and hands it the link
+/// key (`crate::phone_link`). It goes to `adb shell sh -s` on standard input,
+/// so the key never shows on this computer's command line. None for a key
+/// that is not plain hex (nothing else may reach the phone's shell).
+pub fn start_script(link_key: &str) -> Option<String> {
+    let key = link_key.trim();
+    if !crate::phone_link::valid_key(key) {
+        return None;
+    }
+    Some(format!(
+        "am start-foreground-service -n {APP_PACKAGE}/.CallAudioService -a {APP_PACKAGE}.START --es link_key {key}\nexit\n"
+    ))
+}
+
+/// Phones whose hello over the cable did not pass the link check (no key, or
+/// a wrong one): the key is handed to them again on the next round.
+static MISSED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// A phone on this computer said hello without passing the link check.
+pub fn link_check_missed(serial: &str) {
+    let serial = serial.trim();
+    if serial.is_empty() {
+        return;
+    }
+    let mut m = MISSED.lock().unwrap_or_else(|e| e.into_inner());
+    if !m.iter().any(|s| s == serial) && m.len() < 64 {
+        m.push(serial.to_string());
+    }
+}
+
+fn take_missed() -> Vec<String> {
+    std::mem::take(&mut *MISSED.lock().unwrap_or_else(|e| e.into_inner()))
+}
+
+/// Forget that the phones in `missed` were given the key. A serial the app
+/// reported that matches no plugged-in phone (the app could not read the
+/// device serial) counts for every plugged-in phone.
+pub fn forget_delivered(delivered: &mut HashMap<String, u64>, missed: &[String], plugged: &[String]) {
+    for m in missed {
+        if plugged.iter().any(|p| p == m) {
+            delivered.remove(m);
+        } else {
+            for p in plugged {
+                delivered.remove(p);
+            }
+        }
+    }
+}
+
+/// Why the call service is started on a plugged-in phone now, if it is.
+/// `delivered`: the link key generation this phone was last given (none yet
+/// since the agent started); `generation`: the current one. A phone not given
+/// the current key gets it once no call runs (`idle`).
+pub fn arm_reason(
+    restored: bool,
+    lagging: bool,
+    backoff_over: bool,
+    idle: bool,
+    delivered: Option<u64>,
+    generation: u64,
+) -> Option<&'static str> {
+    if restored {
+        Some("reverse restored")
+    } else if lagging && backoff_over {
+        Some("not connected")
+    } else if delivered != Some(generation) && backoff_over && idle {
+        Some("link key")
+    } else {
+        None
+    }
+}
+
 /// Runs for the life of the agent. `counts` = (phones connected to the agent,
 /// calls in progress).
 pub fn spawn<F, Fut>(cfg: Config, counts: F)
@@ -236,6 +330,9 @@ where
         let mut last_arm: HashMap<String, Instant> = HashMap::new();
         let mut models: HashMap<String, String> = HashMap::new();
         let mut installed: HashMap<String, bool> = HashMap::new();
+        // The link key generation each phone was given since the agent started.
+        let mut delivered: HashMap<String, u64> = HashMap::new();
+        let mut seen_generation = crate::phone_link::link().generation();
         let mut said_missing = false;
         loop {
             if adb.is_none() {
@@ -312,31 +409,47 @@ where
                         .collect();
                     let (connected, active) = counts().await;
                     let lagging = should_arm(connected, ready.len(), active);
+                    let link = crate::phone_link::link();
+                    let generation = link.generation();
+                    // "Pair phones again" made a new key: hand it over now, without the back-off.
+                    if generation != seen_generation {
+                        seen_generation = generation;
+                        last_arm.clear();
+                    }
+                    forget_delivered(&mut delivered, &take_missed(), &ready);
                     for serial in &ready {
-                        let why = if restored.contains(serial) {
-                            "reverse restored"
-                        } else if lagging && last_arm.get(serial).is_none_or(|t| t.elapsed() >= ARM_BACKOFF) {
-                            "not connected"
-                        } else {
+                        let backoff_over = last_arm.get(serial).is_none_or(|t| t.elapsed() >= ARM_BACKOFF);
+                        let Some(why) = arm_reason(
+                            restored.contains(serial),
+                            lagging,
+                            backoff_over,
+                            active == 0,
+                            delivered.get(serial).copied(),
+                            generation,
+                        ) else {
                             continue;
                         };
-                        let service = format!("{APP_PACKAGE}/.CallAudioService");
-                        let action = format!("{APP_PACKAGE}.START");
-                        let r = run(
-                            &path,
-                            &["-s", serial, "shell", "am", "start-foreground-service", "-n", &service, "-a", &action],
-                        )
-                        .await;
+                        let r = match start_script(&link.key()) {
+                            Some(script) => run_with_input(&path, &["-s", serial, "shell", "sh", "-s"], Some(&script)).await,
+                            None => Err("no link key".to_string()),
+                        };
                         last_arm.insert(serial.clone(), Instant::now());
                         match r {
-                            Ok(_) => info!("usb bridge: started the call service on {serial} ({why})"),
+                            Ok(_) => {
+                                delivered.insert(serial.clone(), generation);
+                                info!("usb bridge: started the call service on {serial} ({why})");
+                            }
                             Err(e) => warn!("usb bridge: could not start the call service on {serial} ({why}): {e}"),
                         }
                     }
                 }
             }
             set_status(st);
-            tokio::time::sleep(cfg.interval).await;
+            // A new link key wakes the next round at once.
+            tokio::select! {
+                _ = tokio::time::sleep(cfg.interval) => {}
+                _ = crate::phone_link::link().renewed().notified() => {}
+            }
         }
     });
 }
@@ -376,6 +489,51 @@ mod tests {
         assert!(!should_arm(1, 1, 0));
         assert!(!should_arm(0, 1, 1), "never during a call");
         assert!(!should_arm(0, 0, 0));
+    }
+
+    #[test]
+    fn link_key_goes_to_the_phone_on_stdin_only_as_hex() {
+        let key = "ab".repeat(32);
+        let script = start_script(&key).unwrap();
+        assert!(script.contains("start-foreground-service -n com.pixelcallai.streamer/.CallAudioService"));
+        assert!(script.contains(&format!("--es link_key {key}\n")));
+        assert!(script.ends_with("exit\n"));
+        assert_eq!(start_script("ab; reboot"), None, "nothing but hex reaches the phone's shell");
+        assert_eq!(start_script(""), None);
+    }
+
+    #[test]
+    fn link_key_is_sent_again_when_it_changed() {
+        assert_eq!(arm_reason(true, false, false, false, Some(0), 0), Some("reverse restored"));
+        assert_eq!(arm_reason(false, true, true, true, Some(0), 0), Some("not connected"));
+        assert_eq!(arm_reason(false, false, true, true, None, 0), Some("link key"), "not given since the start");
+        assert_eq!(arm_reason(false, false, true, true, Some(0), 1), Some("link key"), "the key was replaced");
+        assert_eq!(arm_reason(false, false, true, true, Some(1), 1), None);
+        assert_eq!(arm_reason(false, false, true, false, None, 0), None, "never during a call");
+        assert_eq!(arm_reason(false, false, false, true, None, 0), None, "back off");
+    }
+
+    #[test]
+    fn link_key_is_sent_again_when_the_phone_lost_it() {
+        let plugged = vec!["SERIAL-A".to_string(), "SERIAL-B".to_string()];
+        let full = || HashMap::from([("SERIAL-A".to_string(), 3u64), ("SERIAL-B".to_string(), 3u64)]);
+        let mut d = full();
+        forget_delivered(&mut d, &["SERIAL-A".to_string()], &plugged);
+        assert_eq!(d.get("SERIAL-A"), None, "that phone gets the key again");
+        assert_eq!(d.get("SERIAL-B"), Some(&3));
+        assert_eq!(arm_reason(false, false, true, true, d.get("SERIAL-A").copied(), 3), Some("link key"));
+        let mut d = full();
+        forget_delivered(&mut d, &["pixel-10123".to_string()], &plugged);
+        assert!(d.is_empty(), "an app without the device serial: every plugged-in phone");
+        let mut d = full();
+        forget_delivered(&mut d, &[], &plugged);
+        assert_eq!(d, full());
+        link_check_missed("SERIAL-C");
+        link_check_missed("SERIAL-C");
+        link_check_missed(" ");
+        let taken = take_missed();
+        assert_eq!(taken.iter().filter(|s| *s == "SERIAL-C").count(), 1);
+        assert!(!taken.iter().any(|s| s.trim().is_empty()));
     }
 
     #[test]

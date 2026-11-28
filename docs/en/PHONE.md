@@ -159,6 +159,14 @@ or restarting either side, heals by itself.
 USB also keeps the phone charged and works without Wi-Fi. One computer can
 take several phones; each answers its own number.
 
+Bageo and the app check each other before they talk: when Bageo starts the
+app's service it hands over a link key, and from then on the app talks only to
+the Bageo that holds it. **Forget Wi-Fi connection** in the app clears the key;
+the next USB connection hands it over again. An older app still connects but
+the *System* page marks it as not verified: update it. If you map the port by
+hand (`adb reverse`) with `USB_BRIDGE=off`, the app gets no key: turn the USB
+bridge on once while the phone is plugged in.
+
 ### Wi-Fi
 
 Plug the phone in by USB once (above) and it is paired: Bageo gives it its
@@ -179,6 +187,9 @@ shows for each phone whether it is connected by USB or over Wi-Fi.
 - The pairing key goes only to a phone that is already connected. It is not
   shown in the console, notifications or logs.
 - An older app ignores the pairing and keeps using USB only.
+- Wi-Fi addresses are encrypted (`wss://`) only. An app that cannot use them
+  needs an update (`PHONE_WIFI_ALLOW_PLAIN=true` brings back `ws://`; not
+  recommended).
 - With Docker, or when the phone cannot be plugged in at all, pair it by IP
   address (below).
 
@@ -197,7 +208,10 @@ host port can be another number: type the one you published. The phone and
 Bageo must be on the same network, and **Phones can also connect over Wi-Fi**
 must be on. A new code replaces the old one, and five wrong codes void it.
 **Pair phones again** also disconnects phones paired this way; pair them again
-with a new code.
+with a new code. Pairing by IP address needs the latest Bageo app: older apps
+sent the code unencrypted and are refused. The pairing also gives the app the
+link key, so it checks that Bageo the same way as one paired over USB. A
+pairing from an older app (unencrypted) is forgotten: pair again.
 
 **Entering the address by hand.** Use this when the phone cannot be cabled to
 the computer at all.

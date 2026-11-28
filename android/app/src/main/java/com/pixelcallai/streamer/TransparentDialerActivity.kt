@@ -6,7 +6,6 @@ package com.pixelcallai.streamer
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
-import android.telecom.TelecomManager
 import android.util.Log
 
 /**
@@ -34,9 +33,9 @@ class TransparentDialerActivity : Activity() {
                 startForegroundService(svc)
             } catch (_: Exception) {
             }
-            val number = intent?.data?.schemeSpecificPart
+            val rawNumber = intent?.data?.schemeSpecificPart
                 ?: intent?.getStringExtra(Intent.EXTRA_PHONE_NUMBER)
-                ?: ""
+            val number = dialableNumber(rawNumber)
             val dialerIntent = Intent().apply {
                 setClassName(this@TransparentDialerActivity, "com.pixelcallai.streamer.OwnerCallActivity")
                 putExtra("mode", "dialer")
@@ -65,32 +64,39 @@ class TransparentDialerActivity : Activity() {
     }
 
     private fun forwardToPhoneApp() {
-        val dialer = try {
-            getSystemService(TelecomManager::class.java)?.defaultDialerPackage
-        } catch (_: Exception) {
-            null
-        }
-        val source = intent
-        val number = source?.data?.schemeSpecificPart
-            ?: source?.getStringExtra(Intent.EXTRA_PHONE_NUMBER)
-            ?: ""
-        if (!dialer.isNullOrBlank() && dialer != packageName && source != null) {
-            try {
-                startActivity(
-                    Intent(source)
-                        .setComponent(null)
-                        .setPackage(dialer)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
-                return
-            } catch (e: Exception) {
-                Log.w(TAG, "forward to $dialer failed: ${e.message}")
-            }
-        }
+        val data = intent?.data
+        val number = dialForwardNumber(
+            intent?.action,
+            data?.scheme,
+            data?.schemeSpecificPart,
+        ) ?: return
         PhoneModeManager.openSystemPhoneApp(this, number)
     }
 
     companion object {
         private const val TAG = "TransparentDialer"
     }
+}
+
+/**
+ * Number for the real phone app, or null when [action] is not forwarded.
+ * Only a `tel:` number is kept, and only after [dialableNumber].
+ * [ignoredExtras] and [ignoredFlags] are not copied onto the phone-app intent.
+ */
+@Suppress("UNUSED_PARAMETER")
+internal fun dialForwardNumber(
+    action: String?,
+    scheme: String?,
+    schemeSpecificPart: String?,
+    ignoredExtras: Map<String, String> = emptyMap(),
+    ignoredFlags: Int = 0,
+): String? {
+    if (action != Intent.ACTION_DIAL &&
+        action != Intent.ACTION_VIEW &&
+        action != Intent.ACTION_CALL_BUTTON
+    ) {
+        return null
+    }
+    val raw = if (scheme.equals("tel", ignoreCase = true)) schemeSpecificPart else null
+    return dialableNumber(raw)
 }

@@ -440,6 +440,8 @@ The image itself sets `AGENT_HOST=0.0.0.0`, `ASSETS_DIR=/app/assets`, `CALLS_DAT
 | `PUBLIC_URL` | *(empty)* | Same as *Address in notifications* (under [Notifications](#notifications)); the web console's value wins. Empty = automatic (see [Advanced](#advanced)). |
 | `MDNS_NAME` | `bageo` | Same as *Network name*: the console answers at `http://<this>.local/` on your network. The web console's value wins. |
 | `PHONE_WIFI_PORT` | `AGENT_PORT` + 1 (`8788`) | Port phones use over Wi-Fi. Opened on all network interfaces only while `AGENT_HOST` is not set or `127.0.0.1`; it serves only the phones' connection (no console) and always needs the pairing key or `DEVICE_TOKEN`. `0` = never. |
+| `PHONE_LINK_AUTH` | `compat` | A phone on USB and Bageo check each other before they talk. `compat`: an older app still connects, but gets no Wi-Fi address and the *System* page asks you to update it. `required`: older apps are refused. |
+| `PHONE_WIFI_ALLOW_PLAIN` | *(off)* | `true` = phones over Wi-Fi may also use unencrypted `ws://` (only for apps that cannot use `wss://`). Off: Wi-Fi addresses are `wss://` only. |
 
 Phones on USB are exempt from `DEVICE_TOKEN` (the USB tunnel ends on the computer itself).
 
@@ -471,7 +473,7 @@ The connection is plain HTTP: fine on a home network you trust, not for the open
 
 **Reaching it from outside (reverse proxy).** First set a console password, then enter the outside address (for example `https://calls.example.org/`) under *Address in notifications*; links in notifications then use it. Bageo accepts only this computer's own names and addresses and the host of that address, so any other domain is refused. Use HTTPS on the proxy and point it at port 80 or 8787 of this computer. Everything that comes through a proxy counts as another device: without a password it does not open, and wrong passwords slow down, then wait a minute after 10 within a minute.
 
-With a reverse proxy or any forwarding on this computer (`ssh -L`/`-R`, socat), always set both passwords, `CALLS_UI_TOKEN` (or the console password) and `DEVICE_TOKEN`, and have the proxy send `X-Forwarded-For`. A connection forwarded without it reaches Bageo from this computer and counts as this computer itself.
+Bageo treats every connection from this computer itself as a phone on USB, with no `DEVICE_TOKEN` check. A forward that sends no `X-Forwarded-For` (`ssh -L`/`-R`, socat, frp and the like) therefore lets anyone who reaches its outside address pose as a phone. To open Bageo to the outside, use a reverse proxy that sends `X-Forwarded-For`, and set both passwords, `CALLS_UI_TOKEN` (or the console password) and `DEVICE_TOKEN`. Connections that come in this way are not limited in wrong password tries, and without a console password the whole console is open to them.
 
 ### Data and recordings
 

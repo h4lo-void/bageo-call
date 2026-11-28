@@ -1470,22 +1470,8 @@ async fn save_file(path: &Path, contacts: &[Contact]) -> Result<()> {
 /// Write `body` to a new file next to `path`, then rename it over `path`: a
 /// crash leaves the old file or the new one, never half of one.
 fn write_atomic(path: &Path, body: &[u8]) -> Result<()> {
-    use std::io::Write as _;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
-    }
     let tmp = path.with_file_name(format!(".contacts.{}.tmp", new_id()));
-    let written = (|| -> std::io::Result<()> {
-        let mut f = std::fs::File::create(&tmp)?;
-        f.write_all(body)?;
-        f.sync_all()?;
-        drop(f);
-        std::fs::rename(&tmp, path)
-    })();
-    if written.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    written.with_context(|| format!("write {}", path.display()))
+    crate::private_file::write_atomic(path, &tmp, body).with_context(|| format!("write {}", path.display()))
 }
 
 static STORE: OnceLock<Arc<ContactStore>> = OnceLock::new();

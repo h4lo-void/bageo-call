@@ -301,6 +301,13 @@ fn fulfill_err_response(e: anyhow::Error) -> Response {
     api_error(StatusCode::INTERNAL_SERVER_ERROR, "fulfill_failed", format!("fulfill failed: {msg}"))
 }
 
+/// Headers that keep another site from showing a page in a frame.
+pub(crate) fn no_framing(builder: axum::http::response::Builder) -> axum::http::response::Builder {
+    builder
+        .header("x-frame-options", "DENY")
+        .header("content-security-policy", "frame-ancestors 'none'")
+}
+
 /// An embedded text (the page, a language file) with its ETag: a 304 when the
 /// browser has it, else the gzip when it takes gzip.
 pub(crate) fn asset_response(headers: &HeaderMap, asset: &crate::console_i18n::Asset, content_type: &'static str, vary: &'static str) -> Response {
@@ -315,6 +322,7 @@ pub(crate) fn asset_response(headers: &HeaderMap, asset: &crate::console_i18n::A
         .header(header::CACHE_CONTROL, "no-cache")
         .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
         .header(header::VARY, vary);
+    let builder = if content_type.starts_with("text/html") { no_framing(builder) } else { builder };
     if not_modified {
         return builder
             .status(StatusCode::NOT_MODIFIED)
@@ -363,7 +371,7 @@ async fn ui(headers: HeaderMap, RawQuery(query): RawQuery) -> Response {
     if let Ok(path) = std::env::var("CALLS_UI_FILE") {
         if !path.trim().is_empty() {
             return match tokio::fs::read(path.trim()).await {
-                Ok(bytes) => Response::builder()
+                Ok(bytes) => no_framing(Response::builder())
                     .status(StatusCode::OK)
                     .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
                     .header(header::CACHE_CONTROL, "no-store")
@@ -388,7 +396,7 @@ async fn mobile_ui(headers: HeaderMap, RawQuery(query): RawQuery) -> Response {
     if let Ok(path) = std::env::var("MOBILE_UI_FILE") {
         if !path.trim().is_empty() {
             return match tokio::fs::read(path.trim()).await {
-                Ok(bytes) => Response::builder()
+                Ok(bytes) => no_framing(Response::builder())
                     .status(StatusCode::OK)
                     .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
                     .header(header::CACHE_CONTROL, "no-store")
@@ -1584,6 +1592,13 @@ async fn settings_put(
     if patch.get("ui_password").and_then(Value::as_str).is_some_and(crate::settings_store::ui_password_too_short) {
         return password_too_short();
     }
+    if patch.get("mcp_token").and_then(Value::as_str).is_some_and(crate::settings_store::mcp_token_too_short) {
+        return api_error(
+            StatusCode::BAD_REQUEST,
+            "mcp_token_too_short",
+            format!("the MCP token needs at least {} characters", crate::settings_store::MIN_MCP_TOKEN_CHARS),
+        );
+    }
     // A backup folder this computer cannot write in, or a backup password that
     // does not work, is not saved.
     if let Some(refused) = crate::backup::check_settings_patch(&patch, &state.settings_store.snapshot()) {
@@ -2745,6 +2760,8 @@ pub struct PhoneDevices {
     waiting: std::sync::Mutex<HashMap<String, (String, oneshot::Sender<ModeReply>)>>,
     /// What the owner was told and answered about each phone's call audio.
     fit: crate::audio_fit::FitBook,
+    /// Phones whose control connection skipped the link check (`crate::phone_link`).
+    unchecked: std::sync::Mutex<std::collections::HashSet<String>>,
 }
 
 impl PhoneDevices {
@@ -2819,6 +2836,20 @@ impl PhoneDevices {
     pub fn set_wifi(&self, serial: &str, wifi: bool) {
         if let Some(p) = self.phones().get_mut(serial) {
             p.wifi = wifi;
+        }
+    }
+
+    fn unchecked(&self) -> std::sync::MutexGuard<'_, std::collections::HashSet<String>> {
+        self.unchecked.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Whether the phone's control connection passed the link check (or came
+    /// with the pairing key over Wi-Fi). False: the console asks for an app update.
+    pub fn set_link_checked(&self, serial: &str, checked: bool) {
+        if checked {
+            self.unchecked().remove(serial);
+        } else {
+            self.unchecked().insert(serial.to_string());
         }
     }
 
@@ -3042,6 +3073,10 @@ impl PhoneDevices {
                     if view.noted {
                         v["audio_fit_noted"] = json!(true);
                     }
+                    // Only when false: on this computer without the link check (an older app).
+                    if self.unchecked().contains(serial.as_str()) {
+                        v["link_checked"] = json!(false);
+                    }
                     v
                 })
             })
@@ -3236,6 +3271,10 @@ fn phone_pairing_renew_with(
     }
     match pairing.renew() {
         Ok(()) => {
+            // The link key goes too; plugged-in phones are given the new one.
+            if let Err(e) = crate::phone_link::link().renew() {
+                tracing::warn!("phones paired again, but the new link key could not be saved: {e}");
+            }
             info!("phones paired again: the phones on Wi-Fi must be plugged in by USB once more");
             Json(json!({"ok": true})).into_response()
         }
@@ -4139,6 +4178,26 @@ async fn quick_action_run(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn console_pages_cannot_be_framed() {
+        for res in [
+            ui(HeaderMap::new(), RawQuery(None)).await,
+            mobile_ui(HeaderMap::new(), RawQuery(None)).await,
+        ] {
+            assert_eq!(res.status(), StatusCode::OK);
+            assert_eq!(res.headers().get("x-frame-options").unwrap(), "DENY");
+            assert_eq!(res.headers().get("content-security-policy").unwrap(), "frame-ancestors 'none'");
+        }
+        let asset = crate::console_i18n::page("en");
+        let json = asset_response(&HeaderMap::new(), &asset, "application/json; charset=utf-8", "Accept-Encoding");
+        assert!(json.headers().get("x-frame-options").is_none());
+        let mut h = HeaderMap::new();
+        h.insert(header::IF_NONE_MATCH, asset.etag.parse().unwrap());
+        let res = asset_response(&h, &asset, "text/html; charset=utf-8", "Cookie");
+        assert_eq!(res.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(res.headers().get("x-frame-options").unwrap(), "DENY");
+    }
 
     pub(crate) fn quick_state(root: &std::path::Path) -> CallsState {
         let mut base = Settings::from_env();
@@ -5581,6 +5640,16 @@ pub(crate) mod tests {
         let skipped_json = recent_json(skipped).await;
         assert_eq!((skipped_json["ok"].clone(), skipped_json["password_set"].clone()), (json!(true), json!(false)));
         assert!(open.settings_store.snapshot().ui_password_prompted);
+    }
+
+    #[tokio::test]
+    async fn settings_put_refuses_a_short_new_mcp_token() {
+        let open = recent_state("mcp-token-short");
+        let r = settings_put(State(open.clone()), HeaderMap::new(), Query(TokenQuery { token: None }), Json(json!({"mcp_token": " too-short "}))).await;
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        let got: Value = serde_json::from_str(&body_text(r).await).unwrap();
+        assert_eq!(got["code"], json!("mcp_token_too_short"));
+        assert!(open.settings_store.snapshot().mcp_token.is_empty(), "nothing saved");
     }
 
     /// A local address that takes one HTTP request and answers 200; the task

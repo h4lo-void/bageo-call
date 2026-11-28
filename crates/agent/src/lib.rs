@@ -49,6 +49,7 @@ pub mod embedded;
 mod summary;
 mod dtmf;
 mod end_call;
+mod errand_plan;
 mod errands;
 mod extract;
 mod fulfill;
@@ -67,12 +68,14 @@ mod openclaw;
 mod pack_update;
 mod packs_store;
 mod locales_store;
+mod phone_link;
 mod phone_region;
 mod phone_wifi;
 mod place_habits;
 mod secret_seal;
 mod wifi_tls;
 mod preflight;
+mod private_file;
 mod prompt_book;
 mod prompts;
 mod recent_notices;
@@ -1291,6 +1294,8 @@ async fn bootstrap_runtime() -> Result<(AppState, CallsState, Arc<control::Contr
     let task_store = TaskStore::new(PathBuf::from(&settings.calls_data_dir).join("tasks"));
     // The key phones use over Wi-Fi, kept next to the call records (phone_wifi).
     phone_wifi::init(std::path::Path::new(&settings.calls_data_dir));
+    // The key a plugged-in phone and this agent check each other with (phone_link).
+    phone_link::init(std::path::Path::new(&settings.calls_data_dir));
     wifi_tls::init(std::path::Path::new(&settings.calls_data_dir));
     // The owner's contacts (names for caller IDs), next to the call records.
     let contacts = contacts::ContactStore::open(PathBuf::from(&settings.calls_data_dir).join("contacts.json"));
@@ -1409,6 +1414,28 @@ async fn bootstrap_runtime() -> Result<(AppState, CallsState, Arc<control::Contr
                 tick.tick().await;
                 appointment_callbacks(&state, "", None).await;
                 errand_tick(&state).await;
+            }
+        });
+    }
+    // Scheduled errands and next tries: woken at the moment one is due (to
+    // the second), when one is added or changed, and at least every 30 s
+    // (the clock may have been changed or the computer asleep).
+    {
+        let state = state.clone();
+        tokio::spawn(async move {
+            loop {
+                // Something already due that could not go yet (its last call
+                // not over, no phone): looked at again every second.
+                let wait = state
+                    .errands
+                    .next_due()
+                    .map(|at| (at - chrono::Utc::now()).to_std().unwrap_or(Duration::from_secs(1)))
+                    .unwrap_or(ERRAND_TIMER_IDLE)
+                    .min(ERRAND_TIMER_IDLE);
+                tokio::select! {
+                    _ = tokio::time::sleep(wait) => errand_due(&state).await,
+                    _ = state.errands.woken() => {}
+                }
             }
         });
     }
@@ -1756,11 +1783,12 @@ async fn root(
     ws: Result<WebSocketUpgrade, axum::extract::ws::rejection::WebSocketUpgradeRejection>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
+    ext: axum::http::Extensions,
     Query(q): Query<HashMap<String, String>>,
     State(state): State<AppState>,
 ) -> axum::response::Response {
     match ws {
-        Ok(ws) => phone_ws(ws, peer, &headers, &q, state),
+        Ok(ws) => phone_ws(ws, peer, &headers, &ext, &q, state),
         Err(_) => Redirect::permanent("/calls/").into_response(),
     }
 }
@@ -1774,7 +1802,8 @@ async fn root(
 /// (`from_page`: an `Origin` header): only a browser sends it, and the phone
 /// app and `adb reverse` never do, so a page open on this computer cannot pose
 /// as a phone on `ws://127.0.0.1`. The pairing key ([`phone_wifi`]) is checked
-/// apart, in [`phone_ws`].
+/// apart, in [`phone_ws`]. Coming in on loopback lets a phone in, but does not
+/// make it trusted: that takes the link check ([`phone_link`]).
 fn phone_allowed(peer: &SocketAddr, proxied: bool, from_page: bool, token: Option<&str>, required: &str) -> bool {
     let required = required.trim();
     let token_ok = !required.is_empty() && token.is_some_and(|t| crate::mcp::same(t, required));
@@ -1784,10 +1813,70 @@ fn phone_allowed(peer: &SocketAddr, proxied: bool, from_page: bool, token: Optio
     peer.ip().to_canonical().is_loopback() || token_ok
 }
 
+/// Whether a phone WebSocket on the main port may open, before the link check.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PhoneGate {
+    Open,
+    /// No pairing key, no `DEVICE_TOKEN`, and not this computer.
+    NoToken,
+    /// The pairing key over a connection without TLS (`PHONE_WIFI_ALLOW_PLAIN` off).
+    PlainPairing,
+    /// A phone on this computer that skipped the link check with `PHONE_LINK_AUTH=required`.
+    NoLinkCheck,
+}
+
+/// [`PhoneGate`] for one request. `plain_ok`: the pairing key may come without
+/// TLS ([`wifi_tls::plain_ok`]); `checks_link`: it asked for the link check
+/// (or the standalone bridge already insists on it).
+#[allow(clippy::too_many_arguments)]
+fn phone_gate(
+    peer: &SocketAddr,
+    proxied: bool,
+    from_page: bool,
+    token: Option<&str>,
+    device_token: &str,
+    paired: bool,
+    via_tls: bool,
+    plain_ok: bool,
+    checks_link: bool,
+    mode: phone_link::Mode,
+) -> PhoneGate {
+    if paired && !via_tls && !plain_ok {
+        return PhoneGate::PlainPairing;
+    }
+    if !paired && !phone_allowed(peer, proxied, from_page, token, device_token) {
+        return PhoneGate::NoToken;
+    }
+    let device_ok = device_token_ok(token, device_token);
+    if !paired && !device_ok && !checks_link && mode == phone_link::Mode::Required {
+        return PhoneGate::NoLinkCheck;
+    }
+    PhoneGate::Open
+}
+
+/// A reverse proxy says the phone reached it over TLS.
+fn forwarded_https(headers: &axum::http::HeaderMap) -> bool {
+    let xfp = headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.split(',').next().unwrap_or("").trim().eq_ignore_ascii_case("https"));
+    let fwd = headers
+        .get(axum::http::header::FORWARDED)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.to_ascii_lowercase().replace(' ', "").contains("proto=https"));
+    xfp || fwd
+}
+
+fn device_token_ok(token: Option<&str>, device_token: &str) -> bool {
+    let device_token = device_token.trim();
+    !device_token.is_empty() && token.is_some_and(|t| phone_wifi::same_token(t.trim(), device_token))
+}
+
 fn phone_ws(
     ws: WebSocketUpgrade,
     peer: SocketAddr,
     headers: &axum::http::HeaderMap,
+    ext: &axum::http::Extensions,
     q: &HashMap<String, String>,
     state: AppState,
 ) -> axum::response::Response {
@@ -1797,19 +1886,57 @@ fn phone_ws(
     // A phone paired over USB that reaches this port over Wi-Fi (the agent is
     // open to the LAN): its pairing key counts while phone Wi-Fi is on.
     let paired = state.settings_store.snapshot().phone_wifi && phone_wifi::pairing().accepts(token);
-    if !paired && !phone_allowed(&peer, proxied, from_page, token, &state.settings.device_token) {
-        warn!("phone websocket refused from {peer} (through a proxy: {proxied}, from a web page: {from_page}): missing or wrong token");
-        return (StatusCode::UNAUTHORIZED, "device token required").into_response();
+    // TLS here, or ended by a reverse proxy on this computer that says so.
+    let via_tls = ext.get::<wifi_tls::ViaTls>().is_some_and(|v| v.0)
+        || (proxied && peer.ip().to_canonical().is_loopback() && forwarded_https(headers));
+    let key_override = ext.get::<phone_link::KeyOverride>().map(|k| k.0.clone());
+    let cnonce = phone_link::requested_cnonce(headers);
+    match phone_gate(
+        &peer,
+        proxied,
+        from_page,
+        token,
+        &state.settings.device_token,
+        paired,
+        via_tls,
+        wifi_tls::plain_ok(),
+        cnonce.is_some() || key_override.is_some(),
+        phone_link::mode(),
+    ) {
+        PhoneGate::Open => {}
+        PhoneGate::NoToken => {
+            warn!("phone websocket refused from {peer} (through a proxy: {proxied}, from a web page: {from_page}): missing or wrong token");
+            return (StatusCode::UNAUTHORIZED, "device token required").into_response();
+        }
+        PhoneGate::PlainPairing => {
+            warn!("phone websocket refused from {peer}: the pairing key came without encryption (PHONE_WIFI_ALLOW_PLAIN is off)");
+            return (StatusCode::FORBIDDEN, "encrypted connection required").into_response();
+        }
+        PhoneGate::NoLinkCheck => {
+            warn!("phone websocket refused from {peer}: the app skipped the link check (PHONE_LINK_AUTH=required); update the Bageo app");
+            return (StatusCode::UNAUTHORIZED, "link check required").into_response();
+        }
     }
-    let device_token = state.settings.device_token.trim();
+    let started = cnonce.map(|c| {
+        let key = key_override.as_deref().map(str::to_string).unwrap_or_else(|| phone_link::link().key());
+        phone_link::Handshake::start(&key, &c)
+    });
     let link = PhoneLink::main_port(
         peer.ip().is_loopback(),
         proxied,
         paired,
-        !device_token.is_empty() && token.is_some_and(|t| phone_wifi::same_token(t.trim(), device_token)),
+        device_token_ok(token, &state.settings.device_token),
+        started.as_ref().map(|(h, _)| *h),
     );
-    ws.on_upgrade(move |socket| handle_ws(socket, state, link))
+    let mut res = ws.on_upgrade(move |socket| handle_ws(socket, state, link));
+    if let Some((_, answer)) = &started {
+        phone_link::add_answer(&mut res, answer);
+    }
+    res
 }
+
+/// How long a phone that started the link check has to send its hello.
+const HELLO_WITHIN: Duration = if cfg!(test) { Duration::from_secs(2) } else { Duration::from_secs(10) };
 
 /// How a phone's WebSocket came in.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -1818,34 +1945,72 @@ struct PhoneLink {
     wifi: bool,
     /// Through a reverse proxy on this machine.
     proxied: bool,
-    /// May be given the Wi-Fi addresses with the pairing key: the USB tunnel,
-    /// or a connection that showed the pairing key or `DEVICE_TOKEN`.
+    /// May be given the Wi-Fi addresses with the pairing key: a connection that
+    /// passed the link check, or showed the pairing key or `DEVICE_TOKEN`.
+    /// Coming in on loopback alone is not enough.
     trusted: bool,
     /// Dropped when the phones are paired again or phone Wi-Fi is turned off.
     on_pairing: bool,
+    /// The link check started in the 101 answer; the hello finishes it.
+    handshake: Option<phone_link::Handshake>,
+    /// The hello's `link_proof` was right.
+    verified: bool,
 }
 
 impl PhoneLink {
     /// A connection on the main port. `paired`: it showed the pairing key;
     /// `device_token`: it showed `DEVICE_TOKEN`.
-    fn main_port(loopback: bool, proxied: bool, paired: bool, device_token: bool) -> Self {
+    fn main_port(
+        loopback: bool,
+        proxied: bool,
+        paired: bool,
+        device_token: bool,
+        handshake: Option<phone_link::Handshake>,
+    ) -> Self {
         let usb = loopback && !proxied;
         Self {
             wifi: !usb,
             proxied,
-            trusted: usb || paired || device_token,
+            trusted: paired || device_token,
             on_pairing: paired,
+            handshake,
+            verified: false,
         }
     }
 
     /// A connection on the Wi-Fi entry (it showed the pairing key or `DEVICE_TOKEN`).
-    fn wifi_entry(proxied: bool, on_pairing: bool) -> Self {
+    fn wifi_entry(proxied: bool, on_pairing: bool, handshake: Option<phone_link::Handshake>) -> Self {
         Self {
             wifi: true,
             proxied,
             trusted: true,
             on_pairing,
+            handshake,
+            verified: false,
         }
+    }
+
+    /// The phone started the link check and has not finished it: nothing but
+    /// its hello is taken (anything else closes the connection).
+    fn awaiting_hello(&self) -> bool {
+        self.handshake.is_some() && !self.verified
+    }
+
+    /// The hello: finish the link check. False when the phone started it and
+    /// its `link_proof` is wrong or missing (the connection is then closed).
+    fn finish_check(&mut self, link_proof: Option<&str>) -> bool {
+        let Some(hs) = self.handshake else {
+            return true;
+        };
+        if self.verified {
+            return true;
+        }
+        if !hs.accepts(link_proof) {
+            return false;
+        }
+        self.verified = true;
+        self.trusted = true;
+        true
     }
 }
 
@@ -1969,11 +2134,19 @@ async fn wifi_entry_ws(
     State(state): State<AppState>,
 ) -> axum::response::Response {
     let token = token_param(query.as_deref());
-    let device_token = state.settings.device_token.trim();
-    let device_ok = !device_token.is_empty()
-        && token.as_deref().is_some_and(|t| phone_wifi::same_token(t.trim(), device_token));
-    let link = PhoneLink::wifi_entry(calls_http::came_through_proxy(&headers), !device_ok);
-    ws.on_upgrade(move |socket| handle_ws(socket, state, link))
+    let device_ok = device_token_ok(token.as_deref(), &state.settings.device_token);
+    // A phone that got the link key over USB checks this agent here too.
+    let started = phone_link::requested_cnonce(&headers).map(|c| phone_link::Handshake::start(&phone_link::link().key(), &c));
+    let link = PhoneLink::wifi_entry(
+        calls_http::came_through_proxy(&headers),
+        !device_ok,
+        started.as_ref().map(|(h, _)| *h),
+    );
+    let mut res = ws.on_upgrade(move |socket| handle_ws(socket, state, link));
+    if let Some((_, answer)) = &started {
+        phone_link::add_answer(&mut res, answer);
+    }
+    res
 }
 
 /// Where a phone trades a pairing code for the pairing key.
@@ -1995,6 +2168,7 @@ async fn phone_pairing_claim(
     // Wrong codes count per source (a proxy on this computer names its client).
     let from = lan::try_key(&ext, &headers).unwrap_or_else(|| peer.ip());
     let pin = wifi_tls::cert_pin_sha256();
+    let via_tls = ext.get::<wifi_tls::ViaTls>().is_some_and(|v| v.0);
     let res = claim_answer_with_tls(
         on,
         &headers,
@@ -2004,6 +2178,8 @@ async fn phone_pairing_claim(
         phone_wifi::pairing(),
         phone_wifi::entry_port(),
         pin.as_deref(),
+        via_tls,
+        phone_link::link(),
     );
     if res.status().is_success() {
         info!("phone pairing: a phone at {} paired with a pairing code", peer.ip());
@@ -2013,22 +2189,13 @@ async fn phone_pairing_claim(
     res
 }
 
-/// [`phone_pairing_claim`]'s answer. Errors carry a `code`: `bad_request` (no
-/// JSON or no code), `phone_wifi_off`, `no_code` (none in use: expired, used
-/// or voided), `wrong_code`, `too_many_tries`.
-#[cfg(test)]
-fn claim_answer(
-    phone_wifi_on: bool,
-    headers: &axum::http::HeaderMap,
-    body: &[u8],
-    from: std::net::IpAddr,
-    codes: &phone_wifi::PairCodes,
-    pairing: &phone_wifi::Pairing,
-    entry_port: Option<u16>,
-) -> axum::response::Response {
-    claim_answer_with_tls(phone_wifi_on, headers, body, from, codes, pairing, entry_port, None)
-}
-
+/// [`phone_pairing_claim`]'s answer. Only the channel-bound form is taken
+/// (`cnonce` and `code_mac` over TLS, [`wifi_tls::claim_request_mac`]); the
+/// code itself in the request is refused. Errors carry a `code`: `bad_request`
+/// (no JSON, or nothing to check), `old_app` (the plain code of an older app,
+/// or a request without TLS), `phone_wifi_off`, `no_code` (none in use:
+/// expired, used or voided), `wrong_code`, `too_many_tries`.
+#[allow(clippy::too_many_arguments)]
 fn claim_answer_with_tls(
     phone_wifi_on: bool,
     headers: &axum::http::HeaderMap,
@@ -2038,6 +2205,8 @@ fn claim_answer_with_tls(
     pairing: &phone_wifi::Pairing,
     entry_port: Option<u16>,
     tls_pin: Option<&str>,
+    via_tls: bool,
+    link: &phone_link::LinkKey,
 ) -> axum::response::Response {
     let json_type = headers
         .get(axum::http::header::CONTENT_TYPE)
@@ -2060,16 +2229,27 @@ fn claim_answer_with_tls(
         (Some(n), Some(m), Some(p)) => Some((n, m, p)),
         _ => None,
     };
-    if code.is_none() && mac_req.is_none() {
-        return calls_http::api_error(StatusCode::BAD_REQUEST, "bad_request", "send JSON with the pairing code: {\"code\": \"123456\"}");
+    if code.is_none() && cnonce.is_none() && code_mac.is_none() {
+        return calls_http::api_error(StatusCode::BAD_REQUEST, "bad_request", "send JSON with cnonce and code_mac");
+    }
+    // The code itself (older apps), or a request without TLS: the key would
+    // travel where others could read it.
+    if mac_req.is_none() || !via_tls {
+        return calls_http::api_error(
+            StatusCode::GONE,
+            "old_app",
+            "this way of pairing is no longer taken; update the Bageo app and pair again",
+        );
     }
     if !phone_wifi_on {
         return calls_http::api_error(StatusCode::CONFLICT, "phone_wifi_off", "phones over Wi-Fi are turned off");
     }
-    match codes.claim_authenticated(code.as_deref(), mac_req, from, std::time::Instant::now()) {
+    match codes.claim_authenticated(None, mac_req, from, std::time::Instant::now()) {
         Ok(matched_code) => {
             let token = pairing.key();
-            let mut body = json!({"ok": true, "token": token, "path": "/ws"});
+            // The link key too, inside the pinned TLS answer: the phone then
+            // checks this agent on every connection, as one paired over USB.
+            let mut body = json!({"ok": true, "token": token, "path": "/ws", "link_key": link.key()});
             if let Some(port) = entry_port {
                 body["ws_port"] = json!(port);
             }
@@ -2132,7 +2312,8 @@ fn spawn_phone_wifi(state: AppState, main_addr: SocketAddr) {
                         .merge(Router::new().route(PAIRING_CLAIM_PATH, post(phone_pairing_claim)).with_state(state.clone()));
                         let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
                         let tls = wifi_tls::current();
-                        let require_tls = wifi_tls::tls_only();
+                        // Without a certificate there is nothing but plain ws:// to offer.
+                        let require_tls = tls.is_some() && wifi_tls::tls_only();
                         let task = tokio::spawn(async move {
                             let served = wifi_tls::serve_dual(listener, app, tls, require_tls, async {
                                 let _ = stopped.await;
@@ -3144,6 +3325,7 @@ async fn send_agent_info(state: &AppState, sink: &WsSink, link: PhoneLink) {
             &mdns::parse_name_setting(&rt.mdns_name),
             || phone_wifi::pairing().key(),
             pin.as_deref(),
+            // With a certificate only wss:// (PHONE_WIFI_ALLOW_PLAIN adds ws://).
             wifi_tls::tls_only(),
         );
         msg.insert("wifi".into(), json!({ "urls": urls }));
@@ -3157,13 +3339,14 @@ async fn ws_upgrade(
     ws: WebSocketUpgrade,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
+    ext: axum::http::Extensions,
     Query(q): Query<HashMap<String, String>>,
     State(state): State<AppState>,
 ) -> axum::response::Response {
-    phone_ws(ws, peer, &headers, &q, state)
+    phone_ws(ws, peer, &headers, &ext, &q, state)
 }
 
-async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
+async fn handle_ws(socket: WebSocket, base_state: AppState, mut link: PhoneLink) {
     // Session view of runtime settings: snapshot here, refreshed at call start
     // (hello/ringing). `state.settings` carries the env+runtime merge so all
     // existing helpers keep reading `state.settings.*` unchanged.
@@ -3251,6 +3434,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
     // Set by the confirm-prompt task once playback ends → arms the DTMF wait.
     let arm_vm_confirm = Arc::new(AtomicBool::new(false));
     let arm_vm_contact_readback = Arc::new(AtomicBool::new(false));
+    // A phone that started the link check must finish it with its hello by then.
+    let hello_by = tokio::time::Instant::now() + HELLO_WITHIN;
 
     if send_json(
         &sink,
@@ -3348,6 +3533,10 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                 // arm_auto_ai is re-checked at top of next loop iteration.
                 continue;
             }
+            _ = tokio::time::sleep_until(hello_by), if link.awaiting_hello() => {
+                warn!("phone connection closed: the link check was started but no hello came within {}s", HELLO_WITHIN.as_secs());
+                break;
+            }
             maybe_msg = stream.next() => {
                 let Some(msg) = maybe_msg else { break };
                 let msg = match msg {
@@ -3357,31 +3546,67 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                         break;
                     }
                 };
+                // Until the hello finishes a started link check, nothing else is taken.
+                if link.awaiting_hello() && !matches!(msg, Message::Text(_) | Message::Ping(_) | Message::Pong(_)) {
+                    warn!("phone connection closed: a message before the hello finished the link check");
+                    break;
+                }
                 match msg {
                     Message::Text(t) => {
                         let parsed: Value = match serde_json::from_str(&t) {
                             Ok(v) => v,
+                            Err(_) if link.awaiting_hello() => {
+                                warn!("phone connection closed: not a hello while the link check is open");
+                                break;
+                            }
                             Err(_) => {
                                 let _ = send_json(&sink, json!({"type":"error","message":"invalid json"})).await;
                                 continue;
                             }
                         };
                         let mtype = parsed.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                        if link.awaiting_hello() && mtype != "hello" {
+                            warn!("phone connection closed: {mtype:?} before the hello finished the link check");
+                            break;
+                        }
                         match mtype {
                             "hello" => {
+                                // The phone started the link check: its hello must finish it.
+                                let checked = link.finish_check(parsed.get("link_proof").and_then(Value::as_str));
+                                // A phone on the cable without a working key: hand it the key again.
+                                if !link.wifi && !link.verified {
+                                    if let Some(s) = parsed.get("serial").and_then(Value::as_str) {
+                                        usb_bridge::link_check_missed(&canonical_device_serial(s));
+                                    }
+                                }
+                                if !checked {
+                                    warn!("phone hello refused: the link check failed; closing");
+                                    break;
+                                }
                                 let ws_mode = parsed
                                     .get("mode")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("");
-                                if let Some(s) = parsed.get("serial").and_then(|v| v.as_str()) {
-                                    if !s.is_empty() {
-                                        serial = s.to_string();
-                                    }
+                                let named = parsed
+                                    .get("serial")
+                                    .and_then(|v| v.as_str())
+                                    .filter(|s| !s.is_empty())
+                                    .unwrap_or(&serial)
+                                    .to_string();
+                                // A phone that passed the check holds its serial: one that did not cannot take it.
+                                if !phone_link::may_take(&canonical_device_serial(&named), link.verified, phone_link::holders()) {
+                                    warn!("phone hello refused: a checked connection holds that serial and this one skipped the link check");
+                                    break;
                                 }
+                                serial = named;
                                 if let Some(model) = parsed.get("model").and_then(|v| v.as_str()) {
                                     notify::remember_device(&canonical_device_serial(&serial), model);
                                 }
                                 if ws_mode == "CONTROL_IDLE" {
+                                    // Released when this connection ends.
+                                    let _held = link
+                                        .verified
+                                        .then(|| phone_link::holders().hold(&canonical_device_serial(&serial)));
                                     state
                                         .control
                                         .register_client(serial.clone(), sink.clone())
@@ -3394,6 +3619,8 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                     let fit_notice = state.phones.connected(&serial, sink.clone(), &parsed);
                                     tell_owner_about_call_audio(&state, &serial, fit_notice);
                                     state.phones.set_wifi(&serial, link.wifi);
+                                    // A phone on this computer without the link check: the console asks for an app update.
+                                    state.phones.set_link_checked(&serial, link.verified || link.wifi);
                                     sync_normal_mode(&state, &serial).await;
                                     // An app that lists its SIMs: errands dial from the right one.
                                     errands::note_hello_sims(&canonical_device_serial(&serial), &parsed);
@@ -3919,6 +4146,11 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                             "ringing" => {
                                 if let Some(s) = parsed.get("serial").and_then(|v| v.as_str()) {
                                     if !s.is_empty() {
+                                        // Same rule as the hello: no taking a checked phone's serial.
+                                        if !phone_link::may_take(&canonical_device_serial(s), link.verified, phone_link::holders()) {
+                                            warn!("phone ringing refused: a checked connection holds that serial and this one skipped the link check");
+                                            break;
+                                        }
                                         serial = s.to_string();
                                     }
                                 }
@@ -4433,7 +4665,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         if !hit.is_product_key() {
                                             info!(
                                                 "IVR reject non-product DTMF digit={} conf={:.3} purity={:.3} serial={serial}",
-                                                hit.digit, hit.confidence, hit.purity
+                                                log_text::Said(&hit.digit.to_string()), hit.confidence, hit.purity
                                             );
                                             continue;
                                         }
@@ -4441,7 +4673,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         if !accept {
                                             info!(
                                                 "IVR reject structure DTMF digit={} conf={:.3} purity={:.3} high_margin={:.2} phase={phase:?} serial={serial}",
-                                                hit.digit, hit.confidence, hit.purity, hit.high_margin
+                                                log_text::Said(&hit.digit.to_string()), hit.confidence, hit.purity, hit.high_margin
                                             );
                                             continue;
                                         }
@@ -4458,7 +4690,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         if !is_action {
                                             info!(
                                                 "IVR ignore non-action DTMF digit={} conf={:.3} serial={serial}",
-                                                hit.digit, hit.confidence
+                                                log_text::Said(&hit.digit.to_string()), hit.confidence
                                             );
                                             continue;
                                         }
@@ -4467,7 +4699,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         deadline = None;
                                         info!(
                                             "IVR DTMF digit={} conf={:.3} purity={:.3} high_margin={:.2} phase={phase:?} remote_only serial={serial}",
-                                            hit.digit, hit.confidence, hit.purity, hit.high_margin
+                                            log_text::Said(&hit.digit.to_string()), hit.confidence, hit.purity, hit.high_margin
                                         );
                                         agent_dbg(
                                             "main.rs:dtmf", "dtmf_received", "H4",
@@ -4561,7 +4793,7 @@ async fn handle_ws(socket: WebSocket, base_state: AppState, link: PhoneLink) {
                                         } else {
                                             info!(
                                                 "IVR ignore digit={} (hold={} vm={} end={:?}) serial={serial}",
-                                                hit.digit, hold_key, vm_key, end_keys
+                                                log_text::Said(&hit.digit.to_string()), hold_key, vm_key, end_keys
                                             );
                                         }
                                     }
@@ -11072,9 +11304,21 @@ async fn appointment_callbacks(state: &AppState, serial: &str, ev: Option<&Value
     }
 }
 
+/// The errand timer looks again at least this often.
+const ERRAND_TIMER_IDLE: Duration = Duration::from_secs(30);
+
 /// Errands waiting for a phone: dialed once it is free, failed after their
 /// limit ([`errands::sweep`]). Every 15 s.
 async fn errand_tick(state: &AppState) {
+    errand_run(state, false).await;
+}
+
+/// Scheduled errands and next tries that are due ([`errands::due`]).
+async fn errand_due(state: &AppState) {
+    errand_run(state, true).await;
+}
+
+async fn errand_run(state: &AppState, due: bool) {
     let rt = state.settings_store.snapshot();
     let eff = rt.effective(&state.settings);
     let phones = errands::phone_view(&state.control, &state.phones, &state.calls, &state.errands.sims).await;
@@ -11088,7 +11332,11 @@ async fn errand_tick(state: &AppState) {
         calls: &state.calls,
         phones,
     };
-    errands::sweep(&env).await;
+    if due {
+        errands::due(&env).await;
+    } else {
+        errands::sweep(&env).await;
+    }
 }
 
 /// Persona mode gave up on the AI and hung up (`persona_ai_unavailable_hangup`).
@@ -13766,6 +14014,205 @@ mod review_t4_tests {
 }
 
 #[cfg(test)]
+mod phone_link_ws_tests {
+    use super::*;
+    use futures_util::SinkExt;
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+    use tokio_tungstenite::tungstenite::Message as WsMessage;
+
+    type Phone = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+    /// The main port's phone routes on loopback, over a test agent.
+    async fn serve() -> (SocketAddr, std::path::PathBuf) {
+        let (addr, root, _) = serve_with_state().await;
+        (addr, root)
+    }
+
+    async fn serve_with_state() -> (SocketAddr, std::path::PathBuf, AppState) {
+        let (state, root) = crate::health_access_tests::make_test_app_state("link-ws");
+        let app = Router::new()
+            .route("/", get(crate::root))
+            .route("/ws", get(crate::ws_upgrade))
+            .with_state(state.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await;
+        });
+        (addr, root, state)
+    }
+
+    /// True when the agent closes the connection (a close frame or the end).
+    async fn closed(ws: &mut Phone, within: Duration) -> bool {
+        let until = tokio::time::Instant::now() + within;
+        loop {
+            match tokio::time::timeout_at(until, ws.next()).await {
+                Ok(Some(Ok(WsMessage::Close(_)))) | Ok(Some(Err(_))) | Ok(None) => return true,
+                Ok(Some(Ok(_))) => continue,
+                Err(_) => return false,
+            }
+        }
+    }
+
+    /// The link check started, no hello, straight to call messages or audio:
+    /// the agent closes, and no call record or notice comes of it.
+    #[tokio::test]
+    async fn link_messages_before_the_hello_close_without_a_call() {
+        let (addr, root, state) = serve_with_state().await;
+        let marker = "0912000777";
+        let firsts = [
+            json!({"type": "ringing", "serial": "link-early", "caller_id": marker}),
+            json!({"type": "call_end", "serial": "link-early", "caller_id": marker}),
+            json!({"type": "end_utterance"}),
+            json!({"type": "owner_takeover"}),
+        ];
+        for first in firsts {
+            let (mut ws, _, _) = connect_checked(addr, "/ws", &phone_link::fresh_key()).await;
+            ws.send(WsMessage::Text(first.to_string().into())).await.unwrap();
+            assert!(closed(&mut ws, Duration::from_secs(5)).await, "{first} before the hello must close");
+        }
+        let (mut ws, _, _) = connect_checked(addr, "/", &phone_link::fresh_key()).await;
+        ws.send(WsMessage::Binary(vec![0u8; 1920].into())).await.unwrap();
+        assert!(closed(&mut ws, Duration::from_secs(5)).await, "audio before the hello must close");
+        let (mut ws, _, _) = connect_checked(addr, "/ws", &phone_link::fresh_key()).await;
+        ws.send(WsMessage::Text("not json".into())).await.unwrap();
+        assert!(closed(&mut ws, Duration::from_secs(5)).await, "junk before the hello must close");
+
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(state.calls.live_calls_count_try(), 0, "no call started");
+        assert!(state.calls.list().await.is_empty(), "no call record");
+        let (_, notices) = crate::recent_notices::snapshot(0);
+        assert!(!notices.iter().any(|n| n.text.contains(marker) || n.from.contains(marker)), "no notice");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The link check started and no hello came: closed after [`HELLO_WITHIN`].
+    #[tokio::test]
+    async fn link_hello_must_come_in_time() {
+        let (addr, root) = serve().await;
+        let (mut ws, _, _) = connect_checked(addr, "/ws", &phone_link::fresh_key()).await;
+        assert!(closed(&mut ws, HELLO_WITHIN + Duration::from_secs(3)).await, "silent after the upgrade: closed");
+        // Without the check (an older app) there is no such deadline.
+        let (mut old, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/")).await.unwrap();
+        assert!(!closed(&mut old, HELLO_WITHIN + Duration::from_secs(1)).await);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `ringing` may not move an unchecked connection onto a checked phone's serial.
+    #[tokio::test]
+    async fn link_unchecked_ringing_cannot_take_a_checked_serial() {
+        let (addr, root) = serve().await;
+        let key = phone_link::link().key();
+        let serial = format!("link-ring-{}", uuid::Uuid::new_v4().simple());
+        let cnonce = phone_link::fresh_key();
+        let (mut real, snonce, _) = connect_checked(addr, "/ws", &cnonce).await;
+        let (_, phone) = phone_link::proofs(&key, &cnonce, &snonce.unwrap()).unwrap();
+        hello(&mut real, &serial, Some(&phone)).await;
+        assert!(acked(&mut real).await);
+        let (mut fake, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/")).await.unwrap();
+        let ring = json!({"type": "ringing", "serial": serial, "caller_id": "0912000888"});
+        fake.send(WsMessage::Text(ring.to_string().into())).await.unwrap();
+        assert!(closed(&mut fake, Duration::from_secs(5)).await);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Connect with the link check (`cnonce`): the phone, the agent's nonce and proof.
+    async fn connect_checked(addr: SocketAddr, path: &str, cnonce: &str) -> (Phone, Option<String>, Option<String>) {
+        let mut rq = format!("ws://{addr}{path}").into_client_request().unwrap();
+        rq.headers_mut().insert(phone_link::HEADER_LINK, "1".parse().unwrap());
+        rq.headers_mut().insert(phone_link::HEADER_CNONCE, cnonce.parse().unwrap());
+        let (ws, resp) = tokio_tungstenite::connect_async(rq).await.expect("upgrade");
+        let header = |n: &str| resp.headers().get(n).and_then(|v| v.to_str().ok()).map(str::to_string);
+        (ws, header(phone_link::HEADER_SNONCE), header(phone_link::HEADER_PROOF))
+    }
+
+    async fn hello(ws: &mut Phone, serial: &str, proof: Option<&str>) {
+        let mut msg = json!({"type": "hello", "serial": serial, "mode": "CONTROL_IDLE", "app_version": "test"});
+        if let Some(p) = proof {
+            msg["link_proof"] = json!(p);
+        }
+        ws.send(WsMessage::Text(msg.to_string().into())).await.unwrap();
+    }
+
+    /// True when `hello_ack` comes; false when the agent closes or stays quiet.
+    async fn acked(ws: &mut Phone) -> bool {
+        loop {
+            match tokio::time::timeout(Duration::from_secs(5), ws.next()).await {
+                Ok(Some(Ok(WsMessage::Text(t)))) if t.as_str().contains("hello_ack") => return true,
+                Ok(Some(Ok(WsMessage::Close(_)))) | Ok(Some(Err(_))) | Ok(None) | Err(_) => return false,
+                Ok(Some(Ok(_))) => continue,
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn link_handshake_proves_the_agent_on_both_paths() {
+        let (addr, root) = serve().await;
+        let key = phone_link::link().key();
+        for path in ["/", "/ws"] {
+            let cnonce = phone_link::fresh_key();
+            let (mut ws, snonce, proof) = connect_checked(addr, path, &cnonce).await;
+            let snonce = snonce.expect("the agent's nonce");
+            let (host, phone) = phone_link::proofs(&key, &cnonce, &snonce).unwrap();
+            assert_eq!(proof.as_deref(), Some(host.as_str()), "{path}: the agent proves it holds the key");
+            hello(&mut ws, &format!("link-ok{}", path.len()), Some(&phone)).await;
+            assert!(acked(&mut ws).await, "{path}: the right link_proof is taken");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn link_hello_with_a_wrong_proof_is_refused() {
+        let (addr, root) = serve().await;
+        let cnonce = phone_link::fresh_key();
+        let (mut ws, _, _) = connect_checked(addr, "/ws", &cnonce).await;
+        hello(&mut ws, "link-wrong", Some(&"00".repeat(32))).await;
+        assert!(!acked(&mut ws).await, "a wrong link_proof closes the connection");
+        let (mut ws, _, _) = connect_checked(addr, "/ws", &cnonce).await;
+        hello(&mut ws, "link-wrong", None).await;
+        assert!(!acked(&mut ws).await, "a started check without a proof closes too");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn link_missing_headers_still_connect_in_compat_without_proof() {
+        if phone_link::mode() != phone_link::Mode::Compat {
+            return;
+        }
+        let (addr, root) = serve().await;
+        let (mut ws, resp) = tokio_tungstenite::connect_async(format!("ws://{addr}/")).await.unwrap();
+        assert!(!resp.headers().contains_key(phone_link::HEADER_PROOF), "no check asked, no proof given");
+        hello(&mut ws, "link-old-app", None).await;
+        assert!(acked(&mut ws).await, "an older app still works (untrusted)");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn link_unchecked_hello_cannot_replace_a_checked_phone() {
+        let (addr, root) = serve().await;
+        let key = phone_link::link().key();
+        let serial = format!("link-held-{}", uuid::Uuid::new_v4().simple());
+        let cnonce = phone_link::fresh_key();
+        let (mut real, snonce, _) = connect_checked(addr, "/ws", &cnonce).await;
+        let (_, phone) = phone_link::proofs(&key, &cnonce, &snonce.unwrap()).unwrap();
+        hello(&mut real, &serial, Some(&phone)).await;
+        assert!(acked(&mut real).await);
+
+        let (mut fake, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/")).await.unwrap();
+        hello(&mut fake, &serial, None).await;
+        assert!(!acked(&mut fake).await, "an unchecked hello may not take the checked phone's place");
+
+        // A second checked connection of the same phone may.
+        let cnonce2 = phone_link::fresh_key();
+        let (mut again, snonce2, _) = connect_checked(addr, "/ws", &cnonce2).await;
+        let (_, phone2) = phone_link::proofs(&key, &cnonce2, &snonce2.unwrap()).unwrap();
+        hello(&mut again, &serial, Some(&phone2)).await;
+        assert!(acked(&mut again).await);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+#[cfg(test)]
 mod access_and_whitelist_tests {
     use super::*;
 
@@ -13843,61 +14290,170 @@ mod access_and_whitelist_tests {
             (status, body)
         };
 
+        let pin = "a1".repeat(32);
+        let cnonce = "c0ffee".repeat(4);
+        let mac_body = |code: &str| {
+            json!({"cnonce": cnonce, "code_mac": wifi_tls::claim_request_mac(code, &cnonce, &pin), "name": "Pixel"}).to_string()
+        };
+        let link = phone_link::LinkKey::open(&dir);
+        let claim = |on: bool, headers: &axum::http::HeaderMap, body: &[u8], from, port, via_tls| {
+            claim_answer_with_tls(on, headers, body, from, &codes, &pairing, port, Some(&pin), via_tls, &link)
+        };
+
         let from: std::net::IpAddr = "192.168.1.30".parse().unwrap();
-        let (s, b) = answer(claim_answer(true, &json_headers, br#"{"code":"123456"}"#, from, &codes, &pairing, None)).await;
+        let (s, b) = answer(claim(true, &json_headers, mac_body("123456").as_bytes(), from, None, true)).await;
         assert_eq!((s, b["code"].as_str()), (403, Some("no_code")), "no code made yet");
         let code = codes.issue(std::time::Instant::now());
-        let body = format!(r#"{{"code":"{code}","name":"Pixel"}}"#);
-        let (s, b) = answer(claim_answer(true, &axum::http::HeaderMap::new(), body.as_bytes(), from, &codes, &pairing, None)).await;
+        let body = mac_body(&code);
+        let (s, b) = answer(claim(true, &axum::http::HeaderMap::new(), body.as_bytes(), from, None, true)).await;
         assert_eq!((s, b["code"].as_str()), (400, Some("bad_request")), "no JSON header");
-        let (s, b) = answer(claim_answer(true, &json_headers, b"{}", from, &codes, &pairing, None)).await;
-        assert_eq!((s, b["code"].as_str()), (400, Some("bad_request")), "no code sent");
-        let (s, b) = answer(claim_answer(false, &json_headers, body.as_bytes(), from, &codes, &pairing, None)).await;
+        let (s, b) = answer(claim(true, &json_headers, b"{}", from, None, true)).await;
+        assert_eq!((s, b["code"].as_str()), (400, Some("bad_request")), "nothing sent");
+        let (s, b) = answer(claim(false, &json_headers, body.as_bytes(), from, None, true)).await;
         assert_eq!((s, b["code"].as_str()), (409, Some("phone_wifi_off")));
 
-        let (s, b) = answer(claim_answer(true, &json_headers, body.as_bytes(), from, &codes, &pairing, Some(8788))).await;
+        let (s, b) = answer(claim(true, &json_headers, body.as_bytes(), from, Some(8788), true)).await;
         assert_eq!(s, 200);
         let token = b["token"].as_str().unwrap().to_string();
         assert_eq!(token, pairing.key(), "the pairing key");
         assert_eq!(b["path"], "/ws");
         assert_eq!(b["ws_port"], 8788);
+        assert_eq!(b["proof"].as_str().unwrap(), wifi_tls::claim_response_proof(&code, &cnonce, &pin, &token));
+        assert_eq!(b["link_key"].as_str(), Some(link.key().as_str()), "IP pairing hands over the link key too");
+        assert!(phone_link::valid_key(b["link_key"].as_str().unwrap()));
         assert!(pairing.accepts(Some(&token)));
         assert!(phone_wifi::entry_allows(Some(&token), "", &pairing), "it opens the phone entry");
-        let (s, b) = answer(claim_answer(true, &json_headers, body.as_bytes(), from, &codes, &pairing, None)).await;
+        let (s, b) = answer(claim(true, &json_headers, body.as_bytes(), from, None, true)).await;
         assert_eq!((s, b["code"].as_str()), (403, Some("no_code")), "used once, then gone");
 
         let code = codes.issue(std::time::Instant::now());
         let wrong = if code == "000000" { "000001" } else { "000000" };
-        let wrong_body = format!(r#"{{"code":"{wrong}"}}"#);
+        let wrong_body = mac_body(wrong);
         let guesser: std::net::IpAddr = "203.0.113.5".parse().unwrap();
         for _ in 0..phone_wifi::CODE_MAX_WRONG {
-            let (s, b) = answer(claim_answer(true, &json_headers, wrong_body.as_bytes(), guesser, &codes, &pairing, None)).await;
+            let (s, b) = answer(claim(true, &json_headers, wrong_body.as_bytes(), guesser, None, true)).await;
             assert_eq!((s, b["code"].as_str()), (403, Some("wrong_code")));
         }
-        let right_body = format!(r#"{{"code":"{code}"}}"#);
-        let (s, b) = answer(claim_answer(true, &json_headers, right_body.as_bytes(), guesser, &codes, &pairing, None)).await;
+        let right_body = mac_body(&code);
+        let (s, b) = answer(claim(true, &json_headers, right_body.as_bytes(), guesser, None, true)).await;
         assert_eq!((s, b["code"].as_str()), (429, Some("too_many_tries")), "five wrong tries hold back the guesser");
-        let (s, _) = answer(claim_answer(true, &json_headers, right_body.as_bytes(), from, &codes, &pairing, None)).await;
+        let (s, _) = answer(claim(true, &json_headers, right_body.as_bytes(), from, None, true)).await;
         assert_eq!(s, 200, "the phone being paired still gets the key");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The code itself (older apps) is refused, and so is the channel-bound
+    /// form without TLS: either way the key would travel readable.
+    #[tokio::test]
+    async fn plain_pairing_code_is_refused() {
+        let dir = std::env::temp_dir().join(format!("bageo-claim-old-{}", uuid::Uuid::new_v4().simple()));
+        let pairing = phone_wifi::Pairing::open(&dir);
+        let codes = phone_wifi::PairCodes::new();
+        let mut json_headers = axum::http::HeaderMap::new();
+        json_headers.insert(axum::http::header::CONTENT_TYPE, "application/json".parse().unwrap());
+        let from: std::net::IpAddr = "192.168.1.30".parse().unwrap();
+        let pin = "a1".repeat(32);
+        let link = phone_link::LinkKey::open(&dir);
+        let code = codes.issue(std::time::Instant::now());
+        let status_code = |res: axum::response::Response| async move {
+            let status = res.status().as_u16();
+            let body: Value = serde_json::from_slice(&axum::body::to_bytes(res.into_body(), 4096).await.unwrap()).unwrap();
+            (status, body["code"].as_str().unwrap_or("").to_string(), body.get("token").is_some() || body.get("link_key").is_some())
+        };
+        let plain = format!(r#"{{"code":"{code}"}}"#);
+        for (pin, via_tls) in [(Some(pin.as_str()), true), (Some(pin.as_str()), false), (None, false)] {
+            let r = claim_answer_with_tls(true, &json_headers, plain.as_bytes(), from, &codes, &pairing, None, pin, via_tls, &link);
+            assert_eq!(status_code(r).await, (410, "old_app".to_string(), false));
+        }
+        let cnonce = "ab".repeat(16);
+        let mac = json!({"cnonce": cnonce, "code_mac": wifi_tls::claim_request_mac(&code, &cnonce, &pin)}).to_string();
+        let r = claim_answer_with_tls(true, &json_headers, mac.as_bytes(), from, &codes, &pairing, None, Some(&pin), false, &link);
+        assert_eq!(status_code(r).await, (410, "old_app".to_string(), false), "no TLS");
+        let r = claim_answer_with_tls(true, &json_headers, mac.as_bytes(), from, &codes, &pairing, None, Some(&pin), true, &link);
+        assert_eq!(status_code(r).await.0, 200, "the code was not used up by the refused tries");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn how_a_phone_came_in() {
-        let usb = PhoneLink::main_port(true, false, false, false);
-        assert!(!usb.wifi && usb.trusted && !usb.on_pairing, "the USB tunnel");
-        let lan_open = PhoneLink::main_port(false, false, false, false);
+        let usb = PhoneLink::main_port(true, false, false, false, None);
+        assert!(!usb.wifi && !usb.trusted && !usb.on_pairing, "the USB tunnel alone is not trusted");
+        let lan_open = PhoneLink::main_port(false, false, false, false, None);
         assert!(lan_open.wifi && !lan_open.trusted, "a LAN phone without a token gets no pairing key");
-        let paired = PhoneLink::main_port(false, false, true, false);
+        let paired = PhoneLink::main_port(false, false, true, false, None);
         assert!(paired.wifi && paired.trusted && paired.on_pairing);
-        let device = PhoneLink::main_port(false, false, false, true);
+        let device = PhoneLink::main_port(false, false, false, true, None);
         assert!(device.trusted && !device.on_pairing, "DEVICE_TOKEN phones stay when paired again");
-        let proxied = PhoneLink::main_port(true, true, false, true);
+        let proxied = PhoneLink::main_port(true, true, false, true, None);
         assert!(proxied.wifi && proxied.proxied, "a reverse proxy is not the USB tunnel");
-        let entry = PhoneLink::wifi_entry(false, true);
+        let entry = PhoneLink::wifi_entry(false, true, None);
         assert!(entry.wifi && entry.trusted && entry.on_pairing);
-        let entry_dev = PhoneLink::wifi_entry(false, false);
+        let entry_dev = PhoneLink::wifi_entry(false, false, None);
         assert!(entry_dev.wifi && entry_dev.trusted && !entry_dev.on_pairing, "DEVICE_TOKEN on Wi-Fi entry survives renew");
+    }
+
+    /// Loopback no longer makes a phone trusted: only the link check does
+    /// (or the pairing key / `DEVICE_TOKEN`).
+    #[test]
+    fn link_loopback_is_trusted_only_after_the_check() {
+        let key = phone_link::fresh_key();
+        let cnonce = [7u8; 32];
+        let (hs, answer) = phone_link::Handshake::start(&key, &cnonce);
+        let cnonce_hex = "07".repeat(32);
+        let (_, phone) = phone_link::proofs(&key, &cnonce_hex, &answer.snonce).unwrap();
+
+        let mut no_check = PhoneLink::main_port(true, false, false, false, None);
+        assert!(no_check.finish_check(None), "an app without the check still says hello");
+        assert!(!no_check.trusted && !no_check.verified);
+
+        let mut wrong = PhoneLink::main_port(true, false, false, false, Some(hs));
+        assert!(!wrong.finish_check(Some(&"00".repeat(32))), "wrong proof");
+        assert!(!wrong.trusted && !wrong.verified);
+        let mut missing = PhoneLink::main_port(true, false, false, false, Some(hs));
+        assert!(!missing.finish_check(None), "started the check, no proof in the hello");
+
+        let mut ok = PhoneLink::main_port(true, false, false, false, Some(hs));
+        assert!(ok.finish_check(Some(&phone)));
+        assert!(ok.trusted && ok.verified && !ok.wifi);
+    }
+
+    #[test]
+    fn link_gate_compat_and_required() {
+        use phone_link::Mode::{Compat, Required};
+        let lo: SocketAddr = "127.0.0.1:50000".parse().unwrap();
+        let lan: SocketAddr = "192.168.1.20:50000".parse().unwrap();
+        let gate = |peer: &SocketAddr, token: Option<&str>, paired: bool, via_tls: bool, plain_ok: bool, checks: bool, mode| {
+            phone_gate(peer, false, false, token, "dev-test", paired, via_tls, plain_ok, checks, mode)
+        };
+        // An app without the check on this computer: in (not trusted) with compat, out with required.
+        assert_eq!(gate(&lo, None, false, false, false, false, Compat), PhoneGate::Open);
+        assert_eq!(gate(&lo, None, false, false, false, false, Required), PhoneGate::NoLinkCheck);
+        assert_eq!(gate(&lo, None, false, false, false, true, Required), PhoneGate::Open, "it asked for the check");
+        assert_eq!(gate(&lo, Some("dev-test"), false, false, false, false, Required), PhoneGate::Open, "DEVICE_TOKEN");
+        assert_eq!(gate(&lan, None, false, false, false, true, Compat), PhoneGate::NoToken, "the check is no token");
+        // The pairing key only over TLS, unless plain is allowed (or there is no certificate).
+        assert_eq!(gate(&lan, None, true, false, false, false, Compat), PhoneGate::PlainPairing);
+        assert_eq!(gate(&lan, None, true, true, false, false, Required), PhoneGate::Open);
+        assert_eq!(gate(&lan, None, true, false, true, false, Compat), PhoneGate::Open);
+    }
+
+    #[test]
+    fn wifi_tls_only_is_the_default() {
+        if std::env::var_os("PHONE_WIFI_ALLOW_PLAIN").is_none() {
+            assert!(wifi_tls::tls_only());
+            assert!(!wifi_tls::allow_plain());
+        }
+        let pin = "a1".repeat(32);
+        let urls = agent_info_wifi_urls_pinned(
+            Some(("127.0.0.1".parse().unwrap(), 8788)),
+            |_| Some(std::net::Ipv4Addr::new(192, 168, 1, 20)),
+            "bageo",
+            || "k3y".to_string(),
+            Some(&pin),
+            true,
+        );
+        assert_eq!(urls.len(), 2);
+        assert!(urls.iter().all(|u| u.starts_with("wss://") && u.contains("&pin=")), "{urls:?}");
     }
 
     #[test]

@@ -465,7 +465,8 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 | 语音菜单 | AI 最多等 90 秒等真人接听；它不能按键（`keypad_menu`）。 |
 | 运营商录音（“您拨打的号码是空号”） | 直接挂断（`carrier_message`）。 |
 | 没人接或失败 | 不会自动重拨：要不要“再打一次”由你决定。打开 `redial` 见下一行。 |
-| “拨到通”（`redial`） | 没人接、占线、对方关机或进语音信箱（不留言）：代打排队（`queued`，`call_code` 是 `redial_wait`，时间在 `redial_at`），一分钟后再拨，总共最多 30 次。有人接起来、拨满 30 次（`no_answer`）、号码不通、语音菜单或手机出问题就停。只在最后通知一次。 |
+| “拨到通”（`redial`） | 没人接、占线、对方关机、进语音信箱（立刻挂、不留言）或对方说“还没开放”：代打排队（`queued`，`call_code` 是 `redial_wait`，时间在 `redial_at`），上一通结束后 3 秒再拨（手机正在通话就 1 秒后再看）。响铃约 70 秒没人接才放弃，通常在那之前已转进语音信箱。听到排队录音（依序转接、客服全忙、报顺位）就留在线上等，最多 30 分钟、不超过这一轮的时限；真人说“请稍等”不算排队。有人接起来、从第一通算起的重拨分钟数到（`grab_min`，没设就是 30；`no_answer`；Bageo 重启不会重算）、号码不通、语音菜单或手机出问题就停。同一个号码每分钟最多 10 通的安全上限，而且同一个号码同时只能有一轮拨到通（`number_taken`）。只在最后通知一次。 |
+| 指定时间（`scheduled_at`） | 先等着（`scheduled`），时间前 2 秒用你选的手机和 SIM 拨出；默认打开“拨到通”。从那时起占用整部手机（两张 SIM 都算）它的重拨分钟数（`grab_min`，没设就是 30；只打一次：12 分钟），这段时间别的代打不能用；排在刚好结束时的可以。Bageo 重启后也还在；恢复备份会取消它（`call_code` `restored`）。那个时间 Bageo 没在运行的话，在这段分钟数内（只打一次：5 分钟）还是会开始，超过就算失败（`missed`）。还没结束的代打最多 50 条（`too_many_open`）。 |
 | 拨号中你点了取消 | 手机和号码立刻释放给下一通；万一电话还是接通了，会在 AI 开口前挂断。 |
 
 ### 代打对象
@@ -495,19 +496,22 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 | `task` | 你自己写的交代内容（最多 1,000 字）。 |
 | `identity` | `assistant` 或 `owner`。 |
 | `serial`、`device_label` | 拨出的手机和它的名称。 |
-| `status` | `queued`、`dialing`（电话在响，还没有人出声）、`on_call`（对方接起来出声了）、`done`、`no_answer`、`failed`、`cancelled`。后四个是最终状态。 |
+| `status` | `scheduled`（等指定的时间）、`queued`、`dialing`（电话在响，还没有人出声）、`on_call`（对方接起来出声了）、`done`、`no_answer`、`failed`、`cancelled`。后四个是最终状态。 |
 | `call_code` | 拨号进行到哪一步。值见下方。 |
 | `attempts` | 从 1 开始，每点一次“再打一次”或每重拨一次加 1。 |
 | `redial` | 打开了“拨到通”。没打开就不出现。 |
 | `redial_at` | 下一次什么时候拨（`call_code` 是 `redial_wait` 时）。其他时候不出现。 |
-| `redial_start` | 这一轮重拨从第几次开始（点“再打一次”会重新算 30 次）。是 0 就不出现。 |
+| `redial_start` | 这一轮重拨从第几次开始（点“再打一次”会重新算 `grab_min` 分钟）。是 0 就不出现。 |
+| `scheduled_at` | 指定时间的代打什么时候拨（带时差的当地时间）。立刻拨的不出现。 |
+| `grab_min` | 一轮重拨打多久（1～120 分钟）。能设置之前存的代打没有这一栏，按 30 分钟。 |
+| `grab_since`、`dialed_at` | 这一轮重拨从什么时候开始（`grab_min` 分钟从这里算），以及最近几次拨出的时间。空的就不出现。 |
 | `record_id` | 这一次的通话记录（`GET /calls/api/call/{id}`：文字记录和录音）。 |
 | `follow_up_of` | 这通是接着哪一条之前的代打；那一条最后 20 行文字记录会放进 AI 的脚本。 |
 | `questions` | `[{id, text, options, answer, answered_by, asked_at}]`：AI 问过你的问题，选项最多 4 个。 |
 | `result` | `null` 或 `{outcome, summary, details, follow_up, options, event, unconfirmed}`。字段见下方。 |
 | `history` | 之前几次的尝试，`[{attempt, status, result, record_id, ended_at, questions}]`。 |
 
-`call_code` 的值：`dialing`、`queued`、`answered`、`no_answer`、`failed`、`phone_busy`、`number_busy`、`no_phone`、`send_failed`、`keypad_menu`、`carrier_message`、`wrong_sim`、`agent_restarted`、`cancelled`、`redial_wait`、`voicemail`。
+`call_code` 的值：`scheduled`、`dialing`、`queued`、`answered`、`no_answer`、`failed`、`phone_busy`、`number_busy`、`no_phone`、`send_failed`、`keypad_menu`、`carrier_message`、`wrong_sim`、`agent_restarted`、`cancelled`、`redial_wait`、`voicemail`、`not_open`、`queue_wait`、`missed`、`restored`。
 
 `questions` 里的 `answered_by`：`owner`（你回答了）、`timeout`（你在看但没来得及回答）、`absent`（没人在看）；还在等时是 `null`。
 
@@ -517,14 +521,16 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 - `event`：`null` 或 `{start, end, title}`（带时差的当地时间；没谈定结束时间就没有 `end`）。
 - `unconfirmed`：`details` 或 `event` 里 AI 复述时对方没有明确确认的时间、日期、号码或名字（最多 8 项）；没有就不出现。
 
-代打保存在数据文件夹的 `errands.json`（保留最新 500 条）。Bageo 重启时还在进行中的代打会变成 `failed`（`call_code` `agent_restarted`）；打开“拨到通”的会接着拨，除非对方已经接起来过。
+代打保存在数据文件夹的 `errands.json`（保留最新 500 条）。Bageo 重启时还在进行中的代打会变成 `failed`（`call_code` `agent_restarted`）；打开“拨到通”的会接着拨，除非对方已经接起来过；指定时间的继续等它的时间。
 
 ### 代打路由
 
 | 方法与路径 | 内容 |
 |---|---|
-| `GET /calls/api/errands` | `{ok, errands}`，最新的在前，最多 200 条。 |
-| `POST /calls/api/errands` | 开始一条。请求体 `{number, name, contact_id, task, identity, serial, follow_up_of, answers, redial}`（`redial` 是 `true` 就打开“拨到通”，默认 `false`），响应 `{ok, errand}`。 |
+| `GET /calls/api/errands` | `{ok, errands, grab}`：所有还没结束的代打，再补最新已结束的，最多 200 条；`grab` 是 `{lead_s, gap_s, window_min, min_low, min_high, max_days, max_open, tz, utc_offset_min}`（`window_min`：没设时重拨几分钟，30；`min_low`、`min_high`：可设的范围，1～120）。 |
+| `POST /calls/api/errands` | 开始一条。请求体 `{number, name, contact_id, task, identity, serial, follow_up_of, answers, redial, grab_min}`（`redial` 是 `true` 就打开“拨到通”，默认 `false`；`grab_min` 是重拨几分钟，1～120 的整数，默认 30，其他值返回 400 `bad_grab_min`），响应 `{ok, errand}`。带 `scheduled_at` 就改成指定时间（见下方）。 |
+| `POST /calls/api/errands/{id}/schedule` | 还没开始的指定时间代打：请求体 `{scheduled_at, serial, sub_id, grab, grab_min}`（只有 `scheduled_at` 必填；不带 `grab_min` 就沿用原来的，检查方式同上，并按新的分钟数重查号码有没有被占用）。`{ok, errand}`。 |
+| `GET /calls/api/errands/lines?at=&grab=&grab_min=&except=` | 在 `at`（留空：现在）那通电话期间、拨到通打 `grab_min` 分钟（默认 30）时被别的代打占用的号码，`{ok, held: [{serial, sub_id, held_by}], grab}`。`except`：正在改时间的那一条。 |
 | `POST /calls/api/errands/preflight` | 拨出前看这条代打还缺什么。请求体 `{task, lang, number}`，响应 `{ok, kind, type, missing, note, remind, optional, region, ladder, source, ms}`。不会拨号。内容见下方。 |
 | `POST /calls/api/errands/{id}/cancel` | 排队中：取消。拨号中或通话中：挂断。已经结束的原样返回。`{ok, errand}`。 |
 | `POST /calls/api/errands/{id}/retry` | 同一条再打一次（`attempts` 加 1，上一次移到 `history`）。`{ok, errand}`。还在进行中（或上一通还没结束）：400 `busy`；手机相关的代码同新建。 |
@@ -540,6 +546,8 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 - `answers` 可以不带：你回答补问后的内容，格式 `{key: 文字}`。key 就是 `preflight` 在 `missing` 和 `optional` 返回的那些，另有 `note` 放自由文字；每项最多 80 字（`note` 120 字），不认识的 key 会被丢掉。它们会以一小段文字放进这通电话的脚本交给 AI。
 - `place_type` 可以不带：`preflight` 返回的 `type`。没带就由 Bageo 从交办内容判断是哪一类电话。
 - `sub_id` 可以不带：用 `serial` 那台手机的哪张 SIM 拨（也可以把 `serial` 写成 `<serial>:<sub_id>`）。那张 SIM 与 `+` 开头号码的国家不同时，会返回 `sim_other_country`，要带 `"abroad_ok": true` 把同一份内容再发一次（主人同意打国际电话）才会拨。这条代打会记住它，“再打一次”和拨到通重拨都沿用。
+- `scheduled_at` 可以不带：什么时候打，RFC 3339 或当地时间 `YYYY-MM-DDTHH:MM`（Bageo 的 `TZ`），要是之后的时间、最多 60 天内。一定要带 `serial` 和 `sub_id`；`grab`（默认 `true`）就是它的“拨到通”。和现在打一样，先问 `preflight`。给了但不是文字会返回 `bad_time`，绝不当成现在打。现在打的也不会用到指定时间代打在通话期间占用的手机（`line_reserved`；没指定 `serial` 就改用别的空着的手机）。
+- `held_by`（在 `line_taken`、`line_reserved`、`number_taken` 和 `lines` 里）：挡住的那条代打 `{id, name, number, status, scheduled_at}`。
 
 `POST /calls/api/errands/preflight` 的内容：
 
@@ -577,6 +585,15 @@ AI 代打就是 AI 替你打出去的电话。给它一个号码（或一位联�
 | `sim_other_country` | 新建、再打 | 指定的 SIM（`sub_id`）与号码不是同一个国家。响应另带 `sim_country`、`number_country`（两位国家代码）。带 `"abroad_ok": true` 再发一次就照样拨。 |
 | `not_found` | 新建 | `contact_id` 或 `follow_up_of` 不存在（这里返回 400）。 |
 | `busy` | 再打、删除 | 这条还在拨号或通话中。 |
+| `bad_time`／`past_time`／`too_far` | 新增、改时间、号码 | `scheduled_at` 看不懂或不是文字／不是之后的时间／超过 60 天。 |
+| `time_skipped` | 新增、改时间、号码 | 这个当地时间在夏令时调整中不存在。 |
+| `bad_grab_min` | 新增、改时间、号码 | `grab_min` 不是 1～120 的整数。 |
+| `need_line` | 新增 | 指定时间的代打没带 `serial` 和 `sub_id`。 |
+| `line_taken` | 新增、改时间 | 那段时间这部手机已经被别的代打占用；`held_by` 是哪一条。 |
+| `line_reserved` | 新增、再打 | 现在打会撞到这部手机上的指定时间代打（或合适的手机都被占用）；`held_by` 是哪一条。 |
+| `number_taken` | 新增、改时间、再打 | 同一个号码另有一轮拨到通的时段重叠；`held_by` 是哪一条。 |
+| `too_many_open` | 新增、再打 | 还没结束的代打已经有 50 条。 |
+| `not_scheduled` | 改时间 | 这条已经开始或结束。 |
 | `not_on_call` | say | 电话不在通话中（或已经结束）。 |
 | `empty_text`／`text_too_long` | say | 没有内容／超过 300 字。 |
 | `question_closed` | say | 那个问题已经回答、超时，或不是正在等的那一个。 |
@@ -769,7 +786,7 @@ Content-Type: application/json
 | `PUT /calls/api/devices/{serial}/sim-number` | 请求体 `{"sub_id": <整数>, "number": "..."}`。设置（留空表示清除）这部手机某张 SIM 的号码，让来电与 AI 代打直接显示并按号码挑选：`{ok, serial, sims}`。 |
 | `POST /calls/api/phone-pairing/renew` | 更换 Wi-Fi 配对密钥（`phone-pairing.key`）并断开通过 Wi-Fi 连接的手机，每部手机重新插上 USB 一次即可获取新密钥：`{ok: true}`（失败返回 HTTP 500 `save_failed`）。密钥本身不会返回。 |
 | `POST /calls/api/phone-pairing/code` | Body `{}`（JSON）。生成 6 位数配对码，10 分钟内有效，让手机不用 USB，输入 IP 地址和配对码就能配对；新的码会取代前一个：`{ok, code, expires_in, port, lan_ips, in_container}`。没设控制台密码时，只有 Bageo 那台电脑能要（否则 HTTP 403 `need_password`）；“手机也能用 Wi-Fi 连接”关闭时返回 HTTP 409 `phone_wifi_off`。 |
-| `POST /api/phone-pairing/claim` | 不在 `/calls/api/` 下面，也不用密码：配对码就是凭证。Body `{"code": "123456"}`（JSON）。只回答一次 `{ok: true, token, path: "/ws"}`（走 Wi-Fi 入口端口时另有 `ws_port`）：`token` 就是配对密钥，手机接着用 `/ws?token=<密钥>` 连接。错误都带 `code`：`bad_request`、`phone_wifi_off`、`no_code`（没有可用的码、已过期或已用过）、`wrong_code`、`too_many_tries`（HTTP 429；输错的次数按来源计算，请等一分钟）。 |
+| `POST /api/phone-pairing/claim` | 不在 `/calls/api/` 下面，也不用密码：配对码就是凭证。只接受 HTTPS，Body `{"cnonce": "...", "code_mac": "..."}`（JSON；配对码跟证书绑定，见 `wifi_tls.rs`）。只回答一次 `{ok: true, token, path: "/ws", link_key, tls_pin, wss, proof}`（走 Wi-Fi 入口端口时另有 `ws_port`）：`token` 就是配对密钥，手机接着用 `wss://…/ws?token=<密钥>&pin=<sha256>` 连接；`link_key` 是连接验证用的密钥。旧版应用的明文 `{"code": "123456"}` 或没走 TLS 的请求会收到 `old_app`（HTTP 410）。错误都带 `code`：`bad_request`、`phone_wifi_off`、`no_code`（没有可用的码、已过期或已用过）、`wrong_code`、`too_many_tries`（HTTP 429；输错的次数按来源计算，请等一分钟）。 |
 | `GET /health` | 排查问题用的大型 JSON 对象：版本、语言、哪些东西已配置、已连接的手机、进行中的通话；不含密钥或密码。完整内容要带控制台密码；没设密码时，只有 Bageo 那台电脑拿得到，其他来源拿简版（见下方说明最后一点）。 |
 | `GET /calls/api/health` | 控制台用，内容和 `/health` 的完整版相同。跟其他 `/calls/api/` 路由一样：设置了密码而没带返回 HTTP 401，没设密码就开放。 |
 
@@ -817,7 +834,8 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/devices/pixel-12345/mode" \
 
 - 每部手机保持一条长期的 *control* 连接，每通电话另开一条 *media* 连接。
 - 两种连接都双向传送 JSON 文本帧和原始的 16 kHz 单声道 16 位小端序 PCM 二进制帧（手机每 60 ms 发一帧）。
-- 来自这台电脑本身的连接（USB 通道）不需 Token 一律接受；Wi-Fi 连接可连 `PHONE_WIFI_PORT`（默认 `8788`，仅提供 `/ws`）并带上 USB 配对时发放的 `phone-pairing.key` 或 `DEVICE_TOKEN`，或连到主端口并在设置了 `DEVICE_TOKEN` 时带上 `?token=<DEVICE_TOKEN>`。
+- 来自这台电脑本身的连接（USB 通道）不需 Token 一律接受；Wi-Fi 连接可连 `PHONE_WIFI_PORT`（默认 `8788`，仅提供 `/ws`）并带上 USB 配对时发放的 `phone-pairing.key` 或 `DEVICE_TOKEN`，或连到主端口并在设置了 `DEVICE_TOKEN` 时带上 `?token=<DEVICE_TOKEN>`。配对密钥只接受走 TLS（`wss://`）的连接，除非设置了 `PHONE_WIFI_ALLOW_PLAIN=true`。
+- **连接验证：** 来自这台电脑本身的连接不再自动算可信。应用发送 `x-bageo-link: 1` 和 `x-bageo-link-cnonce`（32 字节随机值，hex）；101 响应带 `x-bageo-link-snonce` 与 `x-bageo-link-proof`（用连接密钥 `phone-link.key` 算的 HMAC-SHA256，Bageo 通过 USB 启动应用服务时交给应用）；应用的 `hello` 带 `link_proof`。不符就断开。`PHONE_LINK_AUTH=compat`（默认）时没做验证的旧应用仍可连接，但拿不到 Wi-Fi 地址；`required` 一律拒绝。
 
 逐字段的完整消息列表在 [`android/README.md`](../../android/README.md#websocket-protocol)（英文）。任何会说这套协议的程序都能代替手机，所以要加上 SIP 或软电话前端，完全不用改动通话逻辑。双方都会忽略不认识的内容，所以旧 App、旧版 Bageo照样能用。
 
@@ -833,7 +851,7 @@ curl -s -X POST "http://127.0.0.1:8787/calls/api/devices/pixel-12345/mode" \
 | Bageo → 手机 | `answer_plan` | `{delay_ms, prewarm, reject}`：响多久再接，或 `reject: true` 响铃中直接拒接（`reject_mode` 为 `decline` 的黑名单号码）。 |
 | 手机 → Bageo | `call_waiting_rejected` | `{serial, caller_id, sim_country, sim_sub_id}`：通话中又有第二通打进来，手机立刻拒接（AI 模式）。会留下通话记录并发出“通话中插播未接”通知。 |
 | Bageo → 手机／手机 → Bageo | `set_mode`／`set_mode_result` | `{mode, id}`／`{id, ok, mode, error}`：远程切换模式；`error` 用上面的代码。 |
-| Bageo → 手机 | `agent_info` | `{console_url}` 给 App 的“**打开网页控制台**”按钮用（`public_url` 或局域网地址）；通过受信任的 USB 通道时另附 `wifi: {urls: [...]}` 提供 Wi-Fi 配对地址（`ws://<局域网-IP>:<PHONE_WIFI_PORT>/ws?token=<key>`，开启局域网名称时另附 `ws://<名称>.local:<PHONE_WIFI_PORT>/ws?token=<key>`）。 |
+| Bageo → 手机 | `agent_info` | `{console_url}` 给 App 的“**打开网页控制台**”按钮用（`public_url` 或局域网地址）；通过受信任的连接时另附 `wifi: {urls: [...]}` 提供 Wi-Fi 配对地址（`wss://<局域网-IP>:<PHONE_WIFI_PORT>/ws?token=<key>&pin=<sha256>`，开启局域网名称时另附 `<名称>.local` 的同样地址；`ws://` 只在 `PHONE_WIFI_ALLOW_PLAIN=true` 时给）。应用只接收通过连接验证的连接发来、在局域网内且有证书指纹的 `wss://` 地址。 |
 | Bageo → 手机 | `place_call` | `{number, call_id, task_id, sub_id}`：拨出电话（AI 回拨或 AI 代打），用 subscription id 为 `sub_id` 的 SIM 拨（找不到就用手机默认的）。忙线时见下方。 |
 | 手机 → Bageo | `place_call_ack`、`place_call_failed`、`outbound_ready`、`call_end` | 拨出的电话已拨号／拨不出去／接通／结束。 |
 | Bageo → 手机 | `send_sms` | `{id, to, text, sub_id}`：给来电者发短信（日程预约）。字段限制见下方。 |

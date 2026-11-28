@@ -20,11 +20,12 @@
 //!   code is never sent in cleartext and cannot be replayed by an active MITM on
 //!   a different certificate), verify the server's `proof` MAC, and pin all
 //!   subsequent `wss://` control and PCM audio connections to `<cert_sha256>`.
-//! - **Backward compatibility**: [`serve_dual`] peeks at the first byte of each
-//!   accepted TCP stream (`0x16` = TLS handshake record) so upgraded phones use
-//!   `wss://`/`https://` while un-upgraded phones and local browsers can still
-//!   speak `ws://`/`http://` on the same port unless `tls_only`
-//!   (`PHONE_WIFI_TLS_ONLY=true`) is enabled.
+//! - **Plain connections**: [`serve_dual`] peeks at the first byte of each
+//!   accepted TCP stream (`0x16` = TLS handshake record), so the main port
+//!   serves browsers over `http://` and phones over `wss://` on one port. With
+//!   a certificate, phones over Wi-Fi get `wss://` addresses only and the Wi-Fi
+//!   entry refuses plain connections, unless `PHONE_WIFI_ALLOW_PLAIN=true`
+//!   ([`allow_plain`]); a pairing key on a plain connection is refused too.
 
 use std::future::Future;
 use std::io::Write as _;
@@ -151,13 +152,35 @@ pub fn cert_pin_sha256() -> Option<String> {
     current().map(|t| t.pin_sha256.clone())
 }
 
-/// When `PHONE_WIFI_TLS_ONLY` is `true`/`1`/`yes`/`on`, the dedicated Wi-Fi entry
-/// port refuses non-TLS (`ws://`/`http://`) connections and advertises `wss://` only.
-pub fn tls_only() -> bool {
-    std::env::var("PHONE_WIFI_TLS_ONLY")
+fn env_on(name: &str) -> bool {
+    std::env::var(name)
         .ok()
         .is_some_and(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
 }
+
+/// `PHONE_WIFI_ALLOW_PLAIN` (`phone_wifi_allow_plain`) on: phones over Wi-Fi
+/// may also use plain `ws://` with the pairing key (apps that cannot do TLS).
+/// Off by default; `PHONE_WIFI_TLS_ONLY` on still wins.
+pub fn allow_plain() -> bool {
+    env_on("PHONE_WIFI_ALLOW_PLAIN") && !env_on("PHONE_WIFI_TLS_ONLY")
+}
+
+/// Phones over Wi-Fi only with TLS (the default): the Wi-Fi entry refuses
+/// non-TLS connections and only `wss://` addresses are given out. Without a
+/// certificate there is only plain `ws://` ([`plain_ok`]).
+pub fn tls_only() -> bool {
+    !allow_plain()
+}
+
+/// The pairing key may come over a connection without TLS: allowed, or this
+/// agent has no certificate at all.
+pub fn plain_ok() -> bool {
+    allow_plain() || current().is_none()
+}
+
+/// Request extension: whether the connection the request came on is TLS.
+#[derive(Clone, Copy, Debug)]
+pub struct ViaTls(pub bool);
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
@@ -272,7 +295,7 @@ async fn handle_accepted(
             return;
         };
         match tokio::time::timeout(TLS_HANDSHAKE_TIMEOUT, acceptor.accept(stream)).await {
-            Ok(Ok(tls_stream)) => serve_io(tls_stream, peer, local, app).await,
+            Ok(Ok(tls_stream)) => serve_io(tls_stream, peer, local, app, true).await,
             Ok(Err(e)) => {
                 tracing::debug!("TLS handshake from {peer} failed: {e}");
             }
@@ -283,13 +306,13 @@ async fn handle_accepted(
         return;
     }
     if require_tls {
-        warn!("refused unencrypted connection from {peer} (PHONE_WIFI_TLS_ONLY is enabled)");
+        warn!("refused unencrypted connection from {peer} (phones over Wi-Fi need TLS; PHONE_WIFI_ALLOW_PLAIN is off)");
         return;
     }
-    serve_io(stream, peer, local, app).await;
+    serve_io(stream, peer, local, app, false).await;
 }
 
-async fn serve_io<I>(io: I, peer: SocketAddr, local: Option<SocketAddr>, app: Router)
+async fn serve_io<I>(io: I, peer: SocketAddr, local: Option<SocketAddr>, app: Router, tls: bool)
 where
     I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
@@ -300,6 +323,7 @@ where
             let (mut parts, body) = req.into_parts();
             parts.extensions.insert(ConnectInfo(conn_addrs));
             parts.extensions.insert(ConnectInfo(peer));
+            parts.extensions.insert(ViaTls(tls));
             let axum_req = axum::http::Request::from_parts(parts, axum::body::Body::new(body));
             tower_service::Service::call(&mut router, axum_req).await
         }
