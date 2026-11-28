@@ -12,6 +12,8 @@ import org.java_websocket.drafts.Draft_6455
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URI
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
@@ -40,6 +42,12 @@ import java.util.concurrent.atomic.AtomicLong
  * [sims] gives the phone's SIMs for the hello's `sims` list (null = leave it out), so the
  * agent knows every SIM at once, not only the ones a call came in on.
  * [onOpened] runs right after the hello was sent (on the socket's thread).
+ *
+ * Each connection runs the link check ([PhoneLinkAuth], key from [linkKey] or the in-app
+ * agent): when Bageo does not prove itself, the socket is closed before the hello (the
+ * phone's serial and SIMs never go out) and the attempt counts as failed. `agent_info`
+ * is only taken from a connection Bageo proved itself on ([isVerified]); on others its
+ * addresses are dropped.
  */
 class AgentControlClient(
     private val candidates: () -> List<String>,
@@ -49,6 +57,7 @@ class AgentControlClient(
     private val describe: (JSONObject) -> Unit = {},
     private val sims: () -> JSONArray? = { null },
     private val onOpened: () -> Unit = {},
+    private val linkKey: () -> String? = { null },
 ) {
     @Volatile private var client: WebSocketClient? = null
     private val stateLock = Any()
@@ -63,8 +72,13 @@ class AgentControlClient(
     @Volatile private var target: String? = null
     /** The address of the current or latest attempt. */
     @Volatile private var currentUrl: String = ""
+    /** The open connection is one Bageo proved itself on ([PhoneLinkAuth.verified]). */
+    @Volatile private var verified = false
 
     fun isOpen(): Boolean = open.get() && client?.isOpen == true
+
+    /** Connected, and Bageo proved itself on this connection. */
+    fun isVerified(): Boolean = isOpen() && verified
 
     fun connect(serial: String) {
         val ws: WebSocketClient
@@ -76,10 +90,31 @@ class AgentControlClient(
             val url = target?.takeIf { it in list } ?: list.first()
             currentUrl = url
             val openedHere = AtomicBoolean(false)
-            // Standalone: the loopback phone bridge needs the agent's key (null elsewhere).
-            val headers = EmbeddedAgent.bridgeHeaders(url)
-            ws = object : WebSocketClient(URI(url), Draft_6455(), headers, CONNECT_TIMEOUT_MS) {
+            val session = when (val plan = EmbeddedAgent.linkPlan(linkKey())) {
+                is PhoneLinkAuth.Plan.Check -> plan.session
+                PhoneLinkAuth.Plan.Legacy -> null
+                PhoneLinkAuth.Plan.Refuse -> {
+                    // Standalone before its agent's bridge listens: nothing to connect to yet.
+                    Log.i(TAG, "control WS waits: no link key yet")
+                    scheduleReconnect(serial)
+                    return
+                }
+            }
+            ws = object : WebSocketClient(URI(url), Draft_6455(), session?.headers(), CONNECT_TIMEOUT_MS) {
                 override fun onOpen(handshakedata: ServerHandshake?) {
+                    val checked = session != null && session.verifyHost(
+                        handshakedata?.getFieldValue(PhoneLinkAuth.HEADER_SNONCE),
+                        handshakedata?.getFieldValue(PhoneLinkAuth.HEADER_PROOF),
+                    )
+                    if (session != null && !checked) {
+                        // Not the Bageo that holds the key: say nothing, try the next address.
+                        Log.w(TAG, "control WS ${Prefs.redactUrl(url)}: the link check failed; closing before hello")
+                        try {
+                            this.close()
+                        } catch (_: Exception) {
+                        }
+                        return
+                    }
                     synchronized(stateLock) {
                         if (!shouldRun.get() || client !== this) {
                             try {
@@ -90,6 +125,7 @@ class AgentControlClient(
                         }
                         open.set(true)
                         openedHere.set(true)
+                        verified = PhoneLinkAuth.verified(checked, url)
                         target = url
                         lastGoodUrl = url
                         current = this@AgentControlClient
@@ -103,6 +139,7 @@ class AgentControlClient(
                         .put("app_version", BuildConfig.VERSION_NAME)
                         .put("supports_sms", true)
                         .put("supports_reject", true)
+                    session?.helloProof()?.let { hello.put("link_proof", it) }
                     try {
                         describe(hello)
                     } catch (e: Exception) {
@@ -114,7 +151,7 @@ class AgentControlClient(
                         Log.w(TAG, "hello sims failed: ${e.message}")
                     }
                     send(hello.toString())
-                    Log.i(TAG, "control WS open ${Prefs.redactUrl(url)} usb=${url == usbUrl} serial=$serial mode=CONTROL_IDLE")
+                    Log.i(TAG, "control WS open ${Prefs.redactUrl(url)} usb=${url == usbUrl} checked=$verified serial=$serial mode=CONTROL_IDLE")
                     try {
                         onOpened()
                     } catch (e: Exception) {
@@ -134,7 +171,16 @@ class AgentControlClient(
                             "hello_ack", "hello_ok", "ack", "pong" -> {
                                 Log.i(TAG, "control TEXT ${obj.optString("type")}")
                             }
-                            "place_call", "blocklist_sync", "answer_plan", "set_mode", "agent_info", "send_sms", "local_notice", "uplink_fit" -> onCommand(obj)
+                            "agent_info" -> {
+                                if (!verified) {
+                                    // Unproven Bageo: its version only, never where to connect or browse.
+                                    obj.remove("wifi")
+                                    obj.remove("console_url")
+                                    Log.i(TAG, "control agent_info on an unchecked connection: addresses ignored")
+                                }
+                                onCommand(obj)
+                            }
+                            "place_call", "blocklist_sync", "answer_plan", "set_mode", "send_sms", "local_notice", "uplink_fit" -> onCommand(obj)
                             else -> Log.i(TAG, "control TEXT type=${obj.optString("type")} len=${message.length}")
                         }
                     } catch (e: Exception) {
@@ -148,6 +194,7 @@ class AgentControlClient(
                         if (client === this) {
                             client = null
                             open.set(false)
+                            verified = false
                             if (current === this@AgentControlClient) current = null
                             cleared = true
                         }
@@ -205,6 +252,7 @@ class AgentControlClient(
         synchronized(stateLock) {
             shouldRun.set(false)
             open.set(false)
+            verified = false
             if (current === this) current = null
             toClose = client
             client = null
@@ -300,7 +348,7 @@ class AgentControlClient(
                     if (c == null || !open.get() || !c.isOpen) continue
                     val list = candidates()
                     if (currentUrl == usbUrl || usbUrl !in list || currentUrl !in list) continue
-                    if (isBusy() || !usbReachable()) continue
+                    if (isBusy() || !usbProbe()) continue
                     // Look again right before the switch: a call may have just come in.
                     if (isBusy()) continue
                     Log.i(TAG, "USB link is back: leaving ${Prefs.redactUrl(currentUrl)} for USB")
@@ -317,8 +365,69 @@ class AgentControlClient(
         }
     }
 
+    /**
+     * The link key changed: drop the open connection, so the next one (USB first) runs
+     * the check with the new key.
+     */
+    fun reconnectNow() {
+        val c = synchronized(stateLock) { if (shouldRun.get()) client else null } ?: return
+        target = null
+        try {
+            c.close()
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * True when the USB address answers as the Bageo that holds the link key: the check
+     * only, no hello, so nothing about the phone goes out; at most [USB_LINK_PROBE_MS].
+     * Without a key (this Bageo never handed one) an open port counts, as before.
+     */
+    private fun usbProbe(): Boolean {
+        val session = (EmbeddedAgent.linkPlan(linkKey()) as? PhoneLinkAuth.Plan.Check)?.session
+            ?: return usbPortOpen()
+        val done = CountDownLatch(1)
+        val ok = AtomicBoolean(false)
+        val probe = object : WebSocketClient(URI(usbUrl), Draft_6455(), session.headers(), USB_LINK_PROBE_MS) {
+            override fun onOpen(handshakedata: ServerHandshake?) {
+                ok.set(
+                    session.verifyHost(
+                        handshakedata?.getFieldValue(PhoneLinkAuth.HEADER_SNONCE),
+                        handshakedata?.getFieldValue(PhoneLinkAuth.HEADER_PROOF),
+                    ),
+                )
+                done.countDown()
+                try {
+                    close()
+                } catch (_: Exception) {
+                }
+            }
+
+            override fun onMessage(message: String?) {}
+
+            override fun onClose(code: Int, reason: String?, remote: Boolean) {
+                done.countDown()
+            }
+
+            override fun onError(ex: Exception?) {
+                done.countDown()
+            }
+        }
+        return try {
+            probe.connect()
+            done.await(USB_LINK_PROBE_MS.toLong(), TimeUnit.MILLISECONDS) && ok.get()
+        } catch (_: Exception) {
+            false
+        } finally {
+            try {
+                probe.close()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     /** True when the phone's USB port (adb reverse) accepts a connection. Sends nothing. */
-    private fun usbReachable(): Boolean {
+    private fun usbPortOpen(): Boolean {
         val hp = ConnectionPlan.hostPort(usbUrl) ?: return false
         return try {
             Socket().use { it.connect(InetSocketAddress(hp.first, hp.second), USB_PROBE_TIMEOUT_MS) }
@@ -341,6 +450,8 @@ class AgentControlClient(
         /** How often to look for the USB link while on Wi-Fi. */
         private const val USB_CHECK_MS = 30_000L
         private const val USB_PROBE_TIMEOUT_MS = 400
+        /** The link-checked look at the USB address waits at most this long. */
+        private const val USB_LINK_PROBE_MS = 3_000
 
         /** The client whose connection is open (one per running service). */
         @Volatile
@@ -352,6 +463,9 @@ class AgentControlClient(
 
         /** True while the service's control connection to the agent is open (setup screen). */
         fun isAgentConnected(): Boolean = current?.isOpen() == true
+
+        /** Connected, and Bageo proved itself on that connection (false: "unverified"). */
+        fun isAgentVerified(): Boolean = current?.isVerified() == true
 
         /** The address the open control connection uses, or null when not connected. */
         fun connectedUrl(): String? = current?.takeIf { it.isOpen() }?.currentUrl

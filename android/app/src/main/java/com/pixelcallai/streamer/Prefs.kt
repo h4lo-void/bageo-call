@@ -26,6 +26,11 @@ object Prefs {
      * [KEY_WIFI_URLS]: a Bageo in Docker sends no Wi-Fi addresses, and that must not clear it.
      */
     const val KEY_IP_URL = "IP_PAIRED_URL"
+    /**
+     * The link key Bageo handed over USB ([PhoneLinkAuth]). Once there, every connection
+     * must pass the link check; only "Forget Wi-Fi connection" clears it. Never logged.
+     */
+    private const val KEY_LINK_KEY = "PHONE_LINK_KEY"
     /** Web console address the agent sent (`agent_info`); cleared on every new connection. */
     const val KEY_CONSOLE_URL = "CONSOLE_URL"
     /** Version of the connected Bageo agent (`agent_info`); cleared on every new connection. */
@@ -144,15 +149,33 @@ object Prefs {
         sp(ctx).edit().putString(KEY_REPORTED_APPLY_ID, id).apply()
     }
 
+    /** The link key Bageo handed over USB, or null (bridge flavor only). */
+    fun linkKey(ctx: Context): String? =
+        PhoneLinkAuth.normalizeKey(sp(ctx).getString(KEY_LINK_KEY, null))
+
+    /** Stores a valid key; returns true when it changed. Written at once (a call may follow). */
+    fun setLinkKey(ctx: Context, raw: String?): Boolean {
+        val key = PhoneLinkAuth.normalizeKey(raw) ?: return false
+        if (key == linkKey(ctx)) return false
+        return sp(ctx).edit().putString(KEY_LINK_KEY, key).commit()
+    }
+
     /** The web console's address, when the connected agent sent one. */
     fun consoleUrl(ctx: Context): String? =
         sp(ctx).getString(KEY_CONSOLE_URL, null)?.trim()?.takeIf { isWebUrl(it) }
 
-    /** Blank or not an http(s) address removes it (the button is hidden). */
+    /**
+     * Blank, not an http(s) address, or not on the local network removes it (the button
+     * is hidden): a Bageo answer must not send the owner's browser somewhere else.
+     */
     fun setConsoleUrl(ctx: Context, url: String?) {
         val cleaned = url?.trim().orEmpty()
         val editor = sp(ctx).edit()
-        if (isWebUrl(cleaned)) editor.putString(KEY_CONSOLE_URL, cleaned) else editor.remove(KEY_CONSOLE_URL)
+        if (isWebUrl(cleaned) && PhoneLinkAuth.isAcceptableConsoleUrl(cleaned)) {
+            editor.putString(KEY_CONSOLE_URL, cleaned)
+        } else {
+            editor.remove(KEY_CONSOLE_URL)
+        }
         editor.apply()
     }
 
@@ -223,8 +246,8 @@ object Prefs {
         val raw = sp(ctx).getString(KEY_WIFI_URLS, null) ?: return emptyList()
         return try {
             val arr = JSONArray(raw)
-            (0 until arr.length()).map { arr.optString(it) }.filter { isValidAgentUrl(it) }
-                .distinct().take(ConnectionPlan.MAX_WIFI_URLS)
+            val urls = (0 until arr.length()).map { arr.optString(it) }.filter { isValidAgentUrl(it) }
+            PhoneLinkAuth.dropPlainWhenPinned(urls).distinct().take(ConnectionPlan.MAX_WIFI_URLS)
         } catch (_: Exception) {
             emptyList()
         }
@@ -256,19 +279,29 @@ object Prefs {
     /** The phone can reach Bageo without the cable: Wi-Fi addresses from USB, or pairing by IP. */
     fun hasNetworkPairing(ctx: Context): Boolean = wifiUrls(ctx).isNotEmpty() || ipUrl(ctx) != null
 
-    /** "Forget Wi-Fi connection": both kinds. */
+    /**
+     * "Forget Wi-Fi connection": both kinds, and the link key (the next USB connection
+     * hands it over again).
+     */
     fun forgetNetworkPairing(ctx: Context) {
         clearWifiUrls(ctx)
         setIpUrl(ctx, null)
+        sp(ctx).edit().remove(KEY_LINK_KEY).apply()
     }
 
     /**
      * Handles the `wifi` part of `agent_info`: [incoming] null = the field was missing, keep
-     * what is stored; an empty list clears it.
+     * what is stored; an empty list clears it. Only `wss://` addresses with a certificate
+     * pin on the local network are kept ([PhoneLinkAuth.isAcceptableWifiUrl]).
      */
     fun applyAgentWifi(ctx: Context, incoming: List<String>?) {
         if (incoming == null) return
-        setWifiUrls(ctx, ConnectionPlan.nextWifiUrls(wifiUrls(ctx), incoming) { isValidAgentUrl(it) })
+        setWifiUrls(
+            ctx,
+            ConnectionPlan.nextWifiUrls(wifiUrls(ctx), incoming) {
+                isValidAgentUrl(it) && PhoneLinkAuth.isAcceptableWifiUrl(it)
+            },
+        )
     }
 
     /** The addresses to try, in order (see [ConnectionPlan.candidates]). */

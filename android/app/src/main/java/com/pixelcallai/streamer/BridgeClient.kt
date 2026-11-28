@@ -28,6 +28,8 @@ class BridgeClient(
      * lost, no pong within [CONNECTION_LOST_TIMEOUT_S]). Runs on the socket's thread.
      */
     private val onDisconnected: ((String) -> Unit)? = null,
+    /** The link key Bageo handed over USB (bridge flavor); see [PhoneLinkAuth]. */
+    private val linkKey: String? = null,
 ) {
     private var client: WebSocketClient? = null
     private val open = AtomicBoolean(false)
@@ -56,9 +58,30 @@ class BridgeClient(
     ) {
         debugSerial = serial
         agentReady.set(false)
-        // Standalone: the loopback phone bridge needs the agent's key (null elsewhere, as before).
-        val ws = object : WebSocketClient(URI(url), Draft_6455(), EmbeddedAgent.bridgeHeaders(url), 0) {
+        // The link check: Bageo proves itself before the call's details go out.
+        val session = when (val plan = EmbeddedAgent.linkPlan(linkKey)) {
+            is PhoneLinkAuth.Plan.Check -> plan.session
+            PhoneLinkAuth.Plan.Legacy -> null
+            PhoneLinkAuth.Plan.Refuse -> {
+                Log.w(TAG, "bridge not opened: no link key yet serial=$serial")
+                onDisconnected?.invoke("no link key")
+                return
+            }
+        }
+        val ws = object : WebSocketClient(URI(url), Draft_6455(), session?.headers(), 0) {
             override fun onOpen(handshakedata: ServerHandshake?) {
+                if (session != null && !session.verifyHost(
+                        handshakedata?.getFieldValue(PhoneLinkAuth.HEADER_SNONCE),
+                        handshakedata?.getFieldValue(PhoneLinkAuth.HEADER_PROOF),
+                    )
+                ) {
+                    Log.w(TAG, "bridge ${Prefs.redactUrl(url)}: the link check failed; closing before hello")
+                    try {
+                        close()
+                    } catch (_: Exception) {
+                    }
+                    return
+                }
                 open.set(true)
                 droppedPcm.set(0)
                 if (probeOnly) {
@@ -77,6 +100,7 @@ class BridgeClient(
                     .put("model", DeviceName.display)
                     .put("app_version", BuildConfig.VERSION_NAME)
                 if (simSubId != null) hello.put("sim_sub_id", simSubId)
+                session?.helloProof()?.let { hello.put("link_proof", it) }
                 send(hello.toString())
                 val ringing = JSONObject()
                     .put("type", "ringing")
