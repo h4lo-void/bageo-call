@@ -231,8 +231,9 @@ In `data/calls/<date>/`. They are deleted after *Days to keep records*
 
 **Is the caller told it is an AI?**
 With the *AI assistant* style, in the first sentence. With *As me*, it speaks as
-you without saying it is an AI. Whether the second is allowed where you live is
-yours to check: see [Privacy, safety and the law](PRIVACY_AND_LEGAL.md).
+you and says it is an AI only when seriously asked. While keeping a sales or
+scam caller talking, neither style admits it. Whether this is allowed where you
+live is yours to check: see [Privacy, safety and the law](PRIVACY_AND_LEGAL.md).
 
 ## Reporting a problem
 

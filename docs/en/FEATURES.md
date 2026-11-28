@@ -321,8 +321,9 @@ The words the AI is told are kept in prompt files, so they can improve without a
 new Bageo. Under **Settings → Check for updates**, *Check for updates* in
 *Local data* also downloads newer wording, used from the next call, and *Restore
 the built-in version* goes back to the built-in wording. The rules that protect
-you (never giving personal details, admitting it is an AI when asked seriously)
-change only with a new Bageo.
+you (never giving personal details, admitting it is an AI when asked seriously,
+but not while keeping a sales or scam caller talking) change only with a new
+Bageo.
 
 More, including the techniques that make the biggest difference:
 [Writing the prompt](PROMPTS.md).

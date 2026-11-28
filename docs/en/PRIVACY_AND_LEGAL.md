@@ -101,8 +101,10 @@ Business use has its own rules.
 
 - The **AI assistant** style says in its first sentence that the caller is
   talking to an AI. It is the default and the recommended style.
-- The **As me** style speaks as you without saying it is an AI, so callers
-  assume they are talking to you.
+- The **As me** style speaks as you, so callers assume they are talking to
+  you. It says it is an AI only when a caller seriously asks.
+- While *Keep them talking* holds a sales or scam caller, neither style admits
+  to being an AI.
 - Laws on bots and AI transparency are spreading, for example California's
   bot-disclosure law for commercial and election contexts and the EU AI Act's
   transparency duties for systems that interact with people.
