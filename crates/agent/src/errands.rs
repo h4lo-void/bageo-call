@@ -952,11 +952,18 @@ pub fn free_line_at(store: &ErrandStore, phones: &[PhoneView], number: &str, hom
     free_line(store, picks, plan::hold(at, grab), "", false).map_err(|holder| Refusal { code: "line_taken", holder, cross: None })
 }
 
-/// The number as it is compared between errands: its last 9 digits
-/// (0223456789 and +886 2 2345 6789 are the same number).
-fn number_key(number: &str) -> String {
-    let digits: Vec<char> = number.chars().filter(char::is_ascii_digit).collect();
-    digits[digits.len().saturating_sub(9)..].iter().collect()
+/// Two numbers are the same one written with or without the country code:
+/// the digits of the shorter (its leading zeros dropped) end the longer
+/// (0223456789 and +886 2 2345 6789; 12345678 and +852 1234 5678). Short
+/// ones (under 6 digits) only match as they are.
+fn same_number(a: &str, b: &str) -> bool {
+    let digits = |n: &str| -> String { n.chars().filter(char::is_ascii_digit).collect::<String>().trim_start_matches('0').to_string() };
+    let (a, b) = (digits(a), digits(b));
+    let (short, long) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+    if short.len() < 6 {
+        return !short.is_empty() && short == long;
+    }
+    long.ends_with(&short)
 }
 
 /// [`ErrandStore::holder`] over the errands `list`: the whole phone is held,
@@ -976,9 +983,8 @@ fn holder_in(list: &[Errand], serial: &str, span: plan::Span, except: &str, sche
 /// overlap.
 fn number_holder_in(list: &[Errand], number: &str, span: plan::Span, except: &str) -> Option<Errand> {
     let now = chrono::Utc::now();
-    let key = number_key(number);
     list.iter()
-        .filter(|e| e.id != except && e.redial && number_key(&e.number) == key)
+        .filter(|e| e.id != except && e.redial && same_number(&e.number, number))
         .filter(|e| e.hold(now).is_some_and(|(_, held)| plan::overlaps(held, span)))
         .min_by_key(|e| e.hold(now).map(|h| h.1 .0))
         .cloned()
@@ -2095,8 +2101,7 @@ impl ErrandStore {
     /// When the latest dials to `number` went out, on every errand calling
     /// it: grab mode's per-minute cap counts them all.
     fn dials_to(&self, number: &str) -> Vec<chrono::DateTime<chrono::Utc>> {
-        let key = number_key(number);
-        self.guard().iter().filter(|e| number_key(&e.number) == key).flat_map(|e| e.dialed_at.iter().filter_map(|s| utc_of(s))).collect()
+        self.guard().iter().filter(|e| same_number(&e.number, number)).flat_map(|e| e.dialed_at.iter().filter_map(|s| utc_of(s))).collect()
     }
 
     /// "Pixel 9 · 0912345678": a phone and SIM as the owner knows them (the
@@ -2959,10 +2964,11 @@ fn holds(text: &str, t: &str) -> bool {
 pub fn queue_message(text: &str) -> bool {
     const QUEUE: &[&str] = &[
         // zh-TW / zh-CN
-        "將依序", "将依序", "依序為您", "依序为您", "依照順序", "按顺序为您", "線路忙碌", "线路忙碌", "線路忙線", "所有客服人員", "所有客服人员", "客服人員忙線",
-        "客服人员忙", "將由專人為您服務", "将由专人为您服务", "前面還有", "前面还有", "您是第", "等候人數", "等候人数",
+        "將依序", "将依序", "依序為您", "依序为您", "依照順序為您", "依照顺序为您", "按顺序为您", "線路忙碌", "线路忙碌", "線路忙線", "所有客服人員", "所有客服人员", "客服人員忙線",
+        "客服人员忙", "將由專人為您服務", "将由专人为您服务", "等候人數", "等候人数",
         // en
-        "next available", "your call is important", "in the order", "you are number", "you are caller number", "your call will be answered",
+        "next available", "your call is important", "in the order received", "in the order it was received", "in the order they were received",
+        "in the order in which", "you are number", "you are caller number", "your call will be answered",
         "all of our agents", "all our agents", "all of our representatives", "all our representatives", "all our operators", "estimated wait",
         "position in the queue", "position in queue",
         // ja
@@ -2976,7 +2982,8 @@ pub fn queue_message(text: &str) -> bool {
         "tous nos conseillers", "tous nos opérateurs", "votre appel va être traité", "dans l'ordre d'arrivée", "prochain conseiller disponible",
         "votre position dans la file",
         // de
-        "alle mitarbeiter sind", "alle unsere mitarbeiter", "der nächste freie", "warteschleife", "in der reihenfolge",
+        "alle mitarbeiter sind", "alle unsere mitarbeiter", "der nächste freie", "befinden sich in der warteschleife", "in unserer warteschleife",
+        "in der reihenfolge ihres anrufs", "in der reihenfolge des eingangs",
         // pt
         "todos os nossos atendentes", "em breve você será atendido", "em breve sera atendido", "sua ligação é importante", "posição na fila",
         "posicao na fila", "por ordem de chegada",
@@ -2985,7 +2992,20 @@ pub fn queue_message(text: &str) -> bool {
     if CALL_LATER.iter().any(|c| t.contains(c)) || voicemail_message(text) {
         return false;
     }
-    QUEUE.iter().any(|q| t.contains(q))
+    // "您是第3位", "前面還有 5 位": a place in line, with its number (not
+    // "您是第一次來嗎", "前面還有兩組客人", "前面還有位子").
+    const PLACE: &[&str] = &["您是第", "前面還有", "前面还有"];
+    QUEUE.iter().any(|q| t.contains(q)) || PLACE.iter().any(|p| numbered_place(&t, p))
+}
+
+/// `t` has `prefix`, then a number (digits or Chinese numerals), then 位 or 人.
+fn numbered_place(t: &str, prefix: &str) -> bool {
+    const NUMERALS: &str = "0123456789０１２３４５６７８９一二三四五六七八九十百兩两零〇";
+    t.match_indices(prefix).any(|(i, _)| {
+        let rest = t[i + prefix.len()..].trim_start();
+        let digits: String = rest.chars().take_while(|c| NUMERALS.contains(*c)).collect();
+        !digits.is_empty() && rest[digits.len()..].trim_start().starts_with(['位', '人'])
+    })
 }
 
 /// The other side says bookings (or the line for them) are not open yet
@@ -3000,7 +3020,37 @@ pub fn not_open_yet(text: &str) -> bool {
         "ainda não abriu", "ainda nao abriu", "ainda não abriram", "ainda nao abriram", "ainda não abrimos", "ainda nao abrimos",
     ];
     let t = fold(text);
-    NOT_OPEN.iter().any(|w| t.contains(w))
+    NOT_OPEN.iter().any(|w| t.match_indices(w).any(|(i, _)| !turns_to_yes(&t[i + w.len()..])))
+}
+
+/// After "not open yet", a "but … yes" ("pas encore ouvert à midi, mais le
+/// soir oui"): it is open at another time, not closed to bookings.
+fn turns_to_yes(rest: &str) -> bool {
+    const BUT: &[&str] = &["但是", "不過", "不过", "可是", "しかし", "けど", "でも", "하지만", "그런데"];
+    const BUT_WORDS: &[&str] = &["but", "pero", "mais", "aber", "mas"];
+    const YES: &[&str] = &["有位", "有空位", "空いて", "있어요", "가능해요"];
+    const YES_WORDS: &[&str] = &["oui", "sí", "yes", "ja", "sim", "ok", "okay", "sure", "claro"];
+    let cut = BUT
+        .iter()
+        .filter_map(|b| rest.find(b).map(|i| i + b.len()))
+        .chain(BUT_WORDS.iter().filter_map(|b| find_word(rest, b)))
+        .min();
+    let Some(cut) = cut else {
+        return false;
+    };
+    let after = &rest[cut..];
+    YES.iter().any(|y| after.contains(y)) || YES_WORDS.iter().any(|y| find_word(after, y).is_some())
+}
+
+/// Where whole word `w` ends in `s` (not inside another word).
+fn find_word(s: &str, w: &str) -> Option<usize> {
+    s.match_indices(w)
+        .find(|(i, _)| {
+            let before = !matches!(s[..*i].chars().next_back(), Some(c) if c.is_alphanumeric());
+            let after = !matches!(s[i + w.len()..].chars().next(), Some(c) if c.is_alphanumeric());
+            before && after
+        })
+        .map(|(i, _)| i + w.len())
 }
 
 /// How many of the other side's last lines "not open yet" is looked for in.
@@ -4025,6 +4075,26 @@ async fn dial(env: &Env<'_>, id: &str, pick: &Pick) -> Option<Errand> {
         }
         return env.store.get(id);
     }
+    // "Redial until answered": a first dial (a new errand, "Call again") also
+    // keeps to the per-minute cap over every dial to the number.
+    let capped = env.store.get(id).filter(|e| e.redial && e.status == QUEUED).and_then(|e| plan::cap_free_at(&plan::GRAB, &env.store.dials_to(&e.number), chrono::Utc::now()));
+    if let Some(at) = capped {
+        let retry_at = at.with_timezone(&chrono::Local).to_rfc3339_opts(chrono::SecondsFormat::Millis, false);
+        let waits = env.store.update_if(
+            id,
+            |e| e.status == QUEUED,
+            |e| {
+                aim(e);
+                e.queued_at.clear();
+                e.redial_at = retry_at;
+            },
+        );
+        if waits.is_some() {
+            env.store.wake();
+            info!(errand = id, "errand waits for the per-minute cap");
+        }
+        return env.store.get(id);
+    }
     let claimed = env.store.update_if(
         id,
         |e| e.status == QUEUED,
@@ -4268,6 +4338,12 @@ pub async fn create_with(env: &Env<'_>, body: &Value) -> Result<Errand, Refusal>
     if redial {
         e.grab_since = now_stamp();
     }
+    // Its phone is set before it is added: a schedule made at the same moment
+    // sees the phone held.
+    e.serial = pick.serial.clone();
+    e.sub_id = pick.sub_id;
+    e.sim_country = pick.country.clone();
+    e.device_label = crate::notify::device_label(&pick.serial);
     env.store.insert_checked(e, &pick.serial, span)?;
     info!(errand = id.as_str(), serial = pick.serial.as_str(), "errand created");
     dial(env, &id, &pick).await.ok_or_else(|| "not_found".into())
@@ -4406,6 +4482,9 @@ pub async fn retry_with(env: &Env<'_>, id: &str, abroad_ok: bool) -> Result<Erra
         e.status = QUEUED.to_string();
         e.call_code.clear();
         e.queued_at.clear();
+        e.serial = pick.serial.clone();
+        e.sub_id = pick.sub_id;
+        e.sim_country = pick.country.clone();
         // "Redial until answered": a new run of tries, its 30 minutes from now.
         e.redial_at.clear();
         e.grab_since.clear();
@@ -7528,8 +7607,18 @@ mod tests {
             "Please leave a message after the tone.",
             "鼎泰豐您好，請問幾位？",
             "The number you have dialed is busy, please try again later",
+            "您是第一次來嗎",
+            "前面還有兩組客人，請稍等",
+            "我們依照順序入座，請問幾位",
+            "I will book in the order you asked",
+            "前面還有位子",
+            "Sie sind jetzt nicht in der Warteschleife, ich bin selbst dran",
         ] {
             assert!(!queue_message(q), "{q}");
+        }
+        // A place in line with its number is a queue's recording.
+        for q in ["您是第3位", "您前面還有 5 位在等候", "您前面还有十二人", "Your call will be answered in the order it was received"] {
+            assert!(queue_message(q), "{q}");
         }
         for t in ["我們還沒開放訂位", "Sorry, we're not taking reservations yet", "まだ受付開始前です", "아직 예약 접수 전입니다", "Todavía no abrimos las reservas", "Les réservations ne sont pas encore ouvertes", "Reservierungen sind noch nicht offen", "As reservas ainda não abriram"] {
             assert!(not_open_yet(t), "{t}");
@@ -7537,6 +7626,14 @@ mod tests {
         // Words too common to mean it.
         for t in ["好的，四位幫您訂好了", "Todavía no sé si queda mesa, un momento", "아직 예약 확인 중이에요", "我還沒開始看，你說幾位？"] {
             assert!(!not_open_yet(t), "{t}");
+        }
+        // Not open at one time, "but … yes" at another: open, not closed to bookings.
+        for t in ["pas encore ouvert à midi, mais le soir oui", "Sorry, not open yet for lunch, but for dinner yes", "中午還沒開放，不過晚上有位"] {
+            assert!(!not_open_yet(t), "{t}");
+        }
+        // A "but" with no yes after it still means not open yet.
+        for t in ["Not open yet, but you can call back at 8", "訂位還沒開放，八點才開始", "Pas encore ouvert, mais si vous rappelez à 8h"] {
+            assert!(not_open_yet(t), "{t}");
         }
     }
 
@@ -7575,6 +7672,35 @@ mod tests {
         let mine = rig.store.get(&a.id).unwrap();
         let next = mine.grab_next_after(&rig.store.dials_to(&mine.number), chrono::Utc::now()).unwrap();
         assert!(next >= utc_of(&recent[0]).unwrap() + chrono::Duration::seconds(59), "{next}");
+        // A first dial (a new run) waits for the cap too: no dial goes out now.
+        rig.store.update(&a.id, |e| *e = Errand { id: e.id.clone(), status: CANCELLED.into(), ..Default::default() });
+        let c = create(&env, &json!({"number": "+886 2 2345 9711", "task": "問營業時間", "serial": "pixel-plan-7c", "sub_id": 3, "redial": true})).await.unwrap();
+        assert_eq!((c.status.as_str(), c.dialed_at.len()), (QUEUED, 0));
+        assert!(utc_of(&c.redial_at).unwrap() >= utc_of(&recent[0]).unwrap() + chrono::Duration::seconds(59), "{}", c.redial_at);
+    }
+
+    /// A number with or without its country code is the same number, also
+    /// where local numbers are 8 digits; different numbers never are.
+    #[test]
+    fn a_number_is_the_same_with_or_without_its_country_code() {
+        for (a, b) in [("0223456789", "+886 2 2345 6789"), ("12345678", "+852 1234 5678"), ("6123 4567", "+6561234567"), ("(212) 555-0134", "+1 212 555 0134")] {
+            assert!(same_number(a, b) && same_number(b, a), "{a} {b}");
+        }
+        for (a, b) in [("0223456789", "0223456788"), ("12345678", "+852 1234 5679"), ("110", "1100"), ("", "")] {
+            assert!(!same_number(a, b), "{a} {b}");
+        }
+    }
+
+    /// A call now on a phone it picked itself holds that phone from the start:
+    /// a schedule made at once on it is refused.
+    #[tokio::test]
+    async fn a_call_now_holds_its_phone_as_soon_as_it_is_made() {
+        let rig = Rig::new();
+        let env = rig.env(vec![phone("pixel-plan-9", &[(1, "tw")])]);
+        let now = create(&env, &json!({"number": "0223459721", "task": "問營業時間"})).await.unwrap();
+        assert_eq!(now.serial, "pixel-plan-9");
+        let held = rig.store.get(&now.id).unwrap().hold(chrono::Utc::now()).unwrap();
+        assert_eq!(held.0, "pixel-plan-9");
     }
 
     /// At most 50 errands not over yet; the list shows every one of them

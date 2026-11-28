@@ -127,6 +127,18 @@ pub fn grab_next_at(rules: &GrabRules, since: DateTime<Utc>, dials: &[DateTime<U
     (at < since + span(rules.window)).then_some(at)
 }
 
+/// The earliest a new dial may go out under the per-minute cap (`dials`: the
+/// latest dials to the number); None: the cap leaves room now.
+pub fn cap_free_at(rules: &GrabRules, dials: &[DateTime<Utc>], now: DateTime<Utc>) -> Option<DateTime<Utc>> {
+    if rules.per_minute_cap == 0 || dials.len() < rules.per_minute_cap {
+        return None;
+    }
+    let mut sorted = dials.to_vec();
+    sorted.sort();
+    let at = sorted[sorted.len() - rules.per_minute_cap] + chrono::Duration::seconds(60);
+    (at > now).then_some(at)
+}
+
 /// How long the AI may stay in a queue on a try of a run that started at
 /// `since`: [GrabRules::queue_wait], but never past the run's window.
 pub fn queue_wait_left(rules: &GrabRules, since: DateTime<Utc>, now: DateTime<Utc>) -> Duration {
