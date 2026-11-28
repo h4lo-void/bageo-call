@@ -5,11 +5,13 @@ package com.pixelcallai.streamer
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import java.io.File
 import java.net.URI
 import org.json.JSONArray
 
 object Prefs {
+    private const val TAG = "Prefs"
     private const val NAME = "pixel_call_ai"
     const val KEY_MODE = "AUDIO_MODE"
     const val KEY_LAST_CALLER_ID = "LAST_CALLER_ID"
@@ -241,13 +243,22 @@ object Prefs {
     /** True when the user typed their own address under Advanced (it replaces USB and Wi-Fi). */
     fun isManualAgentUrl(ctx: Context): Boolean = agentUrl(ctx) != BuildConfig.BRIDGE_WS_URL
 
-    /** The Wi-Fi addresses the agent gave this phone; empty when not paired. */
+    /**
+     * The Wi-Fi addresses the agent gave this phone; empty when not paired. Only pinned
+     * `wss://` ones count: a list from an older version with none of them is forgotten
+     * (the phone is plugged in once more to get new ones).
+     */
     fun wifiUrls(ctx: Context): List<String> {
         val raw = sp(ctx).getString(KEY_WIFI_URLS, null) ?: return emptyList()
         return try {
             val arr = JSONArray(raw)
             val urls = (0 until arr.length()).map { arr.optString(it) }.filter { isValidAgentUrl(it) }
-            PhoneLinkAuth.dropPlainWhenPinned(urls).distinct().take(ConnectionPlan.MAX_WIFI_URLS)
+            val kept = PhoneLinkAuth.pinnedOnly(urls).distinct().take(ConnectionPlan.MAX_WIFI_URLS)
+            if (kept.isEmpty() && urls.isNotEmpty()) {
+                sp(ctx).edit().remove(KEY_WIFI_URLS).apply()
+                Log.w(TAG, "stored Wi-Fi addresses were unencrypted: forgotten; plug the phone in once to pair again")
+            }
+            kept
         } catch (_: Exception) {
             emptyList()
         }
@@ -264,16 +275,37 @@ object Prefs {
 
     fun clearWifiUrls(ctx: Context) = setWifiUrls(ctx, emptyList())
 
-    /** The address paired by IP address, when there is one. */
-    fun ipUrl(ctx: Context): String? =
-        sp(ctx).getString(KEY_IP_URL, null)?.trim()?.takeIf { isValidAgentUrl(it) }
+    /**
+     * The address paired by IP address, when there is one. Only a pinned `wss://` one
+     * counts: a plain `ws://` pairing from an older version is forgotten (pair again).
+     */
+    fun ipUrl(ctx: Context): String? {
+        val stored = sp(ctx).getString(KEY_IP_URL, null)?.trim() ?: return null
+        if (isValidAgentUrl(stored) && PhoneLinkAuth.isPinned(stored)) return stored
+        sp(ctx).edit().remove(KEY_IP_URL).apply()
+        Log.w(TAG, "the IP pairing was unencrypted: forgotten; pair by IP address again")
+        return null
+    }
 
-    /** Null or an invalid address forgets it. */
+    /**
+     * Null or an invalid address forgets it. A fresh pairing also keeps the link key that
+     * came with it ([IpPairing.takeLinkKey]), replacing one from another Bageo, or clears
+     * it when that Bageo sent none.
+     */
     fun setIpUrl(ctx: Context, url: String?) {
         val cleaned = url?.trim().orEmpty()
         val editor = sp(ctx).edit()
-        if (isValidAgentUrl(cleaned)) editor.putString(KEY_IP_URL, cleaned) else editor.remove(KEY_IP_URL)
-        editor.apply()
+        if (isValidAgentUrl(cleaned)) {
+            editor.putString(KEY_IP_URL, cleaned)
+            when (val key = IpPairing.takeLinkKey(cleaned)) {
+                null -> {}
+                "" -> editor.remove(KEY_LINK_KEY)
+                else -> editor.putString(KEY_LINK_KEY, key)
+            }
+        } else {
+            editor.remove(KEY_IP_URL)
+        }
+        editor.commit()
     }
 
     /** The phone can reach Bageo without the cable: Wi-Fi addresses from USB, or pairing by IP. */

@@ -47,7 +47,8 @@ import java.util.concurrent.atomic.AtomicLong
  * agent): when Bageo does not prove itself, the socket is closed before the hello (the
  * phone's serial and SIMs never go out) and the attempt counts as failed. `agent_info`
  * is only taken from a connection Bageo proved itself on ([isVerified]); on others its
- * addresses are dropped.
+ * addresses are dropped. Without a link key but with a pinned network pairing, an
+ * unchecked address (USB) is closed before the hello too ([PhoneLinkAuth.uncheckedAllowed]).
  */
 class AgentControlClient(
     private val candidates: () -> List<String>,
@@ -109,6 +110,15 @@ class AgentControlClient(
                     if (session != null && !checked) {
                         // Not the Bageo that holds the key: say nothing, try the next address.
                         Log.w(TAG, "control WS ${Prefs.redactUrl(url)}: the link check failed; closing before hello")
+                        try {
+                            this.close()
+                        } catch (_: Exception) {
+                        }
+                        return
+                    }
+                    if (session == null && !PhoneLinkAuth.uncheckedAllowed(url, candidates())) {
+                        // A pinned network pairing exists: no word to (or command from) an unchecked address.
+                        Log.w(TAG, "control WS ${Prefs.redactUrl(url)}: unchecked while a pinned pairing exists; closing before hello")
                         try {
                             this.close()
                         } catch (_: Exception) {
@@ -385,7 +395,7 @@ class AgentControlClient(
      */
     private fun usbProbe(): Boolean {
         val session = (EmbeddedAgent.linkPlan(linkKey()) as? PhoneLinkAuth.Plan.Check)?.session
-            ?: return usbPortOpen()
+            ?: return PhoneLinkAuth.uncheckedAllowed(usbUrl, candidates()) && usbPortOpen()
         val done = CountDownLatch(1)
         val ok = AtomicBoolean(false)
         val probe = object : WebSocketClient(URI(usbUrl), Draft_6455(), session.headers(), USB_LINK_PROBE_MS) {

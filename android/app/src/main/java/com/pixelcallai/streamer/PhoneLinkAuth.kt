@@ -144,7 +144,17 @@ object PhoneLinkAuth {
         }
     }
 
-    /** Stored Wi-Fi addresses: when one is pinned `wss://`, the plain `ws://` ones go. */
-    fun dropPlainWhenPinned(urls: List<String>): List<String> =
-        if (urls.any { TlsPinning.extractPin(it) != null }) urls.filter { it.trim().startsWith("wss://") } else urls
+    /** `wss://` with a certificate pin. */
+    fun isPinned(url: String): Boolean = TlsPinning.extractPin(url) != null
+
+    /** Stored network addresses: only the pinned `wss://` ones are kept. */
+    fun pinnedOnly(urls: List<String>): List<String> = urls.filter { isPinned(it) }
+
+    /**
+     * May an unchecked connection to [url] go ahead (say hello, take commands)? Not while
+     * the phone has a pinned network pairing ([candidates]) and [url] itself is not pinned:
+     * the phone then has a Bageo it can check and uses that one instead.
+     */
+    fun uncheckedAllowed(url: String, candidates: List<String>): Boolean =
+        isPinned(url) || candidates.none { isPinned(it) }
 }

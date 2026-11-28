@@ -14,8 +14,9 @@ import org.json.JSONObject
 /**
  * Pairing by IP address, for a Bageo the phone cannot be plugged into (in Docker or on
  * another computer). The owner types Bageo's address and the 6-digit code the web
- * console made; [claim] trades the code for the pairing key, and the phone then connects
- * to `ws://<the address typed><path>?token=<key>` (see [Prefs.setIpUrl]).
+ * console made; [claim] trades the code for the pairing key (and the link key, see
+ * [takeLinkKey]), and the phone then connects to
+ * `wss://<the address typed><path>?token=<key>&pin=<sha256>` (see [Prefs.setIpUrl]).
  *
  * The parsing rules are plain Kotlin (no Android classes) so they are easy to test;
  * [claim] does network work and must not run on the main thread.
@@ -109,6 +110,27 @@ object IpPairing {
         }
     }
 
+    /** The link key of the last pairing, until [Prefs.setIpUrl] stores the address it came with. */
+    private val pairedLinkKey = AtomicReference<Pair<String, String>?>(null)
+
+    /**
+     * Keep the link key Bageo sent with a pairing ([PhoneLinkAuth]); "" when it sent none
+     * (an older Bageo): the new pairing then clears a key from another Bageo.
+     */
+    fun rememberLinkKey(wsUrl: String, rawKey: String?) {
+        pairedLinkKey.set(wsUrl to (PhoneLinkAuth.normalizeKey(rawKey) ?: ""))
+    }
+
+    /**
+     * The link key that came with pairing [wsUrl]: a key, "" for none, or null when [wsUrl]
+     * was not just paired. Given out once.
+     */
+    fun takeLinkKey(wsUrl: String): String? {
+        val pending = pairedLinkKey.get() ?: return null
+        if (pending.first != wsUrl.trim()) return null
+        return if (pairedLinkKey.compareAndSet(pending, null)) pending.second else null
+    }
+
     /** What an error answer means: Bageo's `code`, else the HTTP status. */
     fun failureFor(status: Int, code: String?): Failure = when {
         code == "too_many_tries" || status == 429 -> Failure.TOO_MANY
@@ -168,7 +190,10 @@ object IpPairing {
                 if (!pinMatches || !proofOk) {
                     Outcome.Failed(Failure.BAD_CODE)
                 } else {
-                    Outcome.Paired(wsUrl(address, json.optString("path"), token, peerPin))
+                    val url = wsUrl(address, json.optString("path"), token, peerPin)
+                    // The link key came in the same pinned answer; [Prefs.setIpUrl] keeps it.
+                    rememberLinkKey(url, json.optString("link_key"))
+                    Outcome.Paired(url)
                 }
             } else {
                 Outcome.Failed(failureFor(status, json?.optString("code")))

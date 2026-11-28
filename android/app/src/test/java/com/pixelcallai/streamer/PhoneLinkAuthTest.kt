@@ -80,12 +80,37 @@ class PhoneLinkAuthTest {
     }
 
     @Test
-    fun stored_list_drops_plain_ws_when_a_pinned_one_exists() {
+    fun stored_list_keeps_only_pinned_wss() {
         val pin = "a1".repeat(32)
         val pinned = "wss://192.168.1.20:8788/ws?token=k&pin=$pin"
         val plain = "ws://192.168.1.20:8788/ws?token=k"
-        assertEquals(listOf(pinned), PhoneLinkAuth.dropPlainWhenPinned(listOf(pinned, plain)))
-        assertEquals(listOf(plain), PhoneLinkAuth.dropPlainWhenPinned(listOf(plain)))
+        assertEquals(listOf(pinned), PhoneLinkAuth.pinnedOnly(listOf(pinned, plain)))
+        assertEquals(emptyList<String>(), PhoneLinkAuth.pinnedOnly(listOf(plain)))
+        assertTrue(PhoneLinkAuth.isPinned(pinned))
+        assertFalse("an old plain IP pairing is dropped", PhoneLinkAuth.isPinned(plain))
+    }
+
+    @Test
+    fun unchecked_loopback_is_refused_once_a_pinned_pairing_exists() {
+        val pin = "a1".repeat(32)
+        val usb = "ws://127.0.0.1:8765"
+        val pinned = "wss://192.168.1.20:8788/ws?token=k&pin=$pin"
+        assertTrue("no network pairing: as before", PhoneLinkAuth.uncheckedAllowed(usb, listOf(usb)))
+        assertFalse(PhoneLinkAuth.uncheckedAllowed(usb, listOf(usb, pinned)))
+        assertTrue("the pinned address itself", PhoneLinkAuth.uncheckedAllowed(pinned, listOf(usb, pinned)))
+    }
+
+    @Test
+    fun ip_pairing_link_key_is_given_out_once_for_its_address() {
+        val url = "wss://192.168.1.20:8787/ws?token=k&pin=${"a1".repeat(32)}"
+        IpPairing.rememberLinkKey(url, key.uppercase())
+        assertNull("another address", IpPairing.takeLinkKey("wss://192.168.1.30:8787/ws"))
+        assertEquals(key, IpPairing.takeLinkKey(url))
+        assertNull("once", IpPairing.takeLinkKey(url))
+        IpPairing.rememberLinkKey(url, null)
+        assertEquals("an older Bageo sent none: the old key goes", "", IpPairing.takeLinkKey(url))
+        IpPairing.rememberLinkKey(url, "not-a-key")
+        assertEquals("", IpPairing.takeLinkKey(url))
     }
 
     @Test
