@@ -80,9 +80,8 @@ const INDEX_NAME: &str = "bageo-pack-index.json";
 /// The Ed25519 keys a release index may be signed with
 /// ([bageo_packs::signing::public_key], 64 hex characters each): at most two,
 /// so a new key can come in before the old one goes. Empty: every update is
-/// refused, so the official key must be added here before a release.
-/// Settings and the environment cannot change them.
-const PUBLIC_KEYS: &[PublicKey] = &[];
+/// refused. Settings and the environment cannot change them.
+const PUBLIC_KEYS: &[PublicKey] = &[signing::public_key("86f842aca217cc49da26ce0aac8d08c54ff9ed03b66cda87002c529503504adc")];
 const _: () = assert!(PUBLIC_KEYS.len() <= 2, "at most two update keys");
 /// The only hosts a download may go through: GitHub and its release downloads.
 const HOSTS: [&str; 3] = ["github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"];
