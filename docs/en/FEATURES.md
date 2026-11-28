@@ -123,10 +123,11 @@ default) or as **You in person**.
   never turns into an international call by mistake.
 - **The right SIM.** Phone app 1.4 and later reports its active SIMs automatically on connect and when SIMs change (`phone_sims.json`; older apps learn them from incoming calls). Errands pick a SIM of the number's own country first; if the call will go out from a SIM of another country, Bageo asks you to confirm first. If the phone reports a different SIM as the call starts, Bageo hangs up before it connects (`wrong_sim`).
 - **Sensible limits.** One call to a number at a time; at most 10 minutes per
-  call, with a wrap-up at 9:30; no automatic redials unless you turn on
-  **Redial until answered** (otherwise **Call again** is your button); voice
-  menus waited out for up to 90 seconds; a carrier's "not in service"
-  recording ends the call at once.
+  call, with a wrap-up at 9:30 (with **Redial until answered**, time waiting in
+  a queue doesn't count, up to the end of its 30 minutes); no automatic redials
+  unless you turn on **Redial until answered** (otherwise **Call again** is your
+  button); voice menus waited out for up to 90 seconds; a carrier's "not in
+  service" recording ends the call at once.
 
 ## Spam and scam call blocker, with Stall Mode
 
