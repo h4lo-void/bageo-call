@@ -8071,7 +8071,7 @@ function erErrText(e) {
   const code = String((e && e.data && (e.data.error || e.data.code)) || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
   const key = "er_err_" + code;
   const hb = e && e.data && e.data.held_by;
-  const vars = { who: hb ? erHolderName(hb) : "—", when: hb ? erFmtAt(hb.scheduled_at) : "—", days: er.grab ? er.grab.max_days : "" };
+  const vars = { who: hb ? erHolderName(hb) : "—", when: hb ? erFmtAt(hb.scheduled_at) || "—" : "—", days: er.grab ? er.grab.max_days : "", max: er.grab ? er.grab.max_open : "" };
   return code && (I18N[lang][key] != null || I18N.en[key] != null) ? t(key, vars) : e.message;
 }
 function erHolderName(hb) { return String((hb && hb.name) || "").trim() || String((hb && hb.number) || "") || "—"; }

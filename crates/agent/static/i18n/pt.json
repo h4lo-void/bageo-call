@@ -1418,7 +1418,7 @@
     "er_at": "Data e hora",
     "er_at_h": "No fuso horário do Bageo, até {days} dias antes.",
     "er_phone_pick": "Escolha uma linha",
-    "er_line_held": "{name} (reservada para “{who}”, {when})",
+    "er_line_held": "{name} (celular reservado para “{who}”, {when})",
     "er_sch_at": "Agendada para {when} ({left})",
     "er_st_scheduled": "Agendada",
     "er_scheduled_ok": "Agendada: a ligação sai sozinha nesse horário.",
@@ -1430,8 +1430,11 @@
     "er_err_too_far": "Dá para agendar até {days} dias antes.",
     "er_err_need_line": "Uma ligação agendada precisa de uma linha de onde ligar.",
     "er_err_bad_time": "Não deu para entender o horário. Escolha de novo.",
-    "er_err_line_taken": "Essa linha já está reservada nesse horário para “{who}” ({when}). Escolha outra linha ou horário.",
-    "er_err_line_reserved": "Essa linha vai ser usada em breve para “{who}” ({when}). Escolha outra.",
-    "er_err_not_scheduled": "Esta ligação já começou ou terminou; não dá para mudar o horário."
+    "er_err_line_taken": "Esse celular já está reservado nesse horário para “{who}” ({when}). Escolha outro celular ou horário.",
+    "er_err_line_reserved": "Esse celular vai ser usado em breve para “{who}” ({when}). Escolha outro.",
+    "er_err_not_scheduled": "Esta ligação já começou ou terminou; não dá para mudar o horário.",
+    "er_err_number_taken": "“{who}” ({when}) já está ligando para esse número nesse horário. Escolha outro horário.",
+    "er_err_too_many_open": "Há {max} ligações da IA sem terminar. Cancele algumas ou espere terminarem.",
+    "er_err_time_skipped": "Esse horário não existe: o relógio pula ele no horário de verão. Escolha outro."
   }
 }

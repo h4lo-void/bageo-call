@@ -114,9 +114,10 @@ default) or as **You in person**.
   at the end.
 - **Call at a set time.** Pick **At a set date and time** and a line, and the
   errand dials by itself then, even after a restart: handy when bookings open
-  at 8:00. You can schedule several, change their time or cancel them. A line
-  booked by one scheduled call can't be picked by another for those 30
-  minutes. From a chat: "12/1 8am call … to book 4".
+  at 8:00. You can schedule several, change their time or cancel them. A phone
+  booked by one scheduled call (both its SIMs) can't be picked by another for
+  those 30 minutes. From a chat: "12/1 8am call … to book 4"; you confirm the
+  date, weekday, time and phone first.
 - **Safe dialing.** Emergency numbers, short codes, premium-rate numbers and
   numbers written after an international call prefix are refused, so an errand
   never turns into an international call by mistake.

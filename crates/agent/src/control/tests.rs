@@ -265,27 +265,65 @@ async fn a_call_can_be_scheduled_from_a_chat_on_a_line_free_at_that_time() {
     let day = chrono::Local::now().date_naive() + chrono::Duration::days(3);
     let at = day.and_hms_opt(8, 0, 0).unwrap();
     let label = crate::errand_plan::when_label(crate::locale::notify_lang(), at, chrono::Local::now().naive_local());
-    let mut made = Vec::new();
-    for (k, number) in ["0223459801", "0223459802"].iter().enumerate() {
-        let ask = c.handle(&owner(&format!("/errand {} 08:00 {number} 訂4位", day.format("%Y-%m-%d")))).await.unwrap();
-        assert_eq!(ask.buttons.len(), 2, "{}", ask.text);
-        assert!(ask.text.contains(&label), "{label}: {}", ask.text);
-        assert!(ask.text.contains(&crate::notify::device_label("pixel-chat-plan")), "{}", ask.text);
-        let done = c.handle(&press(&ask.buttons[0].data)).await.unwrap();
-        let e = rig.state.errands.list().into_iter().find(|e| e.number == *number).unwrap_or_else(|| panic!("{}", done.text));
-        assert_eq!((e.status.as_str(), e.redial), (crate::errands::SCHEDULED, true));
-        assert_eq!(e.scheduled().map(|t| t.with_timezone(&chrono::Local).naive_local()), Some(at));
-        // The first goes on one SIM, the second on the other: each free at that time.
-        assert_eq!(e.sub_id_asked, Some(if k == 0 { 1 } else { 2 }), "{e:?}");
-        assert!(done.text.contains(&label), "{}", done.text);
-        made.push(e);
-    }
+    let ask = c.handle(&owner(&format!("/errand {} 08:00 0223459801 訂4位", day.format("%Y-%m-%d")))).await.unwrap();
+    assert_eq!(ask.buttons.len(), 2, "{}", ask.text);
+    assert!(ask.text.contains(&label), "{label}: {}", ask.text);
+    assert!(ask.text.contains(&crate::notify::device_label("pixel-chat-plan")), "{}", ask.text);
+    let done = c.handle(&press(&ask.buttons[0].data)).await.unwrap();
+    let e = rig.state.errands.list().into_iter().find(|e| e.number == "0223459801").unwrap_or_else(|| panic!("{}", done.text));
+    assert_eq!((e.status.as_str(), e.redial, e.sub_id_asked), (crate::errands::SCHEDULED, true, Some(1)));
+    assert_eq!(e.scheduled().map(|t| t.with_timezone(&chrono::Local).naive_local()), Some(at));
+    assert!(done.text.contains(&label), "{}", done.text);
+    // The whole phone is held then, its other SIM too: the reply names the errand holding it.
     let held = c.handle(&owner(&format!("/errand {} 08:10 0223459803 訂4位", day.format("%Y-%m-%d")))).await.unwrap();
     assert!(held.buttons.is_empty(), "{}", held.text);
     assert!(held.text.contains("0223459801"), "{}", held.text);
     // A time already past is said at once.
     let past = c.handle(&owner("/errand 2020-01-01 08:00 0223459804 訂位")).await.unwrap();
     assert!(past.buttons.is_empty(), "{}", past.text);
+}
+
+/// The chat model's time to call stands; a time is read from the message
+/// itself only when the model gave none and the message says it plainly.
+#[test]
+fn the_models_time_to_call_stands_and_a_plain_one_fills_in() {
+    let errand = |when: &str| Action::Errand { target: "0223456789".into(), task: "訂4位".into(), when: when.into() };
+    let read = |a: Action| match a {
+        Action::Errand { when, .. } => when,
+        other => panic!("{other:?}"),
+    };
+    // The model's reading wins over the words.
+    assert_eq!(read(with_call_time(errand("2026-12-05T09:00"), "12/1 8點幫我打給 0223456789 訂4位")), "2026-12-05T09:00");
+    // None from the model: a plain date and time before the call is used…
+    let year = chrono::Datelike::year(&chrono::Local::now()) + 1;
+    assert_eq!(read(with_call_time(errand(""), &format!("{year}-12-01 08:00 打給 0223456789 訂4位"))), format!("{year}-12-01T08:00"));
+    // …but not a weekday, a booking's own time, or a day in words.
+    for text in [
+        "Next Saturday at 8am call 0223456789",
+        "下週六晚上8點打給 0223456789",
+        "Book a table for 4 at 7pm tomorrow, call 0223456789",
+        "幫我訂明天晚上七點兩位，打給鼎泰豐",
+        "El sábado a las 8 llama al 0223456789",
+    ] {
+        assert_eq!(read(with_call_time(errand(""), text)), "", "{text}");
+    }
+}
+
+/// A scheduled call asked for through MCP waits for the owner's yes even
+/// with `direct`: nothing is set without it.
+#[tokio::test]
+async fn a_scheduled_call_from_mcp_always_waits_for_the_owner() {
+    let rig = Rig::with_env_bot();
+    rig.set(json!({"call_notify": false, "country_code": "886"}));
+    let (sink, _phone) = crate::callback::test_socket::phone_socket().await;
+    rig.state.control.register_client("pixel-mcp-plan".into(), sink).await;
+    rig.state.errands.sims.note("pixel-mcp-plan", 1, "tw");
+    let c = rig.controller();
+    let rt = rig.state.settings_store.snapshot();
+    let when = (chrono::Local::now() + chrono::Duration::days(2)).format("%Y-%m-%dT%H:%M").to_string();
+    let o = c.request_errand(&rt, crate::mcp::MCP_CHAT, "0223459861", "訂4位", &when, true, 10).await;
+    assert!(!matches!(o, Outcome::ErrandStarted { .. }), "{o:?}");
+    assert!(rig.state.errands.list().is_empty(), "nothing set without the owner's yes");
 }
 
 #[tokio::test]

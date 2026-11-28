@@ -1418,7 +1418,7 @@
     "er_at": "発信日時",
     "er_at_h": "Bageo のタイムゾーンで、{days} 日先まで指定できます。",
     "er_phone_pick": "番号を選んでください",
-    "er_line_held": "{name}（「{who}」{when} で予約済み）",
+    "er_line_held": "{name}（このスマホは「{who}」{when} で予約済み）",
     "er_sch_at": "{when} に予約（{left}）",
     "er_st_scheduled": "予約済み",
     "er_scheduled_ok": "予約しました。時間になると自動で発信します。",
@@ -1430,8 +1430,11 @@
     "er_err_too_far": "予約できるのは {days} 日先までです。",
     "er_err_need_line": "日時指定の発信には、発信する番号を選んでください。",
     "er_err_bad_time": "日時がわかりません。もう一度選んでください。",
-    "er_err_line_taken": "その番号はその時間「{who}」（{when}）で予約済みです。別の番号か時間を選んでください。",
-    "er_err_line_reserved": "その番号はこのあと「{who}」（{when}）で使います。別の番号を選んでください。",
-    "er_err_not_scheduled": "この発信はもう始まったか終わったため、時刻を変えられません。"
+    "er_err_line_taken": "そのスマホはその時間「{who}」（{when}）で予約済みです。別のスマホか時間を選んでください。",
+    "er_err_line_reserved": "そのスマホはこのあと「{who}」（{when}）で使います。別のスマホを選んでください。",
+    "er_err_not_scheduled": "この発信はもう始まったか終わったため、時刻を変えられません。",
+    "er_err_number_taken": "その番号にはその時間「{who}」（{when}）がかけ直し中です。別の時間を選んでください。",
+    "er_err_too_many_open": "終わっていない代理電話が {max} 件あります。いくつか取り消すか、終わるまでお待ちください。",
+    "er_err_time_skipped": "その時刻はサマータイムの切り替えで存在しません。別の時刻を選んでください。"
   }
 }

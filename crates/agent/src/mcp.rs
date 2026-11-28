@@ -394,7 +394,7 @@ pub fn tools(rt: &RuntimeSettings) -> Vec<Value> {
             json!({
                 "target": { "type": "string", "maxLength": 80, "description": "a phone number or a contact's name" },
                 "task": { "type": "string", "maxLength": 1000, "description": "what the AI should get done on the call, with every detail it needs" },
-                "at": { "type": "string", "maxLength": 25, "description": "optional: place the call later, at this local time (YYYY-MM-DDTHH:MM, up to 60 days ahead); it redials until it gets through; empty: now" },
+                "at": { "type": "string", "maxLength": 25, "description": "optional: place the call later, at this local time (YYYY-MM-DDTHH:MM, up to 60 days ahead); it redials until it gets through, and always waits for the owner's yes first; empty: now" },
             }),
             &["target", "task"],
             false,
@@ -481,6 +481,8 @@ pub async fn call_tool(ctrl: &Controller, rt: &RuntimeSettings, name: &str, args
         "cancel_call" if arg(args, "id").trim().is_empty() => Err("no_ref"),
         "cancel_call" => Ok(Action::Cancel { r: arg(args, "id").to_string() }),
         "say_to_call" => Ok(Action::Say { r: arg(args, "id").to_string(), text: arg(args, "text").to_string() }),
+        // A time given but not as text is no time: refused, never a call now.
+        "request_call" if args.get("at").is_some_and(|v| !v.is_string() && !v.is_null()) => Err("bad_time"),
         "request_call" => {
             let direct = calls_mode(rt) == "direct";
             let o = ctrl.request_errand(rt, MCP_CHAT, arg(args, "target"), arg(args, "task"), arg(args, "at"), direct, rt.mcp_errands_per_hour).await;

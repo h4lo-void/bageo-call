@@ -465,8 +465,8 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 | 語音選單 | AI 最多等 90 秒等真人來接；它不能按鍵（`keypad_menu`）。 |
 | 電信錄音（「您撥的號碼是空號」） | 直接掛斷（`carrier_message`）。 |
 | 沒人接或失敗 | 不會自己重撥：要不要「再打一次」由你決定。打開 `redial` 見下一列。 |
-| 「撥到通」（`redial`） | 沒人接、忙線、對方關機、進語音信箱（立刻掛、不留言）或對方說「還沒開放」：代打排隊（`queued`，`call_code` 是 `redial_wait`，時間在 `redial_at`），上一通結束後 3 秒再撥。響鈴中不會提早掛。聽到排隊語音（「請稍候」）就留在線上等，最多 30 分鐘。有人接起來、從第一通算起 30 分鐘到（`no_answer`）、號碼不通、語音選單或手機出問題就停。另有每分鐘最多 10 通的安全上限。只在最後通知一次。 |
-| 指定時間（`scheduled_at`） | 先等著（`scheduled`），時間前 2 秒用你選的門號撥出；預設打開「撥到通」。從那時起佔用這支門號 30 分鐘（只打一次：12 分鐘），這段時間別的代打不能用。Bageo 重新啟動也還在。那個時間 Bageo 沒在執行的話，30 分鐘內（只打一次：5 分鐘）還是會開始，超過就算失敗（`missed`）。 |
+| 「撥到通」（`redial`） | 沒人接、忙線、對方關機、進語音信箱（立刻掛、不留言）或對方說「還沒開放」：代打排隊（`queued`，`call_code` 是 `redial_wait`，時間在 `redial_at`），上一通結束後 3 秒再撥（手機正在通話就 1 秒後再看）。響鈴約 70 秒沒人接才放棄，通常在那之前已轉進語音信箱。聽到排隊錄音（依序轉接、客服全忙、報順位）就留在線上等，最多 30 分鐘、不超過這一輪的時限；真人說「請稍等」不算排隊。有人接起來、從第一通算起 30 分鐘到（`no_answer`；Bageo 重新啟動不會重算）、號碼不通、語音選單或手機出問題就停。同一個號碼每分鐘最多 10 通的安全上限，而且同一個號碼同時只能有一輪撥到通（`number_taken`）。只在最後通知一次。 |
+| 指定時間（`scheduled_at`） | 先等著（`scheduled`），時間前 2 秒用你選的手機和 SIM 撥出；預設打開「撥到通」。從那時起佔用整支手機（兩張 SIM 都算）30 分鐘（只打一次：12 分鐘），這段時間別的代打不能用；排在剛好 30 分鐘後的可以。Bageo 重新啟動也還在；還原備份會取消它（`call_code` `restored`）。那個時間 Bageo 沒在執行的話，30 分鐘內（只打一次：5 分鐘）還是會開始，超過就算失敗（`missed`）。還沒結束的代打最多 50 筆（`too_many_open`）。 |
 | 撥號中你按了取消 | 手機和號碼立刻放出來給下一通；萬一電話還是接通了，會在 AI 開口前掛斷。 |
 
 ### 代打物件
@@ -510,7 +510,7 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 | `result` | `null` 或 `{outcome, summary, details, follow_up, options, event, unconfirmed}`。欄位見下方。 |
 | `history` | 先前幾次的嘗試，`[{attempt, status, result, record_id, ended_at, questions}]`。 |
 
-`call_code` 的值：`scheduled`、`dialing`、`queued`、`answered`、`no_answer`、`failed`、`phone_busy`、`number_busy`、`no_phone`、`send_failed`、`keypad_menu`、`carrier_message`、`wrong_sim`、`agent_restarted`、`cancelled`、`redial_wait`、`voicemail`、`not_open`、`queue_wait`、`missed`。
+`call_code` 的值：`scheduled`、`dialing`、`queued`、`answered`、`no_answer`、`failed`、`phone_busy`、`number_busy`、`no_phone`、`send_failed`、`keypad_menu`、`carrier_message`、`wrong_sim`、`agent_restarted`、`cancelled`、`redial_wait`、`voicemail`、`not_open`、`queue_wait`、`missed`、`restored`。
 
 `questions` 裡的 `answered_by`：`owner`（你回答了）、`timeout`（你在看但沒來得及回答）、`absent`（沒人在看）；還在等時是 `null`。
 
@@ -526,7 +526,7 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 
 | 方法與路徑 | 內容 |
 |---|---|
-| `GET /calls/api/errands` | `{ok, errands, grab}`，最新的在前，最多 200 筆；`grab` 是 `{lead_s, gap_s, window_min, max_days}`。 |
+| `GET /calls/api/errands` | `{ok, errands, grab}`：所有還沒結束的代打，再補最新已結束的，最多 200 筆；`grab` 是 `{lead_s, gap_s, window_min, max_days, max_open}`。 |
 | `POST /calls/api/errands` | 開始一筆。Body `{number, name, contact_id, task, identity, serial, follow_up_of, answers, redial}`（`redial` 是 `true` 就打開「撥到通」，預設 `false`），回應 `{ok, errand}`。帶 `scheduled_at` 就改成指定時間（見下方）。 |
 | `POST /calls/api/errands/{id}/schedule` | 還沒開始的指定時間代打：Body `{scheduled_at, serial, sub_id, grab}`（只有 `scheduled_at` 必填）。`{ok, errand}`。 |
 | `GET /calls/api/errands/lines?at=&grab=&except=` | 在 `at`（留空：現在）那通電話期間被別的代打佔用的門號，`{ok, held: [{serial, sub_id, held_by}], grab}`。`except`：正在改時間的那一筆。 |
@@ -545,8 +545,8 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 - `answers` 可以不帶：你回答補問後的內容，格式 `{key: 文字}`。key 就是 `preflight` 在 `missing` 和 `optional` 回傳的那些，另有 `note` 放自由文字；每項最多 80 字（`note` 120 字），不認得的 key 會被丟掉。它們會以一小段文字放進這通電話的腳本交給 AI。
 - `place_type` 可以不帶：`preflight` 回傳的 `type`。沒帶就由 Bageo 從交辦內容判斷是哪一類電話。
 - `sub_id` 可以不帶：用 `serial` 那支手機的哪張 SIM 撥（也可以把 `serial` 寫成 `<serial>:<sub_id>`）。那張 SIM 跟 `+` 開頭號碼的國家不同時，會回 `sim_other_country`，要帶 `"abroad_ok": true` 把同一份內容再送一次（主人同意打國際電話）才會撥。這筆代打會記住它，「再打一次」和撥到通重撥都沿用。
-- `scheduled_at` 可以不帶：什麼時候打，RFC 3339 或當地時間 `YYYY-MM-DDTHH:MM`（Bageo 的 `TZ`），要是之後的時間、最多 60 天內。一定要帶 `serial` 和 `sub_id`；`grab`（預設 `true`）就是它的「撥到通」。跟現在打一樣，先問 `preflight`。現在打的也不會用到指定時間代打在通話期間佔用的門號（`line_reserved`；沒指定 `serial` 就改用別支空著的）。
-- `held_by`（在 `line_taken`、`line_reserved` 和 `lines` 裡）：佔用門號的那筆代打 `{id, name, number, status, scheduled_at}`。
+- `scheduled_at` 可以不帶：什麼時候打，RFC 3339 或當地時間 `YYYY-MM-DDTHH:MM`（Bageo 的 `TZ`），要是之後的時間、最多 60 天內。一定要帶 `serial` 和 `sub_id`；`grab`（預設 `true`）就是它的「撥到通」。跟現在打一樣，先問 `preflight`。給了但不是文字會回 `bad_time`，絕不當成現在打。現在打的也不會用到指定時間代打在通話期間佔用的手機（`line_reserved`；沒指定 `serial` 就改用別支空著的）。
+- `held_by`（在 `line_taken`、`line_reserved`、`number_taken` 和 `lines` 裡）：擋住的那筆代打 `{id, name, number, status, scheduled_at}`。
 
 `POST /calls/api/errands/preflight` 的內容：
 
@@ -584,10 +584,13 @@ AI 代打就是 AI 替你打出去的電話。給它一個號碼（或一位聯�
 | `sim_other_country` | 新增、再打 | 指定的 SIM（`sub_id`）跟號碼不是同一個國家。回應另帶 `sim_country`、`number_country`（兩碼國碼）。帶 `"abroad_ok": true` 再送一次就照樣撥。 |
 | `not_found` | 新增 | `contact_id` 或 `follow_up_of` 不存在（這裡回 400）。 |
 | `busy` | 再打、刪除 | 這筆還在撥號或通話中。 |
-| `bad_time`／`past_time`／`too_far` | 新增、改時間、門號 | `scheduled_at` 看不懂／不是之後的時間／超過 60 天。 |
+| `bad_time`／`past_time`／`too_far` | 新增、改時間、門號 | `scheduled_at` 看不懂或不是文字／不是之後的時間／超過 60 天。 |
+| `time_skipped` | 新增、改時間、門號 | 這個當地時間在夏令時間調整中不存在。 |
 | `need_line` | 新增 | 指定時間的代打沒帶 `serial` 和 `sub_id`。 |
-| `line_taken` | 新增、改時間 | 那段時間這支門號已經被別的代打佔用；`held_by` 是哪一筆。 |
-| `line_reserved` | 新增、再打 | 現在打會撞到這支門號上的指定時間代打（或合適的門號都被佔用）；新增時 `held_by` 是哪一筆。 |
+| `line_taken` | 新增、改時間 | 那段時間這支手機已經被別的代打佔用；`held_by` 是哪一筆。 |
+| `line_reserved` | 新增、再打 | 現在打會撞到這支手機上的指定時間代打（或合適的手機都被佔用）；`held_by` 是哪一筆。 |
+| `number_taken` | 新增、改時間、再打 | 同一個號碼另有一輪撥到通的時段重疊；`held_by` 是哪一筆。 |
+| `too_many_open` | 新增、再打 | 還沒結束的代打已經有 50 筆。 |
 | `not_scheduled` | 改時間 | 這筆已經開始或結束。 |
 | `not_on_call` | say | 電話不在通話中（或已經結束）。 |
 | `empty_text`／`text_too_long` | say | 沒有內容／超過 300 字。 |

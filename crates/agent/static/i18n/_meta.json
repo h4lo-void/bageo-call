@@ -2102,7 +2102,7 @@
     "placeholders": []
   },
   "er_err_line_reserved": {
-    "where": "a label or sentence in the console. English: That line is booked soon for “{who}” ({when}). Pick another line.",
+    "where": "a label or sentence in the console. English: That phone is booked soon for “{who}” ({when}). Pick another phone.",
     "who": "the owner",
     "placeholders": [
       "{who}",
@@ -2110,7 +2110,7 @@
     ]
   },
   "er_err_line_taken": {
-    "where": "a label or sentence in the console. English: That line is already booked then by “{who}” ({when}). Pick another line or time.",
+    "where": "a label or sentence in the console. English: That phone is already booked then by “{who}” ({when}). Pick another phone or time.",
     "who": "the owner",
     "placeholders": [
       "{who}",
@@ -2146,6 +2146,14 @@
     "where": "a label or sentence in the console. English: This call has already started or ended, so its time can't change.",
     "who": "the owner",
     "placeholders": []
+  },
+  "er_err_number_taken": {
+    "where": "a label or sentence in the console. English: “{who}” ({when}) is already redialing that number then. Pick another time.",
+    "who": "the owner",
+    "placeholders": [
+      "{who}",
+      "{when}"
+    ]
   },
   "er_err_past_time": {
     "where": "a label or sentence in the console. English: That time has passed. Pick a later one.",
@@ -2215,11 +2223,23 @@
     "who": "the owner",
     "placeholders": []
   },
+  "er_err_time_skipped": {
+    "where": "a label or sentence in the console. English: That time doesn't exist: the clock skips it for summer time. Pick another time.",
+    "who": "the owner",
+    "placeholders": []
+  },
   "er_err_too_far": {
     "where": "a label or sentence in the console. English: You can schedule up to {days} days ahead.",
     "who": "the owner",
     "placeholders": [
       "{days}"
+    ]
+  },
+  "er_err_too_many_open": {
+    "where": "a label or sentence in the console. English: {max} AI calls aren't over yet. Cancel some or wait for them to end.",
+    "who": "the owner",
+    "placeholders": [
+      "{max}"
     ]
   },
   "er_follow_up": {
@@ -2333,7 +2353,7 @@
     "placeholders": []
   },
   "er_line_held": {
-    "where": "a label or sentence in the console. English: {name} (booked by “{who}”, {when})",
+    "where": "a label or sentence in the console. English: {name} (phone booked by “{who}”, {when})",
     "who": "the owner",
     "placeholders": [
       "{name}",

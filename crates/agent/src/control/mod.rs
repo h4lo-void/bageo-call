@@ -281,15 +281,16 @@ pub fn error_outcome(code: &str) -> Outcome {
     }
 }
 
-/// The model's reading of the owner's `text`, an errand's time to call taken
-/// from the text itself when it says one before the words asking for the call
-/// ([crate::errand_plan::call_time_in]): what the owner wrote wins over the
-/// model's reading of it.
+/// The model's reading of the owner's `text`. Its time to call stands; only
+/// when it gave none is one read from the text itself, and only a plain one
+/// ([crate::errand_plan::call_time_in]: a full date and time before the words
+/// asking for the call, no weekday, no booking named before). Either way the
+/// owner confirms the date, weekday, time and phone before anything is set.
 fn with_call_time(action: Action, text: &str) -> Action {
     match action {
-        Action::Errand { target, task, when } => {
+        Action::Errand { target, task, when } if when.trim().is_empty() => {
             let read = crate::errand_plan::call_time_in(text, chrono::Local::now().naive_local(), locale::notify_lang());
-            let when = read.map(|t| t.format("%Y-%m-%dT%H:%M").to_string()).unwrap_or(when);
+            let when = read.map(|t| t.format("%Y-%m-%dT%H:%M").to_string()).unwrap_or_default();
             Action::Errand { target, task, when }
         }
         other => other,
@@ -1142,9 +1143,8 @@ impl Controller {
     #[allow(clippy::result_large_err)]
     fn plan_errand(&self, now: &errands::Now, number: &str, when: &str, body: &mut Value) -> Result<String, Outcome> {
         let lang = locale::notify_lang();
-        let at = crate::errand_plan::resolve_when(when, chrono::Local::now().naive_local(), lang)
-            .and_then(crate::errand_plan::local_of)
-            .ok_or_else(|| error_outcome("bad_time"))?;
+        let naive = crate::errand_plan::resolve_when(when, chrono::Local::now().naive_local(), lang).ok_or_else(|| error_outcome("bad_time"))?;
+        let at = crate::errand_plan::local_of(naive).ok_or_else(|| error_outcome("time_skipped"))?;
         let utc = at.with_timezone(&chrono::Utc);
         crate::errand_plan::check_at(utc, chrono::Utc::now()).map_err(error_outcome)?;
         let pick = errands::free_line_at(&self.state.errands, &now.phones, number, &errands::home_region(&now.rt), utc, true).map_err(refusal_outcome)?;
@@ -1440,7 +1440,8 @@ impl Controller {
                 Err(o) => return o,
             }
         };
-        if direct {
+        // A scheduled call always waits for the owner's yes on its card, `direct` or not.
+        if direct && planned.is_empty() {
             return match errands::create_with(&errands::env_of(&self.state, &now), &body).await {
                 Ok(e) => {
                     self.limits.note_errand(origin);

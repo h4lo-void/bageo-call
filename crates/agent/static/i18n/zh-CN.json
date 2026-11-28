@@ -1418,7 +1418,7 @@
     "er_at": "拨打日期和时间",
     "er_at_h": "按 Bageo 所在的时区，最多安排 {days} 天内。",
     "er_phone_pick": "请选一个号码",
-    "er_line_held": "{name}（已被“{who}”{when} 占用）",
+    "er_line_held": "{name}（这部手机已被“{who}”{when} 占用）",
     "er_sch_at": "已安排 {when}（{left}）",
     "er_st_scheduled": "已安排",
     "er_scheduled_ok": "已安排，时间到会自动拨出。",
@@ -1430,8 +1430,11 @@
     "er_err_too_far": "最多只能安排 {days} 天内的时间。",
     "er_err_need_line": "定时代打要选用哪个号码。",
     "er_err_bad_time": "看不懂这个时间，请重新选。",
-    "er_err_line_taken": "这个号码那段时间已经被“{who}”（{when}）占用了，请换一个或换时间。",
-    "er_err_line_reserved": "这个号码稍后要给“{who}”（{when}）用，请换一个。",
-    "er_err_not_scheduled": "这条已经开始或结束，不能再改时间。"
+    "er_err_line_taken": "这部手机那段时间已经被“{who}”（{when}）占用了，请换一部或换时间。",
+    "er_err_line_reserved": "这部手机稍后要给“{who}”（{when}）用，请换一部。",
+    "er_err_not_scheduled": "这条已经开始或结束，不能再改时间。",
+    "er_err_number_taken": "这个号码那段时间已经有“{who}”（{when}）在拨到通，请换个时间。",
+    "er_err_too_many_open": "还没结束的代打已经有 {max} 条，请先取消或等几条结束。",
+    "er_err_time_skipped": "这个时间在夏令时调整中不存在，请换一个时间。"
   }
 }

@@ -4262,6 +4262,19 @@ function erIdentity() {
   return r ? r.value : erDefaultIdentity();
 }
 function erSetIdentity(v) { document.querySelectorAll('input[name="er_identity"]').forEach((r) => { r.checked = r.value === v; }); }
+// A scheduled errand's time with its weekday, and how long until then.
+function erSchLine(at) {
+  const d = parseStamp(at);
+  if (!d) return "";
+  let when = "", left = "";
+  try { when = new Intl.DateTimeFormat(loc(), { weekday: "short", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d); } catch (_) { when = d.toLocaleString(); }
+  const sec = Math.round((d.getTime() - Date.now()) / 1000), a = Math.abs(sec);
+  try {
+    const rtf = new Intl.RelativeTimeFormat(loc(), { numeric: "auto" });
+    left = a >= 86400 ? rtf.format(Math.round(sec / 86400), "day") : a >= 3600 ? rtf.format(Math.round(sec / 3600), "hour") : a >= 60 ? rtf.format(Math.round(sec / 60), "minute") : rtf.format(sec, "second");
+  } catch (_) { left = ""; }
+  return t("er_sch_at", { when, left });
+}
 function renderErrandForm() {
   const name = String((S && S.owner_name) || "").trim();
   $("erIdAssistant").textContent = name ? t("er_id_assistant", { name }) : t("er_id_assistant_anon");
@@ -4537,6 +4550,7 @@ function errandCard(e) {
   if (long) {
     card.append(h("button", { type: "button", class: "btn xs ghost", text: t(open ? "er_less" : "er_more"), onclick: () => { if (open) erExpanded.delete(e.id); else erExpanded.add(e.id); renderErrands(); } }));
   }
+  if (e.status === "scheduled") card.append(h("p", { class: "small", text: erSchLine(e.scheduled_at) }));
   if (active) card.append(erLiveBox(e));
   if (!erOpen(e)) {
     const res = erResult(e);

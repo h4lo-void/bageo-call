@@ -7407,6 +7407,7 @@ pub async fn run_session(
     // "Redial until answered": a queue's recording (hold, music, your place in
     // line): the AI stays on the line for a person (errand_menu_since times it).
     let mut errand_queue = false;
+    let mut errand_queue_wait = Duration::ZERO;
     // Testing only: rotate once after N s so it is testable without ~8 min.
     let test_rotate_after: Option<u64> = std::env::var("GEMINI_TEST_ROTATE_AFTER_SECS")
         .ok()
@@ -7634,13 +7635,13 @@ pub async fn run_session(
                     e.note_menu(false);
                     info!("Errand call: the AI talks after the voice menu (a person came on) serial={serial}");
                 } else if errand_queue {
-                    if t0.elapsed() >= crate::errand_plan::GRAB.queue_wait {
+                    if t0.elapsed() >= errand_queue_wait {
                         e.note_queue();
                         end_reason = SessionEndReason::IvrHangup;
                         signal_force_hangup(&mut hangup_signaled);
                         info!(
-                            "Errand call: queue, no person within {}s serial={serial} — hang up, dialed again",
-                            crate::errand_plan::GRAB.queue_wait.as_secs()
+                            "Errand call: queue, no person within {}s serial={serial} — hang up",
+                            errand_queue_wait.as_secs()
                         );
                         break;
                     }
@@ -9710,10 +9711,11 @@ pub async fn run_session(
                                             && crate::errands::queue_message(&in_tx_window)
                                         {
                                             errand_queue = true;
+                                            errand_queue_wait = e.queue_wait();
                                             e.note_menu(false);
                                             errand_menu_since = Some(tokio::time::Instant::now());
                                             errand_menu_chunks = audio_chunks_out;
-                                            let extra = crate::errand_plan::GRAB.queue_wait.as_secs();
+                                            let extra = errand_queue_wait.as_secs();
                                             wrap_secs += extra;
                                             wrap_force_secs += extra;
                                             max_secs += extra;

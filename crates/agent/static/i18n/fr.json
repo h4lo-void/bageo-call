@@ -1418,7 +1418,7 @@
     "er_at": "Date et heure",
     "er_at_h": "Dans le fuseau horaire de Bageo, jusqu'à {days} jours à l'avance.",
     "er_phone_pick": "Choisissez une ligne",
-    "er_line_held": "{name} (réservée pour « {who} », {when})",
+    "er_line_held": "{name} (téléphone réservé pour « {who} », {when})",
     "er_sch_at": "Programmé le {when} ({left})",
     "er_st_scheduled": "Programmé",
     "er_scheduled_ok": "Programmé : l'appel partira tout seul à cette heure.",
@@ -1430,8 +1430,11 @@
     "er_err_too_far": "Vous pouvez programmer jusqu'à {days} jours à l'avance.",
     "er_err_need_line": "Un appel programmé a besoin d'une ligne d'où appeler.",
     "er_err_bad_time": "L'heure n'est pas claire. Choisissez-la à nouveau.",
-    "er_err_line_taken": "Cette ligne est déjà prise à cette heure par « {who} » ({when}). Choisissez une autre ligne ou une autre heure.",
-    "er_err_line_reserved": "Cette ligne sert bientôt pour « {who} » ({when}). Choisissez-en une autre.",
-    "er_err_not_scheduled": "Cet appel a déjà commencé ou est terminé : son heure ne peut plus changer."
+    "er_err_line_taken": "Ce téléphone est déjà pris à cette heure par « {who} » ({when}). Choisissez un autre téléphone ou une autre heure.",
+    "er_err_line_reserved": "Ce téléphone sert bientôt pour « {who} » ({when}). Choisissez-en un autre.",
+    "er_err_not_scheduled": "Cet appel a déjà commencé ou est terminé : son heure ne peut plus changer.",
+    "er_err_number_taken": "« {who} » ({when}) rappelle déjà ce numéro à cette heure. Choisissez une autre heure.",
+    "er_err_too_many_open": "{max} appels de l'IA ne sont pas terminés. Annulez-en ou attendez qu'ils finissent.",
+    "er_err_time_skipped": "Cette heure n'existe pas : l'horloge la saute au passage à l'heure d'été. Choisissez-en une autre."
   }
 }

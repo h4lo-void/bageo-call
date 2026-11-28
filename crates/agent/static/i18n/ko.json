@@ -1418,7 +1418,7 @@
     "er_at": "걸 날짜와 시간",
     "er_at_h": "Bageo 시간대 기준으로 {days}일 이내만 예약할 수 있어요.",
     "er_phone_pick": "번호를 골라 주세요",
-    "er_line_held": "{name} (‘{who}’ {when} 예약됨)",
+    "er_line_held": "{name} (이 휴대폰은 ‘{who}’ {when} 예약됨)",
     "er_sch_at": "{when} 예약 ({left})",
     "er_st_scheduled": "예약됨",
     "er_scheduled_ok": "예약했어요. 그 시간에 자동으로 겁니다.",
@@ -1430,8 +1430,11 @@
     "er_err_too_far": "{days}일 이내로만 예약할 수 있어요.",
     "er_err_need_line": "예약 전화는 걸 번호를 골라야 해요.",
     "er_err_bad_time": "시간을 알 수 없어요. 다시 골라 주세요.",
-    "er_err_line_taken": "그 번호는 그 시간에 ‘{who}’({when}) 예약이 있어요. 다른 번호나 시간을 골라 주세요.",
-    "er_err_line_reserved": "그 번호는 곧 ‘{who}’({when})에 쓰여요. 다른 번호를 골라 주세요.",
-    "er_err_not_scheduled": "이미 시작했거나 끝난 전화라 시간을 바꿀 수 없어요."
+    "er_err_line_taken": "그 휴대폰은 그 시간에 ‘{who}’({when}) 예약이 있어요. 다른 휴대폰이나 시간을 골라 주세요.",
+    "er_err_line_reserved": "그 휴대폰은 곧 ‘{who}’({when})에 쓰여요. 다른 휴대폰을 골라 주세요.",
+    "er_err_not_scheduled": "이미 시작했거나 끝난 전화라 시간을 바꿀 수 없어요.",
+    "er_err_number_taken": "그 번호는 그 시간에 ‘{who}’({when})이(가) 다시 걸고 있어요. 다른 시간을 골라 주세요.",
+    "er_err_too_many_open": "끝나지 않은 AI 대리 전화가 {max}건이에요. 몇 건을 취소하거나 끝날 때까지 기다려 주세요.",
+    "er_err_time_skipped": "그 시간은 서머타임 조정으로 존재하지 않아요. 다른 시간을 골라 주세요."
   }
 }

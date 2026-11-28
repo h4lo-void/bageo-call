@@ -1418,7 +1418,7 @@
     "er_at": "撥打日期和時間",
     "er_at_h": "照 Bageo 所在的時區，最多排 {days} 天內。",
     "er_phone_pick": "請選一支門號",
-    "er_line_held": "{name}（已被「{who}」{when} 排走）",
+    "er_line_held": "{name}（這支手機已被「{who}」{when} 排走）",
     "er_sch_at": "排定 {when}（{left}）",
     "er_st_scheduled": "已排定",
     "er_scheduled_ok": "已排定，時間到會自動撥出。",
@@ -1430,8 +1430,11 @@
     "er_err_too_far": "最多只能排 {days} 天內的時間。",
     "er_err_need_line": "指定時間的代打要選用哪支門號。",
     "er_err_bad_time": "看不懂這個時間，請重新選。",
-    "er_err_line_taken": "這支門號那段時間已經被「{who}」（{when}）排走了，請換一支或換時間。",
-    "er_err_line_reserved": "這支門號等一下要給「{who}」（{when}）用，請換一支。",
-    "er_err_not_scheduled": "這筆已經開始或結束，不能再改時間。"
+    "er_err_line_taken": "這支手機那段時間已經被「{who}」（{when}）排走了，請換一支或換時間。",
+    "er_err_line_reserved": "這支手機等一下要給「{who}」（{when}）用，請換一支。",
+    "er_err_not_scheduled": "這筆已經開始或結束，不能再改時間。",
+    "er_err_number_taken": "這個號碼那段時間已經有「{who}」（{when}）在撥到通，請換個時間。",
+    "er_err_too_many_open": "還沒結束的代打已經有 {max} 筆，請先取消或等幾筆結束。",
+    "er_err_time_skipped": "這個時間在夏令時間調整中不存在，請換一個時間。"
   }
 }

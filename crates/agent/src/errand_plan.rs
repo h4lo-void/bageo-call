@@ -37,8 +37,10 @@ pub struct GrabRules {
     /// in any one minute.
     pub per_minute_cap: usize,
     /// A queue's recording ("please hold", music, "you are number 3"): the AI
-    /// stays on the line this long for a person.
+    /// stays on the line this long for a person (never past the window).
     pub queue_wait: Duration,
+    /// The phone is on another call: looked at again this soon.
+    pub phone_retry: Duration,
 }
 
 pub const GRAB: GrabRules = GrabRules {
@@ -47,13 +49,14 @@ pub const GRAB: GrabRules = GrabRules {
     window: Duration::from_secs(30 * 60),
     per_minute_cap: 10,
     queue_wait: Duration::from_secs(30 * 60),
+    phone_retry: Duration::from_secs(1),
 };
 
 /// How a try ended, as grab mode tells them apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GrabCase {
-    /// It rang out or was declined after ringing (a ringing call is never hung
-    /// up early: it rings until voicemail, a busy line or the other side ends it).
+    /// It rang out or was declined after ringing (a ringing call is given up
+    /// after about 70 seconds; voicemail usually answers before that).
     NoAnswer,
     /// It ended before it connected: a busy tone or a fast busy.
     EndedEarly,
@@ -124,6 +127,13 @@ pub fn grab_next_at(rules: &GrabRules, since: DateTime<Utc>, dials: &[DateTime<U
     (at < since + span(rules.window)).then_some(at)
 }
 
+/// How long the AI may stay in a queue on a try of a run that started at
+/// `since`: [GrabRules::queue_wait], but never past the run's window.
+pub fn queue_wait_left(rules: &GrabRules, since: DateTime<Utc>, now: DateTime<Utc>) -> Duration {
+    let left = (since + span(rules.window) - now).to_std().unwrap_or(Duration::ZERO);
+    left.min(rules.queue_wait)
+}
+
 // ---------------------------------------------------------------- scheduled errands
 
 /// From when to when (the end not included).
@@ -131,6 +141,8 @@ pub type Span = (DateTime<Utc>, DateTime<Utc>);
 
 /// How far ahead an errand may be scheduled.
 pub const MAX_DAYS: i64 = 60;
+/// At most this many errands not over yet (scheduled ones included).
+pub const OPEN_MAX: usize = 50;
 /// A scheduled errand without grab mode holds its line this long from its
 /// time (a call of up to 10 minutes and its ringing).
 pub const PLAIN_HOLD: Duration = Duration::from_secs(12 * 60);
@@ -156,15 +168,18 @@ pub fn local_of(n: NaiveDateTime) -> Option<DateTime<Local>> {
 }
 
 /// A time as the API takes it: RFC 3339, or local `YYYY-MM-DDTHH:MM[:SS]`.
-pub fn parse_at(s: &str) -> Option<DateTime<Local>> {
+/// Err `bad_time` (unreadable) or `time_skipped` (a local time the clock
+/// skips when it goes forward for summer time).
+pub fn parse_at(s: &str) -> Result<DateTime<Local>, &'static str> {
     let s = s.trim();
     if let Ok(t) = DateTime::parse_from_rfc3339(s) {
-        return Some(t.with_timezone(&Local));
+        return Ok(t.with_timezone(&Local));
     }
-    ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"]
+    let n = ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"]
         .iter()
         .find_map(|f| NaiveDateTime::parse_from_str(s, f).ok())
-        .and_then(local_of)
+        .ok_or("bad_time")?;
+    local_of(n).ok_or("time_skipped")
 }
 
 /// A time an errand may be scheduled at: in the future (`past_time`), at most
@@ -179,9 +194,12 @@ pub fn check_at(at: DateTime<Utc>, now: DateTime<Utc>) -> Result<(), &'static st
     Ok(())
 }
 
-/// `[a0, a1)` and `[b0, b1)` share a moment.
-pub fn overlaps(a: (DateTime<Utc>, DateTime<Utc>), b: (DateTime<Utc>, DateTime<Utc>)) -> bool {
-    a.0 < b.1 && b.0 < a.1
+/// Two holds ([hold]) share a moment beyond the [GrabRules::lead] one of
+/// them dials early with: a schedule right where another's 30 minutes end
+/// does not clash with it.
+pub fn overlaps(a: Span, b: Span) -> bool {
+    let lead = span(GRAB.lead);
+    a.0 + lead < b.1 && b.0 + lead < a.1
 }
 
 // ---------------------------------------------------------------- times in chat messages
@@ -593,11 +611,23 @@ fn day_first(text: &str, owner: Lang) -> bool {
     matches!(owner, Lang::Es | Lang::Fr | Lang::De | Lang::Pt)
 }
 
-/// When the owner wants the call placed, if their message says it before
-/// the words that ask for the call ("12/1 8點幫我打給…", "On Dec 1 at 8 am
-/// call…", "12월 1일 오전 8시에 …에 전화해서"). A time after those words is
-/// part of the task ("book for 7 pm"), and a message without them has none:
-/// None, the call goes now.
+/// Weekdays and "next …": a time named so is the chat model's to read, not ours.
+const WEEKDAY_WORDS: &[&str] = &[
+    "週一", "週二", "週三", "週四", "週五", "週六", "週日", "週天", "周一", "周二", "周三", "周四", "周五", "周六", "周日", "周天", "星期", "禮拜", "礼拜", "下週",
+    "下周", "曜日", "曜", "来週", "요일", "다음 주", "다음주", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "mon", "tue",
+    "wed", "thu", "fri", "sat", "sun", "next", "lunes", "martes", "miércoles", "miercoles", "jueves", "viernes", "sábado", "sabado", "domingo",
+    "próximo", "proximo", "próxima", "proxima", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche", "prochain", "prochaine",
+    "montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag", "sonntag", "nächste", "nächsten", "nächstes", "naechste", "segunda",
+    "terça", "terca", "quarta", "quinta", "sexta",
+];
+/// A booking named before the words asking for the call: its time is the booking's.
+const BOOKING_WORDS: &[&str] = &["訂", "订", "予約", "예약", "book", "reserv", "réserv", "agend", "marcar", "termin"];
+
+/// When the owner wants the call placed, read from their message only when
+/// that is plain: a full date and time ("12/1 8點", "Dec 1 at 8 am", "le
+/// 1/12 à 20h") before the words that ask for the call, no weekday or "next",
+/// no booking named before them ("book a table at 7 pm tomorrow, call …").
+/// Anything less clear is None: the chat model's reading stands.
 pub fn call_time_in(text: &str, now: NaiveDateTime, owner: Lang) -> Option<NaiveDateTime> {
     let t = normalize(text);
     let cut = CALL_WORDS.iter().filter_map(|w| find_word(&t, w)).min()?;
@@ -605,7 +635,19 @@ pub fn call_time_in(text: &str, now: NaiveDateTime, owner: Lang) -> Option<Naive
     if head.trim().is_empty() {
         return None;
     }
-    parse_when(&head, now, day_first(text, owner))
+    // The weekday and booking words as written (normalize turns 週一 into 週1).
+    let raw: Vec<char> = text.to_lowercase().chars().collect();
+    let raw_cut = CALL_WORDS.iter().filter_map(|w| find_word(&raw, w)).min().unwrap_or(raw.len());
+    let raw_head: String = raw[..raw_cut].iter().collect();
+    let raw_head_chars: Vec<char> = raw_head.chars().collect();
+    if has_word(&raw_head_chars, WEEKDAY_WORDS) || BOOKING_WORDS.iter().any(|w| raw_head.contains(w)) {
+        return None;
+    }
+    let first = day_first(text, owner);
+    let head_chars: Vec<char> = head.chars().collect();
+    // A date written out, not "tomorrow".
+    find_date(&head_chars, &numbers(&head_chars), first)?;
+    parse_when(&head, now, first)
 }
 
 /// A word of a date or time as a chat command writes it before the number
@@ -757,6 +799,14 @@ pub struct Words {
     pub e_line_taken: &'static str,
     pub e_line_reserved: &'static str,
     pub e_not_scheduled: &'static str,
+    /// Another errand redials the same number then.
+    pub e_number_taken: &'static str,
+    /// Too many errands not over yet (`{max}`).
+    pub e_too_many_open: &'static str,
+    /// A local time the clock skips for summer time.
+    pub e_time_skipped: &'static str,
+    /// Why a scheduled errand is cancelled: a backup was restored.
+    pub restored: &'static str,
 }
 
 pub fn words(lang: Lang) -> &'static Words {
@@ -794,9 +844,13 @@ const ZH_TW: Words = Words {
     e_past_time: "這個時間已經過了，請選之後的時間。",
     e_too_far: "最多只能排 {days} 天內的時間。",
     e_need_line: "排定時間的代打要選用哪支手機的哪張卡。",
-    e_line_taken: "這支門號那段時間已經被「{who}」（{when}）排走了，請換一支或換時間。",
-    e_line_reserved: "這支門號接下來被排定的代打佔用（{who}，{when}），請換一支。",
+    e_line_taken: "這支手機那段時間已經被「{who}」（{when}）排走了，請換一支或換時間。",
+    e_line_reserved: "這支手機接下來要給排定的代打用（{who}，{when}），請換一支。",
     e_not_scheduled: "這筆已經開始或結束，不能再改時間。",
+    e_number_taken: "這個號碼那段時間已經有「{who}」（{when}）在撥到通，請換個時間。",
+    e_too_many_open: "還沒結束的代打已經有 {max} 筆，請先取消或等幾筆結束。",
+    e_time_skipped: "這個時間在夏令時間調整中不存在，請換一個時間。",
+    restored: "還原備份後，這個排程已取消",
 };
 
 const ZH_CN: Words = Words {
@@ -815,9 +869,13 @@ const ZH_CN: Words = Words {
     e_past_time: "这个时间已经过了，请选之后的时间。",
     e_too_far: "最多只能安排 {days} 天内的时间。",
     e_need_line: "定时代打要选用哪部手机的哪张卡。",
-    e_line_taken: "这个号码那段时间已经被“{who}”（{when}）占用了，请换一个或换时间。",
-    e_line_reserved: "这个号码接下来被定时代打占用（{who}，{when}），请换一个。",
+    e_line_taken: "这部手机那段时间已经被“{who}”（{when}）占用了，请换一部或换时间。",
+    e_line_reserved: "这部手机接下来要给定时代打用（{who}，{when}），请换一部。",
     e_not_scheduled: "这条已经开始或结束，不能再改时间。",
+    e_number_taken: "这个号码那段时间已经有“{who}”（{when}）在拨到通，请换个时间。",
+    e_too_many_open: "还没结束的代打已经有 {max} 条，请先取消或等几条结束。",
+    e_time_skipped: "这个时间在夏令时调整中不存在，请换一个时间。",
+    restored: "恢复备份后，这个安排已取消",
 };
 
 const EN: Words = Words {
@@ -836,9 +894,13 @@ const EN: Words = Words {
     e_past_time: "That time has passed. Pick a later one.",
     e_too_far: "You can schedule up to {days} days ahead.",
     e_need_line: "A scheduled call needs a phone and SIM to call from.",
-    e_line_taken: "That line is already booked then by “{who}” ({when}). Pick another line or time.",
-    e_line_reserved: "That line is booked soon for a scheduled call ({who}, {when}). Pick another line.",
+    e_line_taken: "That phone is already booked then by “{who}” ({when}). Pick another phone or time.",
+    e_line_reserved: "That phone is booked soon for a scheduled call ({who}, {when}). Pick another phone.",
     e_not_scheduled: "This call has already started or ended, so its time can't change.",
+    e_number_taken: "“{who}” ({when}) is already redialing that number then. Pick another time.",
+    e_too_many_open: "{max} AI calls aren't over yet. Cancel some or wait for them to end.",
+    e_time_skipped: "That time doesn't exist: the clock skips it for summer time. Pick another time.",
+    restored: "Cancelled when a backup was restored",
 };
 
 const JA: Words = Words {
@@ -857,9 +919,13 @@ const JA: Words = Words {
     e_past_time: "その時刻は過ぎています。これから先の時刻を選んでください。",
     e_too_far: "予約できるのは {days} 日先までです。",
     e_need_line: "予約発信には、発信するスマホと SIM を選んでください。",
-    e_line_taken: "その番号はその時間「{who}」（{when}）で予約済みです。別の番号か時間を選んでください。",
-    e_line_reserved: "その番号はこのあと予約発信で使います（{who}、{when}）。別の番号を選んでください。",
+    e_line_taken: "そのスマホはその時間「{who}」（{when}）で予約済みです。別のスマホか時間を選んでください。",
+    e_line_reserved: "そのスマホはこのあと予約発信で使います（{who}、{when}）。別のスマホを選んでください。",
     e_not_scheduled: "この発信はもう始まったか終わったため、時刻を変えられません。",
+    e_number_taken: "その番号にはその時間「{who}」（{when}）がかけ直し中です。別の時間を選んでください。",
+    e_too_many_open: "終わっていない代理電話が {max} 件あります。いくつか取り消すか、終わるまでお待ちください。",
+    e_time_skipped: "その時刻はサマータイムの切り替えで存在しません。別の時刻を選んでください。",
+    restored: "バックアップを復元したため、この予約は取り消されました",
 };
 
 const KO: Words = Words {
@@ -878,9 +944,13 @@ const KO: Words = Words {
     e_past_time: "이미 지난 시간이에요. 이후 시간을 골라 주세요.",
     e_too_far: "{days}일 이내로만 예약할 수 있어요.",
     e_need_line: "예약 전화는 걸 휴대폰과 SIM을 골라야 해요.",
-    e_line_taken: "그 번호는 그 시간에 ‘{who}’({when}) 예약이 있어요. 다른 번호나 시간을 골라 주세요.",
-    e_line_reserved: "그 번호는 곧 예약 전화에 쓰여요({who}, {when}). 다른 번호를 골라 주세요.",
+    e_line_taken: "그 휴대폰은 그 시간에 ‘{who}’({when}) 예약이 있어요. 다른 휴대폰이나 시간을 골라 주세요.",
+    e_line_reserved: "그 휴대폰은 곧 예약 전화에 쓰여요({who}, {when}). 다른 휴대폰을 골라 주세요.",
     e_not_scheduled: "이미 시작했거나 끝난 전화라 시간을 바꿀 수 없어요.",
+    e_number_taken: "그 번호는 그 시간에 ‘{who}’({when})이(가) 다시 걸고 있어요. 다른 시간을 골라 주세요.",
+    e_too_many_open: "끝나지 않은 AI 대리 전화가 {max}건이에요. 몇 건을 취소하거나 끝날 때까지 기다려 주세요.",
+    e_time_skipped: "그 시간은 서머타임 조정으로 존재하지 않아요. 다른 시간을 골라 주세요.",
+    restored: "백업을 복원해서 이 예약은 취소됐어요",
 };
 
 const ES: Words = Words {
@@ -899,9 +969,13 @@ const ES: Words = Words {
     e_past_time: "Esa hora ya pasó. Elige una posterior.",
     e_too_far: "Puedes programar hasta {days} días antes.",
     e_need_line: "Una llamada programada necesita el teléfono y la SIM desde los que llamar.",
-    e_line_taken: "Esa línea ya está reservada a esa hora para «{who}» ({when}). Elige otra línea u otra hora.",
-    e_line_reserved: "Esa línea se usará pronto para una llamada programada ({who}, {when}). Elige otra.",
+    e_line_taken: "Ese teléfono ya está reservado a esa hora para «{who}» ({when}). Elige otro teléfono u otra hora.",
+    e_line_reserved: "Ese teléfono se usará pronto para una llamada programada ({who}, {when}). Elige otro.",
     e_not_scheduled: "Esta llamada ya empezó o terminó; no se puede cambiar la hora.",
+    e_number_taken: "«{who}» ({when}) ya está llamando a ese número a esa hora. Elige otra hora.",
+    e_too_many_open: "Hay {max} llamadas de la IA sin terminar. Cancela alguna o espera a que terminen.",
+    e_time_skipped: "Esa hora no existe: el reloj se la salta por el horario de verano. Elige otra.",
+    restored: "Cancelada al restaurar una copia de seguridad",
 };
 
 const FR: Words = Words {
@@ -920,9 +994,13 @@ const FR: Words = Words {
     e_past_time: "Cette heure est passée. Choisissez-en une plus tard.",
     e_too_far: "Vous pouvez programmer jusqu'à {days} jours à l'avance.",
     e_need_line: "Un appel programmé a besoin du téléphone et de la SIM d'où appeler.",
-    e_line_taken: "Cette ligne est déjà prise à cette heure par « {who} » ({when}). Choisissez une autre ligne ou heure.",
-    e_line_reserved: "Cette ligne sert bientôt à un appel programmé ({who}, {when}). Choisissez-en une autre.",
+    e_line_taken: "Ce téléphone est déjà pris à cette heure par « {who} » ({when}). Choisissez un autre téléphone ou une autre heure.",
+    e_line_reserved: "Ce téléphone sert bientôt à un appel programmé ({who}, {when}). Choisissez-en un autre.",
     e_not_scheduled: "Cet appel a déjà commencé ou est fini : son heure ne peut plus changer.",
+    e_number_taken: "« {who} » ({when}) rappelle déjà ce numéro à cette heure. Choisissez une autre heure.",
+    e_too_many_open: "{max} appels de l'IA ne sont pas terminés. Annulez-en ou attendez qu'ils finissent.",
+    e_time_skipped: "Cette heure n'existe pas : l'horloge la saute au passage à l'heure d'été. Choisissez-en une autre.",
+    restored: "Annulé lors de la restauration d'une sauvegarde",
 };
 
 const DE: Words = Words {
@@ -941,9 +1019,13 @@ const DE: Words = Words {
     e_past_time: "Diese Zeit ist vorbei. Wähl eine spätere.",
     e_too_far: "Du kannst bis zu {days} Tage im Voraus planen.",
     e_need_line: "Ein geplanter Anruf braucht Telefon und SIM, von denen er anruft.",
-    e_line_taken: "Diese Leitung ist zu der Zeit schon für „{who}“ ({when}) verplant. Wähl eine andere Leitung oder Zeit.",
-    e_line_reserved: "Diese Leitung ist gleich für einen geplanten Anruf verplant ({who}, {when}). Wähl eine andere.",
+    e_line_taken: "Dieses Telefon ist zu der Zeit schon für „{who}“ ({when}) verplant. Wähl ein anderes Telefon oder eine andere Zeit.",
+    e_line_reserved: "Dieses Telefon ist gleich für einen geplanten Anruf verplant ({who}, {when}). Wähl ein anderes.",
     e_not_scheduled: "Dieser Anruf hat schon begonnen oder ist vorbei, die Zeit lässt sich nicht mehr ändern.",
+    e_number_taken: "„{who}“ ({when}) ruft diese Nummer zu der Zeit schon wiederholt an. Wähl eine andere Zeit.",
+    e_too_many_open: "{max} KI-Anrufe sind noch nicht vorbei. Brich welche ab oder warte, bis sie fertig sind.",
+    e_time_skipped: "Diese Uhrzeit gibt es nicht: Die Uhr springt bei der Sommerzeit darüber. Wähl eine andere.",
+    restored: "Beim Wiederherstellen eines Backups abgebrochen",
 };
 
 const PT: Words = Words {
@@ -962,9 +1044,13 @@ const PT: Words = Words {
     e_past_time: "Esse horário já passou. Escolha um mais tarde.",
     e_too_far: "Dá para agendar até {days} dias antes.",
     e_need_line: "Uma ligação agendada precisa do celular e do chip de onde ligar.",
-    e_line_taken: "Essa linha já está reservada nesse horário para “{who}” ({when}). Escolha outra linha ou horário.",
-    e_line_reserved: "Essa linha vai ser usada em breve numa ligação agendada ({who}, {when}). Escolha outra.",
+    e_line_taken: "Esse celular já está reservado nesse horário para “{who}” ({when}). Escolha outro celular ou horário.",
+    e_line_reserved: "Esse celular vai ser usado em breve numa ligação agendada ({who}, {when}). Escolha outro.",
     e_not_scheduled: "Esta ligação já começou ou terminou; não dá para mudar o horário.",
+    e_number_taken: "“{who}” ({when}) já está ligando para esse número nesse horário. Escolha outro horário.",
+    e_too_many_open: "Há {max} ligações da IA sem terminar. Cancele algumas ou espere terminarem.",
+    e_time_skipped: "Esse horário não existe: o relógio pula ele no horário de verão. Escolha outro.",
+    restored: "Cancelada ao restaurar um backup",
 };
 
 /// The owner's words for an error code of a scheduled errand (`{who}` and
@@ -979,9 +1065,12 @@ pub fn error_text(lang: Lang, code: &str) -> Option<String> {
         "line_taken" => w.e_line_taken,
         "line_reserved" => w.e_line_reserved,
         "not_scheduled" => w.e_not_scheduled,
+        "number_taken" => w.e_number_taken,
+        "too_many_open" => w.e_too_many_open,
+        "time_skipped" => w.e_time_skipped,
         _ => return None,
     };
-    Some(text.replace("{days}", &MAX_DAYS.to_string()))
+    Some(text.replace("{days}", &MAX_DAYS.to_string()).replace("{max}", &OPEN_MAX.to_string()))
 }
 
 #[cfg(test)]
@@ -1040,13 +1129,29 @@ mod tests {
         assert_eq!(hold(t, false).1, t + chrono::Duration::minutes(12));
         assert!(overlaps(hold(t, true), hold(t + chrono::Duration::minutes(29), true)));
         assert!(!overlaps(hold(t, true), hold(t + chrono::Duration::minutes(31), true)));
+        // Exactly 30 minutes apart: the second's early 2 seconds are no clash, either way round.
+        assert!(!overlaps(hold(t, true), hold(t + chrono::Duration::minutes(30), true)));
+        assert!(!overlaps(hold(t + chrono::Duration::minutes(30), true), hold(t, true)));
+        assert!(overlaps(hold(t, true), hold(t + chrono::Duration::minutes(30) - chrono::Duration::seconds(1), true)));
+        // A queue may be waited out for 30 minutes, never past the run's window.
+        assert_eq!(queue_wait_left(&GRAB, t, t), Duration::from_secs(30 * 60));
+        assert_eq!(queue_wait_left(&GRAB, t, t + chrono::Duration::minutes(25)), Duration::from_secs(5 * 60));
+        assert_eq!(queue_wait_left(&GRAB, t, t + chrono::Duration::minutes(31)), Duration::ZERO);
         let now = utc("2026-11-28T00:00:00Z");
         assert_eq!(check_at(now, now), Err("past_time"));
         assert_eq!(check_at(now + chrono::Duration::days(61), now), Err("too_far"));
         assert_eq!(check_at(now + chrono::Duration::days(3), now), Ok(()));
-        assert!(parse_at("2026-12-01T08:00").is_some());
-        assert!(parse_at("2026-12-01T08:00:00+08:00").is_some());
-        assert!(parse_at("tomorrow").is_none());
+        assert!(parse_at("2026-12-01T08:00").is_ok());
+        assert!(parse_at("2026-12-01T08:00:00+08:00").is_ok());
+        assert_eq!(parse_at("tomorrow").map(|_| ()), Err("bad_time"));
+        // A local time the clock skips for summer time has its own words, in the nine languages.
+        for lang in [Lang::ZhTw, Lang::ZhCn, Lang::En, Lang::Ja, Lang::Ko, Lang::Es, Lang::Fr, Lang::De, Lang::Pt] {
+            for code in ["time_skipped", "number_taken", "too_many_open"] {
+                let s = error_text(lang, code).unwrap();
+                assert!(!s.contains("{max}"), "{lang:?} {code}");
+            }
+            assert!(error_text(lang, "too_many_open").unwrap().contains("50"), "{lang:?}");
+        }
     }
 
     /// The chat's time for the call, in the nine languages (most not Chinese),
@@ -1080,21 +1185,31 @@ mod tests {
         for (lang, text) in [
             (Lang::ZhTw, "1/2 9點幫我打給 0223456789 訂位"),
             (Lang::En, "Jan 2 at 9am call 0912345678"),
-            (Lang::Ja, "1月2日9時に予約センターに電話して"),
+            (Lang::Ja, "1月2日9時に市役所に電話して"),
             (Lang::Fr, "Le 2/1 à 9h appelle la mairie"),
             (Lang::De, "Am 2.1. um 9 Uhr ruf die Praxis an"),
         ] {
             assert_eq!(call_time_in(text, late, lang), Some(at(2027, 1, 2, 9, 0)), "{lang:?} {text}");
         }
-        // Relative days, and a time alone (today if still ahead, else tomorrow).
-        assert_eq!(call_time_in("明天 8:00 打給 0223456789 訂位", now, Lang::ZhTw), Some(at(2026, 11, 29, 8, 0)));
-        assert_eq!(call_time_in("Mañana a las 9 llama a la clínica", now, Lang::Es), Some(at(2026, 11, 29, 9, 0)));
-        assert_eq!(call_time_in("Morgen um 9 Uhr ruf die Praxis an", now, Lang::De), Some(at(2026, 11, 29, 9, 0)));
-        assert_eq!(call_time_in("Tomorrow 9am call the clinic", now, Lang::En), Some(at(2026, 11, 29, 9, 0)));
-        assert_eq!(call_time_in("8點幫我打給 0223456789", now, Lang::ZhTw), Some(at(2026, 11, 29, 8, 0)));
-        assert_eq!(call_time_in("晚上8點幫我打給 0223456789", now, Lang::ZhTw), Some(at(2026, 11, 28, 20, 0)));
-        // A time after the words that ask for the call is the task's: call now.
+        // Not plain enough: a weekday or "next", a day said in words, a time
+        // alone, a booking named before the call, a time after the words
+        // asking for the call. None: the chat model's reading stands.
         for (lang, text) in [
+            (Lang::En, "Next Saturday at 8am call Joe's Diner to book 4"),
+            (Lang::ZhTw, "下週六晚上8點打給鼎泰豐訂4位"),
+            (Lang::Ja, "来週の土曜の8時に鈴木食堂に電話して"),
+            (Lang::Es, "El sábado a las 8 llama al restaurante"),
+            (Lang::De, "Am Montag um 9 Uhr ruf die Praxis an"),
+            (Lang::En, "Book a table for 4 at 7pm tomorrow, call 0223456789"),
+            (Lang::ZhTw, "幫我訂明天晚上七點兩位，打給鼎泰豐"),
+            (Lang::Ko, "다음 주 토요일 오전 8시에 한강식당에 전화해 줘"),
+            (Lang::Fr, "Samedi prochain à 8h appelle le bistrot"),
+            (Lang::Pt, "Sábado às 8h liga para a pizzaria"),
+            (Lang::ZhTw, "明天 8:00 打給 0223456789 訂位"),
+            (Lang::Es, "Mañana a las 9 llama a la clínica"),
+            (Lang::En, "Tomorrow 9am call the clinic"),
+            (Lang::ZhTw, "8點幫我打給 0223456789"),
+            (Lang::ZhCn, "帮我预订12月1日晚上7点4位，打给 0223456789"),
             (Lang::ZhTw, "幫我打給鼎泰豐訂明天晚上七點四位"),
             (Lang::En, "Call 0912345678 and book a table for 4 at 7 pm on Dec 1"),
             (Lang::Es, "Llama al restaurante y reserva el 1/12 a las 21"),
