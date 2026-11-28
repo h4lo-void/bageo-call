@@ -15,6 +15,8 @@
 //!             [--index <bageo-pack-index.json>] [--built-at <time>] [--min-bageo <x.y.z>]
 //! packs sync-source --bageo-call <checkout> --out <packs folder> [--commit <text>]
 //! packs export-app --packs <packs folder> --android <res folder> --desktop <i18n.ext.json> [--commit <text>] [--check]
+//! packs new-signing-key --out <signing key file>
+//! packs sign-index <index file> [--out <index file>.sig]   (signing key in BAGEO_PACKS_SIGNING_KEY)
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
@@ -24,6 +26,7 @@ use std::process::ExitCode;
 
 use bageo_packs::export::{apply_android_export, apply_app_export, export_app};
 use bageo_packs::extras::EXTRAS_INDEX_FILE;
+use bageo_packs::signing::{self, SIGNING_KEY_ENV, SIG_SUFFIX};
 use bageo_packs::sync::{keep_same_ok, sync_source};
 use bageo_packs::util::{now_rfc3339, valid_rfc3339_utc};
 use bageo_packs::{
@@ -44,7 +47,9 @@ const USAGE: &str = "usage:
   packs build-art <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-art.json.gz> [--built-at <YYYY-MM-DDTHH:MM:SSZ>]
   packs build-prompts <source folder> --version <YYYYMMDDNN> --commit <text> --out <bageo-prompts.json.gz> [--index <bageo-pack-index.json>] [--built-at <YYYY-MM-DDTHH:MM:SSZ>] [--min-bageo <x.y.z>]
   packs sync-source --bageo-call <checkout> --out <packs folder> [--commit <text>]
-  packs export-app --packs <packs folder> --android <res folder> --desktop <i18n.ext.json> [--commit <text>] [--check]";
+  packs export-app --packs <packs folder> --android <res folder> --desktop <i18n.ext.json> [--commit <text>] [--check]
+  packs new-signing-key --out <signing key file>
+  packs sign-index <index file> [--out <index file>.sig]   (signing key in BAGEO_PACKS_SIGNING_KEY)";
 
 /// Plain `x.y.z` from `CARGO_PKG_VERSION` (stripping `-beta`, `-rc.1`, `+build`).
 fn default_min_bageo() -> String {
@@ -79,6 +84,8 @@ fn main() -> ExitCode {
         Some("build-prompts") => cmd_build_prompts(&args[1..]),
         Some("sync-source") => cmd_sync_source(&args[1..]),
         Some("export-app") => cmd_export_app(&args[1..]),
+        Some("new-signing-key") => cmd_new_signing_key(&args[1..]),
+        Some("sign-index") => cmd_sign_index(&args[1..]),
         _ => usage(),
     }
 }
@@ -767,5 +774,80 @@ fn cmd_export_app(args: &[String]) -> ExitCode {
         println!("wrote {c}");
     }
     println!("exported {} language(s)", e.langs.len());
+    ExitCode::SUCCESS
+}
+
+/// new-signing-key: a new signing key, written only into --out (a new file
+/// its owner alone may read); only the public key is printed.
+fn cmd_new_signing_key(args: &[String]) -> ExitCode {
+    let Some(a) = parse_args(args, &["--out"], &[]) else { return usage() };
+    let (true, Some(out)) = (a.pos.is_empty(), a.opts.get("--out")) else { return usage() };
+    let seed = match signing::new_seed() {
+        Ok(s) => s,
+        Err(e) => return fail(e),
+    };
+    let public = match signing::public_key_of(&seed) {
+        Ok(p) => p,
+        Err(e) => return fail(e),
+    };
+    if let Err(e) = write_private(Path::new(out), &signing::to_hex(&seed)) {
+        return fail(format!("cannot write {out}: {e}"));
+    }
+    println!("wrote the signing key to {out}; keep it secret and never print or commit it");
+    println!("public key: {}", signing::to_hex(&public));
+    ExitCode::SUCCESS
+}
+
+/// Writes a new file (never one already there) that only its owner may read
+/// or write; a failed write leaves no file.
+fn write_private(path: &Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write as _;
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
+    let mut f = opts.open(path)?;
+    #[cfg(unix)]
+    let done = f.set_permissions(<fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o600));
+    #[cfg(not(unix))]
+    let done: std::io::Result<()> = Ok(());
+    let done = done.and_then(|_| f.write_all(text.as_bytes())).and_then(|_| f.write_all(b"\n")).and_then(|_| f.sync_all());
+    if done.is_err() {
+        drop(f);
+        let _ = fs::remove_file(path);
+    }
+    done
+}
+
+/// sign-index: the .sig file of one index, made with the signing key in
+/// BAGEO_PACKS_SIGNING_KEY. The key is never printed.
+fn cmd_sign_index(args: &[String]) -> ExitCode {
+    let Some(a) = parse_args(args, &["--out"], &[]) else { return usage() };
+    let [index] = a.pos.as_slice() else { return usage() };
+    let out = a.opts.get("--out").cloned().unwrap_or_else(|| format!("{index}{SIG_SUFFIX}"));
+    let Some(name) = Path::new(index).file_name().and_then(|n| n.to_str()) else { return usage() };
+    let seed = match env::var(SIGNING_KEY_ENV) {
+        Ok(v) if !v.trim().is_empty() => match signing::parse_seed(&v) {
+            Some(s) => s,
+            None => return fail(format!("{SIGNING_KEY_ENV} is not a signing key (64 hex characters); nothing signed")),
+        },
+        _ => return fail(format!("{SIGNING_KEY_ENV} is not set; nothing signed")),
+    };
+    let body = match fs::read(index) {
+        Ok(b) => b,
+        Err(e) => return fail(format!("cannot read {index}: {e}")),
+    };
+    let (sig, public) = match (signing::sign_index(&seed, name, &body), signing::public_key_of(&seed)) {
+        (Ok(s), Ok(p)) => (s, p),
+        (Err(e), _) | (_, Err(e)) => return fail(format!("cannot sign {name}: {e}")),
+    };
+    // What is written has to check out the way Bageo checks it.
+    if let Err(e) = signing::verify_index(name, &body, sig.as_bytes(), &[public]) {
+        return fail(format!("cannot sign {name}: {e}"));
+    }
+    if let Err(e) = fs::write(&out, sig.as_bytes()) {
+        return fail(format!("cannot write {out}: {e}"));
+    }
+    println!("signed {name} into {out} (public key {})", signing::to_hex(&public));
     ExitCode::SUCCESS
 }

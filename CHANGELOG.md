@@ -1,3 +1,9 @@
+# Unreleased
+
+- **Downloaded updates must be signed.** Data, prompt texts, scam lists, translations, extra languages and voice packs from *Check for updates* are used only when the official bageo-packs release signed them. A missing or wrong signature refuses the update, and Bageo keeps what it has. See [Settings](docs/en/SETTINGS.md).
+- **下載的更新一定要有簽章。** 「檢查更新」下載的資料、提示詞、詐騙詞庫、翻譯、其他語言和語音包，都要有 bageo-packs 官方發佈的簽章才會使用。沒有簽章或簽章不對就拒絕更新，繼續用現在的版本。見[設定參考](docs/zh-TW/SETTINGS.md)。
+- **下载的更新一定要有签名。** “检查更新”下载的数据、提示词、诈骗词库、翻译、其他语言和语音包，都要有 bageo-packs 官方发布的签名才会使用。没有签名或签名不对就拒绝更新，继续用现在的版本。见[设置参考](docs/zh-CN/SETTINGS.md)。
+
 # Bageo v2.3.0
 
 - **AI errands can be scheduled, and Bageo keeps redialing to grab the line.** An AI errand can now have a date and time, and you can choose how long Bageo keeps redialing when the line is busy or unanswered (1 to 120 minutes, 30 by default). A time you write with its zone is read as that moment in the computer's local time, and a card that asks a question shows up again once you answer it. See [Features](docs/en/FEATURES.md#ai-errands-it-makes-calls-for-you).

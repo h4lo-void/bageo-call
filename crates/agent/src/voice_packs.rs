@@ -16,8 +16,9 @@
 //!
 //! The rules, each with its test below:
 //! - Downloads go through [crate::pack_update]: the fixed source, every
-//!   redirect checked, the size capped, SHA-256 counted as it comes in, a
-//!   temporary file that any failure removes.
+//!   redirect checked, the index used only with its signature, the size
+//!   capped, SHA-256 counted as it comes in, a temporary file that any
+//!   failure removes.
 //! - The zip is read with [crate::backup::ZipIn] and its zip-bomb check:
 //!   exactly the files the entry promises, by exact name, each at most
 //!   [MAX_CLIP_BYTES] and a WAV Bageo plays.
@@ -959,7 +960,7 @@ pub fn router() -> Router<CallsState> {
 mod tests {
     use super::*;
     use crate::locale::Lang;
-    use crate::pack_update::tests::{tmp, Reply, Server};
+    use crate::pack_update::tests::{test_key, tmp, Reply, Server, TestKey};
     use crate::voice_preview::VoicePreviews;
     use std::sync::Arc;
 
@@ -1260,6 +1261,48 @@ mod tests {
         assert_eq!(run(&s.source(), &d.0, "ja").await, Outcome::BadPack);
         assert!(!d.0.join("ja").exists());
         assert!(leftovers(&d.0).is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_voice_index_without_its_own_good_signature_is_refused() {
+        let zip = zip_of(&files_for(&TWO));
+        let e = entry("ja", None, &TWO, &zip);
+        let index = index_text(std::slice::from_ref(&e)).into_bytes();
+        let sig_path = format!("{TAGGED}{INDEX_NAME}.sig");
+        let trusted = vec![test_key().public];
+        let cases = [
+            ("no signature", None, trusted.clone()),
+            ("empty", Some(Vec::new()), trusted.clone()),
+            ("another key", Some(TestKey::fresh().sign(INDEX_NAME, &index)), trusted.clone()),
+            ("the data pack index's", Some(test_key().sign("bageo-pack-index.json", &index)), trusted.clone()),
+            ("the extras index's", Some(test_key().sign(crate::extras::INDEX_NAME, &index)), trusted),
+            ("no key in the program", Some(test_key().sign(INDEX_NAME, &index)), Vec::new()),
+        ];
+        for (what, sig, keys) in cases {
+            let d = tmp();
+            let (ix, zp, sp, file) = (index.clone(), zip.clone(), sig_path.clone(), e.file.clone());
+            let s = Server::start_raw(move |path| {
+                if path == LATEST {
+                    Reply::Redirect(format!("{TAGGED}{INDEX_NAME}"))
+                } else if path == format!("{TAGGED}{INDEX_NAME}") {
+                    Reply::Body(ix.clone())
+                } else if path == sp {
+                    sig.clone().map_or(Reply::NotFound, Reply::Body)
+                } else if path == format!("{TAGGED}{file}") {
+                    Reply::Body(zp.clone())
+                } else {
+                    Reply::NotFound
+                }
+            });
+            assert_eq!(run(&s.source().with_keys(keys), &d.0, "ja").await, Outcome::BadPack, "{what}");
+            assert_eq!(s.asked(&e.file), 0, "{what}: the pack was never asked");
+            assert!(!d.0.join("ja").exists() && leftovers(&d.0).is_empty() && !kept_index(&d.0), "{what}");
+        }
+        // Signed right, the same release installs.
+        let d = tmp();
+        let s = release(String::from_utf8(index).unwrap(), vec![(e.file.clone(), zip)]);
+        assert_eq!(run(&s.source(), &d.0, "ja").await, Outcome::Installed);
+        assert_eq!(s.asked(&sig_path), 1);
     }
 
     #[tokio::test]
